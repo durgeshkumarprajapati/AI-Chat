@@ -14,6 +14,7 @@
     "db:studio": "prisma studio",
     "test:phase7": "tsx tests/phase7-upload.test.ts",
     "test:phase8": "tsx tests/phase8-parser.test.ts",
+    "test:phase9": "tsx tests/phase9-chunker.test.ts",
     "worker": "npm run --prefix worker dev"
   },
   "dependencies": {
@@ -22,6 +23,7 @@
     "@prisma/client": "^5.18.0",
     "amqplib": "^0.10.4",
     "dotenv": "^16.4.5",
+    "js-tiktoken": "^1.0.12",
     "next": "^14.2.5",
     "openai": "^4.55.4",
     "pdfjs-dist": "^4.5.136",

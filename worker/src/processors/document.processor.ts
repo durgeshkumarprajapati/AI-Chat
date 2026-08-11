@@ -1,6 +1,7 @@
 import { workerDocumentRepository } from '../repositories/document.repository.js';
 import { workerStorage } from '../lib/storage.js';
 import { workerPdfParser } from '../parsers/pdf.parser.js';
+import { workerDocumentChunker } from '../chunking/document.chunker.js';
 
 export interface DocumentProcessingJob {
   jobType: string;
@@ -48,17 +49,26 @@ export class DocumentProcessor {
         pageCount: parsedDoc.pageCount
       });
 
-      const totalCharacters = parsedDoc.pages.reduce((acc, p) => acc + p.text.length, 0);
+      // 6. Token-aware, page-aware text chunking
+      console.log(`[Worker] Generating chunks for document ID: ${document.id}...`);
+      const chunks = workerDocumentChunker.chunk(parsedDoc);
+
+      // 7. Persist chunks transactionally in PostgreSQL (idempotent replacement)
+      console.log(`[Worker] Persisting ${chunks.length} chunks transactionally...`);
+      await workerDocumentRepository.saveChunksTx(job.documentId, chunks);
+
+      const totalTokens = chunks.reduce((acc, c) => acc + c.tokenCount, 0);
       const durationMs = Date.now() - startTime;
 
-      console.log(`[Worker] PDF extraction completed successfully:`);
-      console.log(`  documentId = ${document.id}`);
-      console.log(`  jobId      = ${job.jobId}`);
-      console.log(`  pageCount  = ${parsedDoc.pageCount}`);
-      console.log(`  characters = ${totalCharacters}`);
-      console.log(`  durationMs = ${durationMs}ms`);
+      console.log(`[Worker] Chunking completed successfully:`);
+      console.log(`  documentId  = ${document.id}`);
+      console.log(`  jobId       = ${job.jobId}`);
+      console.log(`  pageCount   = ${parsedDoc.pageCount}`);
+      console.log(`  chunkCount  = ${chunks.length}`);
+      console.log(`  totalTokens = ${totalTokens}`);
+      console.log(`  durationMs  = ${durationMs}ms`);
 
-      // Note: Status remains PROCESSING. Chunking and embedding will happen in subsequent phases.
+      // Note: Status remains PROCESSING. Embedding generation will happen in Phase 10.
     } catch (error) {
       const errorMessage = error instanceof Error ? error.message : String(error);
       console.error(`[Worker] Failed processing document ${job.documentId}: ${errorMessage}`);

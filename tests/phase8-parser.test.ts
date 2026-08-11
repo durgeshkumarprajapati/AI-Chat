@@ -203,6 +203,7 @@ async function setupMocks() {
 
     workerDocumentRepository.findByIdAndUser = documentRepository.findByIdAndUser as unknown as typeof workerDocumentRepository.findByIdAndUser;
     workerDocumentRepository.updateStatus = documentRepository.updateStatus as unknown as typeof workerDocumentRepository.updateStatus;
+    workerDocumentRepository.saveChunksTx = async () => {};
   }
 }
 

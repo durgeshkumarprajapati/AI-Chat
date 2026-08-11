@@ -55,38 +55,36 @@ export class DocumentRepository {
     });
   }
 
-  public async saveChunks(
+  /**
+   * Transactional replacement of document chunks for idempotency.
+   * Atomically deletes existing chunks and inserts new chunks.
+   */
+  public async saveChunksTx(
     documentId: string,
     chunks: Array<{
       chunkIndex: number;
-      content: string;
       pageNumber: number;
+      content: string;
       tokenCount: number;
       metadata?: Record<string, unknown>;
-      embedding?: number[];
     }>
   ): Promise<void> {
-    await prisma.$transaction(async (tx) => {
-      for (const chunk of chunks) {
-        const createdChunk = await tx.documentChunk.create({
-          data: {
-            documentId,
-            chunkIndex: chunk.chunkIndex,
-            content: chunk.content,
-            pageNumber: chunk.pageNumber,
-            tokenCount: chunk.tokenCount,
-            metadata: (chunk.metadata as Prisma.InputJsonValue) ?? {}
-          }
-        });
+    await prisma.$transaction(async (tx: Prisma.TransactionClient) => {
+      await tx.documentChunk.deleteMany({
+        where: { documentId }
+      });
 
-        if (chunk.embedding && chunk.embedding.length > 0) {
-          const vectorSql = `[${chunk.embedding.join(',')}]`;
-          await tx.$executeRawUnsafe(
-            `UPDATE "document_chunks" SET "embedding" = $1::vector WHERE "id" = $2`,
-            vectorSql,
-            createdChunk.id
-          );
-        }
+      if (chunks.length > 0) {
+        await tx.documentChunk.createMany({
+          data: chunks.map((c) => ({
+            documentId,
+            chunkIndex: c.chunkIndex,
+            pageNumber: c.pageNumber,
+            content: c.content,
+            tokenCount: c.tokenCount,
+            metadata: (c.metadata as Prisma.InputJsonValue) ?? {}
+          }))
+        });
       }
     });
   }

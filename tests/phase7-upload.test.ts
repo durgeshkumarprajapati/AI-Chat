@@ -9,6 +9,44 @@ import { Document, DocumentStatus } from '@prisma/client';
 
 const TEST_USER_ID = '11111111-1111-4000-a000-111111111111';
 
+// Valid minimal 1-page PDF binary buffer
+const VALID_SAMPLE_PDF = Buffer.from(`%PDF-1.4
+1 0 obj
+<< /Type /Catalog /Pages 2 0 R >>
+endobj
+2 0 obj
+<< /Type /Pages /Kids [3 0 R] /Count 1 >>
+endobj
+3 0 obj
+<< /Type /Page /Parent 2 0 R /Resources << /Font << /F1 4 0 R >> >> /MediaBox [0 0 612 792] /Contents 5 0 R >>
+endobj
+4 0 obj
+<< /Type /Font /Subtype /Type1 /BaseFont /Helvetica >>
+endobj
+5 0 obj
+<< /Length 56 >>
+stream
+BT
+/F1 12 Tf
+100 700 Td
+(Hello World from PDF Page 1) Tj
+ET
+endstream
+endobj
+xref
+0 6
+0000000000 65535 f 
+0000000009 00000 n 
+0000000058 00000 n 
+0000000115 00000 n 
+0000000244 00000 n 
+0000000318 00000 n 
+trailer
+<< /Size 6 /Root 1 0 R >>
+startxref
+424
+%%EOF`);
+
 // In-Memory Database Fallback if PostgreSQL container is not currently accessible in test CLI environment
 const memoryDb = {
   users: new Map<string, { id: string; email: string; name?: string }>(),
@@ -143,12 +181,11 @@ async function runTests() {
 
   // Test 4: Successful Document Upload & Local Storage Save
   console.log('\nTest 4: Successful Upload & Local Storage Save');
-  const dummyPdfBuffer = Buffer.from('%PDF-1.4 Header Sample Content %EOF');
   const uploadedDoc = await documentService.uploadDocument(TEST_USER_ID, {
     filename: 'quarterly_report_2026.pdf',
     mimeType: 'application/pdf',
-    fileSize: dummyPdfBuffer.length,
-    buffer: dummyPdfBuffer
+    fileSize: VALID_SAMPLE_PDF.length,
+    buffer: VALID_SAMPLE_PDF
   });
 
   console.log('  Document created ID:', uploadedDoc.id);
@@ -166,7 +203,7 @@ async function runTests() {
   }
 
   const downloadedBuffer = await storage.download(uploadedDoc.storageKey);
-  if (downloadedBuffer.toString() !== dummyPdfBuffer.toString()) {
+  if (downloadedBuffer.toString() !== VALID_SAMPLE_PDF.toString()) {
     throw new Error('Stored file content does not match uploaded buffer');
   }
   console.log('  ✅ PASSED: Document created, saved to LocalStorageProvider, and status updated to PROCESSING.');

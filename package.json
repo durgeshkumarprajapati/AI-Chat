@@ -13,6 +13,7 @@
     "db:push": "prisma db push",
     "db:studio": "prisma studio",
     "test:phase7": "tsx tests/phase7-upload.test.ts",
+    "test:phase8": "tsx tests/phase8-parser.test.ts",
     "worker": "npm run --prefix worker dev"
   },
   "dependencies": {

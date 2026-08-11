@@ -1,5 +1,3 @@
-import { DocumentProcessingError } from '@/errors';
-
 export type ExtractedPage = {
   pageNumber: number;
   text: string;
@@ -11,12 +9,9 @@ export type ParsedDocument = {
 };
 
 export interface DocumentParser {
-  parse(_buffer: Buffer): Promise<ParsedDocument>;
+  parse(buffer: Buffer): Promise<ParsedDocument>;
 }
 
-/**
- * Normalizes extracted text while preserving semantic paragraph breaks and sentence structure.
- */
 export function cleanExtractedText(text: string): string {
   if (!text) return '';
 
@@ -30,17 +25,14 @@ export function cleanExtractedText(text: string): string {
     .trim();
 }
 
-export class PdfParser implements DocumentParser {
+export class WorkerPdfParser implements DocumentParser {
   public async parse(buffer: Buffer): Promise<ParsedDocument> {
     if (!buffer || buffer.length === 0) {
-      throw new DocumentProcessingError('Cannot parse empty or invalid PDF buffer.');
+      throw new Error('Cannot parse empty or invalid PDF buffer.');
     }
 
     try {
-      // Import pdfjs-dist legacy Node.js build
       const pdfjsLib = await import('pdfjs-dist/legacy/build/pdf.mjs');
-
-      // Convert Buffer to Uint8Array for pdfjs-dist
       const data = Uint8Array.from(buffer);
       const loadingTask = pdfjsLib.getDocument({
         data,
@@ -52,7 +44,7 @@ export class PdfParser implements DocumentParser {
       const pageCount = pdfDocument.numPages;
 
       if (!pageCount || pageCount === 0) {
-        throw new DocumentProcessingError('PDF document has zero pages.');
+        throw new Error('PDF document has zero pages.');
       }
 
       const pages: ExtractedPage[] = [];
@@ -70,16 +62,13 @@ export class PdfParser implements DocumentParser {
         totalExtractedLength += cleanedText.length;
 
         pages.push({
-          pageNumber: pageNum, // 1-indexed page number
+          pageNumber: pageNum,
           text: cleanedText
         });
       }
 
-      // If document contains no extractable text across all pages (e.g. scanned image-only PDF)
       if (totalExtractedLength === 0) {
-        throw new DocumentProcessingError(
-          'No extractable text found in PDF document. Image-only or scanned PDFs require OCR processing.'
-        );
+        throw new Error('No extractable text found in PDF document. Image-only or scanned PDFs require OCR processing.');
       }
 
       return {
@@ -87,18 +76,14 @@ export class PdfParser implements DocumentParser {
         pages
       };
     } catch (error) {
-      if (error instanceof DocumentProcessingError) {
+      const rawMsg = error instanceof Error ? error.message : String(error);
+      if (rawMsg.includes('No extractable text found') || rawMsg.includes('Cannot parse empty')) {
         throw error;
       }
-
-      const rawMsg = error instanceof Error ? error.message : String(error);
-      console.error('[PdfParser] Raw parsing error:', rawMsg);
-
-      throw new DocumentProcessingError(
-        `Unable to extract text from PDF document: ${rawMsg.includes('Invalid PDF') ? 'Invalid or corrupted PDF format.' : 'Failed to parse PDF pages.'}`
-      );
+      console.error('[WorkerPdfParser] Raw parsing error:', rawMsg);
+      throw new Error(`Unable to extract text from PDF document: ${rawMsg.includes('Invalid PDF') ? 'Invalid or corrupted PDF format.' : rawMsg}`);
     }
   }
 }
 
-export const pdfParser = new PdfParser();
+export const workerPdfParser = new WorkerPdfParser();

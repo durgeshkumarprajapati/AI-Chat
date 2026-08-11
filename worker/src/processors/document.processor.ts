@@ -1,5 +1,6 @@
 import { workerDocumentRepository } from '../repositories/document.repository.js';
 import { workerStorage } from '../lib/storage.js';
+import { workerPdfParser } from '../parsers/pdf.parser.js';
 
 export interface DocumentProcessingJob {
   jobType: string;
@@ -14,6 +15,7 @@ export interface DocumentProcessingJob {
 
 export class DocumentProcessor {
   public async process(job: DocumentProcessingJob): Promise<void> {
+    const startTime = Date.now();
     console.log(`[Worker] Validating job payload for job ID: ${job.jobId}...`);
 
     // 1. Validate payload structure
@@ -22,7 +24,7 @@ export class DocumentProcessor {
     }
 
     try {
-      // 2. Fetch Document record & verify user/tenant ownership via worker document repository
+      // 2. Fetch Document record & verify user/tenant ownership
       const document = await workerDocumentRepository.findByIdAndUser(job.documentId, job.userId);
 
       if (!document) {
@@ -37,12 +39,26 @@ export class DocumentProcessor {
         throw new Error(`Downloaded storage object "${job.storageKey}" is empty (0 bytes).`);
       }
 
-      console.log(`[Worker] Successfully verified document ID: ${document.id}`);
-      console.log(`  Filename  = ${document.filename}`);
-      console.log(`  File size = ${fileBuffer.length} bytes`);
-      console.log(`  Status    = ${document.status}`);
+      // 4. Extract PDF text using page-aware PdfParser
+      console.log(`[Worker] Parsing PDF text for document ID: ${document.id}...`);
+      const parsedDoc = await workerPdfParser.parse(fileBuffer);
 
-      // Placeholder: In next phases, PDF parsing, OCR, text chunking & embeddings will occur here.
+      // 5. Update Document.pageCount in PostgreSQL (status remains PROCESSING)
+      await workerDocumentRepository.updateStatus(job.documentId, 'PROCESSING', {
+        pageCount: parsedDoc.pageCount
+      });
+
+      const totalCharacters = parsedDoc.pages.reduce((acc, p) => acc + p.text.length, 0);
+      const durationMs = Date.now() - startTime;
+
+      console.log(`[Worker] PDF extraction completed successfully:`);
+      console.log(`  documentId = ${document.id}`);
+      console.log(`  jobId      = ${job.jobId}`);
+      console.log(`  pageCount  = ${parsedDoc.pageCount}`);
+      console.log(`  characters = ${totalCharacters}`);
+      console.log(`  durationMs = ${durationMs}ms`);
+
+      // Note: Status remains PROCESSING. Chunking and embedding will happen in subsequent phases.
     } catch (error) {
       const errorMessage = error instanceof Error ? error.message : String(error);
       console.error(`[Worker] Failed processing document ${job.documentId}: ${errorMessage}`);

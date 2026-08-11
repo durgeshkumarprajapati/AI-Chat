@@ -1,6 +1,15 @@
 import { prisma } from '../lib/prisma.js';
 import { Prisma } from '@prisma/client';
 
+export type ChunkNeedingEmbedding = {
+  id: string;
+  documentId: string;
+  chunkIndex: number;
+  pageNumber: number;
+  content: string;
+  tokenCount: number;
+};
+
 export class WorkerDocumentRepository {
   public async findByIdAndUser(id: string, userId: string) {
     return prisma.document.findFirst({
@@ -49,6 +58,32 @@ export class WorkerDocumentRepository {
             metadata: (c.metadata as Prisma.InputJsonValue) ?? {}
           }))
         });
+      }
+    });
+  }
+
+  public async findChunksNeedingEmbeddings(documentId: string): Promise<ChunkNeedingEmbedding[]> {
+    return prisma.$queryRaw<ChunkNeedingEmbedding[]>`
+      SELECT id, document_id as "documentId", chunk_index as "chunkIndex", page_number as "pageNumber", content, token_count as "tokenCount"
+      FROM document_chunks
+      WHERE document_id = ${documentId} AND embedding IS NULL
+      ORDER BY chunk_index ASC
+    `;
+  }
+
+  public async saveEmbeddingsBatchTx(
+    updates: Array<{ id: string; embedding: number[] }>
+  ): Promise<void> {
+    if (!updates || updates.length === 0) return;
+
+    await prisma.$transaction(async (tx: Prisma.TransactionClient) => {
+      for (const update of updates) {
+        const vectorStr = `[${update.embedding.join(',')}]`;
+        await tx.$executeRawUnsafe(
+          `UPDATE document_chunks SET embedding = $1::vector WHERE id = $2`,
+          vectorStr,
+          update.id
+        );
       }
     });
   }

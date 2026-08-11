@@ -1,6 +1,15 @@
 import { prisma } from '@/lib/prisma';
 import { Document, DocumentStatus, Prisma } from '@prisma/client';
 
+export type ChunkNeedingEmbedding = {
+  id: string;
+  documentId: string;
+  chunkIndex: number;
+  pageNumber: number;
+  content: string;
+  tokenCount: number;
+};
+
 export class DocumentRepository {
   public async create(data: {
     id?: string;
@@ -55,10 +64,6 @@ export class DocumentRepository {
     });
   }
 
-  /**
-   * Transactional replacement of document chunks for idempotency.
-   * Atomically deletes existing chunks and inserts new chunks.
-   */
   public async saveChunksTx(
     documentId: string,
     chunks: Array<{
@@ -85,6 +90,38 @@ export class DocumentRepository {
             metadata: (c.metadata as Prisma.InputJsonValue) ?? {}
           }))
         });
+      }
+    });
+  }
+
+  /**
+   * Returns all chunks for a document where embedding IS NULL, ordered by chunkIndex ASC.
+   */
+  public async findChunksNeedingEmbeddings(documentId: string): Promise<ChunkNeedingEmbedding[]> {
+    return prisma.$queryRaw<ChunkNeedingEmbedding[]>`
+      SELECT id, document_id as "documentId", chunk_index as "chunkIndex", page_number as "pageNumber", content, token_count as "tokenCount"
+      FROM document_chunks
+      WHERE document_id = ${documentId} AND embedding IS NULL
+      ORDER BY chunk_index ASC
+    `;
+  }
+
+  /**
+   * Transactionally persists vector embeddings to PostgreSQL pgvector column using parameterized raw SQL.
+   */
+  public async saveEmbeddingsBatchTx(
+    updates: Array<{ id: string; embedding: number[] }>
+  ): Promise<void> {
+    if (!updates || updates.length === 0) return;
+
+    await prisma.$transaction(async (tx: Prisma.TransactionClient) => {
+      for (const update of updates) {
+        const vectorStr = `[${update.embedding.join(',')}]`;
+        await tx.$executeRawUnsafe(
+          `UPDATE document_chunks SET embedding = $1::vector WHERE id = $2`,
+          vectorStr,
+          update.id
+        );
       }
     });
   }

@@ -2,6 +2,7 @@ import { workerDocumentRepository } from '../repositories/document.repository.js
 import { workerStorage } from '../lib/storage.js';
 import { workerPdfParser } from '../parsers/pdf.parser.js';
 import { workerDocumentChunker } from '../chunking/document.chunker.js';
+import { workerEmbeddingService } from '../embeddings/embedding.service.js';
 
 export interface DocumentProcessingJob {
   jobType: string;
@@ -57,18 +58,22 @@ export class DocumentProcessor {
       console.log(`[Worker] Persisting ${chunks.length} chunks transactionally...`);
       await workerDocumentRepository.saveChunksTx(job.documentId, chunks);
 
-      const totalTokens = chunks.reduce((acc, c) => acc + c.tokenCount, 0);
+      // 8. Generate & persist vector embeddings in pgvector
+      console.log(`[Worker] Processing vector embeddings for document ID: ${document.id}...`);
+      const embeddingResult = await workerEmbeddingService.processDocumentEmbeddings(job.documentId, job.userId);
+
       const durationMs = Date.now() - startTime;
 
-      console.log(`[Worker] Chunking completed successfully:`);
-      console.log(`  documentId  = ${document.id}`);
-      console.log(`  jobId       = ${job.jobId}`);
-      console.log(`  pageCount   = ${parsedDoc.pageCount}`);
-      console.log(`  chunkCount  = ${chunks.length}`);
-      console.log(`  totalTokens = ${totalTokens}`);
-      console.log(`  durationMs  = ${durationMs}ms`);
+      console.log(`[Worker] Phase 10 processing completed successfully:`);
+      console.log(`  documentId     = ${document.id}`);
+      console.log(`  jobId          = ${job.jobId}`);
+      console.log(`  pageCount      = ${parsedDoc.pageCount}`);
+      console.log(`  chunkCount     = ${chunks.length}`);
+      console.log(`  embeddedChunks = ${embeddingResult.embeddedChunks}`);
+      console.log(`  totalTokens    = ${embeddingResult.totalTokens}`);
+      console.log(`  durationMs     = ${durationMs}ms`);
 
-      // Note: Status remains PROCESSING. Embedding generation will happen in Phase 10.
+      // Note: Status remains PROCESSING. Final ingestion completion lifecycle will be updated in subsequent phases.
     } catch (error) {
       const errorMessage = error instanceof Error ? error.message : String(error);
       console.error(`[Worker] Failed processing document ${job.documentId}: ${errorMessage}`);

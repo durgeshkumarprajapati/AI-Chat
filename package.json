@@ -15,6 +15,8 @@
     "test:phase7": "tsx tests/phase7-upload.test.ts",
     "test:phase8": "tsx tests/phase8-parser.test.ts",
     "test:phase9": "tsx tests/phase9-chunker.test.ts",
+    "test:phase10": "tsx tests/phase10-embeddings.test.ts",
+    "test:openai": "tsx scripts/test-openai-embeddings.ts",
     "worker": "npm run --prefix worker dev"
   },
   "dependencies": {

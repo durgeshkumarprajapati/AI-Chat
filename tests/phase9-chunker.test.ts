@@ -121,9 +121,25 @@ async function setupMocks() {
       memoryDb.chunks.set(documentId, dbChunks);
     };
 
+    documentRepository.findChunksNeedingEmbeddings = async (documentId) => {
+      const existing = memoryDb.chunks.get(documentId) || [];
+      return existing.map((c) => ({
+        id: c.id,
+        documentId: c.documentId,
+        chunkIndex: c.chunkIndex,
+        pageNumber: c.pageNumber,
+        content: c.content,
+        tokenCount: c.tokenCount
+      }));
+    };
+
+    documentRepository.saveEmbeddingsBatchTx = async () => {};
+
     workerDocumentRepository.findByIdAndUser = documentRepository.findByIdAndUser as unknown as typeof workerDocumentRepository.findByIdAndUser;
     workerDocumentRepository.updateStatus = documentRepository.updateStatus as unknown as typeof workerDocumentRepository.updateStatus;
     workerDocumentRepository.saveChunksTx = documentRepository.saveChunksTx as unknown as typeof workerDocumentRepository.saveChunksTx;
+    workerDocumentRepository.findChunksNeedingEmbeddings = documentRepository.findChunksNeedingEmbeddings as unknown as typeof workerDocumentRepository.findChunksNeedingEmbeddings;
+    workerDocumentRepository.saveEmbeddingsBatchTx = documentRepository.saveEmbeddingsBatchTx as unknown as typeof workerDocumentRepository.saveEmbeddingsBatchTx;
   }
 }
 
@@ -296,6 +312,11 @@ async function runPhase9Tests() {
     fileSize: VALID_1PAGE_PDF.length,
     storageKey
   });
+
+  // Stub workerEmbeddingService provider for test environment
+  const { workerEmbeddingService } = await import('../worker/src/embeddings/embedding.service.js');
+  const { MockEmbeddingProvider } = await import('./phase10-embeddings.test.js');
+  (workerEmbeddingService as any).provider = new MockEmbeddingProvider();
 
   await documentProcessor.process({
     jobType: 'DOCUMENT_PROCESSING',

@@ -30,6 +30,16 @@ const serverEnvSchema = z
     OPENAI_EMBEDDING_MODEL: z
       .string()
       .default('text-embedding-3-small'),
+    OPENAI_EMBEDDING_DIMENSIONS: z
+      .coerce.number()
+      .int()
+      .positive({ message: 'OPENAI_EMBEDDING_DIMENSIONS must be greater than 0' })
+      .default(1536),
+    EMBEDDING_BATCH_SIZE: z
+      .coerce.number()
+      .int()
+      .positive({ message: 'EMBEDDING_BATCH_SIZE must be greater than 0' })
+      .default(100),
     OPENAI_CHAT_MODEL: z
       .string()
       .default('gpt-4o-mini'),

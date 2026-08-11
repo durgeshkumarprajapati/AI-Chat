@@ -1,0 +1,68 @@
+import { z } from 'zod';
+
+const serverEnvSchema = z.object({
+  NODE_ENV: z
+    .enum(['development', 'test', 'production'])
+    .default('development'),
+  DATABASE_URL: z
+    .string()
+    .min(1, { message: 'DATABASE_URL is required' }),
+  RABBITMQ_URL: z
+    .string()
+    .min(1, { message: 'RABBITMQ_URL is required' }),
+  REDIS_URL: z
+    .string()
+    .min(1, { message: 'REDIS_URL is required' }),
+  STORAGE_PROVIDER: z
+    .enum(['local', 's3'])
+    .default('local'),
+  AWS_REGION: z.string().optional().default('us-east-1'),
+  AWS_ACCESS_KEY_ID: z.string().optional().default('mock-key'),
+  AWS_SECRET_ACCESS_KEY: z.string().optional().default('mock-secret'),
+  AWS_S3_BUCKET_NAME: z.string().optional().default('document-ai-rag-bucket'),
+  OPENAI_API_KEY: z
+    .string()
+    .min(1, { message: 'OPENAI_API_KEY is required' }),
+  OPENAI_EMBEDDING_MODEL: z
+    .string()
+    .default('text-embedding-3-small'),
+  OPENAI_CHAT_MODEL: z
+    .string()
+    .default('gpt-4o-mini')
+});
+
+const clientEnvSchema = z.object({
+  NEXT_PUBLIC_APP_URL: z.string().optional()
+});
+
+function validateEnv() {
+  if (typeof window !== 'undefined') {
+    const clientResult = clientEnvSchema.safeParse({
+      NEXT_PUBLIC_APP_URL: process.env.NEXT_PUBLIC_APP_URL
+    });
+
+    if (!clientResult.success) {
+      console.error('Invalid client environment variables:', clientResult.error.format());
+      throw new Error('Invalid client environment variables');
+    }
+    return { client: clientResult.data, server: null };
+  }
+
+  const serverResult = serverEnvSchema.safeParse(process.env);
+
+  if (!serverResult.success) {
+    console.error('Invalid server environment variables:', serverResult.error.format());
+    throw new Error('Invalid server environment variables. Check your .env file.');
+  }
+
+  const clientResult = clientEnvSchema.safeParse({
+    NEXT_PUBLIC_APP_URL: process.env.NEXT_PUBLIC_APP_URL || process.env.APP_URL
+  });
+
+  return {
+    server: serverResult.data,
+    client: clientResult.data
+  };
+}
+
+export const env = validateEnv();

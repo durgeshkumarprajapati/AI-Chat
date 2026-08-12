@@ -162,13 +162,13 @@ export default function SystemHealthPage() {
               </span>
             </div>
             <div>
-              <h3 className="text-sm font-bold text-white">Ollama Embeddings API</h3>
+              <h3 className="text-sm font-bold text-white">Ollama AI Services</h3>
               <p className="text-[11px] text-slate-400 font-mono mt-0.5">http://localhost:11434</p>
             </div>
             <div className="pt-2 border-t border-slate-900 text-[10px] font-mono text-slate-400 space-y-0.5">
-              <p>• Model: {health?.details.embeddingModel || 'nomic-embed-text'}</p>
-              <p>• Dimensions: {health?.details.embeddingDimensions || '768'}d</p>
-              <p>• Endpoint: /api/embed</p>
+              <p>• Embed: {health?.details.embeddingModel || 'nomic-embed-text'} (768d)</p>
+              <p>• Chat LLM: llama3.2</p>
+              <p>• RAG Pipeline: Ready</p>
             </div>
           </div>
         </div>

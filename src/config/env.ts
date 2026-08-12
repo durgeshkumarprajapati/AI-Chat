@@ -53,9 +53,25 @@ const serverEnvSchema = z
       .int()
       .positive({ message: 'EMBEDDING_BATCH_SIZE must be greater than 0' })
       .default(100),
+    LLM_PROVIDER: z
+      .enum(['ollama', 'openai'])
+      .default('ollama'),
+    OLLAMA_CHAT_MODEL: z
+      .string()
+      .default('llama3.2'),
     OPENAI_CHAT_MODEL: z
       .string()
       .default('gpt-4o-mini'),
+    RAG_TOP_K: z
+      .coerce.number()
+      .int()
+      .positive({ message: 'RAG_TOP_K must be greater than 0' })
+      .default(5),
+    RAG_MIN_SIMILARITY: z
+      .coerce.number()
+      .min(0, { message: 'RAG_MIN_SIMILARITY must be 0 or greater' })
+      .max(1, { message: 'RAG_MIN_SIMILARITY must be 1 or less' })
+      .default(0.30),
     DOCUMENT_CHUNK_SIZE: z
       .coerce.number()
       .int()
@@ -69,13 +85,13 @@ const serverEnvSchema = z
   })
   .refine(
     (data) => {
-      if (data.EMBEDDING_PROVIDER === 'openai') {
+      if (data.EMBEDDING_PROVIDER === 'openai' || data.LLM_PROVIDER === 'openai') {
         return !!data.OPENAI_API_KEY && data.OPENAI_API_KEY !== 'sk-mock-key-for-development' && data.OPENAI_API_KEY.trim() !== '';
       }
       return true;
     },
     {
-      message: 'OPENAI_API_KEY is required when EMBEDDING_PROVIDER is set to "openai"',
+      message: 'OPENAI_API_KEY is required when EMBEDDING_PROVIDER or LLM_PROVIDER is set to "openai"',
       path: ['OPENAI_API_KEY']
     }
   )

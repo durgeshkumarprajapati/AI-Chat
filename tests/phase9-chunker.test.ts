@@ -341,8 +341,8 @@ async function runPhase9Tests() {
   });
 
   const updatedE2eDoc = await documentRepository.findByIdAndUser(e2eDoc.id, TEST_USER_ID);
-  if (updatedE2eDoc?.status !== 'PROCESSING') {
-    throw new Error(`Expected Document.status=PROCESSING, got ${updatedE2eDoc?.status}`);
+  if (updatedE2eDoc?.status !== 'COMPLETED') {
+    throw new Error(`Expected Document.status=COMPLETED, got ${updatedE2eDoc?.status}`);
   }
 
   const persistedChunks = memoryDb.chunks.get(e2eDoc.id) || await prisma.documentChunk.findMany({ where: { documentId: e2eDoc.id } });

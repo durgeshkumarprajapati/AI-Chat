@@ -228,7 +228,13 @@ async function runTests() {
     attempt: 1,
     createdAt: new Date().toISOString()
   });
-  console.log('  ✅ PASSED: Worker processor verified DB record and downloaded storage file successfully.');
+
+  const completedDoc = await documentRepository.findByIdAndUser(uploadedDoc.id, TEST_USER_ID);
+  if (completedDoc?.status !== 'COMPLETED') {
+    throw new Error(`Expected document status to be COMPLETED, got ${completedDoc?.status}`);
+  }
+  console.log('  Updated Document status:', completedDoc.status);
+  console.log('  ✅ PASSED: Worker processor verified DB record, downloaded storage file, and updated status to COMPLETED.');
 
   // Test 6: Worker Error Handling - Missing Document in DB
   console.log('\nTest 6: Worker Error Handling (Missing DB Document)');

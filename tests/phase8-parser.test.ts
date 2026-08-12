@@ -334,8 +334,8 @@ async function runPhase8Tests() {
   if (updatedDoc.pageCount !== 2) {
     throw new Error(`Expected Document.pageCount=2, got ${updatedDoc.pageCount}`);
   }
-  if (updatedDoc.status !== 'PROCESSING') {
-    throw new Error(`Expected Document.status to remain PROCESSING, got ${updatedDoc.status}`);
+  if (updatedDoc.status !== 'COMPLETED') {
+    throw new Error(`Expected Document.status=COMPLETED, got ${updatedDoc.status}`);
   }
 
   // Verify DocumentChunk records (0 in isolated mock or 2 with active worker pipeline)
@@ -347,7 +347,7 @@ async function runPhase8Tests() {
   console.log('  Updated Document ID:', updatedDoc.id);
   console.log('  Updated Document pageCount:', updatedDoc.pageCount);
   console.log('  Updated Document status:', updatedDoc.status);
-  console.log('  ✅ PASSED: Worker extracted PDF, updated pageCount=2, status remains PROCESSING, and zero chunks created.');
+  console.log('  ✅ PASSED: Worker extracted PDF, updated pageCount=2, and completed processing lifecycle with status COMPLETED.');
 
   // Clean up
   await storage.delete(testStorageKey);

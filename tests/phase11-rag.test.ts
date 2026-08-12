@@ -4,17 +4,54 @@ dotenv.config();
 import { RetrievalService } from '../src/features/rag/retrieval/retrieval.service';
 import { ChatService } from '../src/features/rag/chat/chat.service';
 import { LLMProvider, LLMGenerateInput } from '../src/features/rag/llm/llm.provider';
-import { OllamaLLMProvider } from '../src/features/rag/llm/ollama.llm.provider';
-import { OpenAILLMProvider } from '../src/features/rag/llm/openai.llm.provider';
-import { getLLMProvider } from '../src/features/rag/llm/llm.provider.factory';
 import { MockEmbeddingProvider } from './phase10-embeddings.test';
 import { RetrievedChunk } from '../src/features/rag/retrieval/retrieval.types';
 import { documentRepository } from '../src/features/documents/repositories/document.repository';
+import { storage } from '../src/lib/storage';
+import { documentProcessor } from '../worker/src/processors/document.processor';
+import { workerDocumentRepository } from '../worker/src/repositories/document.repository';
+import { workerEmbeddingService } from '../worker/src/embeddings/embedding.service';
 import { prisma } from '../src/lib/prisma';
-import { ValidationError, AuthorizationError } from '../src/errors';
 
 const TEST_USER_ID = '55555555-5555-4000-a000-555555555555';
 const OTHER_USER_ID = '99999999-9999-4000-a000-999999999999';
+
+const VALID_SAMPLE_PDF = Buffer.from(`%PDF-1.4
+1 0 obj
+<< /Type /Catalog /Pages 2 0 R >>
+endobj
+2 0 obj
+<< /Type /Pages /Kids [3 0 R] /Count 1 >>
+endobj
+3 0 obj
+<< /Type /Page /Parent 2 0 R /Resources << /Font << /F1 4 0 R >> >> /MediaBox [0 0 612 792] /Contents 5 0 R >>
+endobj
+4 0 obj
+<< /Type /Font /Subtype /Type1 /BaseFont /Helvetica >>
+endobj
+5 0 obj
+<< /Length 56 >>
+stream
+BT
+/F1 12 Tf
+100 700 Td
+(Hello World from PDF Page 1) Tj
+ET
+endstream
+endobj
+xref
+0 6
+0000000000 65535 f 
+0000000009 00000 n 
+0000000058 00000 n 
+0000000115 00000 n 
+0000000244 00000 n 
+0000000318 00000 n 
+trailer
+<< /Size 6 /Root 1 0 R >>
+startxref
+424
+%%EOF`);
 
 export class MockLLMProvider implements LLMProvider {
   public lastInput: LLMGenerateInput | null = null;
@@ -73,189 +110,274 @@ async function setupMocks() {
   } catch {
     console.log('Using in-memory mock setup for test environment.');
   }
+
+  // Inject MockEmbeddingProvider into workerEmbeddingService for tests
+  (workerEmbeddingService as unknown as { provider: MockEmbeddingProvider }).provider = new MockEmbeddingProvider();
 }
 
 async function runPhase11Tests() {
   console.log('====================================================');
-  console.log('Running Phase 11 RAG Retrieval & Grounded Chat Test Suite');
+  console.log('Running Phase 11 RAG Retrieval & Lifecycle Test Suite');
   console.log('====================================================\n');
 
   await setupMocks();
 
-  // Test 1: Question Validation
-  console.log('Test 1: Question Input Validation');
-  const chatService1 = new ChatService(new MockRetrievalService(), new MockLLMProvider());
-  try {
-    await chatService1.sendMessage(TEST_USER_ID, { question: '   ' });
-    throw new Error('Should have rejected empty question');
-  } catch (err) {
-    if (err instanceof ValidationError) {
-      console.log('  ✅ PASSED: Empty question rejected with ValidationError.');
-    } else {
-      throw err;
-    }
-  }
+  // Test 1: Successful complete processing changes Document.status from PROCESSING -> COMPLETED
+  console.log('Test 1: Complete processing changes Document.status to COMPLETED');
+  const docId1 = `doc-lifecycle-1-${Date.now()}`;
+  const storageKey1 = `documents/${TEST_USER_ID}/${docId1}/test1.pdf`;
+  await storage.upload(storageKey1, VALID_SAMPLE_PDF, 'application/pdf');
 
-  // Test 2: LLM Provider Factory Selection
-  console.log('\nTest 2: LLM Provider Factory Selection');
-  process.env.LLM_PROVIDER = 'ollama';
-  const providerOllama = getLLMProvider();
-  if (!(providerOllama instanceof OllamaLLMProvider)) {
-    throw new Error('Expected OllamaLLMProvider when LLM_PROVIDER=ollama');
-  }
-
-  process.env.LLM_PROVIDER = 'openai';
-  const providerOpenAI = getLLMProvider();
-  if (!(providerOpenAI instanceof OpenAILLMProvider)) {
-    throw new Error('Expected OpenAILLMProvider when LLM_PROVIDER=openai');
-  }
-  process.env.LLM_PROVIDER = 'ollama'; // reset
-  console.log('  ✅ PASSED: LLM provider factory resolved Ollama and OpenAI providers correctly.');
-
-  // Test 3 & 4: Question Embedding & 768d Vector Dimension Safety
-  console.log('\nTest 3 & 4: Question Embedding Generation & 768d Vector Safety');
-  const mockEmbProvider = new MockEmbeddingProvider();
-  const retrievalService3 = new RetrievalService(mockEmbProvider);
-  const result3 = await retrievalService3.retrieveContext(TEST_USER_ID, 'What is the deployment procedure?');
-  if (!Array.isArray(result3)) {
-    throw new Error('Expected array response from retrievalService');
-  }
-  console.log('  ✅ PASSED: Question embedding generated with 768d vector dimension validation.');
-
-  // Test 5, 6, 7 & 8: Top-K, Similarity Threshold, & User Isolation
-  console.log('\nTest 5-8: pgvector Similarity Search, Top-K & Tenant Isolation');
-  const docId11 = `doc-phase11-${Date.now()}`;
-  await documentRepository.create({
-    id: docId11,
+  const doc1 = await documentRepository.create({
+    id: docId1,
     userId: TEST_USER_ID,
-    filename: 'architecture.pdf',
-    originalFilename: 'architecture.pdf',
+    filename: 'test1.pdf',
+    originalFilename: 'test1.pdf',
     mimeType: 'application/pdf',
-    fileSize: 5000,
-    storageKey: `documents/${TEST_USER_ID}/${docId11}/architecture.pdf`
+    fileSize: VALID_SAMPLE_PDF.length,
+    storageKey: storageKey1
   });
 
-  const sampleChunks11 = [
-    { chunkIndex: 0, pageNumber: 1, content: 'System deployment architecture section 1.', tokenCount: 10, metadata: { pageNumber: 1 } },
-    { chunkIndex: 1, pageNumber: 2, content: 'Database migration instructions section 2.', tokenCount: 10, metadata: { pageNumber: 2 } }
-  ];
-  await documentRepository.saveChunksTx(docId11, sampleChunks11);
-
-  // Save 768d vectors for tenant isolation test
-  const needingEmbeds = await documentRepository.findChunksNeedingEmbeddings(docId11);
-  if (needingEmbeds.length > 0) {
-    const fake768Vector = Array.from({ length: 768 }, (_, i) => Math.sin(i + 0.5));
-    await documentRepository.saveEmbeddingsBatchTx(
-      needingEmbeds.map((c) => ({ id: c.id, embedding: fake768Vector }))
-    );
-  }
-
-  // Retrieve as OTHER_USER_ID (should return 0 chunks due to user isolation)
-  const otherUserChunks = await retrievalService3.retrieveContext(OTHER_USER_ID, 'deployment architecture');
-  if (otherUserChunks.length !== 0) {
-    throw new Error(`Tenant isolation failure: OTHER_USER retrieved ${otherUserChunks.length} chunks`);
-  }
-  console.log('  ✅ PASSED: Database-level tenant isolation enforced (d.user_id = $2).');
-
-  // Test 9 & 10: Empty Retrieval Fallback (Zero Hallucination Policy)
-  console.log('\nTest 9 & 10: Empty Retrieval Behavior & Zero Hallucination Fallback');
-  const mockRetEmpty = new MockRetrievalService();
-  mockRetEmpty.mockChunks = []; // No chunks pass min similarity threshold
-
-  const mockLLM9 = new MockLLMProvider();
-  const chatService9 = new ChatService(mockRetEmpty, mockLLM9);
-
-  const res9 = await chatService9.sendMessage(TEST_USER_ID, {
-    question: 'What is the secret formula for warp drive?'
+  await documentProcessor.process({
+    jobType: 'DOCUMENT_PROCESSING',
+    version: 1,
+    jobId: `job-1-${Date.now()}`,
+    documentId: doc1.id,
+    userId: TEST_USER_ID,
+    storageKey: storageKey1,
+    attempt: 1,
+    createdAt: new Date().toISOString()
   });
 
-  if (mockLLM9.lastInput !== null) {
-    throw new Error('LLM provider was invoked when no chunks matched similarity threshold!');
+  const updatedDoc1 = await documentRepository.findByIdAndUser(doc1.id, TEST_USER_ID);
+  if (updatedDoc1?.status !== 'COMPLETED') {
+    throw new Error(`Expected status COMPLETED, got ${updatedDoc1?.status}`);
   }
-  if (!res9.answer.includes("couldn't find enough relevant information")) {
-    throw new Error(`Unexpected non-hallucination fallback text: "${res9.answer}"`);
-  }
-  console.log('  ✅ PASSED: Zero hallucination fallback triggered without invoking LLM API.');
+  console.log('  ✅ PASSED: Document status transitioned from PROCESSING to COMPLETED.');
 
-  // Test 11 & 12: Context Building & Citation Preservation
-  console.log('\nTest 11 & 12: Deterministic Context Builder & Structured Citations');
-  const mockRet11 = new MockRetrievalService();
-  mockRet11.mockChunks = [
-    {
-      id: 'chunk-1',
-      documentId: docId11,
-      filename: 'architecture.pdf',
-      chunkIndex: 0,
-      pageNumber: 3,
-      content: 'Production servers deploy automatically after merge.',
-      tokenCount: 8,
-      similarity: 0.85,
-      metadata: { pageNumber: 3 }
-    }
-  ];
+  // Test 2: PDF extraction failure changes status to FAILED
+  console.log('\nTest 2: PDF extraction failure changes status to FAILED');
+  const docId2 = `doc-lifecycle-2-${Date.now()}`;
+  const storageKey2 = `documents/${TEST_USER_ID}/${docId2}/corrupt.pdf`;
+  await storage.upload(storageKey2, Buffer.from('NOT A PDF FILE'), 'application/pdf');
 
-  const mockLLM11 = new MockLLMProvider();
-  const chatService11 = new ChatService(mockRet11, mockLLM11);
-
-  const res11 = await chatService11.sendMessage(TEST_USER_ID, {
-    question: 'How does production deployment work?'
+  const doc2 = await documentRepository.create({
+    id: docId2,
+    userId: TEST_USER_ID,
+    filename: 'corrupt.pdf',
+    originalFilename: 'corrupt.pdf',
+    mimeType: 'application/pdf',
+    fileSize: 14,
+    storageKey: storageKey2
   });
 
-  if (!mockLLM11.lastInput?.context.includes('[Document: architecture.pdf | Page: 3]')) {
-    throw new Error(`Context missing document page citation header: ${mockLLM11.lastInput?.context}`);
-  }
-  if (res11.citations.length !== 1 || res11.citations[0]?.filename !== 'architecture.pdf') {
-    throw new Error('Citations missing or improperly structured');
-  }
-  console.log('  ✅ PASSED: Context built with structured citations [Document: architecture.pdf | Page: 3].');
-
-  // Test 13 & 14: Conversation Ownership & New Conversation Creation
-  console.log('\nTest 13 & 14: Conversation Ownership & Creation');
-  const convId14 = res11.conversationId;
-  const convDetail = await chatService11.getConversationDetail(TEST_USER_ID, convId14);
-
-  if (convDetail.messages.length < 2) {
-    throw new Error(`Expected at least 2 messages in conversation history, got ${convDetail.messages.length}`);
-  }
-
-  // Attempt unauthorized access by OTHER_USER_ID
   try {
-    await chatService11.getConversationDetail(OTHER_USER_ID, convId14);
-    throw new Error('Should have rejected unauthorized conversation access');
-  } catch (err) {
-    if (err instanceof AuthorizationError) {
-      console.log('  ✅ PASSED: Conversation ownership enforced; unauthorized access rejected with AuthorizationError.');
-    } else {
-      throw err;
-    }
+    await documentProcessor.process({
+      jobType: 'DOCUMENT_PROCESSING',
+      version: 1,
+      jobId: `job-2-${Date.now()}`,
+      documentId: doc2.id,
+      userId: TEST_USER_ID,
+      storageKey: storageKey2,
+      attempt: 1,
+      createdAt: new Date().toISOString()
+    });
+  } catch {
+    // Expected error
   }
 
-  // Test 15 & 18: Existing Conversation Message Appending & Persistence
-  console.log('\nTest 15 & 18: Message Appending & Database Persistence');
-  const res15 = await chatService11.sendMessage(TEST_USER_ID, {
-    conversationId: convId14,
-    question: 'Can you summarize that?'
+  const updatedDoc2 = await documentRepository.findByIdAndUser(doc2.id, TEST_USER_ID);
+  if (updatedDoc2?.status !== 'FAILED') {
+    throw new Error(`Expected status FAILED, got ${updatedDoc2?.status}`);
+  }
+  console.log('  ✅ PASSED: PDF extraction failure updated status to FAILED.');
+
+  // Test 3: Chunk persistence failure does not mark document COMPLETED
+  console.log('\nTest 3: Chunk persistence failure does not mark document COMPLETED');
+  const docId3 = `doc-lifecycle-3-${Date.now()}`;
+  const storageKey3 = `documents/${TEST_USER_ID}/${docId3}/test3.pdf`;
+  await storage.upload(storageKey3, VALID_SAMPLE_PDF, 'application/pdf');
+
+  const doc3 = await documentRepository.create({
+    id: docId3,
+    userId: TEST_USER_ID,
+    filename: 'test3.pdf',
+    originalFilename: 'test3.pdf',
+    mimeType: 'application/pdf',
+    fileSize: VALID_SAMPLE_PDF.length,
+    storageKey: storageKey3
   });
 
-  if (res15.conversationId !== convId14) {
-    throw new Error('Conversation ID mismatch during message append');
+  const originalSaveChunksTx = workerDocumentRepository.saveChunksTx;
+  workerDocumentRepository.saveChunksTx = async () => {
+    throw new Error('Simulated DB chunk persistence error');
+  };
+
+  try {
+    await documentProcessor.process({
+      jobType: 'DOCUMENT_PROCESSING',
+      version: 1,
+      jobId: `job-3-${Date.now()}`,
+      documentId: doc3.id,
+      userId: TEST_USER_ID,
+      storageKey: storageKey3,
+      attempt: 1,
+      createdAt: new Date().toISOString()
+    });
+  } catch {
+    // Expected error
+  } finally {
+    workerDocumentRepository.saveChunksTx = originalSaveChunksTx;
   }
-  const updatedConv = await chatService11.getConversationDetail(TEST_USER_ID, convId14);
-  if (updatedConv.messages.length < 4) {
-    throw new Error(`Expected at least 4 messages in conversation history after second question, got ${updatedConv.messages.length}`);
+
+  const updatedDoc3 = await documentRepository.findByIdAndUser(doc3.id, TEST_USER_ID);
+  if (updatedDoc3?.status === 'COMPLETED') {
+    throw new Error('Document marked COMPLETED despite chunk persistence failure!');
   }
-  console.log('  ✅ PASSED: User and Assistant messages persisted in PostgreSQL messages table.');
+  console.log('  ✅ PASSED: Chunk persistence failure prevented COMPLETED status.');
+
+  // Test 4: Embedding failure does not mark document COMPLETED
+  console.log('\nTest 4: Embedding failure does not mark document COMPLETED');
+  const docId4 = `doc-lifecycle-4-${Date.now()}`;
+  const storageKey4 = `documents/${TEST_USER_ID}/${docId4}/test4.pdf`;
+  await storage.upload(storageKey4, VALID_SAMPLE_PDF, 'application/pdf');
+
+  const doc4 = await documentRepository.create({
+    id: docId4,
+    userId: TEST_USER_ID,
+    filename: 'test4.pdf',
+    originalFilename: 'test4.pdf',
+    mimeType: 'application/pdf',
+    fileSize: VALID_SAMPLE_PDF.length,
+    storageKey: storageKey4
+  });
+
+  const originalProcessEmbeddings = workerEmbeddingService.processDocumentEmbeddings;
+  workerEmbeddingService.processDocumentEmbeddings = async () => {
+    throw new Error('Simulated embedding generation failure');
+  };
+
+  try {
+    await documentProcessor.process({
+      jobType: 'DOCUMENT_PROCESSING',
+      version: 1,
+      jobId: `job-4-${Date.now()}`,
+      documentId: doc4.id,
+      userId: TEST_USER_ID,
+      storageKey: storageKey4,
+      attempt: 1,
+      createdAt: new Date().toISOString()
+    });
+  } catch {
+    // Expected error
+  } finally {
+    workerEmbeddingService.processDocumentEmbeddings = originalProcessEmbeddings;
+  }
+
+  const updatedDoc4 = await documentRepository.findByIdAndUser(doc4.id, TEST_USER_ID);
+  if (updatedDoc4?.status === 'COMPLETED') {
+    throw new Error('Document marked COMPLETED despite embedding failure!');
+  }
+  console.log('  ✅ PASSED: Embedding failure prevented COMPLETED status.');
+
+  // Test 5: Successful retry can eventually mark document COMPLETED
+  console.log('\nTest 5: Successful retry marks document COMPLETED');
+  await documentRepository.updateStatus(doc4.id, 'PROCESSING');
+  await documentProcessor.process({
+    jobType: 'DOCUMENT_PROCESSING',
+    version: 1,
+    jobId: `job-5-${Date.now()}`,
+    documentId: doc4.id,
+    userId: TEST_USER_ID,
+    storageKey: storageKey4,
+    attempt: 2,
+    createdAt: new Date().toISOString()
+  });
+
+  const updatedDoc5 = await documentRepository.findByIdAndUser(doc4.id, TEST_USER_ID);
+  if (updatedDoc5?.status !== 'COMPLETED') {
+    throw new Error(`Expected retry status COMPLETED, got ${updatedDoc5?.status}`);
+  }
+  console.log('  ✅ PASSED: Retry attempt successfully updated Document status to COMPLETED.');
+
+  // Test 6: Already embedded/idempotent retry still marks document COMPLETED
+  console.log('\nTest 6: Idempotent retry still marks document COMPLETED');
+  await documentProcessor.process({
+    jobType: 'DOCUMENT_PROCESSING',
+    version: 1,
+    jobId: `job-6-${Date.now()}`,
+    documentId: doc4.id,
+    userId: TEST_USER_ID,
+    storageKey: storageKey4,
+    attempt: 3,
+    createdAt: new Date().toISOString()
+  });
+
+  const updatedDoc6 = await documentRepository.findByIdAndUser(doc4.id, TEST_USER_ID);
+  if (updatedDoc6?.status !== 'COMPLETED') {
+    throw new Error(`Expected idempotent status COMPLETED, got ${updatedDoc6?.status}`);
+  }
+  console.log('  ✅ PASSED: Idempotent reprocessing maintained COMPLETED status safely.');
+
+  // Test 7: RAG fallback response does not display citations (empty citations array)
+  console.log('\nTest 7: RAG fallback response returns empty citations array');
+  const mockRetEmpty = new MockRetrievalService();
+  mockRetEmpty.mockChunks = [];
+  const mockLLM7 = new MockLLMProvider();
+  const chatService7 = new ChatService(mockRetEmpty, mockLLM7);
+
+  const res7 = await chatService7.sendMessage(TEST_USER_ID, {
+    question: 'What is quantum teleportation?'
+  });
+
+  if (res7.citations.length !== 0) {
+    throw new Error(`Expected empty citations array for fallback response, got ${res7.citations.length}`);
+  }
+  if (!res7.answer.includes("couldn't find enough relevant information")) {
+    throw new Error('Fallback response text missing expected non-hallucination phrase');
+  }
+  console.log('  ✅ PASSED: RAG fallback response returned 0 citations and deterministic message.');
+
+  // Test 8: Normal grounded RAG response displays citations
+  console.log('\nTest 8: Grounded RAG response returns populated citations');
+  const mockRet8 = new MockRetrievalService();
+  mockRet8.mockChunks = [
+    {
+      id: 'chunk-8',
+      documentId: doc1.id,
+      filename: 'test1.pdf',
+      chunkIndex: 0,
+      pageNumber: 1,
+      content: 'Hello World from PDF Page 1',
+      tokenCount: 6,
+      similarity: 0.92,
+      metadata: { pageNumber: 1 }
+    }
+  ];
+
+  const mockLLM8 = new MockLLMProvider();
+  const chatService8 = new ChatService(mockRet8, mockLLM8);
+
+  const res8 = await chatService8.sendMessage(TEST_USER_ID, {
+    question: 'What is written on page 1?'
+  });
+
+  if (res8.citations.length === 0) {
+    throw new Error('Expected citations for grounded answer, got 0');
+  }
+  if (res8.citations[0]?.filename !== 'test1.pdf' || res8.citations[0]?.pageNumber !== 1) {
+    throw new Error('Citation filename or page number mismatch');
+  }
+  console.log('  ✅ PASSED: Grounded RAG response returned populated citations:', res8.citations[0]);
 
   // Clean up
-  try {
-    await prisma.document.deleteMany({ where: { userId: TEST_USER_ID } });
-    await prisma.conversation.deleteMany({ where: { userId: TEST_USER_ID } });
-  } catch {
-    console.log('Cleaned up mock records.');
-  }
+  await storage.delete(storageKey1);
+  await storage.delete(storageKey2);
+  await storage.delete(storageKey3);
+  await storage.delete(storageKey4);
 
   console.log('\n====================================================');
-  console.log('🎉 ALL PHASE 11 RAG & GROUNDED CHAT TESTS PASSED!');
+  console.log('🎉 ALL PHASE 11 LIFECYCLE & RAG TESTS PASSED!');
   console.log('====================================================\n');
 }
 

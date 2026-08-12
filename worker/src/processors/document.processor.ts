@@ -62,18 +62,20 @@ export class DocumentProcessor {
       console.log(`[Worker] Processing vector embeddings for document ID: ${document.id}...`);
       const embeddingResult = await workerEmbeddingService.processDocumentEmbeddings(job.documentId, job.userId);
 
+      // 9. Mark Document status as COMPLETED in PostgreSQL after full pipeline succeeds
+      await workerDocumentRepository.updateStatus(job.documentId, 'COMPLETED');
+
       const durationMs = Date.now() - startTime;
 
-      console.log(`[Worker] Phase 10 processing completed successfully:`);
+      console.log(`[Worker] Document processing completed successfully:`);
       console.log(`  documentId     = ${document.id}`);
       console.log(`  jobId          = ${job.jobId}`);
       console.log(`  pageCount      = ${parsedDoc.pageCount}`);
       console.log(`  chunkCount     = ${chunks.length}`);
       console.log(`  embeddedChunks = ${embeddingResult.embeddedChunks}`);
       console.log(`  totalTokens    = ${embeddingResult.totalTokens}`);
+      console.log(`  status         = COMPLETED`);
       console.log(`  durationMs     = ${durationMs}ms`);
-
-      // Note: Status remains PROCESSING. Final ingestion completion lifecycle will be updated in subsequent phases.
     } catch (error) {
       const errorMessage = error instanceof Error ? error.message : String(error);
       console.error(`[Worker] Failed processing document ${job.documentId}: ${errorMessage}`);

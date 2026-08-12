@@ -54,11 +54,11 @@ const TOUR_STEPS: TourStep[] = [
     icon: '🗄️'
   },
   {
-    title: '7. Grounded AI RAG Retrieval',
-    badge: 'Phase 11 (Coming Soon)',
-    description: 'Semantic top-K similarity search, Redis retrieval caching, and LLM query answering with page citations will be added in Phase 11.',
-    technicalDetails: 'pgvector <=> operator • Prompt Grounding • Redis Cache • Citation Engine',
-    icon: '🔒'
+    title: '7. Grounded AI RAG Chat',
+    badge: 'Phase 11',
+    description: 'Ask questions about your documents. Chunks are retrieved via pgvector cosine similarity, passed to Ollama LLM, and answered with strict citations.',
+    technicalDetails: 'pgvector <=> operator • minSimilarity threshold (0.30) • Ollama llama3.2 • Structured Json Citations',
+    icon: '💬'
   }
 ];
 

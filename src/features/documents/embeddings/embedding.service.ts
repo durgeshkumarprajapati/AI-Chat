@@ -1,7 +1,8 @@
-import { EmbeddingProvider, openAIEmbeddingProvider } from './embedding.provider';
+import { EmbeddingProvider } from './embedding.provider';
+import { getEmbeddingProvider } from './embedding.provider.factory';
 import { documentRepository } from '../repositories/document.repository';
-import { env } from '@/config/env';
-import { NotFoundError } from '@/errors';
+import { env } from '../../../config/env';
+import { NotFoundError } from '../../../errors';
 
 export type EmbeddingResult = {
   embeddedChunks: number;
@@ -14,7 +15,7 @@ export class EmbeddingService {
   private provider: EmbeddingProvider;
 
   constructor(provider?: EmbeddingProvider) {
-    this.provider = provider || openAIEmbeddingProvider;
+    this.provider = provider || getEmbeddingProvider();
   }
 
   public async processDocumentEmbeddings(documentId: string, userId: string): Promise<EmbeddingResult> {

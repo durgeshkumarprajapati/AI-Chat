@@ -10,6 +10,26 @@ export type ChunkNeedingEmbedding = {
   tokenCount: number;
 };
 
+export type DocumentChunkDetail = {
+  id: string;
+  documentId: string;
+  chunkIndex: number;
+  pageNumber: number;
+  content: string;
+  tokenCount: number;
+  metadata: Record<string, unknown>;
+  hasEmbedding: boolean;
+};
+
+export type DashboardStats = {
+  totalDocuments: number;
+  processingDocuments: number;
+  completedDocuments: number;
+  failedDocuments: number;
+  totalChunks: number;
+  embeddedChunks: number;
+};
+
 export class DocumentRepository {
   public async create(data: {
     id?: string;
@@ -94,9 +114,6 @@ export class DocumentRepository {
     });
   }
 
-  /**
-   * Returns all chunks for a document where embedding IS NULL, ordered by chunkIndex ASC.
-   */
   public async findChunksNeedingEmbeddings(documentId: string): Promise<ChunkNeedingEmbedding[]> {
     return prisma.$queryRaw<ChunkNeedingEmbedding[]>`
       SELECT id, document_id as "documentId", chunk_index as "chunkIndex", page_number as "pageNumber", content, token_count as "tokenCount"
@@ -106,9 +123,6 @@ export class DocumentRepository {
     `;
   }
 
-  /**
-   * Transactionally persists vector embeddings to PostgreSQL pgvector column using parameterized raw SQL.
-   */
   public async saveEmbeddingsBatchTx(
     updates: Array<{ id: string; embedding: number[] }>
   ): Promise<void> {
@@ -124,6 +138,109 @@ export class DocumentRepository {
         );
       }
     });
+  }
+
+  /**
+   * Fetches detailed chunk metrics and status for UI inspection.
+   */
+  public async getDocumentChunkStats(documentId: string): Promise<{ totalChunks: number; embeddedChunks: number }> {
+    const totalResult = await prisma.documentChunk.count({ where: { documentId } });
+    const embeddedResult = await prisma.$queryRaw<Array<{ count: bigint }>>`
+      SELECT COUNT(*)::bigint as count
+      FROM document_chunks
+      WHERE document_id = ${documentId} AND embedding IS NULL = false
+    `;
+    const embeddedCount = embeddedResult[0]?.count ? Number(embeddedResult[0].count) : 0;
+    return {
+      totalChunks: totalResult,
+      embeddedChunks: embeddedCount
+    };
+  }
+
+  /**
+   * Returns list of chunks with metadata and hasEmbedding flag.
+   */
+  public async getDocumentChunksDetail(documentId: string): Promise<DocumentChunkDetail[]> {
+    const rawChunks = await prisma.$queryRaw<
+      Array<{
+        id: string;
+        documentId: string;
+        chunkIndex: number;
+        pageNumber: number;
+        content: string;
+        tokenCount: number;
+        metadata: Record<string, unknown>;
+        hasEmbedding: boolean;
+      }>
+    >`
+      SELECT 
+        id, 
+        document_id as "documentId", 
+        chunk_index as "chunkIndex", 
+        page_number as "pageNumber", 
+        content, 
+        token_count as "tokenCount", 
+        metadata,
+        (embedding IS NOT NULL) as "hasEmbedding"
+      FROM document_chunks
+      WHERE document_id = ${documentId}
+      ORDER BY chunk_index ASC
+    `;
+
+    return rawChunks;
+  }
+
+  /**
+   * Fetches real counts for Dashboard cards.
+   */
+  public async getDashboardStats(userId: string): Promise<DashboardStats> {
+    const docs = await prisma.document.findMany({ where: { userId } });
+    let processing = 0;
+    let completed = 0;
+    let failed = 0;
+
+    for (const doc of docs) {
+      if (doc.status === DocumentStatus.PROCESSING || doc.status === DocumentStatus.UPLOADING) {
+        processing++;
+      } else if (doc.status === DocumentStatus.COMPLETED) {
+        completed++;
+      } else if (doc.status === DocumentStatus.FAILED) {
+        failed++;
+      }
+    }
+
+    const docIds = docs.map((d) => d.id);
+    if (docIds.length === 0) {
+      return {
+        totalDocuments: 0,
+        processingDocuments: 0,
+        completedDocuments: 0,
+        failedDocuments: 0,
+        totalChunks: 0,
+        embeddedChunks: 0
+      };
+    }
+
+    const totalChunks = await prisma.documentChunk.count({
+      where: { documentId: { in: docIds } }
+    });
+
+    const embeddedResult = await prisma.$queryRaw<Array<{ count: bigint }>>`
+      SELECT COUNT(*)::bigint as count
+      FROM document_chunks
+      WHERE document_id IN (${Prisma.join(docIds)}) AND embedding IS NOT NULL
+    `;
+
+    const embeddedChunks = embeddedResult[0]?.count ? Number(embeddedResult[0].count) : 0;
+
+    return {
+      totalDocuments: docs.length,
+      processingDocuments: processing,
+      completedDocuments: completed,
+      failedDocuments: failed,
+      totalChunks,
+      embeddedChunks
+    };
   }
 }
 

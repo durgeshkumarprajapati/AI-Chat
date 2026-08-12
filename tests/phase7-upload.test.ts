@@ -213,6 +213,11 @@ async function runTests() {
 
   // Test 5: Worker Job Processing Success
   console.log('\nTest 5: Worker Processor Execution on Valid Document');
+  // Stub workerEmbeddingService provider for test environment
+  const { workerEmbeddingService } = await import('../worker/src/embeddings/embedding.service.js');
+  const { MockEmbeddingProvider } = await import('./phase10-embeddings.test.js');
+  (workerEmbeddingService as any).provider = new MockEmbeddingProvider();
+
   await documentProcessor.process({
     jobType: 'DOCUMENT_PROCESSING',
     version: 1,

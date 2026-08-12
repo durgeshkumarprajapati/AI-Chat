@@ -268,7 +268,17 @@ async function runPhase9Tests() {
 
   // Test 12 & 13: Idempotency & Database Chunk Persistence
   console.log('\nTest 12 & 13: Idempotency & Transactional Chunk Persistence');
-  const testDocId = 'doc-phase9-idempotency-test';
+  const testDocId = `doc-phase9-idempotency-${Date.now()}`;
+  await documentRepository.create({
+    id: testDocId,
+    userId: TEST_USER_ID,
+    filename: 'test.pdf',
+    originalFilename: 'test.pdf',
+    mimeType: 'application/pdf',
+    fileSize: 100,
+    storageKey: `documents/${TEST_USER_ID}/${testDocId}/test.pdf`
+  });
+
   const sampleChunks = [
     { chunkIndex: 0, pageNumber: 1, content: 'Chunk 0 text', tokenCount: 3, metadata: { pageNumber: 1 } },
     { chunkIndex: 1, pageNumber: 1, content: 'Chunk 1 text', tokenCount: 3, metadata: { pageNumber: 1 } }
@@ -300,11 +310,12 @@ async function runPhase9Tests() {
 
   // Test 15: End-to-End Worker Phase 9 Integration Test
   console.log('\nTest 15: End-to-End Worker Integration Test');
-  const storageKey = `documents/${TEST_USER_ID}/doc-phase9-e2e/sample.pdf`;
+  const docId9 = `doc-phase9-e2e-${Date.now()}`;
+  const storageKey = `documents/${TEST_USER_ID}/${docId9}/sample.pdf`;
   await storage.upload(storageKey, VALID_1PAGE_PDF, 'application/pdf');
 
   const e2eDoc = await documentRepository.create({
-    id: 'doc-phase9-e2e',
+    id: docId9,
     userId: TEST_USER_ID,
     filename: 'sample.pdf',
     originalFilename: 'sample.pdf',

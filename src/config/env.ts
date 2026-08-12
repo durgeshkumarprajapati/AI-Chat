@@ -24,9 +24,22 @@ const serverEnvSchema = z
     AWS_ACCESS_KEY_ID: z.string().optional().default('mock-key'),
     AWS_SECRET_ACCESS_KEY: z.string().optional().default('mock-secret'),
     AWS_S3_BUCKET_NAME: z.string().optional().default('document-ai-rag-bucket'),
-    OPENAI_API_KEY: z
+    EMBEDDING_PROVIDER: z
+      .enum(['ollama', 'openai'])
+      .default('ollama'),
+    OLLAMA_BASE_URL: z
       .string()
-      .min(1, { message: 'OPENAI_API_KEY is required' }),
+      .url({ message: 'OLLAMA_BASE_URL must be a valid URL' })
+      .default('http://localhost:11434'),
+    OLLAMA_EMBEDDING_MODEL: z
+      .string()
+      .default('nomic-embed-text'),
+    OLLAMA_EMBEDDING_DIMENSIONS: z
+      .coerce.number()
+      .int()
+      .positive({ message: 'OLLAMA_EMBEDDING_DIMENSIONS must be greater than 0' })
+      .default(768),
+    OPENAI_API_KEY: z.string().optional().default('sk-mock-key-for-development'),
     OPENAI_EMBEDDING_MODEL: z
       .string()
       .default('text-embedding-3-small'),
@@ -54,6 +67,18 @@ const serverEnvSchema = z
       .min(0, { message: 'DOCUMENT_CHUNK_OVERLAP must be 0 or greater' })
       .default(120)
   })
+  .refine(
+    (data) => {
+      if (data.EMBEDDING_PROVIDER === 'openai') {
+        return !!data.OPENAI_API_KEY && data.OPENAI_API_KEY !== 'sk-mock-key-for-development' && data.OPENAI_API_KEY.trim() !== '';
+      }
+      return true;
+    },
+    {
+      message: 'OPENAI_API_KEY is required when EMBEDDING_PROVIDER is set to "openai"',
+      path: ['OPENAI_API_KEY']
+    }
+  )
   .refine((data) => data.DOCUMENT_CHUNK_OVERLAP < data.DOCUMENT_CHUNK_SIZE, {
     message: 'DOCUMENT_CHUNK_OVERLAP must be strictly smaller than DOCUMENT_CHUNK_SIZE',
     path: ['DOCUMENT_CHUNK_OVERLAP']

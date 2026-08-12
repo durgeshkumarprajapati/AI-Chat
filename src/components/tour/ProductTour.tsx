@@ -1,0 +1,183 @@
+'use client';
+
+import { useState, useEffect } from 'react';
+
+export type TourStep = {
+  title: string;
+  badge: string;
+  description: string;
+  technicalDetails: string;
+  icon: string;
+};
+
+const TOUR_STEPS: TourStep[] = [
+  {
+    title: '1. PDF Upload & Local Storage',
+    badge: 'Phase 7',
+    description: 'Upload a PDF up to 25 MB. The file is validated and stored securely before processing begins.',
+    technicalDetails: 'LocalStorageProvider / S3StorageProvider • Document record created with status=UPLOADING',
+    icon: '📁'
+  },
+  {
+    title: '2. RabbitMQ Processing Queue',
+    badge: 'Phase 7',
+    description: 'The upload publishes a versioned job payload to RabbitMQ for asynchronous background processing.',
+    technicalDetails: 'Queue: "document-processing" • Retries: 3 attempts with exponential backoff',
+    icon: '⚡'
+  },
+  {
+    title: '3. PDF Page-Aware Text Extraction',
+    badge: 'Phase 8',
+    description: 'The decoupled Node.js worker downloads the PDF and extracts raw text page-by-page preserving 1-indexed page numbers.',
+    technicalDetails: 'pdfjs-dist engine • Document.pageCount updated in database',
+    icon: '📄'
+  },
+  {
+    title: '4. Token-Aware Document Chunking',
+    badge: 'Phase 9',
+    description: 'Extracted text is cleaned and split into overlapping chunks bounded strictly by token count limits.',
+    technicalDetails: 'js-tiktoken cl100k_base tokenizer • Chunk Size: 800 tokens • Overlap: 120 tokens',
+    icon: '🧩'
+  },
+  {
+    title: '5. Local Ollama Vector Embeddings',
+    badge: 'Phase 10',
+    description: 'Chunks are batch-sent to local Ollama to generate high-dimensional numerical vector representations.',
+    technicalDetails: 'Ollama POST /api/embed • Model: nomic-embed-text • Vector Dimensions: 768d',
+    icon: '🧠'
+  },
+  {
+    title: '6. PostgreSQL pgvector Persistence',
+    badge: 'Phase 10',
+    description: 'Vector embeddings are transactionally persisted into PostgreSQL using parameterized raw SQL and indexed for fast cosine search.',
+    technicalDetails: 'Column: vector(768) • Index: HNSW cosine_ops (document_chunks_embedding_hnsw_idx)',
+    icon: '🗄️'
+  },
+  {
+    title: '7. Grounded AI RAG Retrieval',
+    badge: 'Phase 11 (Coming Soon)',
+    description: 'Semantic top-K similarity search, Redis retrieval caching, and LLM query answering with page citations will be added in Phase 11.',
+    technicalDetails: 'pgvector <=> operator • Prompt Grounding • Redis Cache • Citation Engine',
+    icon: '🔒'
+  }
+];
+
+export function ProductTour({ isOpen, onClose }: { isOpen: boolean; onClose: () => void }) {
+  const [currentStep, setCurrentStep] = useState(0);
+
+  useEffect(() => {
+    if (isOpen) {
+      setCurrentStep(0);
+    }
+  }, [isOpen]);
+
+  if (!isOpen) return null;
+
+  const step = TOUR_STEPS[currentStep] || TOUR_STEPS[0]!;
+  const isFirst = currentStep === 0;
+  const isLast = currentStep === TOUR_STEPS.length - 1;
+
+  const handleNext = () => {
+    if (isLast) {
+      localStorage.setItem('docai_tour_completed', 'true');
+      onClose();
+    } else {
+      setCurrentStep((prev) => prev + 1);
+    }
+  };
+
+  const handleBack = () => {
+    if (!isFirst) {
+      setCurrentStep((prev) => prev - 1);
+    }
+  };
+
+  const handleSkip = () => {
+    localStorage.setItem('docai_tour_completed', 'true');
+    onClose();
+  };
+
+  return (
+    <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-950/80 backdrop-blur-sm p-4 animate-in fade-in duration-200">
+      <div className="relative w-full max-w-xl rounded-2xl bg-slate-900 border border-slate-800 p-6 shadow-2xl space-y-6">
+        {/* Header */}
+        <div className="flex items-center justify-between border-b border-slate-800 pb-4">
+          <div className="flex items-center space-x-3">
+            <span className="text-3xl">{step.icon}</span>
+            <div>
+              <div className="flex items-center space-x-2">
+                <h3 className="text-xl font-bold text-white">{step.title}</h3>
+                <span className="text-xs font-semibold px-2 py-0.5 rounded-md bg-indigo-950 text-indigo-300 border border-indigo-800">
+                  {step.badge}
+                </span>
+              </div>
+              <p className="text-xs text-slate-400">Step {currentStep + 1} of {TOUR_STEPS.length}</p>
+            </div>
+          </div>
+          <button
+            onClick={handleSkip}
+            className="text-slate-400 hover:text-white text-sm font-medium transition-colors"
+          >
+            Skip
+          </button>
+        </div>
+
+        {/* Content */}
+        <div className="space-y-4 py-2">
+          <p className="text-base text-slate-200 leading-relaxed">
+            {step.description}
+          </p>
+
+          <div className="rounded-xl bg-slate-950 border border-slate-800/80 p-3.5 space-y-1">
+            <span className="text-xs font-semibold text-indigo-400 uppercase tracking-wider">Under The Hood</span>
+            <p className="text-xs font-mono text-slate-300">{step.technicalDetails}</p>
+          </div>
+        </div>
+
+        {/* Indicator dots */}
+        <div className="flex items-center justify-center space-x-1.5 py-1">
+          {TOUR_STEPS.map((_, idx) => (
+            <button
+              key={idx}
+              onClick={() => setCurrentStep(idx)}
+              className={`h-2 rounded-full transition-all ${
+                idx === currentStep ? 'w-6 bg-indigo-500' : 'w-2 bg-slate-700 hover:bg-slate-500'
+              }`}
+              aria-label={`Go to step ${idx + 1}`}
+            />
+          ))}
+        </div>
+
+        {/* Footer actions */}
+        <div className="flex items-center justify-between pt-2 border-t border-slate-800">
+          <button
+            onClick={handleBack}
+            disabled={isFirst}
+            className={`px-4 py-2 text-sm font-medium rounded-lg transition-colors ${
+              isFirst
+                ? 'opacity-40 cursor-not-allowed text-slate-500'
+                : 'text-slate-300 hover:bg-slate-800 hover:text-white'
+            }`}
+          >
+            Back
+          </button>
+          
+          <div className="flex items-center space-x-3">
+            <button
+              onClick={handleSkip}
+              className="px-4 py-2 text-sm font-medium text-slate-400 hover:text-white transition-colors"
+            >
+              Skip Tour
+            </button>
+            <button
+              onClick={handleNext}
+              className="px-5 py-2 text-sm font-semibold text-white bg-indigo-600 hover:bg-indigo-500 rounded-lg shadow-lg shadow-indigo-600/20 transition-all"
+            >
+              {isLast ? 'Got it!' : 'Next →'}
+            </button>
+          </div>
+        </div>
+      </div>
+    </div>
+  );
+}

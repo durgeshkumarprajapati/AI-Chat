@@ -10,7 +10,13 @@ export async function GET() {
     services: {
       database: 'unknown',
       redis: 'unknown',
-      rabbitmq: 'unknown'
+      rabbitmq: 'unknown',
+      ollama: 'unknown'
+    },
+    details: {
+      pgvector: '0.8.6',
+      embeddingModel: process.env.OLLAMA_EMBEDDING_MODEL || 'nomic-embed-text',
+      embeddingDimensions: process.env.OLLAMA_EMBEDDING_DIMENSIONS || '768'
     }
   };
 
@@ -18,7 +24,7 @@ export async function GET() {
     // Database check
     await prisma.$queryRaw`SELECT 1`;
     health.services.database = 'healthy';
-  } catch (err) {
+  } catch {
     health.services.database = 'unhealthy';
     health.status = 'degraded';
   }
@@ -28,7 +34,7 @@ export async function GET() {
     const client = await redis.getClient();
     const pingRes = await client.ping();
     health.services.redis = pingRes === 'PONG' ? 'healthy' : 'unhealthy';
-  } catch (err) {
+  } catch {
     health.services.redis = 'unhealthy';
     health.status = 'degraded';
   }
@@ -37,9 +43,21 @@ export async function GET() {
     // RabbitMQ check
     const conn = await rabbitmq.getConnection();
     health.services.rabbitmq = conn ? 'healthy' : 'unhealthy';
-  } catch (err) {
+  } catch {
     health.services.rabbitmq = 'unhealthy';
     health.status = 'degraded';
+  }
+
+  try {
+    // Ollama check
+    const ollamaUrl = process.env.OLLAMA_BASE_URL || 'http://localhost:11434';
+    const res = await fetch(`${ollamaUrl.replace(/\/+$/, '')}/api/version`, {
+      signal: AbortSignal.timeout(2000)
+    });
+    health.services.ollama = res.ok ? 'healthy' : 'unhealthy';
+  } catch {
+    health.services.ollama = 'unhealthy';
+    // Ollama is optional for overall status if in offline dev mode
   }
 
   const statusCode = health.status === 'ok' ? 200 : 503;

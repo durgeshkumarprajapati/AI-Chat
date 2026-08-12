@@ -1,4 +1,5 @@
-import { EmbeddingProvider, workerEmbeddingProvider } from './embedding.provider.js';
+import { EmbeddingProvider } from './embedding.provider.js';
+import { getWorkerEmbeddingProvider } from './embedding.provider.factory.js';
 import { workerDocumentRepository } from '../repositories/document.repository.js';
 
 export type EmbeddingResult = {
@@ -12,7 +13,7 @@ export class WorkerEmbeddingService {
   private provider: EmbeddingProvider;
 
   constructor(provider?: EmbeddingProvider) {
-    this.provider = provider || workerEmbeddingProvider;
+    this.provider = provider || getWorkerEmbeddingProvider();
   }
 
   public async processDocumentEmbeddings(documentId: string, userId: string): Promise<EmbeddingResult> {

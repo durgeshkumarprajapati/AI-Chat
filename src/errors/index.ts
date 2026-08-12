@@ -20,6 +20,12 @@ export class ValidationError extends AppError {
   }
 }
 
+export class ConfigurationError extends AppError {
+  constructor(message: string) {
+    super(message, 500, 'CONFIGURATION_ERROR');
+  }
+}
+
 export class AuthenticationError extends AppError {
   constructor(message = 'Authentication required') {
     super(message, 401, 'UNAUTHENTICATED');

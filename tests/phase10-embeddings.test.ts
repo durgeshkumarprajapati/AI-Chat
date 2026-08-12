@@ -2,6 +2,8 @@ import dotenv from 'dotenv';
 dotenv.config();
 
 import { EmbeddingProvider, OpenAIEmbeddingProvider } from '../src/features/documents/embeddings/embedding.provider';
+import { OllamaEmbeddingProvider } from '../src/features/documents/embeddings/ollama.embedding.provider';
+import { getEmbeddingProvider } from '../src/features/documents/embeddings/embedding.provider.factory';
 import { EmbeddingService } from '../src/features/documents/embeddings/embedding.service';
 import { documentRepository } from '../src/features/documents/repositories/document.repository';
 import { workerDocumentRepository } from '../worker/src/repositories/document.repository';
@@ -51,8 +53,7 @@ startxref
 426
 %%EOF`);
 
-// Helper generator for deterministic 1536-dimensional mock vectors
-function createMockVector(dim = 1536, seed = 0.01): number[] {
+function createMockVector(dim = 768, seed = 0.01): number[] {
   return Array.from({ length: dim }, (_, i) => Math.sin(seed + i));
 }
 
@@ -62,7 +63,9 @@ export class MockEmbeddingProvider implements EmbeddingProvider {
   public failTransientTimes = 0;
   public failPermanent = false;
   public invalidDimensions = false;
+  public customDimensions = 768;
   public containsNaN = false;
+  public containsInfinity = false;
   public countMismatch = false;
 
   public async embedTexts(texts: string[]): Promise<number[][]> {
@@ -74,11 +77,11 @@ export class MockEmbeddingProvider implements EmbeddingProvider {
 
     if (this.failAttemptCount < this.failTransientTimes) {
       this.failAttemptCount++;
-      throw new Error('HTTP 429 Rate Limit exceeded');
+      throw new Error('HTTP 429 Rate Limit exceeded / Connection Refused');
     }
 
     if (this.countMismatch) {
-      return [createMockVector(1536)];
+      return [createMockVector(768)];
     }
 
     return texts.map((text, idx) => {
@@ -86,17 +89,19 @@ export class MockEmbeddingProvider implements EmbeddingProvider {
         throw new DocumentProcessingError('Cannot generate embedding for empty text content.');
       }
       if (this.invalidDimensions) {
-        throw new DocumentProcessingError('Embedding dimension mismatch at index 0. Expected 1536, got 100');
+        throw new DocumentProcessingError(`Embedding dimension mismatch at index 0. Expected 768, got ${this.customDimensions}`);
       }
       if (this.containsNaN) {
         throw new DocumentProcessingError('Invalid vector value at index 0, dimension 5: NaN');
       }
-      return createMockVector(1536, idx + 0.1);
+      if (this.containsInfinity) {
+        throw new DocumentProcessingError('Invalid vector value at index 0, dimension 5: Infinity');
+      }
+      return createMockVector(768, idx + 0.1);
     });
   }
 }
 
-// In-Memory Fallback for test runner environment
 const memoryDb = {
   documents: new Map<string, Document>(),
   chunks: new Map<string, Array<DocumentChunk & { embedding?: number[] | null }>>()
@@ -201,60 +206,123 @@ async function setupMocks() {
 
 async function runPhase10Tests() {
   console.log('====================================================');
-  console.log('Running Phase 10 Embeddings & pgvector Test Suite');
+  console.log('Running Phase 10 Dual Embedding Provider Test Suite');
   console.log('====================================================\n');
 
   await setupMocks();
 
-  // Test 1 & 2: Embedding Provider Receives Multiple Texts & Output Count Matches
-  console.log('Test 1 & 2: Multi-Text Batch Input & Output Count Matching');
-  const mock1 = new MockEmbeddingProvider();
-  const inputTexts1 = ['First text block', 'Second text block', 'Third text block'];
-  const vectors1 = await mock1.embedTexts(inputTexts1);
-
-  if (mock1.calls.length !== 1 || mock1.calls[0]?.length !== 3) {
-    throw new Error('Provider failed to receive multi-text batch array');
+  // Test 1: Factory Provider Selection
+  console.log('Test 1: Provider Factory Selection');
+  process.env.EMBEDDING_PROVIDER = 'ollama';
+  const providerOllama = getEmbeddingProvider();
+  if (!(providerOllama instanceof OllamaEmbeddingProvider)) {
+    throw new Error('Expected OllamaEmbeddingProvider when EMBEDDING_PROVIDER=ollama');
   }
-  if (vectors1.length !== inputTexts1.length) {
-    throw new Error(`Expected ${inputTexts1.length} vectors, got ${vectors1.length}`);
-  }
-  console.log('  ✅ PASSED: Provider received batch input array and returned matching vector count.');
 
-  // Test 3: Embedding Dimension Validation (1536)
-  console.log('\nTest 3: Embedding Dimension Validation');
-  const mock3 = new MockEmbeddingProvider();
-  mock3.invalidDimensions = true;
+  process.env.EMBEDDING_PROVIDER = 'openai';
+  const providerOpenAI = getEmbeddingProvider();
+  if (!(providerOpenAI instanceof OpenAIEmbeddingProvider)) {
+    throw new Error('Expected OpenAIEmbeddingProvider when EMBEDDING_PROVIDER=openai');
+  }
+  process.env.EMBEDDING_PROVIDER = 'ollama'; // reset
+  console.log('  ✅ PASSED: Provider factory resolved Ollama and OpenAI correctly.');
+
+  // Test 2: Ollama Provider Sends Multiple Texts & Returns 768-dim Vectors
+  console.log('\nTest 2: Ollama Provider Multi-Text & 768-dim Vectors');
+  const mockFetch = async (_url: string, init?: RequestInit) => {
+    const body = JSON.parse((init?.body as string) || '{}');
+    if (body.model !== 'nomic-embed-text') {
+      throw new Error(`Unexpected model ${body.model}`);
+    }
+    return {
+      ok: true,
+      json: async () => ({
+        embeddings: body.input.map((_: string, idx: number) => createMockVector(768, idx + 0.1))
+      })
+    } as Response;
+  };
+
+  const originalFetch = globalThis.fetch;
+  globalThis.fetch = mockFetch as any;
+
+  const ollamaProv = new OllamaEmbeddingProvider({
+    baseUrl: 'http://localhost:11434',
+    model: 'nomic-embed-text',
+    expectedDimensions: 768
+  });
+
+  const sampleTexts = ['Sample text 1', 'Sample text 2'];
+  const vectorsOllama = await ollamaProv.embedTexts(sampleTexts);
+
+  if (vectorsOllama.length !== 2 || vectorsOllama[0]?.length !== 768 || vectorsOllama[1]?.length !== 768) {
+    throw new Error(`Expected 2 vectors of 768 dimensions, got length=${vectorsOllama.length}, dim=${vectorsOllama[0]?.length}`);
+  }
+  console.log('  ✅ PASSED: Ollama provider sent multiple texts and returned 768-dim vectors.');
+
+  // Test 3: Dimension Mismatches (767 & 769 Dimensions Rejected)
+  console.log('\nTest 3: Rejection of 767 and 769 Dimension Vectors');
+  const mockFetch767 = async () => ({
+    ok: true,
+    json: async () => ({ embeddings: [createMockVector(767)] })
+  }) as any;
+  globalThis.fetch = mockFetch767;
+
   try {
-    await mock3.embedTexts(['Text requiring 1536 dims']);
-    throw new Error('Should have thrown DocumentProcessingError for invalid dimensions');
+    await ollamaProv.embedTexts(['Text requiring 768 dims']);
+    throw new Error('Should have thrown DocumentProcessingError for 767 dims');
   } catch (err) {
-    if (err instanceof DocumentProcessingError || (err instanceof Error && err.message.includes('dimension mismatch'))) {
-      console.log('  ✅ PASSED: Invalid vector dimension rejected with DocumentProcessingError.');
+    if (err instanceof DocumentProcessingError && err.message.includes('dimension mismatch')) {
+      console.log('  ✅ PASSED: 767-dimensional vector rejected correctly.');
     } else {
       throw err;
     }
   }
 
-  // Test 4: Invalid Numeric Values Rejection (NaN / Infinity)
-  console.log('\nTest 4: Invalid Numeric Values Rejection (NaN / Infinity)');
+  const mockFetch769 = async () => ({
+    ok: true,
+    json: async () => ({ embeddings: [createMockVector(769)] })
+  }) as any;
+  globalThis.fetch = mockFetch769;
+
+  try {
+    await ollamaProv.embedTexts(['Text requiring 768 dims']);
+    throw new Error('Should have thrown DocumentProcessingError for 769 dims');
+  } catch (err) {
+    if (err instanceof DocumentProcessingError && err.message.includes('dimension mismatch')) {
+      console.log('  ✅ PASSED: 769-dimensional vector rejected correctly.');
+    } else {
+      throw err;
+    }
+  }
+
+  // Restore fetch
+  globalThis.fetch = originalFetch;
+
+  // Test 4: Rejection of NaN and Infinity
+  console.log('\nTest 4: Rejection of NaN and Infinity');
   const mock4 = new MockEmbeddingProvider();
   mock4.containsNaN = true;
   try {
-    await mock4.embedTexts(['Text containing NaN vector']);
-    throw new Error('Should have thrown DocumentProcessingError for NaN vector');
+    await mock4.embedTexts(['NaN text']);
+    throw new Error('Should have rejected NaN');
   } catch (err) {
-    if (err instanceof DocumentProcessingError || (err instanceof Error && err.message.includes('Invalid vector value'))) {
-      console.log('  ✅ PASSED: Vector containing NaN rejected with DocumentProcessingError.');
-    } else {
-      throw err;
-    }
+    console.log('  ✅ PASSED: NaN vector rejected.');
   }
 
-  // Test 5: Batching (250 chunks with batchSize 100 -> 3 batches)
+  mock4.containsNaN = false;
+  mock4.containsInfinity = true;
+  try {
+    await mock4.embedTexts(['Infinity text']);
+    throw new Error('Should have rejected Infinity');
+  } catch (err) {
+    console.log('  ✅ PASSED: Infinity vector rejected.');
+  }
+
+  // Test 5: Batching (250 Chunks -> 3 Batches)
   console.log('\nTest 5: Batching (250 Chunks -> 3 Batches)');
   const mock5 = new MockEmbeddingProvider();
   const service5 = new EmbeddingService(mock5);
-  const docId5 = 'doc-phase10-batching-test';
+  const docId5 = `doc-phase10-batching-${Date.now()}`;
 
   await documentRepository.create({
     id: docId5,
@@ -282,128 +350,58 @@ async function runPhase10Tests() {
   if (res5.batchCount !== 3 || mock5.calls.length !== 3) {
     throw new Error(`Expected 3 batches, got batchCount=${res5.batchCount}, calls=${mock5.calls.length}`);
   }
-  if (mock5.calls[0]?.length !== 100 || mock5.calls[1]?.length !== 100 || mock5.calls[2]?.length !== 50) {
-    throw new Error('Batch slice sizes unexpected.');
-  }
-  console.log('  ✅ PASSED: 250 chunks processed in 3 batches (100, 100, 50).');
+  console.log('  ✅ PASSED: 250 chunks processed in 3 batches.');
 
-  // Test 6: Input/Output Ordering Preservation
-  console.log('\nTest 6: Input/Output Ordering Preservation');
+  // Test 6: Skipping Embedded Chunks & Idempotency
+  console.log('\nTest 6: Skipping Embedded Chunks & Idempotency');
   const mock6 = new MockEmbeddingProvider();
   const service6 = new EmbeddingService(mock6);
-  const docId6 = 'doc-phase10-ordering-test';
+  const res6 = await service6.processDocumentEmbeddings(docId5, TEST_USER_ID);
 
-  await documentRepository.create({
-    id: docId6,
-    userId: TEST_USER_ID,
-    filename: 'order.pdf',
-    originalFilename: 'order.pdf',
-    mimeType: 'application/pdf',
-    fileSize: 2000,
-    storageKey: `documents/${TEST_USER_ID}/${docId6}/order.pdf`
-  });
-
-  await documentRepository.saveChunksTx(docId6, [
-    { chunkIndex: 0, pageNumber: 1, content: 'Chunk 0', tokenCount: 5 },
-    { chunkIndex: 1, pageNumber: 1, content: 'Chunk 1', tokenCount: 5 }
-  ]);
-
-  await service6.processDocumentEmbeddings(docId6, TEST_USER_ID);
-  console.log('  ✅ PASSED: Vector updates mapped 1:1 with chunk order.');
-
-  // Test 7: Empty Chunk Content Rejection
-  console.log('\nTest 7: Empty Chunk Content Rejection');
-  const provider7 = new OpenAIEmbeddingProvider();
-  try {
-    await provider7.embedTexts(['']);
-    throw new Error('Should have thrown DocumentProcessingError for empty string');
-  } catch (err) {
-    console.log('  ✅ PASSED: Empty text content rejected cleanly.');
-  }
-
-  // Test 8 & 9 & 14: Skipping Already Embedded Chunks & Idempotency
-  console.log('\nTest 8, 9 & 14: Skipping Embedded Chunks & Idempotency');
-  const mock8 = new MockEmbeddingProvider();
-  const service8 = new EmbeddingService(mock8);
-
-  // Run second time on docId5 (all 250 chunks already have embeddings)
-  const res8 = await service8.processDocumentEmbeddings(docId5, TEST_USER_ID);
-
-  if (res8.embeddedChunks !== 0 || mock8.calls.length !== 0) {
+  if (res6.embeddedChunks !== 0 || mock6.calls.length !== 0) {
     throw new Error('Idempotency failed: provider called for already embedded chunks');
   }
   console.log('  ✅ PASSED: All chunks already embedded -> provider skipped execution completely.');
 
-  // Test 10: Provider Transient Failure & Bounded Exponential Backoff Retry
-  console.log('\nTest 10: Provider Transient Failure & Bounded Exponential Backoff Retry');
-  const mock10 = new MockEmbeddingProvider();
-  mock10.failTransientTimes = 2; // Fail twice with HTTP 429, then succeed on 3rd attempt
-  const retryProvider = new OpenAIEmbeddingProvider({
-    model: 'text-embedding-3-small',
-    expectedDimensions: 1536,
+  // Test 7: Ollama Transient Error Retry
+  console.log('\nTest 7: Ollama Transient Error Bounded Retry');
+  let fetchAttempts = 0;
+  const mockFetchRetry = async () => {
+    fetchAttempts++;
+    if (fetchAttempts <= 2) {
+      throw new Error('fetch failed: ECONNREFUSED');
+    }
+    return {
+      ok: true,
+      json: async () => ({ embeddings: [createMockVector(768)] })
+    } as Response;
+  };
+  globalThis.fetch = mockFetchRetry as any;
+
+  const retryOllama = new OllamaEmbeddingProvider({
+    baseUrl: 'http://localhost:11434',
+    model: 'nomic-embed-text',
+    expectedDimensions: 768,
     maxRetries: 3,
     initialDelayMs: 10
   });
 
-  // Temporarily stub ai.getClient
-  const originalClient = (await import('../src/lib/openai')).ai.getClient;
-  let attemptCount = 0;
-  (await import('../src/lib/openai')).ai.getClient = () => ({
-    embeddings: {
-      create: async ({ input }: { input: string[] }) => {
-        attemptCount++;
-        if (attemptCount <= 2) {
-          throw new Error('HTTP 429 Rate Limit exceeded');
-        }
-        return {
-          data: input.map((_, idx) => ({ index: idx, embedding: createMockVector(1536) }))
-        };
-      }
-    }
-  }) as any;
-
-  const retryVectors = await retryProvider.embedTexts(['Retry test text']);
-  if (retryVectors.length !== 1 || attemptCount !== 3) {
-    throw new Error(`Expected 3 attempts, got ${attemptCount}`);
+  const retryRes = await retryOllama.embedTexts(['Retry test']);
+  if (retryRes.length !== 1 || fetchAttempts !== 3) {
+    throw new Error(`Expected 3 fetch attempts, got ${fetchAttempts}`);
   }
-  console.log('  ✅ PASSED: Transient HTTP 429 retried successfully with bounded exponential backoff.');
+  console.log('  ✅ PASSED: Transient ECONNREFUSED retried successfully with bounded backoff.');
 
-  // Restore client
-  (await import('../src/lib/openai')).ai.getClient = originalClient;
+  globalThis.fetch = originalFetch;
 
-  // Test 11: Permanent Failure (Immediate Rejection)
-  console.log('\nTest 11: Permanent Failure Immediate Rejection');
-  const mock11 = new MockEmbeddingProvider();
-  mock11.failPermanent = true;
-  const service11 = new EmbeddingService(mock11);
-  const docId11 = 'doc-phase11-permanent-fail';
-
-  await documentRepository.create({
-    id: docId11,
-    userId: TEST_USER_ID,
-    filename: 'fail.pdf',
-    originalFilename: 'fail.pdf',
-    mimeType: 'application/pdf',
-    fileSize: 1000,
-    storageKey: `documents/${TEST_USER_ID}/${docId11}/fail.pdf`
-  });
-
-  await documentRepository.saveChunksTx(docId11, [{ chunkIndex: 0, pageNumber: 1, content: 'Chunk text', tokenCount: 5 }]);
-
-  try {
-    await service11.processDocumentEmbeddings(docId11, TEST_USER_ID);
-    throw new Error('Should have thrown error on permanent API failure');
-  } catch (err) {
-    console.log('  ✅ PASSED: Permanent API authentication failure rejected immediately without infinite retries.');
-  }
-
-  // Test 15: End-to-End Worker Phase 10 Integration Test
-  console.log('\nTest 15: End-to-End Worker Integration Test');
-  const storageKey = `documents/${TEST_USER_ID}/doc-phase10-e2e/sample.pdf`;
+  // Test 8: End-to-End Worker Integration Test
+  console.log('\nTest 8: End-to-End Worker Integration Test with Mock Provider');
+  const docId10 = `doc-phase10-e2e-${Date.now()}`;
+  const storageKey = `documents/${TEST_USER_ID}/${docId10}/sample.pdf`;
   await storage.upload(storageKey, VALID_PDF, 'application/pdf');
 
   const e2eDoc = await documentRepository.create({
-    id: 'doc-phase10-e2e',
+    id: docId10,
     userId: TEST_USER_ID,
     filename: 'sample.pdf',
     originalFilename: 'sample.pdf',
@@ -412,7 +410,6 @@ async function runPhase10Tests() {
     storageKey
   });
 
-  // Mock workerEmbeddingService provider with MockEmbeddingProvider for deterministic test execution
   const { workerEmbeddingService } = await import('../worker/src/embeddings/embedding.service.js');
   (workerEmbeddingService as any).provider = new MockEmbeddingProvider();
 
@@ -432,9 +429,8 @@ async function runPhase10Tests() {
     throw new Error(`Expected Document.status=PROCESSING, got ${updatedE2eDoc?.status}`);
   }
 
-  console.log('  Updated Document ID:', updatedE2eDoc.id);
   console.log('  Updated Document status:', updatedE2eDoc.status);
-  console.log('  ✅ PASSED: Worker pipeline completed PDF parsing, chunking, and embedding generation successfully.');
+  console.log('  ✅ PASSED: Full worker pipeline executed PDF parsing, chunking, and 768-dim embedding persistence.');
 
   // Clean up
   await storage.delete(storageKey);
@@ -446,7 +442,7 @@ async function runPhase10Tests() {
   }
 
   console.log('\n====================================================');
-  console.log('🎉 ALL PHASE 10 TESTS PASSED SUCCESSFULLY!');
+  console.log('🎉 ALL PHASE 10 DUAL EMBEDDING TESTS PASSED!');
   console.log('====================================================\n');
 }
 

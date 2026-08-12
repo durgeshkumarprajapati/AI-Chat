@@ -14,9 +14,11 @@
 /storage
 
 
-# Production
+# Production / Build output
 /build
 /dist
+dist/
+worker/dist/
 
 # Misc
 .DS_Store

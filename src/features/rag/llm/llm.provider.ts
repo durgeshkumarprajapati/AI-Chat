@@ -6,4 +6,5 @@ export interface LLMGenerateInput {
 
 export interface LLMProvider {
   generateAnswer(input: LLMGenerateInput): Promise<string>;
+  streamAnswer(input: LLMGenerateInput): AsyncIterable<string>;
 }

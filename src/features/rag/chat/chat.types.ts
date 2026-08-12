@@ -31,3 +31,9 @@ export interface ChatResponse {
   retrievedChunks: number;
   topSimilarity: number;
 }
+
+export type StreamEvent =
+  | { type: 'start'; conversationId: string; citations: Citation[]; retrievedChunks: number; topSimilarity: number }
+  | { type: 'delta'; text: string }
+  | { type: 'done'; conversationId: string; messageId: string; answer: string; citations: Citation[] }
+  | { type: 'error'; message: string };

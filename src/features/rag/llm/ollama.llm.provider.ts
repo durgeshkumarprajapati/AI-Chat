@@ -107,6 +107,89 @@ ${input.question}`;
     throw new DocumentProcessingError('Ollama LLM Provider failed after maximum retries.');
   }
 
+  public async *streamAnswer(input: LLMGenerateInput): AsyncIterable<string> {
+    const systemPrompt = `You are a document question-answering assistant.
+
+Answer the user's question using ONLY the provided document context.
+
+Rules:
+1. Do not use external knowledge.
+2. Do not invent facts or assumptions.
+3. If the context does not contain enough information to answer the question, explicitly state: "I couldn't find enough relevant information in your uploaded documents to answer that question."
+4. Every factual claim should be supported by the supplied context.
+5. Keep answers concise, factual, and well-structured.`;
+
+    const prompt = `DOCUMENT CONTEXT:
+${input.context}
+
+USER QUESTION:
+${input.question}`;
+
+    const endpoint = `${this.baseUrl}/api/generate`;
+    const response = await fetch(endpoint, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        model: this.model,
+        system: systemPrompt,
+        prompt: prompt,
+        stream: true
+      })
+    });
+
+    if (!response.ok) {
+      const errText = await response.text().catch(() => '');
+      if (response.status === 404 || errText.includes('not found')) {
+        throw new InfrastructureError(
+          'Ollama Chat Model',
+          `Ollama model "${this.model}" is not installed. Run "ollama pull ${this.model}" to install.`
+        );
+      }
+      throw new Error(`Ollama HTTP Error ${response.status}: ${errText}`);
+    }
+
+    if (!response.body) {
+      throw new DocumentProcessingError('Ollama streaming response body is missing.');
+    }
+
+    const reader = response.body.getReader();
+    const decoder = new TextDecoder();
+    let buffer = '';
+
+    while (true) {
+      const { done, value } = await reader.read();
+      if (done) break;
+
+      buffer += decoder.decode(value, { stream: true });
+      const lines = buffer.split('\n');
+      buffer = lines.pop() || '';
+
+      for (const line of lines) {
+        const trimmed = line.trim();
+        if (!trimmed) continue;
+        try {
+          const parsed = JSON.parse(trimmed) as { response?: string; done?: boolean };
+          if (parsed.response) {
+            yield parsed.response;
+          }
+        } catch {
+          // Ignore partial line json parse errors
+        }
+      }
+    }
+
+    if (buffer.trim()) {
+      try {
+        const parsed = JSON.parse(buffer.trim()) as { response?: string };
+        if (parsed.response) {
+          yield parsed.response;
+        }
+      } catch {
+        // Ignore partial line json parse errors
+      }
+    }
+  }
+
   private isTransientError(error: unknown): boolean {
     if (!error) return false;
     const msg = error instanceof Error ? error.message : String(error);

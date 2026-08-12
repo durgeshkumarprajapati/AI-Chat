@@ -192,11 +192,69 @@ Returns:
 
 ---
 
-## 6. Production Deployment Strategy
+---
 
-- **Next.js Web Application**: Deployed to Vercel.
-- **Worker Process**: Deployed as Docker container / ECS service on AWS / Render / Railway.
-- **Database**: Managed PostgreSQL (e.g. AWS RDS / Supabase / Neon with `pgvector` enabled).
-- **Message Queue**: CloudAMQP or AWS Amazon MQ (RabbitMQ engine).
-- **Cache**: AWS ElastiCache for Redis or Upstash.
-- **Object Storage**: AWS S3.
+## 7. Phase 13 — Streaming RAG Chat
+
+### Overview
+Phase 13 delivers a real-time, progressive LLM response streaming experience over Server-Sent Events (SSE). Instead of waiting for the full answer to generate, tokens stream incrementally into the UI with real-time caret animations, instant stop generation controls, and citation badges.
+
+### Architecture
+
+```mermaid
+flowchart TD
+    A[User Question] --> B[POST /api/chat/stream]
+    B --> C[Authentication]
+    C --> D[Question Embedding]
+    D --> E[pgvector Retrieval]
+    E --> F{Relevant Chunks?}
+    F -->|No| G[Grounded Fallback]
+    F -->|Yes| H[Build Context]
+    H --> I[LLM Provider]
+    I -->|Ollama / OpenAI| J[Streaming Deltas]
+    J --> K[Browser Chat UI]
+    K --> L[Final Answer + Citations]
+    L --> M[Persist Message to PostgreSQL]
+```
+
+### Streaming Lifecycle
+`START` → `RETRIEVE` → `STREAM` → `FINALIZE` → `PERSIST` → `DONE`
+
+If `pgvector` retrieval returns 0 chunks passing `RAG_MIN_SIMILARITY`, the LLM is **not** called. The API emits the deterministic fallback response with zero citations (`[]`).
+
+### API Specification
+
+```http
+POST /api/chat/stream
+Content-Type: application/json
+
+{
+  "conversationId": "optional-uuid",
+  "question": "What are the major deployment steps?"
+}
+```
+
+Server-Sent Events emitted:
+- `event: start` -> `{"conversationId": "...", "citations": [...]}`
+- `event: delta` -> `{"text": "According"}`
+- `event: done` -> `{"messageId": "...", "answer": "...", "citations": [...]}`
+- `event: error` -> `{"message": "..."}`
+
+### Provider Support
+- **Ollama**: Default local provider (`OLLAMA_CHAT_MODEL="llama3.2"`). Streams line-delimited JSON chunks from `/api/generate`.
+- **OpenAI**: Optional provider (`OPENAI_CHAT_MODEL="gpt-4o-mini"`). Streams delta completion tokens via OpenAI SDK.
+
+### Security & Privacy
+- Vector embeddings and database credentials remain strictly server-side.
+- Tenant isolation (`WHERE d.user_id = $2`) is enforced before retrieval.
+- Citations originate exclusively from retrieved chunks.
+
+### Testing Commands
+```bash
+# Automated mocked streaming test suite (23 test cases)
+npm run test:phase13
+
+# Optional real Ollama streaming test script
+npm run test:ollama-chat-stream
+```
+

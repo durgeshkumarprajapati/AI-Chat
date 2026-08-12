@@ -65,6 +65,14 @@ export class MockLLMProvider implements LLMProvider {
     }
     return this.mockResponse;
   }
+
+  public async *streamAnswer(input: LLMGenerateInput): AsyncIterable<string> {
+    this.lastInput = input;
+    if (this.failMode) {
+      throw new Error('LLM Provider connection error');
+    }
+    yield this.mockResponse;
+  }
 }
 
 export class MockRetrievalService extends RetrievalService {

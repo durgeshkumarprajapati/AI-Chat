@@ -72,6 +72,11 @@ const serverEnvSchema = z
       .min(0, { message: 'RAG_MIN_SIMILARITY must be 0 or greater' })
       .max(1, { message: 'RAG_MIN_SIMILARITY must be 1 or less' })
       .default(0.30),
+    DOCUMENT_PROCESSING_TIMEOUT_MINUTES: z
+      .coerce.number()
+      .int()
+      .positive({ message: 'DOCUMENT_PROCESSING_TIMEOUT_MINUTES must be greater than 0' })
+      .default(15),
     DOCUMENT_CHUNK_SIZE: z
       .coerce.number()
       .int()

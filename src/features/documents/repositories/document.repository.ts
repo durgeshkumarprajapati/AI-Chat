@@ -64,8 +64,8 @@ export class DocumentRepository {
     id: string,
     status: DocumentStatus,
     extra?: { pageCount?: number; errorMessage?: string }
-  ): Promise<Document> {
-    return prisma.document.update({
+  ): Promise<Document | null> {
+    await prisma.document.updateMany({
       where: { id },
       data: {
         status,
@@ -73,6 +73,8 @@ export class DocumentRepository {
         ...(extra?.errorMessage !== undefined && { errorMessage: extra.errorMessage })
       }
     });
+
+    return prisma.document.findUnique({ where: { id } });
   }
 
   public async listByUser(userId: string, limit = 20, offset = 0): Promise<Document[]> {

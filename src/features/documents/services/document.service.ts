@@ -66,7 +66,7 @@ export class DocumentService {
 
       await rabbitmq.publishToQueue(QUEUES.DOCUMENT_PROCESSING, jobPayload);
 
-      return updatedDoc;
+      return updatedDoc || document;
     } catch (err) {
       // Mark document as FAILED if storage or queue publishing fails
       const errorMessage = err instanceof Error ? err.message : String(err);

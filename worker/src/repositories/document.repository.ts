@@ -17,12 +17,15 @@ export class WorkerDocumentRepository {
     });
   }
 
+  /**
+   * Safe status update strategy using updateMany to prevent P2025 errors if a document was deleted.
+   */
   public async updateStatus(
     id: string,
     status: 'UPLOADING' | 'PROCESSING' | 'COMPLETED' | 'FAILED',
     extra?: { pageCount?: number; errorMessage?: string }
   ) {
-    return prisma.document.update({
+    const result = await prisma.document.updateMany({
       where: { id },
       data: {
         status,
@@ -30,6 +33,12 @@ export class WorkerDocumentRepository {
         ...(extra?.errorMessage !== undefined && { errorMessage: extra.errorMessage })
       }
     });
+
+    if (result.count === 0) {
+      console.warn(`[Worker] Document "${id}" no longer exists in DB; skipping status update.`);
+    }
+
+    return result;
   }
 
   public async saveChunksTx(
@@ -86,6 +95,40 @@ export class WorkerDocumentRepository {
         );
       }
     });
+  }
+
+  /**
+   * Startup recovery for stale PROCESSING documents exceeding processing timeout.
+   */
+  public async recoverStaleProcessingDocuments(timeoutMinutes = 15): Promise<number> {
+    const cutoffDate = new Date(Date.now() - timeoutMinutes * 60 * 1000);
+    const staleDocs = await prisma.document.findMany({
+      where: {
+        status: 'PROCESSING',
+        updatedAt: { lt: cutoffDate }
+      }
+    });
+
+    if (staleDocs.length === 0) return 0;
+
+    let recoveredCount = 0;
+    for (const doc of staleDocs) {
+      const totalChunks = await prisma.documentChunk.count({ where: { documentId: doc.id } });
+      const pendingEmbeddings = await this.findChunksNeedingEmbeddings(doc.id);
+
+      if (totalChunks > 0 && pendingEmbeddings.length === 0) {
+        await this.updateStatus(doc.id, 'COMPLETED');
+        console.log(`[Worker] Recovered stale PROCESSING document ${doc.id} -> COMPLETED.`);
+        recoveredCount++;
+      } else {
+        await this.updateStatus(doc.id, 'FAILED', {
+          errorMessage: `Processing timed out after ${timeoutMinutes} minutes.`
+        });
+        console.log(`[Worker] Stale PROCESSING document ${doc.id} timed out -> FAILED.`);
+        recoveredCount++;
+      }
+    }
+    return recoveredCount;
   }
 }
 

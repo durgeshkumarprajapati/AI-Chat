@@ -17,6 +17,7 @@
     "test:phase9": "tsx tests/phase9-chunker.test.ts",
     "test:phase10": "tsx tests/phase10-embeddings.test.ts",
     "test:phase11": "tsx tests/phase11-rag.test.ts",
+    "test:phase12": "tsx tests/phase12-worker-recovery.test.ts",
     "test:ollama": "tsx scripts/test-ollama-embeddings.ts",
     "test:ollama-chat": "tsx scripts/test-ollama-chat.ts",
     "test:openai": "tsx scripts/test-openai-embeddings.ts",

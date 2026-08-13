@@ -23,6 +23,20 @@ export interface SemanticCacheItem extends ExactCacheItem {
   question: string;
   userId: string;
   knowledgeBaseId?: string | null;
+  model: string;
+  answerMode: string;
+  validEvidence: boolean;
+  invalidated?: boolean;
+  sourceDocumentIds?: string[];
+  sourceFingerprint?: string;
+  expiresAt?: string;
+}
+
+export interface SemanticCacheLookupResult {
+  item: SemanticCacheItem | null;
+  similarity: number | null;
+  candidateCount: number;
+  sourceFingerprint?: string;
 }
 
 export interface CacheKeyOptions {

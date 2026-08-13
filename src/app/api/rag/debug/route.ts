@@ -3,6 +3,8 @@ import { getAuthUser } from '@/lib/auth';
 import { retrievalService } from '@/features/rag/retrieval/retrieval.service';
 import { conversationContextService } from '@/features/rag/chat/conversation-context.service';
 import { AppError } from '@/errors';
+import { answerOrchestratorService } from '@/features/rag/orchestration/answer-orchestrator.service';
+import { env } from '@/config/env';
 
 export async function POST(req: NextRequest) {
   try {
@@ -17,6 +19,7 @@ export async function POST(req: NextRequest) {
     }
 
     const originalQuestion = body.question.trim();
+    const classification = conversationContextService.classifyQuery(originalQuestion);
     let retrievalQuery = originalQuestion;
     let conversationContextDiagnostics = null;
     const loadStart = Date.now();
@@ -38,6 +41,14 @@ export async function POST(req: NextRequest) {
       };
     }
 
+    const cacheStart = Date.now();
+    const cached = classification === 'STANDALONE'
+      ? await answerOrchestratorService.findCachedAnswer({
+        userId: authUser.id, question: originalQuestion, knowledgeBaseId: body.knowledgeBaseId,
+        conversationId: body.conversationId, model: env.server?.LLM_PROVIDER || 'ollama'
+      })
+      : null;
+    const cacheLookupMs = Date.now() - cacheStart;
     const result = await retrievalService.retrieveContextWithTrace(authUser.id, retrievalQuery, {
       knowledgeBaseId: body.knowledgeBaseId
     });
@@ -48,6 +59,16 @@ export async function POST(req: NextRequest) {
         originalQuestion,
         retrievalQuery,
         conversationContext: conversationContextDiagnostics,
+        answerOrchestration: {
+          classification,
+          cache: cached?.cacheType || 'miss',
+          semanticSimilarity: cached?.latencyTrace.semanticSimilarity ?? null,
+          semanticThreshold: env.server?.RAG_SEMANTIC_CACHE_THRESHOLD ?? 0.90,
+          candidateCount: cached?.latencyTrace.semanticCandidateCount ?? 0,
+          sourceEvidenceFingerprint: cached?.sourceEvidenceFingerprint ?? null,
+          cacheLookupMs: cached?.latencyTrace.semanticCacheLookupMs ?? cacheLookupMs,
+          embeddingMs: cached?.latencyTrace.embeddingGenerationMs ?? 0
+        },
         trace: result.trace,
         latencyTrace: {
           memoryMs: conversationContextDiagnostics?.contextLoadMs ?? 0,

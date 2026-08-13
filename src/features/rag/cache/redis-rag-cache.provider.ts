@@ -1,7 +1,7 @@
 import { redis } from '@/lib/redis';
 import { env } from '@/config/env';
-import { generateEmbeddingCacheKey, generateExactCacheKey, RAGCacheProvider } from './rag-cache.provider';
-import { CacheKeyOptions, EmbeddingCacheItem, ExactCacheItem, SemanticCacheItem } from './rag-cache.types';
+import { generateEmbeddingCacheKey, generateExactCacheKey, generateSemanticScopeKey, RAGCacheProvider } from './rag-cache.provider';
+import { CacheKeyOptions, EmbeddingCacheItem, ExactCacheItem, SemanticCacheItem, SemanticCacheLookupResult } from './rag-cache.types';
 
 function isCacheEnabled(): boolean {
   return env.server ? env.server.RAG_CACHE_ENABLED : process.env.RAG_CACHE_ENABLED !== 'false';
@@ -67,34 +67,47 @@ export class RedisRAGCacheProvider implements RAGCacheProvider {
   }
 
   public async getSemantic(keyOptions: CacheKeyOptions, queryVector: number[], threshold?: number): Promise<SemanticCacheItem | null> {
-    if (!isCacheEnabled() || !isSemanticCacheEnabled()) return null;
+    return (await this.getSemanticWithDiagnostics(keyOptions, queryVector, threshold)).item;
+  }
+
+  public async getSemanticWithDiagnostics(keyOptions: CacheKeyOptions, queryVector: number[], threshold?: number): Promise<SemanticCacheLookupResult> {
+    if (!isCacheEnabled() || !isSemanticCacheEnabled()) return { item: null, similarity: null, candidateCount: 0 };
     try {
       const client = await redis.getClient();
-      const pattern = `rag:semantic:${keyOptions.userId}:${keyOptions.knowledgeBaseId || 'global'}:*`;
-      const keys = await client.keys(pattern);
-      const reqThreshold = threshold || env.server?.RAG_SEMANTIC_CACHE_THRESHOLD || 0.94;
+      const keys = await client.lRange(generateSemanticScopeKey(keyOptions), 0, -1);
+      const reqThreshold = threshold ?? env.server?.RAG_SEMANTIC_CACHE_THRESHOLD ?? 0.90;
+      let best: SemanticCacheItem | null = null;
+      let bestSimilarity = reqThreshold;
+      let highestSimilarity: number | null = null;
 
       for (const key of keys) {
         const item = await redis.getJson<SemanticCacheItem>(key);
-        if (!item || !item.queryVector) continue;
+        if (!item || !item.queryVector || !this.isCompatible(item, keyOptions)) continue;
         const sim = this.cosineSimilarity(queryVector, item.queryVector);
-        if (sim >= reqThreshold) {
-          return item;
+        highestSimilarity = highestSimilarity === null ? sim : Math.max(highestSimilarity, sim);
+        if (sim >= bestSimilarity) {
+          best = item;
+          bestSimilarity = sim;
         }
       }
-      return null;
+      return { item: best, similarity: highestSimilarity, candidateCount: keys.length, sourceFingerprint: best?.sourceFingerprint };
     } catch (err) {
       console.warn('[RedisRAGCacheProvider] Semantic cache lookup failed safely:', err);
-      return null;
+      return { item: null, similarity: null, candidateCount: 0 };
     }
   }
 
   public async setSemantic(keyOptions: CacheKeyOptions, item: SemanticCacheItem, ttlSeconds?: number): Promise<void> {
     if (!isCacheEnabled() || !isSemanticCacheEnabled()) return;
     try {
-      const ttl = ttlSeconds || env.server?.RAG_CACHE_TTL_SECONDS || 300;
+      const ttl = ttlSeconds || env.server?.RAG_SEMANTIC_CACHE_TTL_SECONDS || 3600;
       const key = `rag:semantic:${keyOptions.userId}:${keyOptions.knowledgeBaseId || 'global'}:${Date.now()}_${Math.random().toString(36).substring(2, 7)}`;
-      await redis.setJson(key, item, ttl);
+      await redis.setJson(key, { ...item, expiresAt: new Date(Date.now() + ttl * 1000).toISOString() }, ttl);
+      const client = await redis.getClient();
+      const indexKey = generateSemanticScopeKey(keyOptions);
+      await client.lPush(indexKey, key);
+      await client.lTrim(indexKey, 0, (env.server?.RAG_SEMANTIC_CACHE_MAX_CANDIDATES ?? 20) - 1);
+      await client.expire(indexKey, ttl);
     } catch (err) {
       console.warn('[RedisRAGCacheProvider] Semantic cache store failed safely:', err);
     }
@@ -150,5 +163,14 @@ export class RedisRAGCacheProvider implements RAGCacheProvider {
     }
     if (normA === 0 || normB === 0) return 0;
     return dot / (Math.sqrt(normA) * Math.sqrt(normB));
+  }
+
+  private isCompatible(item: SemanticCacheItem, options: CacheKeyOptions): boolean {
+    return item.userId === options.userId
+      && item.knowledgeBaseId === (options.knowledgeBaseId || null)
+      && item.model === (options.model || 'default')
+      && item.answerMode === (options.answerMode || 'GROUNDED')
+      && item.validEvidence && !item.invalidated && item.citations.length > 0
+      && (!item.expiresAt || Date.parse(item.expiresAt) > Date.now());
   }
 }

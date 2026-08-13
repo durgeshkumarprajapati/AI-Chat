@@ -54,8 +54,16 @@ async function runBenchmark() {
     Latency: string;
     Cache: string;
     LLM: string;
+    Embedding: string;
+    Retrieval: string;
     Mode: string;
   }> = [];
+
+  const record = (scenario: string, latency: number, response: { cacheHit?: boolean; cacheType?: string; llmCalled?: boolean; embeddingCalled?: boolean; vectorSearchCalled?: boolean; answerMode?: string }) => results.push({
+    Scenario: scenario, Latency: `${latency}ms`, Cache: response.cacheHit ? `HIT (${response.cacheType || 'exact'})` : 'MISS',
+    LLM: response.llmCalled ? 'YES' : 'NO', Embedding: response.embeddingCalled ? 'YES' : 'NO',
+    Retrieval: response.vectorSearchCalled ? 'YES' : 'NO', Mode: response.answerMode || 'UNKNOWN'
+  });
 
   // Scenario 1 — Cold Grounded Request
   const groundedQuestion = 'What are the production server deployment guidelines?';
@@ -67,13 +75,7 @@ async function runBenchmark() {
     throw new Error(`Scenario 1 Failed: Expected cold grounded response, got cacheHit=${res1.cacheHit}, llmCalled=${res1.llmCalled}, mode=${res1.answerMode}`);
   }
 
-  results.push({
-    Scenario: 'Cold Grounded Request',
-    Latency: `${lat1}ms`,
-    Cache: res1.cacheHit ? 'HIT' : 'MISS',
-    LLM: res1.llmCalled ? 'YES' : 'NO',
-    Mode: res1.answerMode || 'GROUNDED'
-  });
+  record('Cold Grounded Request', lat1, res1);
 
   // Scenario 2 — Exact Cache Hit
   const start2 = Date.now();
@@ -84,13 +86,12 @@ async function runBenchmark() {
     throw new Error(`Scenario 2 Failed: Exact cache hit validation failed! cacheHit=${res2.cacheHit}, cacheType=${res2.cacheType}, llmCalled=${res2.llmCalled}, vectorSearch=${res2.vectorSearchCalled}`);
   }
 
-  results.push({
-    Scenario: 'Exact Cache Hit',
-    Latency: `${lat2}ms`,
-    Cache: `HIT (${res2.cacheType})`,
-    LLM: res2.llmCalled ? 'YES' : 'NO',
-    Mode: res2.answerMode || 'GROUNDED'
-  });
+  record('Exact Cache Hit', lat2, res2);
+
+  // Scenario 3 — Semantic Cache (reports the actual model-dependent decision).
+  const semanticStart = Date.now();
+  const semantic = await chatService.sendMessage(BENCHMARK_USER, { question: 'Explain the Kubernetes production server architecture.' } as any);
+  record('Semantic Cache Candidate', Date.now() - semanticStart, semantic);
 
   // Print Exact Cache Hit Proof Metrics
   console.log('----------------------------------------------------');
@@ -104,7 +105,7 @@ async function runBenchmark() {
   console.log(`   rerankCalled=${res2.rerankCalled}`);
   console.log('----------------------------------------------------');
 
-  // Scenario 3 — Zero Evidence Request
+  // Scenario 4 — Zero Evidence Request
   const zeroEvQuestion = 'What is the quantum superluminal algorithm formula?';
   const start3 = Date.now();
   const res3 = await chatService.sendMessage(BENCHMARK_USER, { question: zeroEvQuestion } as any);
@@ -114,15 +115,9 @@ async function runBenchmark() {
     throw new Error(`Scenario 3 Failed: Zero evidence expected llmCalled=false, got llmCalled=${res3.llmCalled}, mode=${res3.answerMode}`);
   }
 
-  results.push({
-    Scenario: 'Zero Evidence Request',
-    Latency: `${lat3}ms`,
-    Cache: res3.cacheHit ? 'HIT' : 'MISS',
-    LLM: res3.llmCalled ? 'YES' : 'NO',
-    Mode: res3.answerMode || 'NO_DOCUMENT_EVIDENCE'
-  });
+  record('Zero Evidence Request', lat3, res3);
 
-  // Scenario 4 — Retrieval Recovery
+  // Scenario 5 — Follow-up request (must not use raw global semantic preflight).
   const recoveryQuestion = 'Could you please tell me what is the setup for kubernetes cluster deployment?';
   const start4 = Date.now();
   const res4 = await chatService.sendMessage(BENCHMARK_USER, { question: recoveryQuestion } as any);
@@ -132,13 +127,7 @@ async function runBenchmark() {
     throw new Error(`Scenario 4 Failed: Expected max 1 recovery attempt, got attempts=${res4.recoveryAttempts}`);
   }
 
-  results.push({
-    Scenario: 'Retrieval Recovery Request',
-    Latency: `${lat4}ms`,
-    Cache: res4.cacheHit ? 'HIT' : 'MISS',
-    LLM: res4.llmCalled ? 'YES' : 'NO',
-    Mode: res4.answerMode || 'RETRIEVAL_RECOVERY'
-  });
+  record('Follow-up / Recovery Request', lat4, res4);
 
   // Scenario 5 — General Knowledge
   const start5 = Date.now();
@@ -152,13 +141,7 @@ async function runBenchmark() {
     throw new Error(`Scenario 5 Failed: Expected GENERAL_KNOWLEDGE mode and 0 citations, got mode=${res5.answerMode}, citations=${res5.citations.length}`);
   }
 
-  results.push({
-    Scenario: 'General Knowledge Request',
-    Latency: `${lat5}ms`,
-    Cache: res5.cacheHit ? 'HIT' : 'MISS',
-    LLM: res5.llmCalled ? 'YES' : 'NO',
-    Mode: res5.answerMode || 'GENERAL_KNOWLEDGE'
-  });
+  record('General Knowledge Request', lat5, res5);
 
   // Scenario 6 — Streaming Exact Cache Hit
   const start6 = Date.now();
@@ -170,13 +153,7 @@ async function runBenchmark() {
   }
   const lat6 = Date.now() - start6;
 
-  results.push({
-    Scenario: 'Streaming Exact Cache Hit',
-    Latency: `${lat6}ms`,
-    Cache: streamCacheHit ? 'HIT (exact)' : 'MISS',
-    LLM: 'NO',
-    Mode: 'GROUNDED'
-  });
+  results.push({ Scenario: 'Streaming Exact Cache Hit', Latency: `${lat6}ms`, Cache: streamCacheHit ? 'HIT (exact)' : 'MISS', LLM: 'NO', Embedding: 'NO', Retrieval: 'NO', Mode: 'GROUNDED' });
 
   console.log('\n====================================================');
   console.log('RAG PERFORMANCE BENCHMARK');

@@ -13,6 +13,8 @@ export type LoadedConversationContext = {
   queryRewriteMs: number;
 };
 
+export type QueryContextClassification = 'STANDALONE' | 'FOLLOW_UP' | 'AMBIGUOUS';
+
 export class ConversationContextService {
   private llmProvider: LLMProvider;
 
@@ -31,22 +33,22 @@ export class ConversationContextService {
   /**
    * Heuristic check to determine if a user query is a standalone question or a follow-up.
    */
-  public isFollowUpQuestion(question: string): boolean {
+  public classifyQuery(question: string, hasPreviousAssistantAnswer = false): QueryContextClassification {
     const q = question.trim().toLowerCase();
-    
-    // Explicit reference pronouns / pointers
-    const followUpIndicators = [
-      'that', 'this', 'it', 'them', 'these', 'those', 'third', 'second', 'first',
-      'last', 'previous', 'former', 'latter', 'the above', 'the same', 'instead',
-      'more detail', 'further', 'explain more', 'elaborate', 'what about', 'how about',
-      'why is that', 'can you expand', 'tell me more', 'and what about'
-    ];
-
-    if (q.split(/\s+/).length <= 4) {
-      return true; // Very short queries like "Why?", "What about section 3?", "Tell me more"
+    const words = q.match(/[\p{L}\p{N}]+/gu) || [];
+    if (!q) return 'AMBIGUOUS';
+    if (/^(explain it|tell me more|what about that)\??$/.test(q)) return 'AMBIGUOUS';
+    const explicitFollowUp = /\b(that|this|those|these|them|former|latter|previous|above|earlier)\b|\b(the )?(first|second|third|last) (one|point|item|two|requirement|section|step)\b|\b(what|how) about\b|\b(more details|explain (more|further)|elaborate|compare those|compare the first two)\b/.test(q);
+    if (explicitFollowUp) return 'FOLLOW_UP';
+    // A short but topic-bearing query ("vector databases", "python decorators") is standalone.
+    if (words.length <= 2 && /^(why|how|what|which|and|more|details?)\b/.test(q)) {
+      return hasPreviousAssistantAnswer ? 'AMBIGUOUS' : 'STANDALONE';
     }
+    return 'STANDALONE';
+  }
 
-    return followUpIndicators.some((indicator) => q.includes(indicator));
+  public isFollowUpQuestion(question: string, hasPreviousAssistantAnswer = true): boolean {
+    return this.classifyQuery(question, hasPreviousAssistantAnswer) === 'FOLLOW_UP';
   }
 
   /**
@@ -115,7 +117,9 @@ export class ConversationContextService {
     let retrievalQuery = currentQuestion.trim();
     let queryRewriteMs = 0;
 
-    if (includedMessages.length > 0 && this.isFollowUpQuestion(retrievalQuery)) {
+    const hasPreviousAssistantAnswer = includedMessages.some((message) => message.role === 'ASSISTANT');
+    const queryClassification = this.classifyQuery(retrievalQuery, hasPreviousAssistantAnswer);
+    if (queryClassification === 'FOLLOW_UP') {
       try {
         const rewriteStart = Date.now();
         retrievalQuery = await this.prepareRetrievalQuery(includedMessages, currentQuestion, conversation.summary);

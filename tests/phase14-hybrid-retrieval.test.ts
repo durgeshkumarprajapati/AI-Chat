@@ -123,9 +123,10 @@ async function runPhase14Tests() {
   ];
 
   await documentRepository.saveChunksTx(docId14, sampleChunks14);
+  const persistedChunks14 = await documentRepository.findChunksNeedingEmbeddings(docId14);
 
   // Save 768d vector embeddings
-  const needingEmbeds = await documentRepository.findChunksNeedingEmbeddings(docId14);
+  const needingEmbeds = persistedChunks14;
   if (needingEmbeds.length > 0) {
     const fakeVector = Array.from({ length: 768 }, (_, i) => Math.sin(i + 0.1));
     await documentRepository.saveEmbeddingsBatchTx(
@@ -157,7 +158,7 @@ async function runPhase14Tests() {
   const mockRet = new MockStreamingRetrievalService();
   mockRet.mockChunks = [
     {
-      id: 'chunk-h1',
+      id: persistedChunks14[0]!.id,
       documentId: docId14,
       filename: 'kubernetes_architecture.pdf',
       chunkIndex: 0,

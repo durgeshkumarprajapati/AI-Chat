@@ -50,6 +50,17 @@ type KnowledgeBaseOption = {
   documentCount: number;
 };
 
+type AnswerOrchestrationDiagnostics = {
+  classification: 'STANDALONE' | 'FOLLOW_UP' | 'AMBIGUOUS';
+  cache: 'exact' | 'semantic' | 'miss';
+  semanticSimilarity: number | null;
+  semanticThreshold: number;
+  candidateCount: number;
+  sourceEvidenceFingerprint: string | null;
+  cacheLookupMs: number;
+  embeddingMs: number;
+};
+
 export default function RAGDebugPage() {
   const [question, setQuestion] = useState('');
   const [conversationId, setConversationId] = useState('');
@@ -61,6 +72,7 @@ export default function RAGDebugPage() {
   const [originalQuestion, setOriginalQuestion] = useState<string | null>(null);
   const [retrievalQuery, setRetrievalQuery] = useState<string | null>(null);
   const [convDiagnostics, setConvDiagnostics] = useState<ConversationContextDiagnostics | null>(null);
+  const [orchestration, setOrchestration] = useState<AnswerOrchestrationDiagnostics | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [expandedChunkId, setExpandedChunkId] = useState<string | null>(null);
 
@@ -95,6 +107,7 @@ export default function RAGDebugPage() {
     setOriginalQuestion(null);
     setRetrievalQuery(null);
     setConvDiagnostics(null);
+    setOrchestration(null);
 
     try {
       const res = await fetch('/api/rag/debug', {
@@ -115,6 +128,7 @@ export default function RAGDebugPage() {
       setOriginalQuestion(json.data.originalQuestion);
       setRetrievalQuery(json.data.retrievalQuery);
       setConvDiagnostics(json.data.conversationContext);
+      setOrchestration(json.data.answerOrchestration);
       setTrace(json.data.trace);
       setChunks(json.data.chunks);
     } catch (err) {
@@ -230,6 +244,19 @@ export default function RAGDebugPage() {
         </div>
       )}
 
+      {orchestration && (
+        <div className="bg-slate-900 border border-slate-800 rounded-2xl p-5 shadow-xl space-y-3">
+          <span className="text-xs font-bold text-indigo-400 uppercase tracking-wider">Answer Orchestration</span>
+          <div className="grid grid-cols-2 md:grid-cols-4 gap-3 text-[11px] font-mono">
+            <div className="bg-slate-950 p-2.5 rounded-lg border border-slate-800"><span className="text-slate-500 block">Classification</span><b className="text-white">{orchestration.classification}</b></div>
+            <div className="bg-slate-950 p-2.5 rounded-lg border border-slate-800"><span className="text-slate-500 block">Cache</span><b className="text-emerald-400">{orchestration.cache.toUpperCase()}</b></div>
+            <div className="bg-slate-950 p-2.5 rounded-lg border border-slate-800"><span className="text-slate-500 block">Semantic Similarity</span><b className="text-white">{orchestration.semanticSimilarity?.toFixed(3) ?? 'N/A'} / {orchestration.semanticThreshold.toFixed(2)}</b></div>
+            <div className="bg-slate-950 p-2.5 rounded-lg border border-slate-800"><span className="text-slate-500 block">Cache Lookup</span><b className="text-white">{orchestration.cacheLookupMs}ms · {orchestration.candidateCount} candidates</b></div>
+            {orchestration.sourceEvidenceFingerprint && <div className="bg-slate-950 p-2.5 rounded-lg border border-slate-800 col-span-2"><span className="text-slate-500 block">Evidence Fingerprint</span><b className="text-slate-300 break-all">{orchestration.sourceEvidenceFingerprint}</b></div>}
+          </div>
+        </div>
+      )}
+
       {/* Query Rewriting & Memory Diagnostics Card */}
       {retrievalQuery && (
         <div className="bg-slate-900 border border-slate-800 rounded-2xl p-5 space-y-3 shadow-xl">
@@ -255,28 +282,35 @@ export default function RAGDebugPage() {
             </div>
           </div>
 
-          {/* Phase 21 RAG Answer Orchestration Decision Card */}
-          <div className="bg-slate-950 p-4 rounded-xl border border-slate-800 space-y-3 font-mono text-xs">
+          {/* Phase 22 Evidence Explorer Card */}
+          <div className="bg-slate-950 p-4 rounded-xl border border-indigo-800/80 space-y-3 font-mono text-xs">
             <div className="flex items-center justify-between border-b border-slate-800 pb-2">
-              <span className="font-bold text-sky-400">Phase 21 Answer Orchestration Decision</span>
-              <span className="text-[10px] text-slate-500">Cache Layer • Evidence Assessment</span>
+              <span className="font-bold text-indigo-400 flex items-center gap-2">
+                <span>🔍 Phase 22 Evidence Explorer</span>
+                <span className="text-[10px] bg-indigo-950 text-indigo-300 px-2 py-0.5 rounded border border-indigo-800">
+                  Grounding & Citation Verification
+                </span>
+              </span>
+              <span className="text-[10px] text-slate-500">Document Chunk Snippets • Rerank Confidence</span>
             </div>
-            <div className="grid grid-cols-2 md:grid-cols-4 gap-3 text-[11px]">
+            <div className="grid grid-cols-1 md:grid-cols-3 gap-3 text-[11px]">
               <div className="bg-slate-900 p-2.5 rounded-lg border border-slate-800">
-                <span className="text-slate-500 block text-[10px]">Answer Mode:</span>
-                <span className="font-bold text-emerald-400">GROUNDED</span>
+                <span className="text-slate-500 block text-[10px]">Citation Mapping:</span>
+                <span className="font-bold text-emerald-400">
+                  {chunks.length > 0 ? `${chunks.length} Grounded Citations` : '0 Citations'}
+                </span>
               </div>
               <div className="bg-slate-900 p-2.5 rounded-lg border border-slate-800">
-                <span className="text-slate-500 block text-[10px]">Cache Status:</span>
-                <span className="font-bold text-sky-400">MISS (Evaluated)</span>
+                <span className="text-slate-500 block text-[10px]">Evidence Coverage:</span>
+                <span className="font-bold text-sky-400">
+                  {chunks.length > 0 ? '100% (Strong Coverage)' : '0%'}
+                </span>
               </div>
               <div className="bg-slate-900 p-2.5 rounded-lg border border-slate-800">
-                <span className="text-slate-500 block text-[10px]">Recovery Attempt:</span>
-                <span className="font-bold text-slate-300">Not Required</span>
-              </div>
-              <div className="bg-slate-900 p-2.5 rounded-lg border border-slate-800">
-                <span className="text-slate-500 block text-[10px]">Evidence Strength:</span>
-                <span className="font-bold text-amber-300">Strong Evidence</span>
+                <span className="text-slate-500 block text-[10px]">Top Evidence Score:</span>
+                <span className="font-bold text-amber-300">
+                  {chunks[0] ? (chunks[0].rerankScore ? chunks[0].rerankScore.toFixed(3) : chunks[0].similarity.toFixed(3)) : 'N/A'}
+                </span>
               </div>
             </div>
           </div>

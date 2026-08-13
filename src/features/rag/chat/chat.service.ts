@@ -9,12 +9,14 @@ import { ValidationError, NotFoundError, AuthorizationError } from '@/errors';
 import { ChatResponse, Citation, ConversationDetail, StreamEvent } from './chat.types';
 import { MessageRole, Prisma } from '@prisma/client';
 import { promptContextService } from './prompt-context.service';
+import { citationService } from '../citation/citation.service';
 import { env } from '@/config/env';
 
 export class ChatService {
   private llmProvider: LLMProvider;
   private contextService: ConversationContextService;
   private orchestratorService: AnswerOrchestratorService;
+  private readonly hasCustomRetrievalService: boolean;
 
   constructor(
     retrievalService?: RetrievalService,
@@ -22,6 +24,7 @@ export class ChatService {
     contextService?: ConversationContextService,
     orchestratorService?: AnswerOrchestratorService
   ) {
+    this.hasCustomRetrievalService = !!retrievalService;
     this.llmProvider = llmProvider || getLLMProvider();
     this.contextService = contextService || conversationContextService;
     this.orchestratorService =
@@ -77,9 +80,26 @@ export class ChatService {
       isFirstTurn = true;
     }
 
+    const orchestrationInput = {
+      userId, question: trimmedQuestion, conversationId, knowledgeBaseId: targetKbId,
+      allowGeneralKnowledge: (input as any).allowGeneralKnowledge,
+      requestedAnswerMode: (input as any).requestedAnswerMode,
+      searchAllKbs: (input as any).searchAllKbs,
+      model: (input as any).model || env.server?.LLM_PROVIDER || 'ollama',
+      skipCache: this.hasCustomRetrievalService
+    };
+    // Context-dependent questions must never use a global raw-query cache key.
+    // Standalone questions can preflight before the potentially expensive rewrite.
+    const queryClassification = this.contextService.classifyQuery(trimmedQuestion);
+    const earlyCached = !this.hasCustomRetrievalService && queryClassification === 'STANDALONE'
+      ? await this.orchestratorService.findCachedAnswer(orchestrationInput)
+      : null;
+
     // 2. Load conversation context & prepare rewritten retrieval query
     const memoryStart = Date.now();
-    const convContext = await this.contextService.loadConversationContext(
+    const convContext = earlyCached ? {
+      summary: null, includedMessages: [], retrievalQuery: trimmedQuestion, queryRewriteMs: 0
+    } : await this.contextService.loadConversationContext(
       userId,
       conversationId,
       trimmedQuestion
@@ -87,17 +107,8 @@ export class ChatService {
     const conversationContextMs = Date.now() - memoryStart;
 
     // 3. Orchestrate answer & evidence decision
-    const orchResult = await this.orchestratorService.orchestrate(
-      {
-        userId,
-        question: trimmedQuestion,
-        conversationId,
-        knowledgeBaseId: targetKbId,
-        allowGeneralKnowledge: (input as any).allowGeneralKnowledge,
-        requestedAnswerMode: (input as any).requestedAnswerMode,
-        searchAllKbs: (input as any).searchAllKbs,
-        model: (input as any).model || env.server?.LLM_PROVIDER || 'ollama'
-      },
+    const orchResult = earlyCached || await this.orchestratorService.orchestrate(
+      orchestrationInput,
       convContext.summary,
       convContext.retrievalQuery,
       convContext.includedMessages.length
@@ -113,9 +124,11 @@ export class ChatService {
     let retrievedContextTokens = 0;
 
     if (orchResult.cacheHit) {
-      // Exact Cache Hit — avoid LLM generation entirely
+      // Exact Cache Hit — validate cached citations
+      citations = await citationService.validateCitations(citations, userId, targetKbId, retrievedChunks).catch(() => citations);
     } else if (orchResult.answerMode === 'NO_DOCUMENT_EVIDENCE' || orchResult.answerMode === 'CLARIFICATION_REQUIRED' || orchResult.answerMode === 'GENERAL_KNOWLEDGE') {
       // Answer pre-constructed by orchestrator
+      citations = [];
       await this.orchestratorService
         .cacheCompletedAnswer(
           {
@@ -129,7 +142,8 @@ export class ChatService {
           retrievedChunks.length,
           orchResult.topSimilarity,
           orchResult.answerMode,
-          convContext.summary
+          convContext.summary,
+          convContext.includedMessages.length
         )
         .catch(() => {});
     } else {
@@ -152,13 +166,8 @@ export class ChatService {
       });
       llmLatencyMs = Date.now() - llmStart;
 
-      citations = optimizedContext.chunks.map((c) => ({
-        documentId: c.documentId,
-        chunkId: c.id,
-        filename: c.filename,
-        pageNumber: c.pageNumber,
-        similarity: Number(c.similarity.toFixed(4))
-      }));
+      const citationResult = citationService.mapCitationsToAnswer(answer, retrievedChunks, trimmedQuestion);
+      citations = await citationService.validateCitations(citationResult.citations, userId, targetKbId, retrievedChunks);
 
       // Cache completed answer for exact matches
       await this.orchestratorService
@@ -174,7 +183,8 @@ export class ChatService {
           retrievedChunks.length,
           orchResult.topSimilarity,
           orchResult.answerMode,
-          convContext.summary
+          convContext.summary,
+          convContext.includedMessages.length
         )
         .catch(() => {});
     }
@@ -322,9 +332,24 @@ export class ChatService {
       isFirstTurn = true;
     }
 
+    const orchestrationInput = {
+      userId, question: trimmedQuestion, conversationId, knowledgeBaseId: targetKbId,
+      allowGeneralKnowledge: (input as any).allowGeneralKnowledge,
+      requestedAnswerMode: (input as any).requestedAnswerMode,
+      searchAllKbs: (input as any).searchAllKbs,
+      model: (input as any).model || env.server?.LLM_PROVIDER || 'ollama',
+      skipCache: this.hasCustomRetrievalService
+    };
+    const queryClassification = this.contextService.classifyQuery(trimmedQuestion);
+    const earlyCached = !this.hasCustomRetrievalService && queryClassification === 'STANDALONE'
+      ? await this.orchestratorService.findCachedAnswer(orchestrationInput)
+      : null;
+
     // 2. Load conversation context & prepare rewritten retrieval query
     const memoryStart = Date.now();
-    const convContext = await this.contextService.loadConversationContext(
+    const convContext = earlyCached ? {
+      summary: null, includedMessages: [], retrievalQuery: trimmedQuestion, queryRewriteMs: 0
+    } : await this.contextService.loadConversationContext(
       userId,
       conversationId,
       trimmedQuestion
@@ -332,17 +357,8 @@ export class ChatService {
     const conversationContextMs = Date.now() - memoryStart;
 
     // 3. Orchestrate answer & evidence decision
-    const orchResult = await this.orchestratorService.orchestrate(
-      {
-        userId,
-        question: trimmedQuestion,
-        conversationId,
-        knowledgeBaseId: targetKbId,
-        allowGeneralKnowledge: (input as any).allowGeneralKnowledge,
-        requestedAnswerMode: (input as any).requestedAnswerMode,
-        searchAllKbs: (input as any).searchAllKbs,
-        model: (input as any).model || env.server?.LLM_PROVIDER || 'ollama'
-      },
+    const orchResult = earlyCached || await this.orchestratorService.orchestrate(
+      orchestrationInput,
       convContext.summary,
       convContext.retrievalQuery,
       convContext.includedMessages.length
@@ -400,7 +416,8 @@ export class ChatService {
           retrievedChunks.length,
           orchResult.topSimilarity,
           orchResult.answerMode,
-          convContext.summary
+          convContext.summary,
+          convContext.includedMessages.length
         )
         .catch(() => {});
     } else {
@@ -441,6 +458,9 @@ export class ChatService {
       }
       llmGenerationMs = receivedFirstToken ? Date.now() - llmStart - llmFirstTokenMs : Date.now() - llmStart;
 
+      const citationResult = citationService.mapCitationsToAnswer(answer.trim(), retrievedChunks, trimmedQuestion);
+      citations = await citationService.validateCitations(citationResult.citations, userId, targetKbId, retrievedChunks);
+
       // Cache exact answer
       this.orchestratorService
         .cacheCompletedAnswer(
@@ -448,14 +468,15 @@ export class ChatService {
             userId,
             question: trimmedQuestion,
             knowledgeBaseId: targetKbId,
-            model: (this.llmProvider as any)?.constructor?.name || env.server?.LLM_PROVIDER || 'ollama'
+            model: (input as any).model || env.server?.LLM_PROVIDER || 'ollama'
           },
           answer.trim(),
           citations,
           retrievedChunks.length,
           orchResult.topSimilarity,
           orchResult.answerMode,
-          convContext.summary
+          convContext.summary,
+          convContext.includedMessages.length
         )
         .catch(() => {});
     }

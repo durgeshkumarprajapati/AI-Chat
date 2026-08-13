@@ -446,9 +446,11 @@ async function runPhase10Tests() {
   console.log('====================================================\n');
 }
 
-runPhase10Tests()
-  .then(() => process.exit(0))
-  .catch((err) => {
-    console.error('\n❌ PHASE 10 TEST FAILED:', err);
-    process.exit(1);
-  });
+if (process.argv[1]?.endsWith('phase10-embeddings.test.ts')) {
+  runPhase10Tests()
+    .then(() => process.exit(0))
+    .catch((err) => {
+      console.error('\n❌ PHASE 10 TEST FAILED:', err);
+      process.exit(1);
+    });
+}

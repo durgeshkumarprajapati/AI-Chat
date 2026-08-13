@@ -348,10 +348,14 @@ async function runPhase11Tests() {
 
   // Test 8: Normal grounded RAG response displays citations
   console.log('\nTest 8: Grounded RAG response returns populated citations');
+  const persistedChunk8 = await prisma.documentChunk.findFirst({
+    where: { documentId: doc1.id }, orderBy: { chunkIndex: 'asc' }
+  });
+  if (!persistedChunk8) throw new Error('Missing persisted evidence fixture for grounded citation test');
   const mockRet8 = new MockRetrievalService();
   mockRet8.mockChunks = [
     {
-      id: 'chunk-8',
+      id: persistedChunk8.id,
       documentId: doc1.id,
       filename: 'test1.pdf',
       chunkIndex: 0,

@@ -2,7 +2,7 @@
 
 import { useState, useEffect, useCallback } from 'react';
 import Link from 'next/link';
-import { useParams, useRouter } from 'next/navigation';
+import { useParams, useRouter, useSearchParams } from 'next/navigation';
 
 type DocumentDetail = {
   id: string;
@@ -37,7 +37,9 @@ type ChunkDetail = {
 export default function DocumentDetailPage() {
   const params = useParams();
   const router = useRouter();
+  const searchParams = useSearchParams();
   const documentId = params.id as string;
+  const targetPageParam = searchParams.get('page');
 
   const [document, setDocument] = useState<DocumentDetail | null>(null);
   const [chunkStats, setChunkStats] = useState<ChunkStats>({ totalChunks: 0, embeddedChunks: 0 });
@@ -241,6 +243,19 @@ export default function DocumentDetailPage() {
           </button>
         </div>
       </div>
+
+      {/* Target Page Evidence Banner */}
+      {targetPageParam && (
+        <div className="p-4 rounded-xl border bg-indigo-950/80 border-indigo-800 text-xs flex items-center justify-between text-indigo-200">
+          <div className="flex items-center space-x-2">
+            <span className="font-bold text-indigo-400">🔍 RAG Evidence Explorer:</span>
+            <span>Inspecting Page <strong>{targetPageParam}</strong> referenced by chat answer citation.</span>
+          </div>
+          <span className="text-[10px] font-mono bg-indigo-900/60 px-2 py-1 rounded border border-indigo-700/60 text-indigo-300">
+            Page {targetPageParam} Highlighted
+          </span>
+        </div>
+      )}
 
       {/* Banner Alert */}
       {bannerMessage && (

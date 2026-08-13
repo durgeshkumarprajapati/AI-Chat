@@ -129,6 +129,13 @@ const TOUR_STEPS: TourStep[] = [
     description: 'Multi-level caching (Exact, Embedding, Semantic) with Redis/Memory fallback, evidence assessment, 1-step retrieval recovery, explicit general knowledge mode, and structured zero-result actions.',
     technicalDetails: 'AnswerOrchestratorService • EvidenceAssessmentService • RedisRAGCacheProvider • Tenant-isolated cache keys',
     icon: '🚀'
+  },
+  {
+    title: 'Citation-Aware Answers & Evidence Explorer',
+    badge: 'Phase 22 Evidence',
+    description: 'Inspect exact document evidence snippets, page numbers, similarity scores, and evidence confidence levels for complete trust and transparency.',
+    technicalDetails: 'CitationService • Deterministic Evidence Snippet Extraction • Server-side Citation Validation • Evidence Confidence & Coverage',
+    icon: '🔍'
   }
 ];
 

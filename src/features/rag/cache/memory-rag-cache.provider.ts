@@ -1,6 +1,6 @@
 import { env } from '@/config/env';
-import { generateEmbeddingCacheKey, generateExactCacheKey, RAGCacheProvider } from './rag-cache.provider';
-import { CacheKeyOptions, EmbeddingCacheItem, ExactCacheItem, SemanticCacheItem } from './rag-cache.types';
+import { generateEmbeddingCacheKey, generateExactCacheKey, generateSemanticScopeKey, RAGCacheProvider } from './rag-cache.provider';
+import { CacheKeyOptions, EmbeddingCacheItem, ExactCacheItem, SemanticCacheItem, SemanticCacheLookupResult } from './rag-cache.types';
 
 type MemoryStoreEntry<T> = {
   value: T;
@@ -27,6 +27,7 @@ export class MemoryRAGCacheProvider implements RAGCacheProvider {
   private exactStore = new Map<string, MemoryStoreEntry<ExactCacheItem>>();
   private embedStore = new Map<string, MemoryStoreEntry<EmbeddingCacheItem>>();
   private semanticStore = new Map<string, MemoryStoreEntry<SemanticCacheItem>>();
+  private semanticIndexes = new Map<string, string[]>();
 
   public async getExact(keyOptions: CacheKeyOptions): Promise<ExactCacheItem | null> {
     if (!isCacheEnabled() || !isExactCacheEnabled()) return null;
@@ -70,32 +71,47 @@ export class MemoryRAGCacheProvider implements RAGCacheProvider {
   }
 
   public async getSemantic(keyOptions: CacheKeyOptions, queryVector: number[], threshold?: number): Promise<SemanticCacheItem | null> {
-    if (!isCacheEnabled() || !isSemanticCacheEnabled()) return null;
-    const reqThreshold = threshold || env.server?.RAG_SEMANTIC_CACHE_THRESHOLD || 0.94;
-    const now = Date.now();
+    return (await this.getSemanticWithDiagnostics(keyOptions, queryVector, threshold)).item;
+  }
 
-    for (const [key, entry] of this.semanticStore.entries()) {
+  public async getSemanticWithDiagnostics(keyOptions: CacheKeyOptions, queryVector: number[], threshold?: number): Promise<SemanticCacheLookupResult> {
+    if (!isCacheEnabled() || !isSemanticCacheEnabled()) return { item: null, similarity: null, candidateCount: 0 };
+    const reqThreshold = threshold ?? env.server?.RAG_SEMANTIC_CACHE_THRESHOLD ?? 0.90;
+    const now = Date.now();
+    const candidateKeys = this.semanticIndexes.get(generateSemanticScopeKey(keyOptions)) || [];
+    let best: SemanticCacheItem | null = null;
+    let bestSimilarity = reqThreshold;
+    let highestSimilarity: number | null = null;
+    for (const key of candidateKeys) {
+      const entry = this.semanticStore.get(key);
+      if (!entry) continue;
       if (now > entry.expiresAt) {
         this.semanticStore.delete(key);
         continue;
       }
       const item = entry.value;
-      if (item.userId !== keyOptions.userId || item.knowledgeBaseId !== (keyOptions.knowledgeBaseId || null)) {
+      if (!this.isCompatible(item, keyOptions)) {
         continue;
       }
       const sim = this.cosineSimilarity(queryVector, item.queryVector);
-      if (sim >= reqThreshold) {
-        return item;
+      highestSimilarity = highestSimilarity === null ? sim : Math.max(highestSimilarity, sim);
+      if (sim >= bestSimilarity) {
+        best = item;
+        bestSimilarity = sim;
       }
     }
-    return null;
+    return { item: best, similarity: highestSimilarity, candidateCount: candidateKeys.length, sourceFingerprint: best?.sourceFingerprint };
   }
 
   public async setSemantic(keyOptions: CacheKeyOptions, item: SemanticCacheItem, ttlSeconds?: number): Promise<void> {
     if (!isCacheEnabled() || !isSemanticCacheEnabled()) return;
-    const ttl = (ttlSeconds || env.server?.RAG_CACHE_TTL_SECONDS || 300) * 1000;
+    const ttl = (ttlSeconds || env.server?.RAG_SEMANTIC_CACHE_TTL_SECONDS || 3600) * 1000;
     const key = `rag:semantic:${keyOptions.userId}:${keyOptions.knowledgeBaseId || 'global'}:${Date.now()}_${Math.random().toString(36).substring(2, 7)}`;
-    this.semanticStore.set(key, { value: item, expiresAt: Date.now() + ttl });
+    const expiresAt = Date.now() + ttl;
+    this.semanticStore.set(key, { value: { ...item, expiresAt: new Date(expiresAt).toISOString() }, expiresAt });
+    const indexKey = generateSemanticScopeKey(keyOptions);
+    const max = env.server?.RAG_SEMANTIC_CACHE_MAX_CANDIDATES ?? 20;
+    this.semanticIndexes.set(indexKey, [key, ...(this.semanticIndexes.get(indexKey) || [])].slice(0, max));
   }
 
   public async invalidateUser(userId: string): Promise<void> {
@@ -105,6 +121,7 @@ export class MemoryRAGCacheProvider implements RAGCacheProvider {
     for (const key of this.semanticStore.keys()) {
       if (key.includes(userId)) this.semanticStore.delete(key);
     }
+    for (const key of this.semanticIndexes.keys()) if (key.includes(`:${userId}:`)) this.semanticIndexes.delete(key);
   }
 
   public async invalidateKnowledgeBase(knowledgeBaseId: string): Promise<void> {
@@ -114,11 +131,21 @@ export class MemoryRAGCacheProvider implements RAGCacheProvider {
     for (const key of this.semanticStore.keys()) {
       if (key.includes(knowledgeBaseId)) this.semanticStore.delete(key);
     }
+    for (const key of this.semanticIndexes.keys()) if (key.includes(`:${knowledgeBaseId}:`)) this.semanticIndexes.delete(key);
   }
 
   public async invalidateDocument(_documentId: string): Promise<void> {
     this.exactStore.clear();
     this.semanticStore.clear();
+    this.semanticIndexes.clear();
+  }
+
+  private isCompatible(item: SemanticCacheItem, options: CacheKeyOptions): boolean {
+    return item.userId === options.userId
+      && item.knowledgeBaseId === (options.knowledgeBaseId || null)
+      && item.model === (options.model || 'default')
+      && item.answerMode === (options.answerMode || 'GROUNDED')
+      && item.validEvidence && !item.invalidated && item.citations.length > 0;
   }
 
   private cosineSimilarity(a: number[], b: number[]): number {

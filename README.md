@@ -83,6 +83,10 @@ flowchart TD
 7. OpenAI LLM generates answer with `[Doc X, Page Y]` citations.
 8. Response & citations are saved and cached in Redis.
 
+### Semantic answer cache
+
+Grounded responses are cached both exactly and semantically. Semantic matching is scoped to the user, Knowledge Base (or global search), selected model/provider, and answer mode; it also requires validated citations and evidence. The default similarity threshold is `0.90`, intentionally conservative to favor correctness over hit rate. Tune it with `RAG_SEMANTIC_CACHE_THRESHOLD`; `RAG_SEMANTIC_CACHE_TTL_SECONDS` defaults to `3600`, and `RAG_SEMANTIC_CACHE_MAX_CANDIDATES` defaults to `20` per compatible scope. Contextual follow-ups bypass global semantic preflight and are first rewritten using conversation context.
+
 ---
 
 ## 3. Prerequisites & Environment Setup
@@ -561,7 +565,6 @@ RAG Pipeline → Latency Trace → Memory | Retrieval | Context | TTFT | LLM | P
 ```
 
 Run `npm run test:rag-latency` against a running application for current measurements. CPU-only Ollama performance remains hardware/model dependent; selecting a smaller model is an optional deployment decision and is never changed automatically.
-
 
 
 

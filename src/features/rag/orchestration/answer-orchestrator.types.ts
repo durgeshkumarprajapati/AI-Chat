@@ -43,6 +43,7 @@ export interface OrchestratedAnswer {
   recoveryAttempted: boolean;
   recoveryAttempts: number;
   latencyTrace: Record<string, number>;
+  sourceEvidenceFingerprint?: string;
 }
 
 export interface OrchestrationInput {
@@ -54,4 +55,5 @@ export interface OrchestrationInput {
   requestedAnswerMode?: AnswerMode;
   searchAllKbs?: boolean;
   model?: string;
+  skipCache?: boolean;
 }

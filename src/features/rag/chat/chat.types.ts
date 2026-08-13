@@ -1,9 +1,17 @@
 export interface Citation {
+  id?: string;
+  index?: number;
   documentId: string;
   chunkId: string;
   filename: string;
   pageNumber: number;
   similarity: number;
+  rerankScore?: number;
+  sourceType?: 'vector' | 'keyword' | 'hybrid';
+  evidenceSnippet?: string;
+  confidence?: number;
+  confidenceLabel?: 'Strong' | 'Moderate' | 'Limited';
+  answerSegmentIds?: string[];
 }
 
 export interface ChatMessageItem {

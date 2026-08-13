@@ -12,6 +12,7 @@ import { getLLMProvider } from '../src/features/rag/llm/llm.provider.factory';
 import { prisma } from '../src/lib/prisma';
 import { ValidationError, AuthorizationError } from '../src/errors';
 import { StreamEvent } from '../src/features/rag/chat/chat.types';
+import { DocumentStatus } from '@prisma/client';
 
 const TEST_USER_ID = '77777777-7777-4000-a000-777777777777';
 const OTHER_USER_ID = '88888888-8888-4000-a000-888888888888';
@@ -152,10 +153,26 @@ async function runPhase13Tests() {
   // Test 11-16: Relevant Chunks Stream LLM Deltas & Persist Complete Message
   console.log('\nTest 11-16: Relevant Chunks Stream Deltas & Persist Message');
   const docId13 = `doc-p13-${Date.now()}`;
+  const chunkId13 = `chunk-p13-${Date.now()}`;
+  // The production citation guard validates that streamed citations point to
+  // owned, persisted evidence. Seed the mock retrieval identity accordingly.
+  await prisma.document.create({
+    data: {
+      id: docId13, userId: TEST_USER_ID, filename: 'deploy.pdf', originalFilename: 'deploy.pdf',
+      mimeType: 'application/pdf', fileSize: 1, storageKey: `tests/${docId13}/deploy.pdf`,
+      status: DocumentStatus.COMPLETED
+    }
+  });
+  await prisma.documentChunk.create({
+    data: {
+      id: chunkId13, documentId: docId13, chunkIndex: 0, pageNumber: 2,
+      content: 'Deployment pipeline executes automatically on push.', tokenCount: 7
+    }
+  });
   const mockRetChunks = new MockStreamingRetrievalService();
   mockRetChunks.mockChunks = [
     {
-      id: 'chunk-13',
+      id: chunkId13,
       documentId: docId13,
       filename: 'deploy.pdf',
       chunkIndex: 0,
@@ -262,9 +279,11 @@ async function runPhase13Tests() {
   console.log('====================================================\n');
 }
 
-runPhase13Tests()
-  .then(() => process.exit(0))
-  .catch((err) => {
-    console.error('\n❌ PHASE 13 TEST FAILED:', err);
-    process.exit(1);
-  });
+if (process.argv[1]?.endsWith('phase13-streaming-chat.test.ts')) {
+  runPhase13Tests()
+    .then(() => process.exit(0))
+    .catch((err) => {
+      console.error('\n❌ PHASE 13 TEST FAILED:', err);
+      process.exit(1);
+    });
+}

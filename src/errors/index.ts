@@ -38,6 +38,12 @@ export class AuthorizationError extends AppError {
   }
 }
 
+export class SecurityError extends AppError {
+  constructor(message = 'Security violation') {
+    super(message, 403, 'SECURITY_VIOLATION');
+  }
+}
+
 export class NotFoundError extends AppError {
   constructor(resource = 'Resource') {
     super(`${resource} not found`, 404, 'NOT_FOUND');

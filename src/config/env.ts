@@ -161,7 +161,7 @@ const serverEnvSchema = z
       .default(true),
     RAG_SEMANTIC_CACHE_ENABLED: z
       .coerce.boolean()
-      .default(false),
+      .default(true),
     RAG_EMBEDDING_CACHE_ENABLED: z
       .coerce.boolean()
       .default(true),
@@ -172,7 +172,11 @@ const serverEnvSchema = z
       .default(300),
     RAG_SEMANTIC_CACHE_THRESHOLD: z
       .coerce.number()
-      .default(0.94),
+      .min(-1)
+      .max(1)
+      .default(0.90),
+    RAG_SEMANTIC_CACHE_TTL_SECONDS: z.coerce.number().int().positive().default(3600),
+    RAG_SEMANTIC_CACHE_MAX_CANDIDATES: z.coerce.number().int().positive().max(1000).default(20),
     RAG_MAX_RECOVERY_ATTEMPTS: z
       .coerce.number()
       .int()

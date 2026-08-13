@@ -1,15 +1,23 @@
 'use client';
 
 import { useState, useEffect, useRef, useCallback } from 'react';
-import Link from 'next/link';
 import { useSearchParams } from 'next/navigation';
+import { EvidenceModal } from '@/components/chat/EvidenceModal';
 
 type Citation = {
+  id?: string;
+  index?: number;
   documentId: string;
   chunkId: string;
   filename: string;
   pageNumber: number;
   similarity: number;
+  rerankScore?: number;
+  sourceType?: 'vector' | 'keyword' | 'hybrid';
+  evidenceSnippet?: string;
+  confidence?: number;
+  confidenceLabel?: 'Strong' | 'Moderate' | 'Limited';
+  answerSegmentIds?: string[];
 };
 
 type ChatMessage = {
@@ -62,6 +70,7 @@ export default function ChatPage() {
   const [copiedId, setCopiedId] = useState<string | null>(null);
   const [userFeedbackState, setUserFeedbackState] = useState<Record<string, { rating: 'POSITIVE' | 'NEGATIVE'; reason?: string }>>({});
   const [feedbackToast, setFeedbackToast] = useState<string | null>(null);
+  const [activeModalCitation, setActiveModalCitation] = useState<Citation | null>(null);
 
   const handleFeedbackSubmit = async (messageId: string, rating: 'POSITIVE' | 'NEGATIVE', reason?: string) => {
     if (!activeConversationId) return;
@@ -761,22 +770,39 @@ export default function ChatPage() {
                     </button>
                   )}
 
-                  {/* Citations List */}
+                  {/* Citations List & Evidence Explorer */}
                   {msg.role === 'ASSISTANT' && msg.citations && msg.citations.length > 0 && !msg.isStreaming && (
-                    <div className="mt-4 pt-3 border-t border-slate-800/80 space-y-2">
-                      <span className="text-[10px] font-bold text-indigo-400 uppercase tracking-wider block">
-                        Sources & Citations:
-                      </span>
+                    <div className="mt-4 pt-3 border-t border-slate-800/80 space-y-2.5">
+                      <div className="flex items-center justify-between">
+                        <span className="text-[10px] font-bold text-indigo-400 uppercase tracking-wider block">
+                          Verified Document Sources:
+                        </span>
+                        {msg.citations[0]?.confidenceLabel && (
+                          <span
+                            className={`text-[10px] font-mono font-semibold px-2 py-0.5 rounded border ${
+                              msg.citations[0].confidenceLabel === 'Strong'
+                                ? 'bg-emerald-950 text-emerald-400 border-emerald-800/60'
+                                : msg.citations[0].confidenceLabel === 'Moderate'
+                                ? 'bg-amber-950 text-amber-400 border-amber-800/60'
+                                : 'bg-slate-900 text-slate-400 border-slate-800'
+                            }`}
+                          >
+                            Evidence: ● {msg.citations[0].confidenceLabel}
+                          </span>
+                        )}
+                      </div>
                       <div className="flex flex-wrap gap-2">
                         {msg.citations.map((c, idx) => (
-                          <Link
+                          <button
                             key={idx}
-                            href={`/documents/${c.documentId}`}
-                            className="inline-flex items-center space-x-1 px-2.5 py-1 rounded-lg bg-slate-900 border border-slate-800 hover:border-indigo-500 text-[11px] font-mono text-slate-300 transition-colors"
+                            onClick={() => setActiveModalCitation(c)}
+                            className="inline-flex items-center space-x-1.5 px-2.5 py-1 rounded-lg bg-slate-900 border border-slate-800 hover:border-indigo-500 text-[11px] font-mono text-slate-300 transition-all hover:bg-slate-850 shadow-sm group/cit"
                           >
-                            <span>📄 {c.filename}</span>
-                            <span className="text-slate-500">• Page {c.pageNumber}</span>
-                          </Link>
+                            <span className="font-bold text-indigo-400 group-hover/cit:text-indigo-300">[{c.index || idx + 1}]</span>
+                            <span className="truncate max-w-[140px]">{c.filename}</span>
+                            <span className="text-slate-500">&bull; Page {c.pageNumber}</span>
+                            <span className="text-[10px] text-indigo-400/80 underline ml-1">View Evidence</span>
+                          </button>
                         ))}
                       </div>
                     </div>
@@ -868,6 +894,13 @@ export default function ChatPage() {
           )}
         </div>
       </main>
+
+      {/* Phase 22 Evidence Explorer Popover Modal */}
+      <EvidenceModal
+        citation={activeModalCitation}
+        isOpen={!!activeModalCitation}
+        onClose={() => setActiveModalCitation(null)}
+      />
     </div>
   );
 }

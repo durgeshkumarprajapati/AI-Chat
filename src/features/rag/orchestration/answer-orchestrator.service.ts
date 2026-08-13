@@ -7,6 +7,8 @@ import { AnswerMode, OrchestrationInput, OrchestratedAnswer, UserAction } from '
 import { getLLMProvider } from '../llm/llm.provider.factory';
 import { LLMProvider } from '../llm/llm.provider';
 import { Citation } from '../chat/chat.types';
+import { citationService } from '../citation/citation.service';
+import { createHash } from 'crypto';
 
 export class AnswerOrchestratorService {
   private cacheProvider: RAGCacheProvider;
@@ -24,6 +26,51 @@ export class AnswerOrchestratorService {
     this.retrievalService = retrievalService || new RetrievalService();
     this.evidenceService = evidenceService || evidenceAssessmentService;
     this.llmProvider = llmProvider || getLLMProvider();
+  }
+
+  /**
+   * Cheap cache-only preflight for chat endpoints. Calling this before loading
+   * conversation context lets a semantic hit avoid an LLM query rewrite.
+   */
+  public async findCachedAnswer(input: OrchestrationInput): Promise<OrchestratedAnswer | null> {
+    if (input.skipCache) return null;
+    if (input.requestedAnswerMode === 'GENERAL_KNOWLEDGE' || (input.allowGeneralKnowledge && !input.knowledgeBaseId)) return null;
+    const start = Date.now();
+    const latencyTrace: Record<string, number> = {};
+    const options = {
+      userId: input.userId,
+      knowledgeBaseId: input.searchAllKbs ? null : input.knowledgeBaseId || null,
+      model: input.model || env.server?.LLM_PROVIDER || 'ollama',
+      answerMode: input.requestedAnswerMode || 'GROUNDED',
+      query: input.question.trim()
+    };
+    const exact = await this.cacheProvider.getExact(options);
+    if (exact) return this.cachedAnswer(input, exact, 'exact', latencyTrace);
+    const semanticStart = Date.now();
+    const embedding = await this.retrievalService.getQueryEmbedding(options.query);
+    latencyTrace.embeddingCacheHit = embedding.cacheHit ? 1 : 0;
+    latencyTrace.embeddingGenerationMs = embedding.generationMs;
+    const semanticLookup = await this.cacheProvider.getSemanticWithDiagnostics(options, embedding.vector);
+    const semantic = semanticLookup.item;
+    latencyTrace.semanticCacheLookupMs = Date.now() - semanticStart;
+    latencyTrace.semanticCandidateCount = semanticLookup.candidateCount;
+    if (semanticLookup.similarity !== null) latencyTrace.semanticSimilarity = semanticLookup.similarity;
+    latencyTrace.semanticThreshold = env.server?.RAG_SEMANTIC_CACHE_THRESHOLD ?? 0.90;
+    if (!semantic) return null;
+    latencyTrace.totalMs = Date.now() - start;
+    return this.cachedAnswer(input, semantic, 'semantic', latencyTrace, !embedding.cacheHit);
+  }
+
+  private cachedAnswer(input: OrchestrationInput, item: { answer: string; citations: Citation[]; answerMode: string; topSimilarity: number; retrievalQuery?: string; contextMessagesCount?: number; sourceFingerprint?: string }, cacheType: 'exact' | 'semantic', latencyTrace: Record<string, number>, embeddingCalled = false): OrchestratedAnswer {
+    return {
+      conversationId: input.conversationId || '', answerMode: item.answerMode as AnswerMode,
+      answer: item.answer, citations: item.citations, retrievedChunks: [], topSimilarity: item.topSimilarity,
+      retrievalQuery: item.retrievalQuery || input.question, contextMessagesCount: item.contextMessagesCount || 0,
+      cacheHit: true, cacheType, llmCalled: false, embeddingCalled,
+      vectorSearchCalled: false, keywordSearchCalled: false, rerankCalled: false,
+      recoveryAttempted: false, recoveryAttempts: 0, latencyTrace,
+      sourceEvidenceFingerprint: cacheType === 'semantic' ? item.sourceFingerprint : undefined
+    };
   }
 
   public async orchestrate(
@@ -80,11 +127,12 @@ export class AnswerOrchestratorService {
       userId: input.userId,
       knowledgeBaseId: input.searchAllKbs ? null : input.knowledgeBaseId || null,
       model: input.model || env.server?.LLM_PROVIDER || 'ollama',
+      answerMode: requestedMode || 'GROUNDED',
       query: effectiveQuery,
       contextSummary
     };
 
-    const cachedExact = await this.cacheProvider.getExact(cacheOptions);
+    const cachedExact = input.skipCache ? null : await this.cacheProvider.getExact(cacheOptions);
     const cacheLookupMs = Date.now() - cacheStart;
     latencyTrace.cacheLookupMs = cacheLookupMs;
 
@@ -112,9 +160,37 @@ export class AnswerOrchestratorService {
       };
     }
 
-    // 3. Primary Retrieval & Evidence Assessment
+    // 3. Semantic cache precedes retrieval. It deliberately uses the same embedding
+    // later passed into vector retrieval so a miss does not embed the query twice.
+    const semanticStart = Date.now();
+    const queryEmbedding = await this.retrievalService.getQueryEmbedding(effectiveQuery);
+    latencyTrace.embeddingCacheHit = queryEmbedding.cacheHit ? 1 : 0;
+    latencyTrace.embeddingGenerationMs = queryEmbedding.generationMs;
+    const semanticLookup = input.skipCache
+      ? { item: null, similarity: null, candidateCount: 0 }
+      : await this.cacheProvider.getSemanticWithDiagnostics(cacheOptions, queryEmbedding.vector);
+    const cachedSemantic = semanticLookup.item;
+    latencyTrace.semanticCacheLookupMs = Date.now() - semanticStart;
+    latencyTrace.semanticCandidateCount = semanticLookup.candidateCount;
+    if (semanticLookup.similarity !== null) latencyTrace.semanticSimilarity = semanticLookup.similarity;
+    latencyTrace.semanticThreshold = env.server?.RAG_SEMANTIC_CACHE_THRESHOLD ?? 0.90;
+    if (cachedSemantic) {
+      latencyTrace.totalMs = Date.now() - startTime;
+      return {
+        conversationId: input.conversationId || '', answerMode: cachedSemantic.answerMode as AnswerMode,
+        answer: cachedSemantic.answer, citations: cachedSemantic.citations, retrievedChunks: [],
+        topSimilarity: cachedSemantic.topSimilarity, retrievalQuery: cachedSemantic.retrievalQuery || effectiveQuery,
+        contextMessagesCount: cachedSemantic.contextMessagesCount || contextMessagesCount,
+        cacheHit: true, cacheType: 'semantic', llmCalled: false, embeddingCalled: !queryEmbedding.cacheHit,
+        vectorSearchCalled: false, keywordSearchCalled: false, rerankCalled: false,
+        recoveryAttempted: false, recoveryAttempts: 0, latencyTrace
+      };
+    }
+
+    // 4. Primary Retrieval & Evidence Assessment
     const retResult = await this.retrievalService.retrieveContextWithTrace(input.userId, effectiveQuery, {
-      knowledgeBaseId: input.searchAllKbs ? undefined : input.knowledgeBaseId
+      knowledgeBaseId: input.searchAllKbs ? undefined : input.knowledgeBaseId,
+      queryVector: queryEmbedding.vector
     });
 
     if (retResult.trace && retResult.trace.metrics) {
@@ -131,7 +207,7 @@ export class AnswerOrchestratorService {
     let recoveryAttempted = false;
     let currentMode: AnswerMode = 'GROUNDED';
 
-    // 4. Safe Retrieval Recovery (1-step Query Reformulation if evidence is weak)
+    // 5. Safe Retrieval Recovery (1-step Query Reformulation if evidence is weak)
     const maxRecovery = env.server?.RAG_MAX_RECOVERY_ATTEMPTS ?? 1;
     if (!evidence.hasStrongEvidence && maxRecovery > 0) {
       recoveryAttempted = true;
@@ -155,7 +231,7 @@ export class AnswerOrchestratorService {
       }
     }
 
-    // 5. Ambiguity Clarification
+    // 6. Ambiguity Clarification
     if (evidence.isAmbiguousQuestion && chunks.length === 0) {
       latencyTrace.totalMs = Date.now() - startTime;
       return {
@@ -181,7 +257,7 @@ export class AnswerOrchestratorService {
       };
     }
 
-    // 6. No Document Evidence Structured Response
+    // 7. No Document Evidence Structured Response
     if (!evidence.hasStrongEvidence || chunks.length === 0) {
       latencyTrace.totalMs = Date.now() - startTime;
       const actions: UserAction[] = ['GENERAL_KNOWLEDGE', 'SEARCH_ALL_KNOWLEDGE_BASES', 'REFINE_QUERY'];
@@ -211,14 +287,9 @@ export class AnswerOrchestratorService {
       };
     }
 
-    // 7. Grounded Citations & Output Construction
-    const citations: Citation[] = chunks.map((c) => ({
-      documentId: c.documentId,
-      chunkId: c.id,
-      filename: c.filename,
-      pageNumber: c.pageNumber,
-      similarity: c.similarity
-    }));
+    // 8. Grounded Citations & Output Construction
+    const citationResult = citationService.mapCitationsToAnswer('', chunks, input.question);
+    const citations: Citation[] = citationResult.citations;
 
     latencyTrace.totalMs = Date.now() - startTime;
 
@@ -245,7 +316,7 @@ export class AnswerOrchestratorService {
   }
 
   /**
-   * Caches a completed answer in Exact Cache safely.
+   * Caches only verified grounded responses in exact and semantic caches.
    */
   public async cacheCompletedAnswer(
     input: OrchestrationInput,
@@ -254,8 +325,11 @@ export class AnswerOrchestratorService {
     retrievedCount: number,
     topSim: number,
     mode: AnswerMode,
-    contextSummary?: string | null
+    contextSummary?: string | null,
+    contextMessagesCount = 0
   ): Promise<void> {
+    if (input.skipCache) return;
+    if ((mode !== 'GROUNDED' && mode !== 'RETRIEVAL_RECOVERY') || !answer.trim() || citations.length === 0) return;
     const cacheOptions = {
       userId: input.userId,
       knowledgeBaseId: input.searchAllKbs ? null : input.knowledgeBaseId || null,
@@ -265,13 +339,36 @@ export class AnswerOrchestratorService {
       contextSummary
     };
 
-    await this.cacheProvider.setExact(cacheOptions, {
+    const item = {
       answer,
       citations,
       retrievedChunks: retrievedCount,
       topSimilarity: topSim,
       answerMode: mode,
       cachedAt: new Date().toISOString()
+    };
+    await this.cacheProvider.setExact(cacheOptions, item);
+    // A follow-up can be valid only in its original conversation. Exact cache
+    // retains the existing context key; semantic reuse is intentionally limited
+    // to standalone requests.
+    if (contextMessagesCount > 0) return;
+    const embedding = await this.retrievalService.getQueryEmbedding(input.question);
+    await this.cacheProvider.setSemantic(cacheOptions, {
+      ...item,
+      question: input.question.trim().toLowerCase(),
+      queryVector: embedding.vector,
+      userId: input.userId,
+      knowledgeBaseId: cacheOptions.knowledgeBaseId,
+      model: cacheOptions.model,
+      answerMode: mode,
+      validEvidence: true,
+      sourceDocumentIds: [...new Set(citations.map((citation) => citation.documentId))],
+      // The invalidation hooks evict affected user/KB scopes; this fingerprint
+      // records the concrete evidence identity for diagnostics and future
+      // finer-grained document invalidation.
+      sourceFingerprint: createHash('sha256')
+        .update(citations.map((citation) => `${citation.documentId}:${citation.chunkId}`).sort().join('|'))
+        .digest('hex')
     });
   }
 

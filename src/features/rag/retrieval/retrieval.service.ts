@@ -31,6 +31,22 @@ export class RetrievalService {
     return this.lastTrace;
   }
 
+  /** Returns one normalized-query embedding, reusing the shared RAG embedding cache. */
+  public async getQueryEmbedding(question: string): Promise<{ vector: number[]; cacheHit: boolean; generationMs: number }> {
+    const provider = env.server?.EMBEDDING_PROVIDER || 'ollama';
+    const model = provider === 'openai'
+      ? (env.server?.OPENAI_EMBEDDING_MODEL || 'text-embedding-3-small')
+      : (env.server?.OLLAMA_EMBEDDING_MODEL || 'nomic-embed-text');
+    const cacheProvider = (await import('../cache/rag-cache.factory')).getRAGCacheProvider();
+    const cached = await cacheProvider.getEmbedding(provider, model, question);
+    if (cached) return { vector: cached, cacheHit: true, generationMs: 0 };
+    const start = Date.now();
+    const vector = (await this.embeddingProvider.embedTexts([question]))[0];
+    if (!vector) throw new DocumentProcessingError('Failed to generate embedding vector for user question.');
+    await cacheProvider.setEmbedding(provider, model, question, vector).catch(() => {});
+    return { vector, cacheHit: false, generationMs: Date.now() - start };
+  }
+
   public async retrieveContextWithTrace(
     userId: string,
     question: string,
@@ -93,25 +109,8 @@ export class RetrievalService {
 
     // Check embedding cache before generating embedding via model provider
     const embeddingStart = Date.now();
-    const cacheProvider = (await import('../cache/rag-cache.factory')).getRAGCacheProvider();
-    let questionVector = await cacheProvider.getEmbedding(
-      env.server?.EMBEDDING_PROVIDER || 'ollama',
-      env.server?.OLLAMA_EMBEDDING_MODEL || 'nomic-embed-text',
-      question
-    );
-
-    if (!questionVector) {
-      const vectors = await this.embeddingProvider.embedTexts([question]);
-      questionVector = vectors[0] || null;
-      if (questionVector) {
-        cacheProvider.setEmbedding(
-          env.server?.EMBEDDING_PROVIDER || 'ollama',
-          env.server?.OLLAMA_EMBEDDING_MODEL || 'nomic-embed-text',
-          question,
-          questionVector
-        ).catch(() => {});
-      }
-    }
+    let questionVector = options?.queryVector || null;
+    if (!questionVector) questionVector = (await this.getQueryEmbedding(question)).vector;
     const embeddingMs = Date.now() - embeddingStart;
 
     if (!questionVector) {

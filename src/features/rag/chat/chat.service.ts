@@ -17,7 +17,7 @@ export class ChatService {
 
   public async sendMessage(
     userId: string,
-    input: { conversationId?: string; question: string }
+    input: { conversationId?: string; question: string; knowledgeBaseId?: string }
   ): Promise<ChatResponse> {
     const trimmedQuestion = input.question?.trim();
     if (!trimmedQuestion) {
@@ -28,6 +28,8 @@ export class ChatService {
 
     // 1. Verify or create Conversation owned by userId
     let conversationId = input.conversationId;
+    let targetKbId = input.knowledgeBaseId;
+
     if (conversationId) {
       const existingConv = await prisma.conversation.findUnique({
         where: { id: conversationId }
@@ -38,19 +40,30 @@ export class ChatService {
       if (existingConv.userId !== userId) {
         throw new AuthorizationError('Access denied to specified conversation');
       }
+      if (!targetKbId && existingConv.knowledgeBaseId) {
+        targetKbId = existingConv.knowledgeBaseId;
+      }
     } else {
+      if (targetKbId) {
+        const kb = await prisma.knowledgeBase.findFirst({ where: { id: targetKbId, userId } });
+        if (!kb) throw new NotFoundError('Knowledge Base');
+      }
+
       const newTitle = trimmedQuestion.length > 30 ? `${trimmedQuestion.slice(0, 30)}...` : trimmedQuestion;
       const newConv = await prisma.conversation.create({
         data: {
           userId,
-          title: newTitle
+          title: newTitle,
+          knowledgeBaseId: targetKbId || null
         }
       });
       conversationId = newConv.id;
     }
 
     // 2. Retrieve top-K relevant chunks via pgvector similarity search
-    const retrievedChunks = await this.retrievalService.retrieveContext(userId, trimmedQuestion);
+    const retrievedChunks = await this.retrievalService.retrieveContext(userId, trimmedQuestion, {
+      knowledgeBaseId: targetKbId
+    });
 
     const topSimilarity = retrievedChunks.length > 0 ? retrievedChunks[0]!.similarity : 0;
 
@@ -126,7 +139,7 @@ export class ChatService {
 
   public async *streamMessage(
     userId: string,
-    input: { conversationId?: string; question: string }
+    input: { conversationId?: string; question: string; knowledgeBaseId?: string }
   ): AsyncIterable<StreamEvent> {
     const trimmedQuestion = input.question?.trim();
     if (!trimmedQuestion) {
@@ -137,6 +150,8 @@ export class ChatService {
 
     // 1. Verify or create Conversation owned by userId
     let conversationId = input.conversationId;
+    let targetKbId = input.knowledgeBaseId;
+
     if (conversationId) {
       const existingConv = await prisma.conversation.findUnique({
         where: { id: conversationId }
@@ -147,19 +162,30 @@ export class ChatService {
       if (existingConv.userId !== userId) {
         throw new AuthorizationError('Access denied to specified conversation');
       }
+      if (!targetKbId && existingConv.knowledgeBaseId) {
+        targetKbId = existingConv.knowledgeBaseId;
+      }
     } else {
+      if (targetKbId) {
+        const kb = await prisma.knowledgeBase.findFirst({ where: { id: targetKbId, userId } });
+        if (!kb) throw new NotFoundError('Knowledge Base');
+      }
+
       const newTitle = trimmedQuestion.length > 30 ? `${trimmedQuestion.slice(0, 30)}...` : trimmedQuestion;
       const newConv = await prisma.conversation.create({
         data: {
           userId,
-          title: newTitle
+          title: newTitle,
+          knowledgeBaseId: targetKbId || null
         }
       });
       conversationId = newConv.id;
     }
 
     // 2. Retrieve top-K relevant chunks via pgvector similarity search
-    const retrievedChunks = await this.retrievalService.retrieveContext(userId, trimmedQuestion);
+    const retrievedChunks = await this.retrievalService.retrieveContext(userId, trimmedQuestion, {
+      knowledgeBaseId: targetKbId
+    });
     const topSimilarity = retrievedChunks.length > 0 ? retrievedChunks[0]!.similarity : 0;
 
     let citations: Citation[] = [];

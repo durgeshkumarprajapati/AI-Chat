@@ -30,7 +30,8 @@ export async function POST(req: NextRequest) {
         try {
           const stream = chatService.streamMessage(authUser.id, {
             conversationId: body.conversationId,
-            question: body.question
+            question: body.question,
+            knowledgeBaseId: body.knowledgeBaseId
           });
 
           for await (const evt of stream) {

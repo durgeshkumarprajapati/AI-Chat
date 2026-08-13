@@ -2,7 +2,7 @@ import { getEmbeddingProvider } from '@/features/documents/embeddings/embedding.
 import { EmbeddingProvider } from '@/features/documents/embeddings/embedding.provider';
 import { prisma } from '@/lib/prisma';
 import { env } from '@/config/env';
-import { DocumentProcessingError } from '@/errors';
+import { DocumentProcessingError, NotFoundError } from '@/errors';
 import { RetrievedChunk, RetrievalOptions, RetrievalResultWithTrace } from './retrieval.types';
 import { localReranker, Reranker } from './reranker';
 
@@ -57,6 +57,16 @@ export class RetrievalService {
     const keywordWeight = options?.keywordWeight ?? env.server?.RAG_KEYWORD_WEIGHT ?? (process.env.RAG_KEYWORD_WEIGHT ? Number(process.env.RAG_KEYWORD_WEIGHT) : 0.30);
     const enableRerank = options?.enableRerank ?? env.server?.RAG_RERANK_ENABLED ?? true;
 
+    // Check Knowledge Base authorization if knowledgeBaseId is provided
+    if (options?.knowledgeBaseId) {
+      const kb = await prisma.knowledgeBase.findFirst({
+        where: { id: options.knowledgeBaseId, userId }
+      });
+      if (!kb) {
+        throw new NotFoundError('Knowledge Base');
+      }
+    }
+
     // 1. Vector Search
     const vectorStart = Date.now();
     const vectors = await this.embeddingProvider.embedTexts([question]);
@@ -75,36 +85,71 @@ export class RetrievalService {
 
     const vectorStr = `[${questionVector.join(',')}]`;
 
-    const rawVectorResults = await prisma.$queryRaw<
-      Array<{
-        id: string;
-        documentId: string;
-        filename: string;
-        chunkIndex: number;
-        pageNumber: number;
-        content: string;
-        tokenCount: number;
-        metadata: Record<string, unknown>;
-        similarity: number;
-      }>
-    >`
-      SELECT 
-        dc.id,
-        dc.document_id as "documentId",
-        d.filename,
-        dc.chunk_index as "chunkIndex",
-        dc.page_number as "pageNumber",
-        dc.content,
-        dc.token_count as "tokenCount",
-        dc.metadata,
-        (1 - (dc.embedding <=> ${vectorStr}::vector)) as similarity
-      FROM document_chunks dc
-      INNER JOIN documents d ON d.id = dc.document_id
-      WHERE d.user_id = ${userId} 
-        AND dc.embedding IS NOT NULL
-      ORDER BY dc.embedding <=> ${vectorStr}::vector ASC
-      LIMIT ${vectorK}
-    `;
+    const rawVectorResults = options?.knowledgeBaseId
+      ? await prisma.$queryRaw<
+          Array<{
+            id: string;
+            documentId: string;
+            filename: string;
+            chunkIndex: number;
+            pageNumber: number;
+            content: string;
+            tokenCount: number;
+            metadata: Record<string, unknown>;
+            similarity: number;
+          }>
+        >`
+          SELECT 
+            dc.id,
+            dc.document_id as "documentId",
+            d.filename,
+            dc.chunk_index as "chunkIndex",
+            dc.page_number as "pageNumber",
+            dc.content,
+            dc.token_count as "tokenCount",
+            dc.metadata,
+            (1 - (dc.embedding <=> ${vectorStr}::vector)) as similarity
+          FROM document_chunks dc
+          INNER JOIN documents d ON d.id = dc.document_id
+          WHERE d.user_id = ${userId} 
+            AND dc.embedding IS NOT NULL
+            AND EXISTS (
+              SELECT 1 FROM knowledge_base_documents kbd
+              WHERE kbd.document_id = d.id AND kbd.knowledge_base_id = ${options.knowledgeBaseId}
+            )
+          ORDER BY dc.embedding <=> ${vectorStr}::vector ASC
+          LIMIT ${vectorK}
+        `
+      : await prisma.$queryRaw<
+          Array<{
+            id: string;
+            documentId: string;
+            filename: string;
+            chunkIndex: number;
+            pageNumber: number;
+            content: string;
+            tokenCount: number;
+            metadata: Record<string, unknown>;
+            similarity: number;
+          }>
+        >`
+          SELECT 
+            dc.id,
+            dc.document_id as "documentId",
+            d.filename,
+            dc.chunk_index as "chunkIndex",
+            dc.page_number as "pageNumber",
+            dc.content,
+            dc.token_count as "tokenCount",
+            dc.metadata,
+            (1 - (dc.embedding <=> ${vectorStr}::vector)) as similarity
+          FROM document_chunks dc
+          INNER JOIN documents d ON d.id = dc.document_id
+          WHERE d.user_id = ${userId} 
+            AND dc.embedding IS NOT NULL
+          ORDER BY dc.embedding <=> ${vectorStr}::vector ASC
+          LIMIT ${vectorK}
+        `;
 
     const vectorMs = Date.now() - vectorStart;
 
@@ -123,36 +168,71 @@ export class RetrievalService {
     }> = [];
 
     try {
-      rawKeywordResults = await prisma.$queryRaw<
-        Array<{
-          id: string;
-          documentId: string;
-          filename: string;
-          chunkIndex: number;
-          pageNumber: number;
-          content: string;
-          tokenCount: number;
-          metadata: Record<string, unknown>;
-          rank: number;
-        }>
-      >`
-        SELECT 
-          dc.id,
-          dc.document_id as "documentId",
-          d.filename,
-          dc.chunk_index as "chunkIndex",
-          dc.page_number as "pageNumber",
-          dc.content,
-          dc.token_count as "tokenCount",
-          dc.metadata,
-          ts_rank_cd(to_tsvector('english', dc.content), plainto_tsquery('english', ${question})) as rank
-        FROM document_chunks dc
-        INNER JOIN documents d ON d.id = dc.document_id
-        WHERE d.user_id = ${userId} 
-          AND to_tsvector('english', dc.content) @@ plainto_tsquery('english', ${question})
-        ORDER BY rank DESC
-        LIMIT ${keywordK}
-      `;
+      rawKeywordResults = options?.knowledgeBaseId
+        ? await prisma.$queryRaw<
+            Array<{
+              id: string;
+              documentId: string;
+              filename: string;
+              chunkIndex: number;
+              pageNumber: number;
+              content: string;
+              tokenCount: number;
+              metadata: Record<string, unknown>;
+              rank: number;
+            }>
+          >`
+            SELECT 
+              dc.id,
+              dc.document_id as "documentId",
+              d.filename,
+              dc.chunk_index as "chunkIndex",
+              dc.page_number as "pageNumber",
+              dc.content,
+              dc.token_count as "tokenCount",
+              dc.metadata,
+              ts_rank_cd(to_tsvector('english', dc.content), plainto_tsquery('english', ${question})) as rank
+            FROM document_chunks dc
+            INNER JOIN documents d ON d.id = dc.document_id
+            WHERE d.user_id = ${userId} 
+              AND to_tsvector('english', dc.content) @@ plainto_tsquery('english', ${question})
+              AND EXISTS (
+                SELECT 1 FROM knowledge_base_documents kbd
+                WHERE kbd.document_id = d.id AND kbd.knowledge_base_id = ${options.knowledgeBaseId}
+              )
+            ORDER BY rank DESC
+            LIMIT ${keywordK}
+          `
+        : await prisma.$queryRaw<
+            Array<{
+              id: string;
+              documentId: string;
+              filename: string;
+              chunkIndex: number;
+              pageNumber: number;
+              content: string;
+              tokenCount: number;
+              metadata: Record<string, unknown>;
+              rank: number;
+            }>
+          >`
+            SELECT 
+              dc.id,
+              dc.document_id as "documentId",
+              d.filename,
+              dc.chunk_index as "chunkIndex",
+              dc.page_number as "pageNumber",
+              dc.content,
+              dc.token_count as "tokenCount",
+              dc.metadata,
+              ts_rank_cd(to_tsvector('english', dc.content), plainto_tsquery('english', ${question})) as rank
+            FROM document_chunks dc
+            INNER JOIN documents d ON d.id = dc.document_id
+            WHERE d.user_id = ${userId} 
+              AND to_tsvector('english', dc.content) @@ plainto_tsquery('english', ${question})
+            ORDER BY rank DESC
+            LIMIT ${keywordK}
+          `;
     } catch {
       // Fallback if tsquery finds no matches or formatting issue
       rawKeywordResults = [];

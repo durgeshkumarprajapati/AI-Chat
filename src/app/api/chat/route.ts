@@ -17,7 +17,8 @@ export async function POST(req: NextRequest) {
 
     const response = await chatService.sendMessage(authUser.id, {
       conversationId: body.conversationId,
-      question: body.question
+      question: body.question,
+      knowledgeBaseId: body.knowledgeBaseId
     });
 
     return NextResponse.json({

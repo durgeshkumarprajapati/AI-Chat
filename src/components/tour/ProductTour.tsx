@@ -94,6 +94,13 @@ const TOUR_STEPS: TourStep[] = [
     description: 'SaaS-style document catalog with debounced search, status filtering, sorting, Knowledge Base metrics, retry/reprocess actions, and secure deletion.',
     technicalDetails: 'GET /api/documents (paginated) • POST /retry • POST /reprocess • DELETE /api/documents/[id] • GET /download',
     icon: '📚'
+  },
+  {
+    title: '13. Multi-Document Knowledge Bases / Collections',
+    badge: 'Phase 17',
+    description: 'Organize documents into reusable collections without duplicating underlying files, chunks, or vector embeddings. RAG search can be dynamically scoped to selected Knowledge Bases.',
+    technicalDetails: 'KnowledgeBase & KnowledgeBaseDocument models • SQL EXISTS scoping in RetrievalService • Scoped SSE Chat & RAG Inspector',
+    icon: '📚'
   }
 ];
 

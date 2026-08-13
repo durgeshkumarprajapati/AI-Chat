@@ -40,15 +40,17 @@ export default function HomePage() {
   const [stats, setStats] = useState<Stats | null>(null);
   const [health, setHealth] = useState<HealthInfo | null>(null);
   const [recentDocs, setRecentDocs] = useState<DocumentItem[]>([]);
+  const [kbCount, setKbCount] = useState<number>(0);
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
     async function fetchData() {
       try {
-        const [statsRes, healthRes, docsRes] = await Promise.all([
+        const [statsRes, healthRes, docsRes, kbsRes] = await Promise.all([
           fetch('/api/stats').then((r) => r.json()),
           fetch('/api/health').then((r) => r.json()),
-          fetch('/api/documents').then((r) => r.json())
+          fetch('/api/documents').then((r) => r.json()),
+          fetch('/api/knowledge-bases').then((r) => r.json())
         ]);
 
         if (statsRes.success) setStats(statsRes.data);
@@ -57,6 +59,7 @@ export default function HomePage() {
           const items = Array.isArray(docsRes.data) ? docsRes.data : docsRes.data.items || [];
           setRecentDocs(items.slice(0, 5));
         }
+        if (kbsRes.success) setKbCount(kbsRes.data.total || 0);
       } catch (err) {
         console.error('Error loading dashboard data:', err);
       } finally {
@@ -85,20 +88,39 @@ export default function HomePage() {
         <div>
           <h1 className="text-3xl font-bold text-white tracking-tight">System Dashboard</h1>
           <p className="text-slate-400 text-sm mt-1">
-            Real-time pipeline monitoring, storage metrics, and PostgreSQL pgvector status.
+            Real-time pipeline monitoring, storage metrics, knowledge bases, and pgvector status.
           </p>
         </div>
-        <Link
-          href="/documents"
-          className="inline-flex items-center justify-center space-x-2 px-5 py-2.5 rounded-xl bg-indigo-600 hover:bg-indigo-500 text-white font-semibold text-sm shadow-lg shadow-indigo-600/20 transition-all"
-        >
-          <span>Upload PDF Document</span>
-          <span>→</span>
-        </Link>
+        <div className="flex items-center space-x-3">
+          <Link
+            href="/knowledge-bases"
+            className="inline-flex items-center justify-center space-x-2 px-4 py-2.5 rounded-xl bg-slate-900 border border-slate-800 hover:bg-slate-800 text-indigo-300 font-semibold text-sm transition-all"
+          >
+            <span>📚 Knowledge Bases</span>
+          </Link>
+          <Link
+            href="/documents"
+            className="inline-flex items-center justify-center space-x-2 px-5 py-2.5 rounded-xl bg-indigo-600 hover:bg-indigo-500 text-white font-semibold text-sm shadow-lg shadow-indigo-600/20 transition-all"
+          >
+            <span>Upload PDF Document</span>
+            <span>→</span>
+          </Link>
+        </div>
       </div>
 
       {/* Real Metrics Stats Cards */}
-      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-5">
+      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-5 gap-4">
+        <div className="rounded-2xl bg-slate-900 border border-slate-800 p-5 space-y-3 shadow-xl">
+          <div className="flex items-center justify-between text-slate-400">
+            <span className="text-xs font-semibold uppercase tracking-wider">Knowledge Bases</span>
+            <span className="text-xl">📚</span>
+          </div>
+          <div className="text-3xl font-bold text-white">
+            {loading ? <span className="animate-pulse">...</span> : kbCount}
+          </div>
+          <p className="text-xs text-slate-500 font-mono">Scoped Collections</p>
+        </div>
+
         <div className="rounded-2xl bg-slate-900 border border-slate-800 p-5 space-y-3 shadow-xl">
           <div className="flex items-center justify-between text-slate-400">
             <span className="text-xs font-semibold uppercase tracking-wider">Total Documents</span>
@@ -118,7 +140,7 @@ export default function HomePage() {
           <div className="text-3xl font-bold text-amber-400">
             {loading ? <span className="animate-pulse">...</span> : stats?.processingDocuments ?? 0}
           </div>
-          <p className="text-xs text-slate-500 font-mono">RabbitMQ Worker Queue</p>
+          <p className="text-xs text-slate-500 font-mono">RabbitMQ Queue</p>
         </div>
 
         <div className="rounded-2xl bg-slate-900 border border-slate-800 p-5 space-y-3 shadow-xl">

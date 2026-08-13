@@ -397,6 +397,55 @@ flowchart TD
 npm run test:phase16
 ```
 
+---
+
+## 11. Phase 17 — Multi-Document Knowledge Bases / Collections
+
+### Overview
+Phase 17 introduces a first-class Knowledge Base / Collection abstraction. Documents, chunks, vector embeddings, and storage files remain 100% single-instance (zero duplication). A document can belong to multiple Knowledge Bases via a junction table (`KnowledgeBaseDocument`).
+
+RAG retrieval can be dynamically scoped to a selected Knowledge Base or run globally across all user documents while preserving vector search, keyword search, hybrid scoring, local reranking, streaming SSE responses, citations, and complete tenant isolation.
+
+### Scoped RAG Architecture
+
+```mermaid
+flowchart TD
+    U[User / Web Client] --> UI[Knowledge Base & Chat UI]
+    UI --> KB[Knowledge Base Scope]
+    KB -->|Junction Filter| KBD[KnowledgeBaseDocument]
+    KBD --> D[Documents]
+    D --> C[Document Chunks]
+    C --> V[pgvector 768d]
+
+    UI -->|Question| ScopedRAG[RetrievalService]
+    ScopedRAG -->|Vector Search + SQL EXISTS| V
+    ScopedRAG -->|Keyword Search + SQL EXISTS| Lexical[PostgreSQL Full-Text Search]
+    V --> CandidateMerge[Candidate Merge & Hybrid Score]
+    Lexical --> CandidateMerge
+    CandidateMerge --> Reranker[LocalReranker]
+    Reranker --> TopK[Top-K Context]
+    TopK --> LLM[Streaming LLM Provider]
+```
+
+### Endpoints Implemented
+- `GET /api/knowledge-bases` — Paginated list of user Knowledge Bases with search, sorting, and stats.
+- `POST /api/knowledge-bases` — Create new Knowledge Base collection.
+- `GET /api/knowledge-bases/[id]` — Retrieve Knowledge Base metadata and statistics.
+- `PATCH /api/knowledge-bases/[id]` — Update Knowledge Base name or description.
+- `DELETE /api/knowledge-bases/[id]` — Delete Knowledge Base (deletes collection record and join rows; member documents, chunks, embeddings, and storage files remain 100% intact).
+- `GET /api/knowledge-bases/[id]/documents` — List documents belonging to Knowledge Base.
+- `POST /api/knowledge-bases/[id]/documents` — Add existing document to Knowledge Base (prevents duplicate membership).
+- `DELETE /api/knowledge-bases/[id]/documents/[documentId]` — Remove document from Knowledge Base (removes join row; document remains intact).
+- `POST /api/chat` & `POST /api/chat/stream` — Grounded & SSE streaming chat supporting optional `knowledgeBaseId`.
+- `POST /api/rag/debug` — RAG Inspector supporting optional `knowledgeBaseId`.
+
+### Testing Commands
+```bash
+# Automated Knowledge Bases & Scoped RAG Test Suite
+npm run test:phase17
+```
+
+
 
 
 

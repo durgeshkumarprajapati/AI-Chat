@@ -31,31 +31,62 @@ model User {
 
   documents     Document[]
   conversations Conversation[]
+  knowledgeBases KnowledgeBase[]
 
   @@map("users")
 }
 
 model Document {
-  id               String         @id @default(uuid())
-  userId           String         @map("user_id")
+  id               String                  @id @default(uuid())
+  userId           String                  @map("user_id")
   filename         String
-  originalFilename String         @map("original_filename")
-  mimeType         String         @map("mime_type")
-  fileSize         Int            @map("file_size")
-  storageKey       String         @map("storage_key")
-  status           DocumentStatus @default(UPLOADING)
-  version          Int            @default(1)
-  pageCount        Int            @default(0) @map("page_count")
-  errorMessage     String?        @map("error_message")
-  createdAt        DateTime       @default(now()) @map("created_at")
-  updatedAt        DateTime       @updatedAt @map("updated_at")
+  originalFilename String                  @map("original_filename")
+  mimeType         String                  @map("mime_type")
+  fileSize         Int                     @map("file_size")
+  storageKey       String                  @map("storage_key")
+  status           DocumentStatus          @default(UPLOADING)
+  version          Int                     @default(1)
+  pageCount        Int                     @default(0) @map("page_count")
+  errorMessage     String?                 @map("error_message")
+  createdAt        DateTime                @default(now()) @map("created_at")
+  updatedAt        DateTime                @updatedAt @map("updated_at")
 
-  user   User            @relation(fields: [userId], references: [id], onDelete: Cascade)
-  chunks DocumentChunk[]
+  user           User                    @relation(fields: [userId], references: [id], onDelete: Cascade)
+  chunks         DocumentChunk[]
+  knowledgeBases KnowledgeBaseDocument[]
 
   @@index([userId])
   @@index([status])
   @@map("documents")
+}
+
+model KnowledgeBase {
+  id          String   @id @default(uuid())
+  userId      String   @map("user_id")
+  name        String
+  description String?
+  createdAt   DateTime @default(now()) @map("created_at")
+  updatedAt   DateTime @updatedAt @map("updated_at")
+
+  user          User                    @relation(fields: [userId], references: [id], onDelete: Cascade)
+  documents     KnowledgeBaseDocument[]
+  conversations Conversation[]
+
+  @@index([userId])
+  @@map("knowledge_bases")
+}
+
+model KnowledgeBaseDocument {
+  knowledgeBaseId String   @map("knowledge_base_id")
+  documentId      String   @map("document_id")
+  createdAt       DateTime @default(now()) @map("created_at")
+
+  knowledgeBase KnowledgeBase @relation(fields: [knowledgeBaseId], references: [id], onDelete: Cascade)
+  document      Document      @relation(fields: [documentId], references: [id], onDelete: Cascade)
+
+  @@id([knowledgeBaseId, documentId])
+  @@index([documentId])
+  @@map("knowledge_base_documents")
 }
 
 model DocumentChunk {
@@ -79,16 +110,19 @@ model DocumentChunk {
 }
 
 model Conversation {
-  id        String   @id @default(uuid())
-  userId    String   @map("user_id")
-  title     String   @default("New Chat")
-  createdAt DateTime @default(now())
-  updatedAt DateTime @updatedAt
+  id              String   @id @default(uuid())
+  userId          String   @map("user_id")
+  knowledgeBaseId String?  @map("knowledge_base_id")
+  title           String   @default("New Chat")
+  createdAt       DateTime @default(now())
+  updatedAt       DateTime @updatedAt
 
-  user     User      @relation(fields: [userId], references: [id], onDelete: Cascade)
-  messages Message[]
+  user          User           @relation(fields: [userId], references: [id], onDelete: Cascade)
+  knowledgeBase KnowledgeBase? @relation(fields: [knowledgeBaseId], references: [id], onDelete: SetNull)
+  messages      Message[]
 
   @@index([userId])
+  @@index([knowledgeBaseId])
   @@map("conversations")
 }
 

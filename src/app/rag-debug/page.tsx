@@ -1,6 +1,6 @@
 'use client';
 
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import Link from 'next/link';
 
 type RetrievedChunkTrace = {
@@ -35,13 +35,41 @@ type RetrievalTraceData = {
   };
 };
 
+type KnowledgeBaseOption = {
+  id: string;
+  name: string;
+  documentCount: number;
+};
+
 export default function RAGDebugPage() {
   const [question, setQuestion] = useState('');
+  const [knowledgeBases, setKnowledgeBases] = useState<KnowledgeBaseOption[]>([]);
+  const [selectedKbId, setSelectedKbId] = useState<string>('');
   const [loading, setLoading] = useState(false);
   const [trace, setTrace] = useState<RetrievalTraceData | null>(null);
   const [chunks, setChunks] = useState<RetrievedChunkTrace[]>([]);
   const [error, setError] = useState<string | null>(null);
   const [expandedChunkId, setExpandedChunkId] = useState<string | null>(null);
+
+  useEffect(() => {
+    async function fetchKbs() {
+      try {
+        const res = await fetch('/api/knowledge-bases?pageSize=100');
+        const json = await res.json();
+        if (json.success) {
+          const items = json.data.items || [];
+          setKnowledgeBases(items.map((k: { id: string; name: string; documentCount: number }) => ({
+            id: k.id,
+            name: k.name,
+            documentCount: k.documentCount
+          })));
+        }
+      } catch (err) {
+        console.error('Failed to fetch knowledge bases for inspector:', err);
+      }
+    }
+    fetchKbs();
+  }, []);
 
   const handleRunRetrieval = async () => {
     const q = question.trim();
@@ -56,7 +84,10 @@ export default function RAGDebugPage() {
       const res = await fetch('/api/rag/debug', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ question: q })
+        body: JSON.stringify({
+          question: q,
+          knowledgeBaseId: selectedKbId || undefined
+        })
       });
 
       const json = await res.json();
@@ -87,12 +118,12 @@ export default function RAGDebugPage() {
         <div>
           <div className="flex items-center space-x-2">
             <span className="px-2.5 py-0.5 rounded-md bg-indigo-950 border border-indigo-800 text-indigo-400 font-mono text-[10px] uppercase font-bold">
-              Phase 14 Observability
+              Phase 17 Observability
             </span>
             <h1 className="text-2xl font-bold text-white tracking-tight">RAG Retrieval Inspector</h1>
           </div>
           <p className="text-xs text-slate-400 mt-1">
-            Inspect Hybrid Vector + Lexical Search candidates, Local Reranker scores, and step-by-step latency metrics.
+            Inspect Hybrid Vector + Lexical Search candidates, Knowledge Base scoping, Local Reranker scores, and latency metrics.
           </p>
         </div>
         <Link
@@ -103,11 +134,27 @@ export default function RAGDebugPage() {
         </Link>
       </div>
 
-      {/* Query Input Box */}
+      {/* Query Input Box & KB Selector */}
       <div className="bg-slate-900 border border-slate-800 rounded-2xl p-5 shadow-xl space-y-4">
-        <label className="block text-xs font-bold uppercase tracking-wider text-slate-400">
-          Enter Inspection Query
-        </label>
+        <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+          <label className="block text-xs font-bold uppercase tracking-wider text-slate-400">
+            Enter Inspection Query & Scope
+          </label>
+
+          <select
+            value={selectedKbId}
+            onChange={(e) => setSelectedKbId(e.target.value)}
+            className="bg-slate-950 border border-slate-800 rounded-xl px-3 py-1.5 text-xs font-semibold text-slate-200 focus:outline-none focus:border-indigo-500"
+          >
+            <option value="">🌐 All Documents (Global)</option>
+            {knowledgeBases.map((kb) => (
+              <option key={kb.id} value={kb.id}>
+                📚 {kb.name} ({kb.documentCount} docs)
+              </option>
+            ))}
+          </select>
+        </div>
+
         <div className="flex gap-3">
           <input
             type="text"
@@ -122,7 +169,7 @@ export default function RAGDebugPage() {
             disabled={loading || !question.trim()}
             className="px-6 py-3 rounded-xl bg-indigo-600 hover:bg-indigo-500 disabled:opacity-40 text-white font-semibold text-xs shadow-lg shadow-indigo-600/20 transition-all flex-shrink-0"
           >
-            {loading ? 'Running Search...' : 'Run Hybrid Retrieval →'}
+            {loading ? 'Running Search...' : 'Run Scoped Search →'}
           </button>
         </div>
 

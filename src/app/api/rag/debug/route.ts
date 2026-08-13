@@ -15,7 +15,9 @@ export async function POST(req: NextRequest) {
       );
     }
 
-    const result = await retrievalService.retrieveContextWithTrace(authUser.id, body.question);
+    const result = await retrievalService.retrieveContextWithTrace(authUser.id, body.question, {
+      knowledgeBaseId: body.knowledgeBaseId
+    });
 
     return NextResponse.json({
       success: true,

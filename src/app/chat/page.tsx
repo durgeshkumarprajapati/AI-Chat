@@ -2,6 +2,7 @@
 
 import { useState, useEffect, useRef, useCallback } from 'react';
 import Link from 'next/link';
+import { useSearchParams } from 'next/navigation';
 
 type Citation = {
   documentId: string;
@@ -29,8 +30,19 @@ type ConversationSummary = {
   updatedAt: string;
 };
 
+type KnowledgeBaseOption = {
+  id: string;
+  name: string;
+  documentCount: number;
+};
+
 export default function ChatPage() {
+  const searchParams = useSearchParams();
+  const initialKbId = searchParams.get('knowledgeBaseId');
+
   const [conversations, setConversations] = useState<ConversationSummary[]>([]);
+  const [knowledgeBases, setKnowledgeBases] = useState<KnowledgeBaseOption[]>([]);
+  const [selectedKbId, setSelectedKbId] = useState<string>(initialKbId || '');
   const [activeConversationId, setActiveConversationId] = useState<string | null>(null);
   const [messages, setMessages] = useState<ChatMessage[]>([]);
   const [question, setQuestion] = useState('');
@@ -55,6 +67,23 @@ export default function ChatPage() {
     }
   };
 
+  const fetchKnowledgeBases = async () => {
+    try {
+      const res = await fetch('/api/knowledge-bases?pageSize=100');
+      const json = await res.json();
+      if (json.success) {
+        const items = json.data.items || [];
+        setKnowledgeBases(items.map((k: { id: string; name: string; documentCount: number }) => ({
+          id: k.id,
+          name: k.name,
+          documentCount: k.documentCount
+        })));
+      }
+    } catch (err) {
+      console.error('Failed to load knowledge bases for selector:', err);
+    }
+  };
+
   const loadConversationHistory = useCallback(async (convId: string) => {
     setFetchingHistory(true);
     try {
@@ -73,7 +102,14 @@ export default function ChatPage() {
 
   useEffect(() => {
     fetchConversations();
+    fetchKnowledgeBases();
   }, []);
+
+  useEffect(() => {
+    if (initialKbId) {
+      setSelectedKbId(initialKbId);
+    }
+  }, [initialKbId]);
 
   useEffect(() => {
     messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
@@ -140,7 +176,8 @@ export default function ChatPage() {
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           conversationId: activeConversationId || undefined,
-          question: q
+          question: q,
+          knowledgeBaseId: selectedKbId || undefined
         }),
         signal: abortControllerRef.current.signal
       });
@@ -257,16 +294,20 @@ export default function ChatPage() {
     }
   };
 
+  const selectedKbName = selectedKbId
+    ? knowledgeBases.find((k) => k.id === selectedKbId)?.name || 'Selected Knowledge Base'
+    : 'All Documents (Global RAG)';
+
   const suggestedPrompts = [
-    'What is this document about?',
-    'Summarize the key requirements.',
-    'List the major technical components mentioned.',
-    'What are the deployment steps described?'
+    'What are the main topics in this collection?',
+    'Summarize key requirements and policies.',
+    'List the major technical decisions mentioned.',
+    'Are there any architecture constraints outlined?'
   ];
 
   return (
     <div className="max-w-7xl mx-auto h-[calc(100vh-7rem)] flex flex-col md:flex-row gap-6">
-      {/* Sidebar - Conversations History */}
+      {/* Sidebar - Conversations & Knowledge Base Scope */}
       <aside className="w-full md:w-64 bg-slate-900 border border-slate-800 rounded-2xl p-4 flex flex-col justify-between shadow-xl flex-shrink-0">
         <div className="space-y-4">
           <div className="flex items-center justify-between px-2">
@@ -275,8 +316,27 @@ export default function ChatPage() {
               <span>Document AI</span>
             </span>
             <span className="text-[10px] font-mono text-emerald-400 bg-emerald-950/60 px-2 py-0.5 rounded-md border border-emerald-800/60">
-              RAG Ready
+              Scoped RAG
             </span>
+          </div>
+
+          {/* Knowledge Base Scoping Dropdown */}
+          <div className="space-y-1.5 border-b border-slate-800 pb-3">
+            <label className="text-[11px] font-bold text-indigo-400 uppercase tracking-wider block px-1">
+              RAG Retrieval Scope:
+            </label>
+            <select
+              value={selectedKbId}
+              onChange={(e) => setSelectedKbId(e.target.value)}
+              className="w-full bg-slate-950 border border-slate-800 rounded-xl px-3 py-2 text-xs font-semibold text-slate-200 focus:outline-none focus:border-indigo-500"
+            >
+              <option value="">🌐 All Documents (Global)</option>
+              {knowledgeBases.map((kb) => (
+                <option key={kb.id} value={kb.id}>
+                  📚 {kb.name} ({kb.documentCount} docs)
+                </option>
+              ))}
+            </select>
           </div>
 
           <button
@@ -291,7 +351,7 @@ export default function ChatPage() {
             <h3 className="text-xs font-semibold text-slate-400 uppercase tracking-wider px-2 pb-1">
               Conversations
             </h3>
-            <div className="max-h-[45vh] md:max-h-[55vh] overflow-y-auto space-y-1 pr-1">
+            <div className="max-h-[35vh] md:max-h-[45vh] overflow-y-auto space-y-1 pr-1">
               {conversations.length === 0 ? (
                 <p className="text-xs text-slate-500 px-2 py-3">No chat history.</p>
               ) : (
@@ -335,7 +395,8 @@ export default function ChatPage() {
         {/* Header Bar */}
         <div className="px-6 py-3 border-b border-slate-800/80 bg-slate-950/60 flex items-center justify-between">
           <div className="flex items-center space-x-2 text-xs font-medium text-slate-300">
-            <span>💬 Grounded Document Assistant</span>
+            <span>💬 Chatting with:</span>
+            <span className="font-bold text-indigo-400 font-mono">{selectedKbName}</span>
           </div>
           {streaming && (
             <button
@@ -358,9 +419,10 @@ export default function ChatPage() {
                 ✨
               </div>
               <div className="space-y-2">
-                <h2 className="text-xl font-bold text-white">Ask anything about your documents</h2>
+                <h2 className="text-xl font-bold text-white">Ask anything in scope</h2>
                 <p className="text-xs text-slate-400 leading-relaxed">
-                  Answers are dynamically generated using pgvector retrieval and grounded strictly in your uploaded PDF content.
+                  Answers are grounded strictly in retrieved chunks from{' '}
+                  <strong className="text-indigo-400 font-mono">{selectedKbName}</strong>.
                 </p>
               </div>
 
@@ -451,7 +513,7 @@ export default function ChatPage() {
             value={question}
             onChange={(e) => setQuestion(e.target.value)}
             onKeyDown={handleKeyDown}
-            placeholder={streaming ? "Generating response..." : "Ask a question about your uploaded documents (Enter to send, Shift+Enter for newline)..."}
+            placeholder={streaming ? "Generating response..." : `Ask a question scoped to ${selectedKbName}...`}
             disabled={loading || streaming}
             rows={1}
             className="flex-1 rounded-xl bg-slate-900 border border-slate-800 px-4 py-3 text-xs text-white placeholder-slate-500 focus:outline-none focus:border-indigo-500 resize-none disabled:opacity-50"

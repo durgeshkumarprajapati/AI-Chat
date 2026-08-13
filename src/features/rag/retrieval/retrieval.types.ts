@@ -16,6 +16,7 @@ export interface RetrievedChunk {
 }
 
 export interface RetrievalOptions {
+  knowledgeBaseId?: string;
   topK?: number;
   minSimilarity?: number;
   vectorK?: number;

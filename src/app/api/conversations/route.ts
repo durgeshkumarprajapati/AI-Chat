@@ -6,8 +6,25 @@ import { AppError } from '@/errors';
 export async function GET(req: NextRequest) {
   try {
     const authUser = await getAuthUser(req);
-    const conversations = await chatService.getUserConversations(authUser.id);
-    return NextResponse.json({ success: true, data: conversations });
+    const searchParams = req.nextUrl.searchParams;
+
+    const page = searchParams.get('page') ? Number(searchParams.get('page')) : undefined;
+    const pageSize = searchParams.get('pageSize') ? Number(searchParams.get('pageSize')) : undefined;
+    const search = searchParams.get('search') || undefined;
+    const knowledgeBaseId = searchParams.get('knowledgeBaseId') || undefined;
+    const sortBy = searchParams.get('sortBy') || undefined;
+    const sortOrder = (searchParams.get('sortOrder') as 'asc' | 'desc') || undefined;
+
+    const result = await chatService.listUserConversationsPaginated(authUser.id, {
+      page,
+      pageSize,
+      search,
+      knowledgeBaseId,
+      sortBy,
+      sortOrder
+    });
+
+    return NextResponse.json({ success: true, data: result });
   } catch (error) {
     if (error instanceof AppError) {
       return NextResponse.json(

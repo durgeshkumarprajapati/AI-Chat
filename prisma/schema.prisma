@@ -114,6 +114,7 @@ model Conversation {
   userId          String   @map("user_id")
   knowledgeBaseId String?  @map("knowledge_base_id")
   title           String   @default("New Chat")
+  summary         String?  @db.Text
   createdAt       DateTime @default(now())
   updatedAt       DateTime @updatedAt
 

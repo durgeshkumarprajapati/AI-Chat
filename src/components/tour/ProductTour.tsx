@@ -101,6 +101,13 @@ const TOUR_STEPS: TourStep[] = [
     description: 'Organize documents into reusable collections without duplicating underlying files, chunks, or vector embeddings. RAG search can be dynamically scoped to selected Knowledge Bases.',
     technicalDetails: 'KnowledgeBase & KnowledgeBaseDocument models • SQL EXISTS scoping in RetrievalService • Scoped SSE Chat & RAG Inspector',
     icon: '📚'
+  },
+  {
+    title: '14. Conversation Memory & Context Management',
+    badge: 'Phase 18',
+    description: 'Multi-turn conversation memory with follow-up query contextualization, token-bounded context management, background summarization, automatic titling, and strict document-grounded zero-hallucination policy.',
+    technicalDetails: 'ConversationContextService • Query Rewriting • Token Budget • Title & Summary Generation • Paginated Conversation CRUD',
+    icon: '🧠'
   }
 ];
 

@@ -445,6 +445,58 @@ flowchart TD
 npm run test:phase17
 ```
 
+---
+
+## 12. Phase 18 — Conversation Memory & Context Management
+
+### Overview
+Phase 18 adds multi-turn RAG conversation memory, follow-up retrieval query contextualization, token-bounded context management, background conversation summarization, auto-titling, and paginated conversation CRUD management while strictly enforcing document-grounded zero-hallucination policies and user tenant isolation.
+
+### Conversation Memory Architecture
+
+```mermaid
+flowchart TD
+    A[User Question] --> B[Authentication & Ownership]
+    B --> C[ConversationContextService]
+    C -->|Query Rewriting| D[Standalone Retrieval Query]
+    D --> E[Knowledge Base / Tenant Scope]
+    E --> F[Hybrid Retrieval & Local Reranking]
+    F --> G[Retrieved Document Evidence]
+
+    C -->|Token Bounded Context| H[Conversation Memory & Summary]
+    G --> I[Grounded LLM Generation]
+    H --> I
+    A --> I
+
+    I --> J[Streaming SSE / JSON Response]
+    J --> K[Persist Messages & Auto-Title]
+```
+
+### Key Capabilities & Environment Configuration
+- **Follow-up Query Contextualization**: Automatically rewrites ambiguous follow-up questions (e.g. *"Explain the third requirement in more detail"*) into standalone retrieval search queries.
+- **Zero-Hallucination Guardrail**: When `retrievedChunks.length === 0`, the system returns the deterministic fallback message without calling the LLM.
+- **Strict Evidence Separation**: Citations are derived exclusively from retrieved document chunks — conversation turns are never cited as document evidence.
+- **Environment Variables**:
+  - `CONVERSATION_MAX_MESSAGES` (default `12`)
+  - `CONVERSATION_MAX_CONTEXT_TOKENS` (default `6000`)
+  - `CONVERSATION_SUMMARY_ENABLED` (default `true`)
+  - `CONVERSATION_SUMMARY_TRIGGER_TOKENS` (default `4500`)
+
+### Endpoints Implemented
+- `GET /api/conversations` — Paginated list of conversations (`page`, `pageSize`, `search`, `knowledgeBaseId`, `sortBy`, `sortOrder`).
+- `GET /api/conversations/[id]` — Detailed conversation history with summary and messages.
+- `PATCH /api/conversations/[id]` — Rename conversation title.
+- `DELETE /api/conversations/[id]` — Delete conversation and messages with ownership verification.
+- `POST /api/chat` & `POST /api/chat/stream` — Grounded chat with multi-turn conversation memory.
+- `POST /api/rag/debug` — RAG Inspector with memory diagnostics (retrieval query rewrite, context message counts, token estimates).
+
+### Testing Commands
+```bash
+# Automated Conversation Memory Test Suite
+npm run test:phase18
+```
+
+
 
 
 

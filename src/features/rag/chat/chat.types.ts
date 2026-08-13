@@ -18,6 +18,8 @@ export interface ChatMessageItem {
 export interface ConversationDetail {
   id: string;
   title: string;
+  summary?: string | null;
+  knowledgeBaseId?: string | null;
   createdAt: string;
   updatedAt: string;
   messages: ChatMessageItem[];
@@ -30,10 +32,26 @@ export interface ChatResponse {
   citations: Citation[];
   retrievedChunks: number;
   topSimilarity: number;
+  retrievalQuery?: string;
+  contextMessagesCount?: number;
 }
 
 export type StreamEvent =
-  | { type: 'start'; conversationId: string; citations: Citation[]; retrievedChunks: number; topSimilarity: number }
+  | {
+      type: 'start';
+      conversationId: string;
+      citations: Citation[];
+      retrievedChunks: number;
+      topSimilarity: number;
+      retrievalQuery?: string;
+      contextMessagesCount?: number;
+    }
   | { type: 'delta'; text: string }
-  | { type: 'done'; conversationId: string; messageId: string; answer: string; citations: Citation[] }
+  | {
+      type: 'done';
+      conversationId: string;
+      messageId: string;
+      answer: string;
+      citations: Citation[];
+    }
   | { type: 'error'; message: string };

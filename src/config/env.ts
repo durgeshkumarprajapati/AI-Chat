@@ -116,7 +116,25 @@ const serverEnvSchema = z
       .coerce.number()
       .int()
       .min(0, { message: 'DOCUMENT_CHUNK_OVERLAP must be 0 or greater' })
-      .default(120)
+      .default(120),
+    CONVERSATION_MAX_MESSAGES: z
+      .coerce.number()
+      .int()
+      .positive()
+      .default(12),
+    CONVERSATION_MAX_CONTEXT_TOKENS: z
+      .coerce.number()
+      .int()
+      .positive()
+      .default(6000),
+    CONVERSATION_SUMMARY_ENABLED: z
+      .coerce.boolean()
+      .default(true),
+    CONVERSATION_SUMMARY_TRIGGER_TOKENS: z
+      .coerce.number()
+      .int()
+      .positive()
+      .default(4500)
   })
   .refine(
     (data) => {

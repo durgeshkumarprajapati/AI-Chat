@@ -1,6 +1,7 @@
 import { RetrievalService } from '../retrieval/retrieval.service';
 import { getLLMProvider } from '../llm/llm.provider.factory';
 import { LLMProvider } from '../llm/llm.provider';
+import { conversationContextService, ConversationContextService } from './conversation-context.service';
 import { prisma } from '@/lib/prisma';
 import { ValidationError, NotFoundError, AuthorizationError } from '@/errors';
 import { ChatResponse, Citation, ConversationDetail, StreamEvent } from './chat.types';
@@ -9,10 +10,16 @@ import { MessageRole, Prisma } from '@prisma/client';
 export class ChatService {
   private retrievalService: RetrievalService;
   private llmProvider: LLMProvider;
+  private contextService: ConversationContextService;
 
-  constructor(retrievalService?: RetrievalService, llmProvider?: LLMProvider) {
+  constructor(
+    retrievalService?: RetrievalService,
+    llmProvider?: LLMProvider,
+    contextService?: ConversationContextService
+  ) {
     this.retrievalService = retrievalService || new RetrievalService();
     this.llmProvider = llmProvider || getLLMProvider();
+    this.contextService = contextService || conversationContextService;
   }
 
   public async sendMessage(
@@ -29,6 +36,7 @@ export class ChatService {
     // 1. Verify or create Conversation owned by userId
     let conversationId = input.conversationId;
     let targetKbId = input.knowledgeBaseId;
+    let isFirstTurn = false;
 
     if (conversationId) {
       const existingConv = await prisma.conversation.findUnique({
@@ -49,19 +57,26 @@ export class ChatService {
         if (!kb) throw new NotFoundError('Knowledge Base');
       }
 
-      const newTitle = trimmedQuestion.length > 30 ? `${trimmedQuestion.slice(0, 30)}...` : trimmedQuestion;
       const newConv = await prisma.conversation.create({
         data: {
           userId,
-          title: newTitle,
+          title: 'New Chat',
           knowledgeBaseId: targetKbId || null
         }
       });
       conversationId = newConv.id;
+      isFirstTurn = true;
     }
 
-    // 2. Retrieve top-K relevant chunks via pgvector similarity search
-    const retrievedChunks = await this.retrievalService.retrieveContext(userId, trimmedQuestion, {
+    // 2. Load conversation context & prepare rewritten retrieval query
+    const convContext = await this.contextService.loadConversationContext(
+      userId,
+      conversationId,
+      trimmedQuestion
+    );
+
+    // 3. Retrieve top-K relevant chunks using rewritten retrieval query
+    const retrievedChunks = await this.retrievalService.retrieveContext(userId, convContext.retrievalQuery, {
       knowledgeBaseId: targetKbId
     });
 
@@ -70,24 +85,38 @@ export class ChatService {
     let answer: string;
     let citations: Citation[] = [];
 
-    // 3. Check for empty retrieval case (Zero Hallucination Policy)
+    // 4. Zero Hallucination Policy Check
     if (retrievedChunks.length === 0) {
       answer = "I couldn't find enough relevant information in your uploaded documents to answer that question.";
     } else {
-      // 4. Context Builder: Format chunks into LLM context
-      const contextBlocks = retrievedChunks.map((chunk) => {
-        return `[Document: ${chunk.filename} | Page: ${chunk.pageNumber}]\n${chunk.content}`;
-      });
+      // 5. Construct Grounded LLM Context
+      const contextBlocks: string[] = [];
 
-      const contextString = contextBlocks.join('\n\n---\n\n');
+      if (convContext.summary) {
+        contextBlocks.push(`=== CONVERSATION SUMMARY ===\n${convContext.summary}`);
+      }
 
-      // 5. Generate Grounded Answer via LLM Provider
+      if (convContext.includedMessages.length > 0) {
+        const historyText = convContext.includedMessages
+          .map((m) => `${m.role}: ${m.content}`)
+          .join('\n');
+        contextBlocks.push(`=== CONVERSATION HISTORY ===\n${historyText}`);
+      }
+
+      const documentEvidence = retrievedChunks
+        .map((chunk) => `[Document: ${chunk.filename} | Page: ${chunk.pageNumber}]\n${chunk.content}`)
+        .join('\n\n---\n\n');
+
+      contextBlocks.push(`=== RETRIEVED DOCUMENT EVIDENCE ===\n${documentEvidence}`);
+
+      const fullContextString = contextBlocks.join('\n\n');
+
+      // 6. Generate Answer via LLM Provider
       answer = await this.llmProvider.generateAnswer({
         question: trimmedQuestion,
-        context: contextString
+        context: fullContextString
       });
 
-      // 6. Build structured citations
       citations = retrievedChunks.map((c) => ({
         documentId: c.documentId,
         chunkId: c.id,
@@ -98,7 +127,7 @@ export class ChatService {
     }
 
     // 7. Persist USER and ASSISTANT messages in PostgreSQL
-    const assistantMessage = await prisma.$transaction(async (tx) => {
+    const assistantMessage = await prisma.$transaction(async (tx: Prisma.TransactionClient) => {
       await tx.message.create({
         data: {
           conversationId: conversationId!,
@@ -124,6 +153,13 @@ export class ChatService {
       return createdAssistantMsg;
     });
 
+    // 8. Post-generation title generation & summarization check (non-blocking)
+    if (isFirstTurn) {
+      this.contextService.generateConversationTitle(userId, conversationId, trimmedQuestion).catch(() => {});
+    } else {
+      this.contextService.summarizeConversationIfNeeded(userId, conversationId).catch(() => {});
+    }
+
     const duration = Date.now() - startTime;
     console.log(`[ChatService] RAG query completed: conversationId=${conversationId}, chunks=${retrievedChunks.length}, topSim=${topSimilarity.toFixed(3)}, durationMs=${duration}ms`);
 
@@ -133,7 +169,9 @@ export class ChatService {
       answer,
       citations,
       retrievedChunks: retrievedChunks.length,
-      topSimilarity
+      topSimilarity,
+      retrievalQuery: convContext.retrievalQuery,
+      contextMessagesCount: convContext.includedMessages.length
     };
   }
 
@@ -151,6 +189,7 @@ export class ChatService {
     // 1. Verify or create Conversation owned by userId
     let conversationId = input.conversationId;
     let targetKbId = input.knowledgeBaseId;
+    let isFirstTurn = false;
 
     if (conversationId) {
       const existingConv = await prisma.conversation.findUnique({
@@ -171,19 +210,26 @@ export class ChatService {
         if (!kb) throw new NotFoundError('Knowledge Base');
       }
 
-      const newTitle = trimmedQuestion.length > 30 ? `${trimmedQuestion.slice(0, 30)}...` : trimmedQuestion;
       const newConv = await prisma.conversation.create({
         data: {
           userId,
-          title: newTitle,
+          title: 'New Chat',
           knowledgeBaseId: targetKbId || null
         }
       });
       conversationId = newConv.id;
+      isFirstTurn = true;
     }
 
-    // 2. Retrieve top-K relevant chunks via pgvector similarity search
-    const retrievedChunks = await this.retrievalService.retrieveContext(userId, trimmedQuestion, {
+    // 2. Load conversation context & prepare rewritten retrieval query
+    const convContext = await this.contextService.loadConversationContext(
+      userId,
+      conversationId,
+      trimmedQuestion
+    );
+
+    // 3. Retrieve top-K relevant chunks using rewritten retrieval query
+    const retrievedChunks = await this.retrievalService.retrieveContext(userId, convContext.retrievalQuery, {
       knowledgeBaseId: targetKbId
     });
     const topSimilarity = retrievedChunks.length > 0 ? retrievedChunks[0]!.similarity : 0;
@@ -205,26 +251,44 @@ export class ChatService {
       conversationId: conversationId!,
       citations,
       retrievedChunks: retrievedChunks.length,
-      topSimilarity
+      topSimilarity,
+      retrievalQuery: convContext.retrievalQuery,
+      contextMessagesCount: convContext.includedMessages.length
     };
 
     let answer = '';
 
-    // 3. Zero Hallucination Policy: Fallback if no relevant chunks
+    // 4. Zero Hallucination Policy Check
     if (retrievedChunks.length === 0) {
       answer = "I couldn't find enough relevant information in your uploaded documents to answer that question.";
       yield { type: 'delta', text: answer };
     } else {
-      // 4. Context Builder: Format chunks into LLM context
-      const contextBlocks = retrievedChunks.map((chunk) => {
-        return `[Document: ${chunk.filename} | Page: ${chunk.pageNumber}]\n${chunk.content}`;
-      });
-      const contextString = contextBlocks.join('\n\n---\n\n');
+      // 5. Construct Grounded LLM Context
+      const contextBlocks: string[] = [];
 
-      // 5. Stream Grounded Answer via LLM Provider
+      if (convContext.summary) {
+        contextBlocks.push(`=== CONVERSATION SUMMARY ===\n${convContext.summary}`);
+      }
+
+      if (convContext.includedMessages.length > 0) {
+        const historyText = convContext.includedMessages
+          .map((m) => `${m.role}: ${m.content}`)
+          .join('\n');
+        contextBlocks.push(`=== CONVERSATION HISTORY ===\n${historyText}`);
+      }
+
+      const documentEvidence = retrievedChunks
+        .map((chunk) => `[Document: ${chunk.filename} | Page: ${chunk.pageNumber}]\n${chunk.content}`)
+        .join('\n\n---\n\n');
+
+      contextBlocks.push(`=== RETRIEVED DOCUMENT EVIDENCE ===\n${documentEvidence}`);
+
+      const fullContextString = contextBlocks.join('\n\n');
+
+      // 6. Stream Grounded Answer via LLM Provider
       const stream = this.llmProvider.streamAnswer({
         question: trimmedQuestion,
-        context: contextString
+        context: fullContextString
       });
 
       for await (const chunk of stream) {
@@ -235,8 +299,8 @@ export class ChatService {
 
     const finalAnswer = answer.trim();
 
-    // 6. Persist USER and ASSISTANT messages in PostgreSQL after stream completes
-    const assistantMessage = await prisma.$transaction(async (tx) => {
+    // 7. Persist USER and ASSISTANT messages in PostgreSQL after stream completes
+    const assistantMessage = await prisma.$transaction(async (tx: Prisma.TransactionClient) => {
       await tx.message.create({
         data: {
           conversationId: conversationId!,
@@ -262,6 +326,13 @@ export class ChatService {
       return createdAssistantMsg;
     });
 
+    // 8. Post-generation title generation & summarization check
+    if (isFirstTurn) {
+      this.contextService.generateConversationTitle(userId, conversationId, trimmedQuestion).catch(() => {});
+    } else {
+      this.contextService.summarizeConversationIfNeeded(userId, conversationId).catch(() => {});
+    }
+
     const duration = Date.now() - startTime;
     console.log(`[ChatService] RAG streaming query completed: conversationId=${conversationId}, chunks=${retrievedChunks.length}, topSim=${topSimilarity.toFixed(3)}, durationMs=${duration}ms`);
 
@@ -274,24 +345,88 @@ export class ChatService {
     };
   }
 
-  public async getUserConversations(userId: string): Promise<Array<{ id: string; title: string; createdAt: string; updatedAt: string }>> {
-    const list = await prisma.conversation.findMany({
-      where: { userId },
-      orderBy: { updatedAt: 'desc' },
-      select: {
-        id: true,
-        title: true,
-        createdAt: true,
-        updatedAt: true
-      }
-    });
+  public async listUserConversationsPaginated(
+    userId: string,
+    options: {
+      page?: number;
+      pageSize?: number;
+      search?: string;
+      knowledgeBaseId?: string;
+      sortBy?: string;
+      sortOrder?: 'asc' | 'desc';
+    }
+  ): Promise<{
+    items: Array<{ id: string; title: string; summary?: string | null; knowledgeBaseId?: string | null; createdAt: string; updatedAt: string }>;
+    total: number;
+    page: number;
+    pageSize: number;
+    totalPages: number;
+  }> {
+    const page = Math.max(1, options.page || 1);
+    const pageSize = Math.min(100, Math.max(1, options.pageSize || 20));
+    const skip = (page - 1) * pageSize;
 
-    return list.map((c) => ({
-      id: c.id,
-      title: c.title,
-      createdAt: c.createdAt.toISOString(),
-      updatedAt: c.updatedAt.toISOString()
-    }));
+    const where: Prisma.ConversationWhereInput = {
+      userId,
+      ...(options.knowledgeBaseId ? { knowledgeBaseId: options.knowledgeBaseId } : {}),
+      ...(options.search
+        ? {
+            OR: [
+              { title: { contains: options.search, mode: 'insensitive' } },
+              { summary: { contains: options.search, mode: 'insensitive' } }
+            ]
+          }
+        : {})
+    };
+
+    const allowedSortFields: Record<string, string> = {
+      updatedAt: 'updatedAt',
+      createdAt: 'createdAt',
+      title: 'title'
+    };
+
+    const sortField = allowedSortFields[options.sortBy || 'updatedAt'] || 'updatedAt';
+    const sortOrder = options.sortOrder === 'asc' ? 'asc' : 'desc';
+
+    const [list, total] = await Promise.all([
+      prisma.conversation.findMany({
+        where,
+        orderBy: { [sortField]: sortOrder },
+        take: pageSize,
+        skip,
+        select: {
+          id: true,
+          title: true,
+          summary: true,
+          knowledgeBaseId: true,
+          createdAt: true,
+          updatedAt: true
+        }
+      }),
+      prisma.conversation.count({ where })
+    ]);
+
+    const totalPages = Math.ceil(total / pageSize) || 1;
+
+    return {
+      items: list.map((c) => ({
+        id: c.id,
+        title: c.title,
+        summary: c.summary,
+        knowledgeBaseId: c.knowledgeBaseId,
+        createdAt: c.createdAt.toISOString(),
+        updatedAt: c.updatedAt.toISOString()
+      })),
+      total,
+      page,
+      pageSize,
+      totalPages
+    };
+  }
+
+  public async getUserConversations(userId: string): Promise<Array<{ id: string; title: string; createdAt: string; updatedAt: string }>> {
+    const res = await this.listUserConversationsPaginated(userId, { pageSize: 50 });
+    return res.items;
   }
 
   public async getConversationDetail(userId: string, conversationId: string): Promise<ConversationDetail> {
@@ -310,6 +445,8 @@ export class ChatService {
     return {
       id: conv.id,
       title: conv.title,
+      summary: conv.summary,
+      knowledgeBaseId: conv.knowledgeBaseId,
       createdAt: conv.createdAt.toISOString(),
       updatedAt: conv.updatedAt.toISOString(),
       messages: conv.messages.map((m) => ({
@@ -321,6 +458,36 @@ export class ChatService {
         createdAt: m.createdAt.toISOString()
       }))
     };
+  }
+
+  public async renameConversation(userId: string, conversationId: string, newTitle: string): Promise<void> {
+    const title = newTitle.trim();
+    if (!title || title.length === 0) {
+      throw new ValidationError('Conversation title cannot be empty.');
+    }
+
+    const conv = await prisma.conversation.findFirst({
+      where: { id: conversationId, userId }
+    });
+
+    if (!conv) throw new NotFoundError('Conversation');
+
+    await prisma.conversation.update({
+      where: { id: conversationId },
+      data: { title: title.slice(0, 100) }
+    });
+  }
+
+  public async deleteConversation(userId: string, conversationId: string): Promise<void> {
+    const conv = await prisma.conversation.findFirst({
+      where: { id: conversationId, userId }
+    });
+
+    if (!conv) throw new NotFoundError('Conversation');
+
+    await prisma.conversation.delete({
+      where: { id: conversationId }
+    });
   }
 }
 

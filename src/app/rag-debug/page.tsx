@@ -35,6 +35,15 @@ type RetrievalTraceData = {
   };
 };
 
+type ConversationContextDiagnostics = {
+  conversationId: string;
+  includedMessagesCount: number;
+  excludedMessagesCount: number;
+  hasSummary: boolean;
+  estimatedTokens: number;
+  contextLoadMs: number;
+};
+
 type KnowledgeBaseOption = {
   id: string;
   name: string;
@@ -43,11 +52,15 @@ type KnowledgeBaseOption = {
 
 export default function RAGDebugPage() {
   const [question, setQuestion] = useState('');
+  const [conversationId, setConversationId] = useState('');
   const [knowledgeBases, setKnowledgeBases] = useState<KnowledgeBaseOption[]>([]);
   const [selectedKbId, setSelectedKbId] = useState<string>('');
   const [loading, setLoading] = useState(false);
   const [trace, setTrace] = useState<RetrievalTraceData | null>(null);
   const [chunks, setChunks] = useState<RetrievedChunkTrace[]>([]);
+  const [originalQuestion, setOriginalQuestion] = useState<string | null>(null);
+  const [retrievalQuery, setRetrievalQuery] = useState<string | null>(null);
+  const [convDiagnostics, setConvDiagnostics] = useState<ConversationContextDiagnostics | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [expandedChunkId, setExpandedChunkId] = useState<string | null>(null);
 
@@ -79,6 +92,9 @@ export default function RAGDebugPage() {
     setError(null);
     setTrace(null);
     setChunks([]);
+    setOriginalQuestion(null);
+    setRetrievalQuery(null);
+    setConvDiagnostics(null);
 
     try {
       const res = await fetch('/api/rag/debug', {
@@ -86,6 +102,7 @@ export default function RAGDebugPage() {
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           question: q,
+          conversationId: conversationId.trim() || undefined,
           knowledgeBaseId: selectedKbId || undefined
         })
       });
@@ -95,6 +112,9 @@ export default function RAGDebugPage() {
         throw new Error(json.error?.message || 'Retrieval debug failed.');
       }
 
+      setOriginalQuestion(json.data.originalQuestion);
+      setRetrievalQuery(json.data.retrievalQuery);
+      setConvDiagnostics(json.data.conversationContext);
       setTrace(json.data.trace);
       setChunks(json.data.chunks);
     } catch (err) {
@@ -106,9 +126,9 @@ export default function RAGDebugPage() {
 
   const sampleQueries = [
     'What is the architecture overview of the platform?',
-    'What is the deployment procedure for production?',
+    'Explain the third requirement in more detail.',
     'How does RabbitMQ document worker handle retries?',
-    'What is the vector dimension for nomic-embed-text?'
+    'Can you elaborate on that notice period?'
   ];
 
   return (
@@ -118,12 +138,12 @@ export default function RAGDebugPage() {
         <div>
           <div className="flex items-center space-x-2">
             <span className="px-2.5 py-0.5 rounded-md bg-indigo-950 border border-indigo-800 text-indigo-400 font-mono text-[10px] uppercase font-bold">
-              Phase 17 Observability
+              Phase 18 Observability
             </span>
             <h1 className="text-2xl font-bold text-white tracking-tight">RAG Retrieval Inspector</h1>
           </div>
           <p className="text-xs text-slate-400 mt-1">
-            Inspect Hybrid Vector + Lexical Search candidates, Knowledge Base scoping, Local Reranker scores, and latency metrics.
+            Inspect Hybrid Vector + Lexical Search candidates, Conversation Memory Query Rewriting, Local Reranker scores, and step-by-step latency metrics.
           </p>
         </div>
         <Link
@@ -134,34 +154,48 @@ export default function RAGDebugPage() {
         </Link>
       </div>
 
-      {/* Query Input Box & KB Selector */}
+      {/* Query & Diagnostics Controls Box */}
       <div className="bg-slate-900 border border-slate-800 rounded-2xl p-5 shadow-xl space-y-4">
-        <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
-          <label className="block text-xs font-bold uppercase tracking-wider text-slate-400">
-            Enter Inspection Query & Scope
-          </label>
+        <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+          <div>
+            <label className="block text-xs font-bold uppercase tracking-wider text-slate-400 mb-1.5">
+              Knowledge Base Scope
+            </label>
+            <select
+              value={selectedKbId}
+              onChange={(e) => setSelectedKbId(e.target.value)}
+              className="w-full bg-slate-950 border border-slate-800 rounded-xl px-3 py-2 text-xs font-semibold text-slate-200 focus:outline-none focus:border-indigo-500"
+            >
+              <option value="">🌐 All Documents (Global)</option>
+              {knowledgeBases.map((kb) => (
+                <option key={kb.id} value={kb.id}>
+                  📚 {kb.name} ({kb.documentCount} docs)
+                </option>
+              ))}
+            </select>
+          </div>
 
-          <select
-            value={selectedKbId}
-            onChange={(e) => setSelectedKbId(e.target.value)}
-            className="bg-slate-950 border border-slate-800 rounded-xl px-3 py-1.5 text-xs font-semibold text-slate-200 focus:outline-none focus:border-indigo-500"
-          >
-            <option value="">🌐 All Documents (Global)</option>
-            {knowledgeBases.map((kb) => (
-              <option key={kb.id} value={kb.id}>
-                📚 {kb.name} ({kb.documentCount} docs)
-              </option>
-            ))}
-          </select>
+          <div>
+            <label className="block text-xs font-bold uppercase tracking-wider text-slate-400 mb-1.5">
+              Optional Conversation ID (Memory Scope)
+            </label>
+            <input
+              type="text"
+              value={conversationId}
+              onChange={(e) => setConversationId(e.target.value)}
+              placeholder="Paste Conversation ID for multi-turn testing..."
+              className="w-full bg-slate-950 border border-slate-800 rounded-xl px-3 py-2 text-xs font-mono text-slate-300 placeholder-slate-600 focus:outline-none focus:border-indigo-500"
+            />
+          </div>
         </div>
 
-        <div className="flex gap-3">
+        <div className="flex gap-3 pt-1">
           <input
             type="text"
             value={question}
             onChange={(e) => setQuestion(e.target.value)}
             onKeyDown={(e) => e.key === 'Enter' && handleRunRetrieval()}
-            placeholder="Type a query to inspect hybrid vector + keyword retrieval behavior..."
+            placeholder="Type a question or follow-up to inspect memory rewriting & hybrid search..."
             className="flex-1 rounded-xl bg-slate-950 border border-slate-800 px-4 py-3 text-xs text-white placeholder-slate-500 focus:outline-none focus:border-indigo-500"
           />
           <button
@@ -169,7 +203,7 @@ export default function RAGDebugPage() {
             disabled={loading || !question.trim()}
             className="px-6 py-3 rounded-xl bg-indigo-600 hover:bg-indigo-500 disabled:opacity-40 text-white font-semibold text-xs shadow-lg shadow-indigo-600/20 transition-all flex-shrink-0"
           >
-            {loading ? 'Running Search...' : 'Run Scoped Search →'}
+            {loading ? 'Inspecting...' : 'Run Memory RAG Search →'}
           </button>
         </div>
 
@@ -193,6 +227,54 @@ export default function RAGDebugPage() {
       {error && (
         <div className="p-4 rounded-xl bg-rose-950/80 border border-rose-800 text-rose-300 text-xs font-mono">
           ⚠️ {error}
+        </div>
+      )}
+
+      {/* Query Rewriting & Memory Diagnostics Card */}
+      {retrievalQuery && (
+        <div className="bg-slate-900 border border-slate-800 rounded-2xl p-5 space-y-3 shadow-xl">
+          <div className="flex items-center justify-between">
+            <span className="text-xs font-bold text-indigo-400 uppercase tracking-wider">
+              🧠 Phase 18 Query Preparation & Memory Diagnostic
+            </span>
+            {convDiagnostics && (
+              <span className="text-[10px] font-mono text-emerald-400 bg-emerald-950/60 px-2 py-0.5 rounded border border-emerald-800/60">
+                Conversation Context Active ({convDiagnostics.contextLoadMs}ms)
+              </span>
+            )}
+          </div>
+
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-4 bg-slate-950 p-4 rounded-xl border border-slate-800/80 text-xs font-mono">
+            <div>
+              <span className="text-slate-500 block text-[10px] uppercase font-bold mb-1">Original User Question:</span>
+              <p className="text-white bg-slate-900 p-2.5 rounded-lg border border-slate-800">{originalQuestion}</p>
+            </div>
+            <div>
+              <span className="text-indigo-400 block text-[10px] uppercase font-bold mb-1">Rewritten Retrieval Search Query:</span>
+              <p className="text-indigo-200 bg-indigo-950/40 p-2.5 rounded-lg border border-indigo-800/60 font-semibold">{retrievalQuery}</p>
+            </div>
+          </div>
+
+          {convDiagnostics && (
+            <div className="grid grid-cols-2 md:grid-cols-4 gap-3 text-[11px] font-mono text-slate-300 pt-1">
+              <div className="bg-slate-950 p-2.5 rounded-lg border border-slate-800">
+                <span className="text-slate-500 block text-[10px]">Context Turns:</span>
+                <span className="font-bold text-white">{convDiagnostics.includedMessagesCount} messages</span>
+              </div>
+              <div className="bg-slate-950 p-2.5 rounded-lg border border-slate-800">
+                <span className="text-slate-500 block text-[10px]">Excluded Turns:</span>
+                <span className="font-bold text-slate-400">{convDiagnostics.excludedMessagesCount} messages</span>
+              </div>
+              <div className="bg-slate-950 p-2.5 rounded-lg border border-slate-800">
+                <span className="text-slate-500 block text-[10px]">Context Tokens:</span>
+                <span className="font-bold text-amber-300">~{convDiagnostics.estimatedTokens} tokens</span>
+              </div>
+              <div className="bg-slate-950 p-2.5 rounded-lg border border-slate-800">
+                <span className="text-slate-500 block text-[10px]">Summary Present:</span>
+                <span className="font-bold text-emerald-400">{convDiagnostics.hasSummary ? 'Yes (Loaded)' : 'None'}</span>
+              </div>
+            </div>
+          )}
         </div>
       )}
 
@@ -238,23 +320,19 @@ export default function RAGDebugPage() {
             </span>
             <div className="flex flex-wrap items-center gap-2 text-xs font-mono">
               <span className="px-3 py-1.5 rounded-lg bg-indigo-950 border border-indigo-800 text-indigo-300">
-                1. Vector ({trace.vectorCandidatesCount})
-              </span>
-              <span className="text-slate-600">+</span>
-              <span className="px-3 py-1.5 rounded-lg bg-emerald-950 border border-emerald-800 text-emerald-300">
-                2. Lexical ({trace.keywordCandidatesCount})
+                1. Context Load ({convDiagnostics ? `${convDiagnostics.contextLoadMs}ms` : 'N/A'})
               </span>
               <span className="text-slate-600">→</span>
-              <span className="px-3 py-1.5 rounded-lg bg-amber-950 border border-amber-800 text-amber-300">
-                3. Merge & Deduplicate ({trace.deduplicatedCandidatesCount})
+              <span className="px-3 py-1.5 rounded-lg bg-emerald-950 border border-emerald-800 text-emerald-300">
+                2. Hybrid Search ({trace.metrics.vectorMs + trace.metrics.keywordMs}ms)
               </span>
               <span className="text-slate-600">→</span>
               <span className="px-3 py-1.5 rounded-lg bg-sky-950 border border-sky-800 text-sky-300">
-                4. Rerank ({trace.rerankedCandidatesCount})
+                3. Rerank ({trace.metrics.rerankMs}ms)
               </span>
               <span className="text-slate-600">→</span>
               <span className="px-3 py-1.5 rounded-lg bg-emerald-900 border border-emerald-700 text-white font-bold">
-                5. Top K Context ({trace.finalChunksCount})
+                4. Grounded Top K Context ({trace.finalChunksCount})
               </span>
             </div>
           </div>

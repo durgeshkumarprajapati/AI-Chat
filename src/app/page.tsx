@@ -41,16 +41,18 @@ export default function HomePage() {
   const [health, setHealth] = useState<HealthInfo | null>(null);
   const [recentDocs, setRecentDocs] = useState<DocumentItem[]>([]);
   const [kbCount, setKbCount] = useState<number>(0);
+  const [convCount, setConvCount] = useState<number>(0);
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
     async function fetchData() {
       try {
-        const [statsRes, healthRes, docsRes, kbsRes] = await Promise.all([
+        const [statsRes, healthRes, docsRes, kbsRes, convsRes] = await Promise.all([
           fetch('/api/stats').then((r) => r.json()),
           fetch('/api/health').then((r) => r.json()),
           fetch('/api/documents').then((r) => r.json()),
-          fetch('/api/knowledge-bases').then((r) => r.json())
+          fetch('/api/knowledge-bases').then((r) => r.json()),
+          fetch('/api/conversations').then((r) => r.json())
         ]);
 
         if (statsRes.success) setStats(statsRes.data);
@@ -60,6 +62,10 @@ export default function HomePage() {
           setRecentDocs(items.slice(0, 5));
         }
         if (kbsRes.success) setKbCount(kbsRes.data.total || 0);
+        if (convsRes.success) {
+          const total = convsRes.data.total !== undefined ? convsRes.data.total : (Array.isArray(convsRes.data) ? convsRes.data.length : 0);
+          setConvCount(total);
+        }
       } catch (err) {
         console.error('Error loading dashboard data:', err);
       } finally {
@@ -93,6 +99,12 @@ export default function HomePage() {
         </div>
         <div className="flex items-center space-x-3">
           <Link
+            href="/chat"
+            className="inline-flex items-center justify-center space-x-2 px-4 py-2.5 rounded-xl bg-slate-900 border border-slate-800 hover:bg-slate-800 text-emerald-300 font-semibold text-sm transition-all"
+          >
+            <span>💬 Conversations ({convCount})</span>
+          </Link>
+          <Link
             href="/knowledge-bases"
             className="inline-flex items-center justify-center space-x-2 px-4 py-2.5 rounded-xl bg-slate-900 border border-slate-800 hover:bg-slate-800 text-indigo-300 font-semibold text-sm transition-all"
           >
@@ -109,7 +121,18 @@ export default function HomePage() {
       </div>
 
       {/* Real Metrics Stats Cards */}
-      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-5 gap-4">
+      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-6 gap-4">
+        <div className="rounded-2xl bg-slate-900 border border-slate-800 p-5 space-y-3 shadow-xl">
+          <div className="flex items-center justify-between text-slate-400">
+            <span className="text-xs font-semibold uppercase tracking-wider">Conversations</span>
+            <span className="text-xl">💬</span>
+          </div>
+          <div className="text-3xl font-bold text-emerald-400">
+            {loading ? <span className="animate-pulse">...</span> : convCount}
+          </div>
+          <p className="text-xs text-slate-500 font-mono">Multi-turn Memory</p>
+        </div>
+
         <div className="rounded-2xl bg-slate-900 border border-slate-800 p-5 space-y-3 shadow-xl">
           <div className="flex items-center justify-between text-slate-400">
             <span className="text-xs font-semibold uppercase tracking-wider">Knowledge Bases</span>

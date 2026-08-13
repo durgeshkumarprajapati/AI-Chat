@@ -86,6 +86,104 @@ export class DocumentRepository {
     });
   }
 
+  public async findPaginatedByUser(
+    userId: string,
+    options: {
+      page?: number;
+      pageSize?: number;
+      search?: string;
+      status?: DocumentStatus;
+      sortBy?: string;
+      sortOrder?: 'asc' | 'desc';
+    }
+  ): Promise<{
+    items: Document[];
+    total: number;
+    page: number;
+    pageSize: number;
+    totalPages: number;
+  }> {
+    const page = Math.max(1, options.page || 1);
+    const pageSize = Math.min(50, Math.max(1, options.pageSize || 20));
+    const skip = (page - 1) * pageSize;
+
+    const where: Prisma.DocumentWhereInput = {
+      userId,
+      ...(options.status ? { status: options.status } : {}),
+      ...(options.search
+        ? {
+            OR: [
+              { filename: { contains: options.search, mode: 'insensitive' } },
+              { originalFilename: { contains: options.search, mode: 'insensitive' } }
+            ]
+          }
+        : {})
+    };
+
+    const allowedSortFields: Record<string, string> = {
+      createdAt: 'createdAt',
+      updatedAt: 'updatedAt',
+      filename: 'filename',
+      fileSize: 'fileSize',
+      status: 'status',
+      pageCount: 'pageCount'
+    };
+
+    const sortField = allowedSortFields[options.sortBy || 'createdAt'] || 'createdAt';
+    const sortOrder = options.sortOrder === 'asc' ? 'asc' : 'desc';
+
+    const [items, total] = await Promise.all([
+      prisma.document.findMany({
+        where,
+        orderBy: { [sortField]: sortOrder },
+        take: pageSize,
+        skip
+      }),
+      prisma.document.count({ where })
+    ]);
+
+    const totalPages = Math.ceil(total / pageSize) || 1;
+
+    return {
+      items,
+      total,
+      page,
+      pageSize,
+      totalPages
+    };
+  }
+
+  public async deleteByIdTx(id: string, userId: string): Promise<boolean> {
+    const doc = await prisma.document.findFirst({ where: { id, userId } });
+    if (!doc) return false;
+
+    await prisma.$transaction(async (tx: Prisma.TransactionClient) => {
+      await tx.documentChunk.deleteMany({ where: { documentId: id } });
+      await tx.document.delete({ where: { id } });
+    });
+
+    return true;
+  }
+
+  public async clearChunksAndResetStatus(
+    id: string,
+    status: DocumentStatus = DocumentStatus.PROCESSING
+  ): Promise<Document | null> {
+    await prisma.$transaction(async (tx: Prisma.TransactionClient) => {
+      await tx.documentChunk.deleteMany({ where: { documentId: id } });
+      await tx.document.update({
+        where: { id },
+        data: {
+          status,
+          errorMessage: null,
+          pageCount: 0
+        }
+      });
+    });
+
+    return prisma.document.findUnique({ where: { id } });
+  }
+
   public async saveChunksTx(
     documentId: string,
     chunks: Array<{
@@ -142,9 +240,6 @@ export class DocumentRepository {
     });
   }
 
-  /**
-   * Fetches detailed chunk metrics and status for UI inspection.
-   */
   public async getDocumentChunkStats(documentId: string): Promise<{ totalChunks: number; embeddedChunks: number }> {
     const totalResult = await prisma.documentChunk.count({ where: { documentId } });
     const embeddedResult = await prisma.$queryRaw<Array<{ count: bigint }>>`
@@ -159,9 +254,6 @@ export class DocumentRepository {
     };
   }
 
-  /**
-   * Returns list of chunks with metadata and hasEmbedding flag.
-   */
   public async getDocumentChunksDetail(documentId: string): Promise<DocumentChunkDetail[]> {
     const rawChunks = await prisma.$queryRaw<
       Array<{
@@ -192,16 +284,23 @@ export class DocumentRepository {
     return rawChunks;
   }
 
-  /**
-   * Fetches real counts for Dashboard cards.
-   */
-  public async getDashboardStats(userId: string): Promise<DashboardStats> {
+  public async getKnowledgeBaseStats(userId: string): Promise<{
+    totalDocuments: number;
+    processingDocuments: number;
+    completedDocuments: number;
+    failedDocuments: number;
+    totalPages: number;
+    totalChunks: number;
+    embeddedChunks: number;
+  }> {
     const docs = await prisma.document.findMany({ where: { userId } });
     let processing = 0;
     let completed = 0;
     let failed = 0;
+    let totalPages = 0;
 
     for (const doc of docs) {
+      totalPages += doc.pageCount || 0;
       if (doc.status === DocumentStatus.PROCESSING || doc.status === DocumentStatus.UPLOADING) {
         processing++;
       } else if (doc.status === DocumentStatus.COMPLETED) {
@@ -218,6 +317,7 @@ export class DocumentRepository {
         processingDocuments: 0,
         completedDocuments: 0,
         failedDocuments: 0,
+        totalPages: 0,
         totalChunks: 0,
         embeddedChunks: 0
       };
@@ -240,9 +340,14 @@ export class DocumentRepository {
       processingDocuments: processing,
       completedDocuments: completed,
       failedDocuments: failed,
+      totalPages,
       totalChunks,
       embeddedChunks
     };
+  }
+
+  public async getDashboardStats(userId: string): Promise<DashboardStats> {
+    return this.getKnowledgeBaseStats(userId);
   }
 }
 

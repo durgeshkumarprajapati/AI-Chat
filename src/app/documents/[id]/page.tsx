@@ -2,7 +2,7 @@
 
 import { useState, useEffect, useCallback } from 'react';
 import Link from 'next/link';
-import { useParams } from 'next/navigation';
+import { useParams, useRouter } from 'next/navigation';
 
 type DocumentDetail = {
   id: string;
@@ -36,12 +36,17 @@ type ChunkDetail = {
 
 export default function DocumentDetailPage() {
   const params = useParams();
+  const router = useRouter();
   const documentId = params.id as string;
 
   const [document, setDocument] = useState<DocumentDetail | null>(null);
   const [chunkStats, setChunkStats] = useState<ChunkStats>({ totalChunks: 0, embeddedChunks: 0 });
   const [chunks, setChunks] = useState<ChunkDetail[]>([]);
+  const [storageProvider, setStorageProvider] = useState<string>('local');
   const [loading, setLoading] = useState(true);
+  const [actionLoading, setActionLoading] = useState(false);
+  const [isDeleteModalOpen, setIsDeleteModalOpen] = useState(false);
+  const [bannerMessage, setBannerMessage] = useState<{ type: 'success' | 'error'; text: string } | null>(null);
   const [expandedChunkId, setExpandedChunkId] = useState<string | null>(null);
   const [showDevPanel, setShowDevPanel] = useState(true);
 
@@ -53,6 +58,7 @@ export default function DocumentDetailPage() {
         setDocument(json.data.document);
         setChunkStats(json.data.chunkStats);
         setChunks(json.data.chunks);
+        setStorageProvider(json.data.storageProvider || 'local');
       }
     } catch (err) {
       console.error('Failed to fetch document detail:', err);
@@ -78,6 +84,69 @@ export default function DocumentDetailPage() {
     return () => clearInterval(timer);
   }, [document, fetchDetail]);
 
+  const handleRetry = async () => {
+    if (!document) return;
+    setActionLoading(true);
+    try {
+      const res = await fetch(`/api/documents/${document.id}/retry`, { method: 'POST' });
+      const json = await res.json();
+      if (!res.ok || !json.success) {
+        throw new Error(json.error?.message || 'Failed to retry processing');
+      }
+      setBannerMessage({ type: 'success', text: 'Retrying document processing pipeline...' });
+      fetchDetail();
+    } catch (err) {
+      setBannerMessage({
+        type: 'error',
+        text: err instanceof Error ? err.message : 'Failed to retry processing.'
+      });
+    } finally {
+      setActionLoading(false);
+    }
+  };
+
+  const handleReprocess = async () => {
+    if (!document) return;
+    setActionLoading(true);
+    try {
+      const res = await fetch(`/api/documents/${document.id}/reprocess`, { method: 'POST' });
+      const json = await res.json();
+      if (!res.ok || !json.success) {
+        throw new Error(json.error?.message || 'Failed to reprocess document');
+      }
+      setBannerMessage({ type: 'success', text: 'Reprocessing started. Existing chunks cleared.' });
+      fetchDetail();
+    } catch (err) {
+      setBannerMessage({
+        type: 'error',
+        text: err instanceof Error ? err.message : 'Failed to reprocess document.'
+      });
+    } finally {
+      setActionLoading(false);
+    }
+  };
+
+  const handleDelete = async () => {
+    if (!document) return;
+    setActionLoading(true);
+    try {
+      const res = await fetch(`/api/documents/${document.id}`, { method: 'DELETE' });
+      const json = await res.json();
+      if (!res.ok || !json.success) {
+        throw new Error(json.error?.message || 'Failed to delete document');
+      }
+      router.push('/documents');
+    } catch (err) {
+      setBannerMessage({
+        type: 'error',
+        text: err instanceof Error ? err.message : 'Failed to delete document.'
+      });
+      setIsDeleteModalOpen(false);
+    } finally {
+      setActionLoading(false);
+    }
+  };
+
   if (loading) {
     return (
       <div className="max-w-7xl mx-auto py-12 text-center text-slate-400 font-mono">
@@ -102,6 +171,7 @@ export default function DocumentDetailPage() {
 
   const isFailed = document.status === 'FAILED';
   const isProcessing = document.status === 'PROCESSING' || document.status === 'UPLOADING';
+  const isCompleted = document.status === 'COMPLETED';
 
   return (
     <div className="max-w-7xl mx-auto space-y-8">
@@ -115,31 +185,81 @@ export default function DocumentDetailPage() {
             <span className="text-slate-600">/</span>
             <span className="text-xs font-mono text-slate-400">{document.id}</span>
           </div>
-          <h1 className="text-2xl font-bold text-white tracking-tight mt-1">{document.filename}</h1>
+          <div className="flex items-center space-x-3 mt-1">
+            <h1 className="text-2xl font-bold text-white tracking-tight">{document.filename}</h1>
+            <span className="px-2.5 py-0.5 rounded bg-indigo-950 text-indigo-300 border border-indigo-800 font-mono text-xs font-semibold uppercase">
+              {storageProvider} Storage
+            </span>
+          </div>
         </div>
 
-        <div className="flex items-center space-x-3">
-          <span
-            className={`px-3 py-1 rounded-full text-xs font-bold ${
-              document.status === 'PROCESSING'
-                ? 'bg-amber-950 text-amber-300 border border-amber-800'
-                : document.status === 'COMPLETED'
-                ? 'bg-emerald-950 text-emerald-300 border border-emerald-800'
-                : document.status === 'FAILED'
-                ? 'bg-rose-950 text-rose-300 border border-rose-800'
-                : 'bg-slate-800 text-slate-300'
-            }`}
+        {/* Action Toolbar */}
+        <div className="flex flex-wrap items-center gap-2">
+          {isCompleted && (
+            <Link
+              href="/chat"
+              className="px-3.5 py-2 rounded-xl bg-indigo-600 hover:bg-indigo-500 text-white text-xs font-semibold shadow-lg shadow-indigo-900/30 transition-all flex items-center space-x-1.5"
+            >
+              <span>💬 Ask in Chat</span>
+            </Link>
+          )}
+
+          <a
+            href={`/api/documents/${document.id}/download`}
+            target="_blank"
+            rel="noopener noreferrer"
+            className="px-3.5 py-2 rounded-xl bg-slate-900 border border-slate-800 text-xs font-semibold text-slate-200 hover:bg-slate-800 transition-colors"
           >
-            {document.status}
-          </span>
+            ⬇ Download PDF
+          </a>
+
+          {isFailed && (
+            <button
+              disabled={actionLoading}
+              onClick={handleRetry}
+              className="px-3.5 py-2 rounded-xl bg-amber-950 border border-amber-800 text-xs font-semibold text-amber-300 hover:bg-amber-900 transition-colors disabled:opacity-50"
+            >
+              ↻ Retry Processing
+            </button>
+          )}
+
+          {(isCompleted || isFailed) && (
+            <button
+              disabled={actionLoading}
+              onClick={handleReprocess}
+              className="px-3.5 py-2 rounded-xl bg-slate-900 border border-slate-800 text-xs font-semibold text-slate-300 hover:bg-slate-800 transition-colors disabled:opacity-50"
+            >
+              ⚡ Reprocess
+            </button>
+          )}
+
           <button
-            onClick={() => fetchDetail()}
-            className="px-3 py-1.5 rounded-lg bg-slate-900 border border-slate-800 text-xs font-semibold text-slate-300 hover:bg-slate-800"
+            onClick={() => setIsDeleteModalOpen(true)}
+            className="px-3 py-2 rounded-xl bg-rose-950/80 border border-rose-900 text-xs font-semibold text-rose-300 hover:bg-rose-900 transition-colors"
           >
-            ↻ Refresh
+            🗑 Delete
           </button>
         </div>
       </div>
+
+      {/* Banner Alert */}
+      {bannerMessage && (
+        <div
+          className={`p-4 rounded-xl border text-xs flex items-center justify-between ${
+            bannerMessage.type === 'error'
+              ? 'bg-rose-950/80 border-rose-800 text-rose-300'
+              : 'bg-emerald-950/80 border-emerald-800 text-emerald-300'
+          }`}
+        >
+          <div className="flex items-center space-x-2">
+            <span>{bannerMessage.type === 'error' ? '⚠️' : '✅'}</span>
+            <span>{bannerMessage.text}</span>
+          </div>
+          <button onClick={() => setBannerMessage(null)} className="hover:opacity-75">
+            ✕
+          </button>
+        </div>
+      )}
 
       {/* Main Grid: Overview & Pipeline Steps */}
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
@@ -163,7 +283,7 @@ export default function DocumentDetailPage() {
                 <span className="text-slate-200 font-mono">{document.mimeType}</span>
               </div>
               <div>
-                <span className="text-slate-500 font-mono block">Storage Key:</span>
+                <span className="text-slate-500 font-mono block">Storage Key ({storageProvider.toUpperCase()}):</span>
                 <span className="text-slate-300 font-mono text-[11px] break-all bg-slate-950 p-2 rounded-lg border border-slate-800 block">
                   {document.storageKey}
                 </span>
@@ -171,6 +291,10 @@ export default function DocumentDetailPage() {
               <div>
                 <span className="text-slate-500 font-mono block">Uploaded Date:</span>
                 <span className="text-slate-300 font-mono">{new Date(document.createdAt).toLocaleString()}</span>
+              </div>
+              <div>
+                <span className="text-slate-500 font-mono block">Last Updated:</span>
+                <span className="text-slate-300 font-mono">{new Date(document.updatedAt).toLocaleString()}</span>
               </div>
             </div>
 
@@ -206,7 +330,7 @@ export default function DocumentDetailPage() {
             <div className="rounded-xl bg-slate-950 border border-slate-800/80 p-3.5 space-y-2 text-xs font-mono">
               <div className="flex justify-between">
                 <span className="text-slate-500">Provider:</span>
-                <span className="text-indigo-400 font-semibold">Ollama Local</span>
+                <span className="text-indigo-400 font-semibold">Ollama / OpenAI Dual</span>
               </div>
               <div className="flex justify-between">
                 <span className="text-slate-500">Model:</span>
@@ -248,8 +372,8 @@ export default function DocumentDetailPage() {
                 <div className="flex items-center space-x-3">
                   <span className="text-emerald-400 text-lg">✓</span>
                   <div>
-                    <p className="text-xs font-semibold text-white">Step 2: Storage Persistence</p>
-                    <p className="text-[11px] text-slate-400">Saved under storage/documents/{document.id}</p>
+                    <p className="text-xs font-semibold text-white">Step 2: Storage Persistence ({storageProvider.toUpperCase()})</p>
+                    <p className="text-[11px] text-slate-400">Persisted via StorageProvider abstraction</p>
                   </div>
                 </div>
                 <span className="text-[11px] font-mono text-emerald-400">Completed</span>
@@ -260,7 +384,7 @@ export default function DocumentDetailPage() {
                   <span className="text-emerald-400 text-lg">✓</span>
                   <div>
                     <p className="text-xs font-semibold text-white">Step 3: RabbitMQ Job Enqueued</p>
-                    <p className="text-[11px] text-slate-400">Payload dispatched to queue: &quot;document-processing&quot;</p>
+                    <p className="text-[11px] text-slate-400">Dispatched to &quot;document-processing&quot; queue</p>
                   </div>
                 </div>
                 <span className="text-[11px] font-mono text-emerald-400">Completed</span>
@@ -328,10 +452,10 @@ export default function DocumentDetailPage() {
                     <span className="text-slate-500 text-lg">○</span>
                   )}
                   <div>
-                    <p className="text-xs font-semibold text-white">Step 6 & 7: Ollama Embeddings & pgvector</p>
+                    <p className="text-xs font-semibold text-white">Step 6 & 7: Vector Embeddings & pgvector</p>
                     <p className="text-[11px] text-slate-400">
                       {chunkStats.embeddedChunks > 0
-                        ? `Embedded ${chunkStats.embeddedChunks} / ${chunkStats.totalChunks} chunks in PostgreSQL vector(768)`
+                        ? `Embedded ${chunkStats.embeddedChunks} / ${chunkStats.totalChunks} chunks in vector(768)`
                         : 'Waiting for embedding batch process...'}
                     </p>
                   </div>
@@ -341,16 +465,22 @@ export default function DocumentDetailPage() {
                 </span>
               </div>
 
-              <div className="flex items-center justify-between p-3 rounded-xl bg-slate-950/50 border border-slate-800/50 opacity-60">
+              <div className="flex items-center justify-between p-3 rounded-xl bg-slate-950 border border-slate-800">
                 <div className="flex items-center space-x-3">
-                  <span className="text-slate-500 text-lg">🔒</span>
+                  {isCompleted ? (
+                    <span className="text-emerald-400 text-lg">✓</span>
+                  ) : (
+                    <span className="text-slate-500 text-lg">○</span>
+                  )}
                   <div>
-                    <p className="text-xs font-semibold text-slate-300">Step 8: Grounded RAG Retrieval</p>
-                    <p className="text-[11px] text-slate-500">Top-K similarity search, citations, and LLM chat</p>
+                    <p className="text-xs font-semibold text-white">Step 8: Ready for Grounded RAG</p>
+                    <p className="text-[11px] text-slate-400">
+                      {isCompleted ? 'Document ready for similarity search & streaming chat' : 'Awaiting completion'}
+                    </p>
                   </div>
                 </div>
-                <span className="text-[10px] font-mono px-2 py-0.5 rounded bg-slate-800 text-indigo-400 border border-slate-700">
-                  Phase 11
+                <span className="text-[11px] font-mono text-emerald-400">
+                  {isCompleted ? 'Ready' : 'Pending'}
                 </span>
               </div>
             </div>
@@ -373,7 +503,7 @@ export default function DocumentDetailPage() {
               <div className="grid grid-cols-2 sm:grid-cols-4 gap-3 pt-2 text-xs font-mono">
                 <div className="p-3 rounded-xl bg-slate-950 border border-slate-800">
                   <span className="text-slate-500 block text-[10px]">Storage Driver</span>
-                  <span className="text-slate-200 font-semibold">LocalStorageProvider</span>
+                  <span className="text-slate-200 font-semibold">{storageProvider.toUpperCase()}</span>
                 </div>
                 <div className="p-3 rounded-xl bg-slate-950 border border-slate-800">
                   <span className="text-slate-500 block text-[10px]">Message Queue</span>
@@ -393,7 +523,7 @@ export default function DocumentDetailPage() {
                 </div>
                 <div className="p-3 rounded-xl bg-slate-950 border border-slate-800">
                   <span className="text-slate-500 block text-[10px]">Embedding Provider</span>
-                  <span className="text-indigo-400 font-semibold">Ollama nomic-embed</span>
+                  <span className="text-indigo-400 font-semibold">Ollama / OpenAI</span>
                 </div>
                 <div className="p-3 rounded-xl bg-slate-950 border border-slate-800">
                   <span className="text-slate-500 block text-[10px]">Vector Column</span>
@@ -484,6 +614,37 @@ export default function DocumentDetailPage() {
           </div>
         )}
       </div>
+
+      {/* Delete Confirmation Modal */}
+      {isDeleteModalOpen && (
+        <div className="fixed inset-0 z-50 bg-black/80 backdrop-blur-sm flex items-center justify-center p-4">
+          <div className="max-w-md w-full rounded-2xl bg-slate-900 border border-slate-800 p-6 space-y-4 shadow-2xl">
+            <div className="flex items-center space-x-3 text-rose-400">
+              <span className="text-2xl">⚠️</span>
+              <h3 className="text-lg font-bold text-white">Delete Document?</h3>
+            </div>
+            <p className="text-xs text-slate-300 leading-relaxed font-sans">
+              Are you sure you want to delete <strong className="text-white">&quot;{document.filename}&quot;</strong>?
+              This will permanently remove the document from <span className="font-mono text-indigo-400">{storageProvider.toUpperCase()} Storage</span> and delete all associated page chunks and vector embeddings.
+            </p>
+            <div className="flex items-center justify-end space-x-3 pt-2">
+              <button
+                onClick={() => setIsDeleteModalOpen(false)}
+                className="px-4 py-2 rounded-xl bg-slate-800 hover:bg-slate-700 text-slate-300 text-xs font-semibold"
+              >
+                Cancel
+              </button>
+              <button
+                onClick={handleDelete}
+                disabled={actionLoading}
+                className="px-4 py-2 rounded-xl bg-rose-600 hover:bg-rose-500 text-white text-xs font-semibold transition-colors disabled:opacity-50"
+              >
+                {actionLoading ? 'Deleting...' : 'Delete Document'}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 }

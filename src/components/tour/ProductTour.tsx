@@ -87,6 +87,13 @@ const TOUR_STEPS: TourStep[] = [
     description: 'The platform supports pluggable document storage backends: default LocalStorageProvider or production Amazon S3 with zero pipeline code changes.',
     technicalDetails: 'AWS_STORAGE_PROVIDER=local | s3 • S3StorageProvider • Preserved logical keys: documents/{userId}/{documentId}/{filename}',
     icon: '☁️'
+  },
+  {
+    title: '12. Document Management & Knowledge Base',
+    badge: 'Phase 16',
+    description: 'SaaS-style document catalog with debounced search, status filtering, sorting, Knowledge Base metrics, retry/reprocess actions, and secure deletion.',
+    technicalDetails: 'GET /api/documents (paginated) • POST /retry • POST /reprocess • DELETE /api/documents/[id] • GET /download',
+    icon: '📚'
   }
 ];
 

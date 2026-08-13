@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from 'next/server';
 import { getAuthUser } from '@/lib/auth';
 import { documentService } from '@/features/documents/services/document.service';
 import { AppError, ValidationError } from '@/errors';
+import { DocumentStatus } from '@prisma/client';
 
 export async function POST(req: NextRequest) {
   try {
@@ -63,8 +64,48 @@ export async function POST(req: NextRequest) {
 export async function GET(req: NextRequest) {
   try {
     const authUser = await getAuthUser(req);
-    const documents = await documentService.getUserDocuments(authUser.id);
-    return NextResponse.json({ success: true, data: documents });
+    const { searchParams } = new URL(req.url);
+
+    const pageStr = searchParams.get('page');
+    const pageSizeStr = searchParams.get('pageSize');
+    const search = searchParams.get('search') || undefined;
+    const statusRaw = searchParams.get('status') || undefined;
+    const sortBy = searchParams.get('sortBy') || undefined;
+    const sortOrderRaw = searchParams.get('sortOrder') || undefined;
+
+    const page = pageStr ? parseInt(pageStr, 10) : 1;
+    const pageSize = pageSizeStr ? parseInt(pageSizeStr, 10) : 20;
+
+    if (isNaN(page) || page < 1) {
+      throw new ValidationError('Page parameter must be a positive integer');
+    }
+    if (isNaN(pageSize) || pageSize < 1 || pageSize > 50) {
+      throw new ValidationError('PageSize parameter must be an integer between 1 and 50');
+    }
+
+    let status: DocumentStatus | undefined = undefined;
+    if (statusRaw && statusRaw !== 'ALL') {
+      if (!Object.values(DocumentStatus).includes(statusRaw as DocumentStatus)) {
+        throw new ValidationError(`Invalid status filter "${statusRaw}"`);
+      }
+      status = statusRaw as DocumentStatus;
+    }
+
+    const sortOrder: 'asc' | 'desc' = sortOrderRaw === 'asc' ? 'asc' : 'desc';
+
+    const result = await documentService.listUserDocumentsPaginated(authUser.id, {
+      page,
+      pageSize,
+      search,
+      status,
+      sortBy,
+      sortOrder
+    });
+
+    return NextResponse.json({
+      success: true,
+      data: result
+    });
   } catch (error) {
     if (error instanceof AppError) {
       return NextResponse.json(

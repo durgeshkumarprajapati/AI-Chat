@@ -62,3 +62,10 @@ export class DocumentProcessingError extends AppError {
     this.documentId = documentId;
   }
 }
+
+export class ConflictError extends AppError {
+  constructor(message = 'Resource conflict') {
+    super(message, 409, 'CONFLICT');
+  }
+}
+

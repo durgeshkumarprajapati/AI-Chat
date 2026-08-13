@@ -356,5 +356,47 @@ npm run test:phase15
 npm run test:s3-storage
 ```
 
+---
+
+## 10. Phase 16 — Document Management & Knowledge Base
+
+### Overview
+Phase 16 transforms the platform into a SaaS-style Document Management & Knowledge Base experience. Users can search, filter, sort, paginate, inspect, retry, reprocess, preview, download, and delete documents with complete tenant isolation and storage-provider transparency.
+
+### Architecture
+
+```mermaid
+flowchart TD
+    User[Authenticated Client] --> API[Document API /api/documents]
+    API --> Svc[DocumentService]
+    Svc --> Rep[DocumentRepository]
+    Svc --> Storage[Canonical StorageProvider]
+
+    Storage -->|AWS_STORAGE_PROVIDER=local| LocalStorage[LocalStorageProvider]
+    Storage -->|AWS_STORAGE_PROVIDER=s3| S3Storage[S3StorageProvider]
+
+    Svc -->|Publish Job| RabbitMQ[RabbitMQ Broker]
+    RabbitMQ --> Worker[Document Processing Worker]
+    Worker --> Extractor[pdfjs-dist PDF Parser]
+    Extractor --> Chunker[cl100k_base Chunker]
+    Chunker --> Embedder[Ollama / OpenAI Embeddings]
+    Embedder --> Postgres[(PostgreSQL + pgvector)]
+```
+
+### Endpoints Implemented
+- `GET /api/documents` — Paginated catalog with debounced case-insensitive search (`filename` & `originalFilename`), status filter (`ALL`, `PROCESSING`, `COMPLETED`, `FAILED`, `UPLOADING`), sort order (`createdAt`, `filename`, `fileSize`, `status`, `updatedAt`), Knowledge Base summary stats, and current storage driver badge (`local` vs `s3`).
+- `GET /api/documents/[id]` — Returns document metadata, pipeline steps checklist, chunk metrics, chunks detail, and storage driver information.
+- `POST /api/documents/[id]/retry` — Safely retries a `FAILED` document by resetting status to `PROCESSING` and publishing a new RabbitMQ processing job.
+- `POST /api/documents/[id]/reprocess` — Explicitly reprocesses a `COMPLETED` or `FAILED` document by transactionally clearing old chunks/embeddings, resetting status to `PROCESSING`, and re-enqueuing worker job.
+- `DELETE /api/documents/[id]` — Deletes document database record, chunks, and storage object via `StorageProvider.delete(storageKey)`.
+- `GET /api/documents/[id]/download` — Securely streams file content to authorized owners with `Content-Disposition` headers.
+
+### Testing Commands
+```bash
+# Automated Document Management & Knowledge Base Test Suite
+npm run test:phase16
+```
+
+
 
 

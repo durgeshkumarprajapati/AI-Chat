@@ -22,6 +22,7 @@
     "test:phase14": "tsx tests/phase14-hybrid-retrieval.test.ts",
     "test:phase15": "tsx tests/phase15-s3-storage.test.ts",
     "test:phase15-storage-refactor": "tsx tests/phase15-storage-refactor.test.ts",
+    "test:phase16": "tsx tests/phase16-document-management.test.ts",
     "test:s3-storage": "tsx scripts/test-s3-storage.ts",
     "test:ollama": "tsx scripts/test-ollama-embeddings.ts",
     "test:ollama-chat": "tsx scripts/test-ollama-chat.ts",

@@ -53,7 +53,10 @@ export default function HomePage() {
 
         if (statsRes.success) setStats(statsRes.data);
         if (healthRes.services) setHealth(healthRes);
-        if (docsRes.success) setRecentDocs(docsRes.data.slice(0, 5));
+        if (docsRes.success) {
+          const items = Array.isArray(docsRes.data) ? docsRes.data : docsRes.data.items || [];
+          setRecentDocs(items.slice(0, 5));
+        }
       } catch (err) {
         console.error('Error loading dashboard data:', err);
       } finally {

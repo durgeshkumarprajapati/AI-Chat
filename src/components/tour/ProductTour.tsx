@@ -115,6 +115,13 @@ const TOUR_STEPS: TourStep[] = [
     description: 'Measure RAG answer quality with user 👍/👎 feedback, sentence-level groundedness scoring, citation coverage metrics, response/retrieval latency tracking, and a developer quality dashboard.',
     technicalDetails: 'UserFeedback & RagEvaluation models • LocalHeuristicEvaluator • Non-blocking async telemetry • /rag-evaluation analytics',
     icon: '📈'
+  },
+  {
+    title: '16. RAG Performance & Latency Optimization',
+    badge: 'Phase 20',
+    description: 'Real-time grounded streaming with prompt budgets, controlled output, and diagnostics for retrieval, time-to-first-token, LLM inference, and async evaluation.',
+    technicalDetails: 'Prompt context optimizer • TTFT telemetry • /rag-debug performance diagnostics',
+    icon: '⚡'
   }
 ];
 

@@ -69,6 +69,10 @@ const serverEnvSchema = z
     OPENAI_CHAT_MODEL: z
       .string()
       .default('gpt-4o-mini'),
+    RAG_LLM_MAX_OUTPUT_TOKENS: z.coerce.number().int().positive().max(4096).default(512),
+    RAG_LLM_TEMPERATURE: z.coerce.number().min(0).max(2).default(0.1),
+    RAG_LLM_CONTEXT_CHUNKS: z.coerce.number().int().positive().max(20).default(5),
+    RAG_LLM_PROMPT_MAX_TOKENS: z.coerce.number().int().min(256).max(16000).default(3000),
     RAG_TOP_K: z
       .coerce.number()
       .int()

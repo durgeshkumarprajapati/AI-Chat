@@ -41,7 +41,8 @@ ${input.question}`;
           { role: 'system', content: systemPrompt },
           { role: 'user', content: userPrompt }
         ],
-        temperature: 0.1
+        temperature: env.server?.RAG_LLM_TEMPERATURE ?? 0.1,
+        max_tokens: env.server?.RAG_LLM_MAX_OUTPUT_TOKENS ?? 512
       });
 
       const answer = completion.choices[0]?.message?.content?.trim();
@@ -90,7 +91,8 @@ ${input.question}`;
           { role: 'system', content: systemPrompt },
           { role: 'user', content: userPrompt }
         ],
-        temperature: 0.1,
+        temperature: env.server?.RAG_LLM_TEMPERATURE ?? 0.1,
+        max_tokens: env.server?.RAG_LLM_MAX_OUTPUT_TOKENS ?? 512,
         stream: true
       });
 

@@ -547,7 +547,20 @@ flowchart TD
 npm run test:phase19
 ```
 
+## Phase 20 — RAG Performance & LLM Inference Optimization
 
+Phase 20 addresses measured inference latency without weakening retrieval, grounding, citations, conversation memory, or asynchronous evaluation. The verified baseline was 188,259ms for a historical full response; a fresh grounded request measured 5,958ms, with 5,883ms in local LLM generation and roughly 50ms in embedding/retrieval. A local CPU Ollama stream measured 973ms TTFT and 5,363ms total, so LLM inference—not pgvector—is the dominant bottleneck.
+
+The pipeline now applies deterministic prompt budgets (`RAG_LLM_PROMPT_MAX_TOKENS`, default 3000), retains highest-ranked evidence and its real citation identity, and bounds generation through `RAG_LLM_MAX_OUTPUT_TOKENS` (512) and `RAG_LLM_TEMPERATURE` (0.1). Both Ollama and OpenAI providers use these controls. The latency trace records prompt/context estimates alongside memory, retrieval, TTFT, generation, persistence, and asynchronous evaluation.
+
+```text
+User → Chat API → Conversation Context → Hybrid Retrieval → Reranking
+     → Context Optimization → LLM Provider (Ollama | OpenAI) → SSE → Persistence
+
+RAG Pipeline → Latency Trace → Memory | Retrieval | Context | TTFT | LLM | Persistence | Async Evaluation
+```
+
+Run `npm run test:rag-latency` against a running application for current measurements. CPU-only Ollama performance remains hardware/model dependent; selecting a smaller model is an optional deployment decision and is never changed automatically.
 
 
 

@@ -25,6 +25,9 @@ export async function GET() {
       pgvector: string;
       embeddingModel: string;
       embeddingDimensions: string;
+      llmProvider: string;
+      llmModel: string;
+      ragEvaluation: string;
     };
   } = {
     status: 'ok',
@@ -42,7 +45,10 @@ export async function GET() {
     details: {
       pgvector: '0.8.6',
       embeddingModel: process.env.OLLAMA_EMBEDDING_MODEL || 'nomic-embed-text',
-      embeddingDimensions: process.env.OLLAMA_EMBEDDING_DIMENSIONS || '768'
+      embeddingDimensions: process.env.OLLAMA_EMBEDDING_DIMENSIONS || '768',
+      llmProvider: process.env.LLM_PROVIDER || 'ollama',
+      llmModel: process.env.LLM_PROVIDER === 'openai' ? (process.env.OPENAI_CHAT_MODEL || 'gpt-4o-mini') : (process.env.OLLAMA_CHAT_MODEL || 'llama3.2'),
+      ragEvaluation: process.env.RAG_EVALUATION_ENABLED === 'false' ? 'disabled' : 'enabled'
     }
   };
 

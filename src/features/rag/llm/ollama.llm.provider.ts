@@ -14,6 +14,8 @@ export class OllamaLLMProvider implements LLMProvider {
   private model: string;
   private maxRetries: number;
   private initialDelayMs: number;
+  private maxOutputTokens: number;
+  private temperature: number;
 
   constructor(options?: OllamaLLMProviderOptions) {
     const rawUrl = options?.baseUrl || env.server?.OLLAMA_BASE_URL || process.env.OLLAMA_BASE_URL || 'http://localhost:11434';
@@ -21,6 +23,8 @@ export class OllamaLLMProvider implements LLMProvider {
     this.model = options?.model || env.server?.OLLAMA_CHAT_MODEL || process.env.OLLAMA_CHAT_MODEL || 'llama3.2';
     this.maxRetries = options?.maxRetries ?? 2;
     this.initialDelayMs = options?.initialDelayMs ?? 1000;
+    this.maxOutputTokens = env.server?.RAG_LLM_MAX_OUTPUT_TOKENS ?? 512;
+    this.temperature = env.server?.RAG_LLM_TEMPERATURE ?? 0.1;
   }
 
   public async generateAnswer(input: LLMGenerateInput): Promise<string> {
@@ -54,6 +58,7 @@ ${input.question}`;
             system: systemPrompt,
             prompt: prompt,
             stream: false
+            ,options: { num_predict: this.maxOutputTokens, temperature: this.temperature }
           })
         });
 
@@ -133,7 +138,8 @@ ${input.question}`;
         model: this.model,
         system: systemPrompt,
         prompt: prompt,
-        stream: true
+            stream: true
+        ,options: { num_predict: this.maxOutputTokens, temperature: this.temperature }
       })
     });
 

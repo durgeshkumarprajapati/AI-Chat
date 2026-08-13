@@ -7,6 +7,7 @@ import { prisma } from '@/lib/prisma';
 import { ValidationError, NotFoundError, AuthorizationError } from '@/errors';
 import { ChatResponse, Citation, ConversationDetail, StreamEvent } from './chat.types';
 import { MessageRole, Prisma } from '@prisma/client';
+import { promptContextService } from './prompt-context.service';
 
 export class ChatService {
   private retrievalService: RetrievalService;
@@ -92,31 +93,19 @@ export class ChatService {
     // 4. Zero Hallucination Policy Check
     let promptBuildMs = 0;
     let llmLatencyMs = 0;
+    let promptTokenEstimate = 0;
+    let conversationContextTokens = 0;
+    let retrievedContextTokens = 0;
     if (retrievedChunks.length === 0) {
       answer = "I couldn't find enough relevant information in your uploaded documents to answer that question.";
     } else {
       // 5. Construct Grounded LLM Context
       const promptStart = Date.now();
-      const contextBlocks: string[] = [];
-
-      if (convContext.summary) {
-        contextBlocks.push(`=== CONVERSATION SUMMARY ===\n${convContext.summary}`);
-      }
-
-      if (convContext.includedMessages.length > 0) {
-        const historyText = convContext.includedMessages
-          .map((m) => `${m.role}: ${m.content}`)
-          .join('\n');
-        contextBlocks.push(`=== CONVERSATION HISTORY ===\n${historyText}`);
-      }
-
-      const documentEvidence = retrievedChunks
-        .map((chunk) => `[Document: ${chunk.filename} | Page: ${chunk.pageNumber}]\n${chunk.content}`)
-        .join('\n\n---\n\n');
-
-      contextBlocks.push(`=== RETRIEVED DOCUMENT EVIDENCE ===\n${documentEvidence}`);
-
-      const fullContextString = contextBlocks.join('\n\n');
+      const optimizedContext = promptContextService.optimize({ summary: convContext.summary, messages: convContext.includedMessages, chunks: retrievedChunks });
+      const fullContextString = optimizedContext.context;
+      promptTokenEstimate = optimizedContext.promptTokenEstimate;
+      conversationContextTokens = optimizedContext.conversationContextTokens;
+      retrievedContextTokens = optimizedContext.retrievedContextTokens;
       promptBuildMs = Date.now() - promptStart;
 
       // 6. Generate Answer via LLM Provider
@@ -127,7 +116,7 @@ export class ChatService {
       });
       llmLatencyMs = Date.now() - llmStart;
 
-      citations = retrievedChunks.map((c) => ({
+      citations = optimizedContext.chunks.map((c) => ({
         documentId: c.documentId,
         chunkId: c.id,
         filename: c.filename,
@@ -183,6 +172,9 @@ export class ChatService {
       rerankMs: retrievalTrace?.metrics.rerankMs ?? 0,
       retrievalMs: retrievalTrace?.metrics.totalMs ?? 0,
       promptBuildMs,
+      promptTokenEstimate,
+      conversationContextTokens,
+      retrievedContextTokens,
       llmFirstTokenMs: 0,
       llmGenerationMs: llmLatencyMs,
       persistenceMs,
@@ -284,10 +276,15 @@ export class ChatService {
     const retrievalTrace = this.retrievalService.getLastTrace();
     const topSimilarity = retrievedChunks.length > 0 ? retrievedChunks[0]!.similarity : 0;
 
+    const streamContextStart = Date.now();
+    const optimizedStreamContext = retrievedChunks.length > 0
+      ? promptContextService.optimize({ summary: convContext.summary, messages: convContext.includedMessages, chunks: retrievedChunks })
+      : null;
+    const streamContextPreparationMs = Date.now() - streamContextStart;
     let citations: Citation[] = [];
 
-    if (retrievedChunks.length > 0) {
-      citations = retrievedChunks.map((c) => ({
+    if (optimizedStreamContext) {
+      citations = optimizedStreamContext.chunks.map((c) => ({
         documentId: c.documentId,
         chunkId: c.id,
         filename: c.filename,
@@ -307,9 +304,12 @@ export class ChatService {
     };
 
     let answer = '';
-    let promptBuildMs = 0;
+    let promptBuildMs = streamContextPreparationMs;
     let llmFirstTokenMs = 0;
     let llmGenerationMs = 0;
+    let promptTokenEstimate = 0;
+    let conversationContextTokens = 0;
+    let retrievedContextTokens = 0;
 
     // 4. Zero Hallucination Policy Check
     if (retrievedChunks.length === 0) {
@@ -317,28 +317,10 @@ export class ChatService {
       yield { type: 'delta', text: answer };
     } else {
       // 5. Construct Grounded LLM Context
-      const promptStart = Date.now();
-      const contextBlocks: string[] = [];
-
-      if (convContext.summary) {
-        contextBlocks.push(`=== CONVERSATION SUMMARY ===\n${convContext.summary}`);
-      }
-
-      if (convContext.includedMessages.length > 0) {
-        const historyText = convContext.includedMessages
-          .map((m) => `${m.role}: ${m.content}`)
-          .join('\n');
-        contextBlocks.push(`=== CONVERSATION HISTORY ===\n${historyText}`);
-      }
-
-      const documentEvidence = retrievedChunks
-        .map((chunk) => `[Document: ${chunk.filename} | Page: ${chunk.pageNumber}]\n${chunk.content}`)
-        .join('\n\n---\n\n');
-
-      contextBlocks.push(`=== RETRIEVED DOCUMENT EVIDENCE ===\n${documentEvidence}`);
-
-      const fullContextString = contextBlocks.join('\n\n');
-      promptBuildMs = Date.now() - promptStart;
+      const fullContextString = optimizedStreamContext!.context;
+      promptTokenEstimate = optimizedStreamContext!.promptTokenEstimate;
+      conversationContextTokens = optimizedStreamContext!.conversationContextTokens;
+      retrievedContextTokens = optimizedStreamContext!.retrievedContextTokens;
 
       // 6. Stream Grounded Answer via LLM Provider
       const llmStart = Date.now();
@@ -408,6 +390,9 @@ export class ChatService {
       rerankMs: retrievalTrace?.metrics.rerankMs ?? 0,
       retrievalMs: retrievalTrace?.metrics.totalMs ?? 0,
       promptBuildMs,
+      promptTokenEstimate,
+      conversationContextTokens,
+      retrievedContextTokens,
       llmFirstTokenMs,
       llmGenerationMs,
       persistenceMs,

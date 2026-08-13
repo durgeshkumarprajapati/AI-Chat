@@ -25,6 +25,7 @@
     "test:phase16": "tsx tests/phase16-document-management.test.ts",
     "test:phase17": "tsx tests/phase17-knowledge-bases.test.ts",
     "test:phase18": "tsx tests/phase18-conversation-memory.test.ts",
+    "test:phase19": "tsx tests/phase19-rag-evaluation.test.ts",
     "test:s3-storage": "tsx scripts/test-s3-storage.ts",
     "test:ollama": "tsx scripts/test-ollama-embeddings.ts",
     "test:ollama-chat": "tsx scripts/test-ollama-chat.ts",

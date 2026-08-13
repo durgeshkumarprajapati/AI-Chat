@@ -2,6 +2,7 @@ import { RetrievalService } from '../retrieval/retrieval.service';
 import { getLLMProvider } from '../llm/llm.provider.factory';
 import { LLMProvider } from '../llm/llm.provider';
 import { conversationContextService, ConversationContextService } from './conversation-context.service';
+import { evaluationService } from '../evaluation/evaluation.service';
 import { prisma } from '@/lib/prisma';
 import { ValidationError, NotFoundError, AuthorizationError } from '@/errors';
 import { ChatResponse, Citation, ConversationDetail, StreamEvent } from './chat.types';
@@ -162,6 +163,22 @@ export class ChatService {
 
     const duration = Date.now() - startTime;
     console.log(`[ChatService] RAG query completed: conversationId=${conversationId}, chunks=${retrievedChunks.length}, topSim=${topSimilarity.toFixed(3)}, durationMs=${duration}ms`);
+
+    // Non-blocking RAG Evaluation
+    evaluationService
+      .evaluateAndPersist({
+        userId,
+        conversationId: conversationId!,
+        messageId: assistantMessage.id,
+        knowledgeBaseId: targetKbId || null,
+        question: trimmedQuestion,
+        retrievalQuery: convContext.retrievalQuery,
+        answer,
+        citations,
+        retrievedChunks,
+        latencyMs: duration
+      })
+      .catch((err) => console.warn('[ChatService] Background evaluation error:', err));
 
     return {
       conversationId: conversationId!,
@@ -335,6 +352,22 @@ export class ChatService {
 
     const duration = Date.now() - startTime;
     console.log(`[ChatService] RAG streaming query completed: conversationId=${conversationId}, chunks=${retrievedChunks.length}, topSim=${topSimilarity.toFixed(3)}, durationMs=${duration}ms`);
+
+    // Non-blocking RAG Evaluation
+    evaluationService
+      .evaluateAndPersist({
+        userId,
+        conversationId: conversationId!,
+        messageId: assistantMessage.id,
+        knowledgeBaseId: targetKbId || null,
+        question: trimmedQuestion,
+        retrievalQuery: convContext.retrievalQuery,
+        answer: finalAnswer,
+        citations,
+        retrievedChunks,
+        latencyMs: duration
+      })
+      .catch((err) => console.warn('[ChatService] Background evaluation error:', err));
 
     yield {
       type: 'done',

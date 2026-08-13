@@ -496,6 +496,58 @@ flowchart TD
 npm run test:phase18
 ```
 
+---
+
+## 13. Phase 19 — RAG Evaluation, User Feedback & Quality Analytics
+
+### Overview
+Phase 19 adds a production-grade RAG evaluation, answer quality measurement, and user feedback layer. It enables users to rate responses with 👍/👎 feedback, calculates sentence-level groundedness and citation coverage scores, records end-to-end response and retrieval latency, and provides developers with a quality analytics dashboard (`/rag-evaluation`).
+
+### RAG Evaluation & Feedback Architecture
+
+```mermaid
+flowchart TD
+    A[User Question] --> B[Conversation Memory]
+    B --> C[Hybrid Retrieval & Local Reranking]
+    C --> D[Grounded LLM Streaming Response]
+    D --> E[Persist Assistant Message]
+    E --> F[Async Non-Blocking Evaluation]
+
+    F --> G[LocalHeuristicEvaluator]
+    G --> H[Groundedness & Citation Coverage Scores]
+    H --> I[RagEvaluation Record]
+
+    User[User Chat UI] -->|👍 / 👎 Rating| J[UserFeedback Record]
+    I --> K[RAG Evaluation Dashboard /rag-evaluation]
+    J --> K
+```
+
+### Key Capabilities & Environment Configuration
+- **User Answer Feedback**: Rate responses with 👍 Helpful or 👎 Not Helpful buttons, reason tags, and optional comments.
+- **Sentence-Level Groundedness**: Measures lexical statement overlap against retrieved document evidence.
+- **Citation Coverage Ratio**: Calculates cited chunk ratio against retrieved chunks.
+- **Non-Blocking Telemetry**: Background evaluation runs asynchronously after message persistence — chat streaming and non-streaming responses deliver with zero added latency.
+- **Environment Variables**:
+  - `RAG_EVALUATOR`: `heuristic` (default) or `llm`
+  - `RAG_EVALUATION_ENABLED`: `true` (default)
+  - `RAG_EVALUATION_ASYNC`: `true` (default)
+  - `RAG_EVALUATION_RETENTION_DAYS`: `90` (default)
+
+### Endpoints Implemented
+- `POST /api/rag/feedback` — Submit or update user feedback rating (upsert).
+- `GET /api/rag/feedback` — List user feedback history for authenticated user.
+- `GET /api/rag/evaluations` — Paginated list of RAG evaluation records.
+- `GET /api/rag/evaluations/[id]` — Detailed evaluation breakdown.
+- `GET /api/rag/metrics` — Aggregated RAG quality & performance metrics supporting `timeRange` (`24h`, `7d`, `30d`, `90d`, `all`) and `knowledgeBaseId` filters.
+- `POST /api/rag/evaluate/[messageId]` — Manually trigger re-evaluation of a message.
+
+### Testing Commands
+```bash
+# Automated Phase 19 RAG Evaluation & Feedback Test Suite
+npm run test:phase19
+```
+
+
 
 
 

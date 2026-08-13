@@ -151,7 +151,7 @@ export default function SystemHealthPage() {
             </div>
           </div>
 
-          {/* Ollama Local Embeddings */}
+          {/* Ollama / LLM */}
           <div className="rounded-xl bg-slate-950 border border-slate-800 p-4 space-y-3">
             <div className="flex items-center justify-between">
               <span className="text-2xl">🦙</span>
@@ -159,21 +159,39 @@ export default function SystemHealthPage() {
                 className={`text-xs font-semibold px-2.5 py-0.5 rounded-full ${
                   health?.services.ollama === 'healthy'
                     ? 'bg-emerald-950 text-emerald-300 border border-emerald-800'
-                    : 'bg-amber-950 text-amber-300 border border-amber-800'
+                    : 'bg-rose-950 text-rose-300 border border-rose-800'
                 }`}
               >
-                {health?.services.ollama === 'healthy' ? 'Healthy' : 'Not Running'}
+                {health?.services.ollama === 'healthy' ? 'Healthy' : 'Unhealthy'}
               </span>
             </div>
             <div>
-              <h3 className="text-sm font-bold text-white">Ollama AI Services</h3>
-              <p className="text-[11px] text-slate-400 font-mono mt-0.5">http://localhost:11434</p>
+              <h3 className="text-sm font-bold text-white">Ollama AI Engine</h3>
+              <p className="text-[11px] text-slate-400 font-mono mt-0.5">HTTP Port 11434</p>
             </div>
             <div className="pt-2 border-t border-slate-900 text-[10px] font-mono text-slate-400 space-y-0.5">
-              <p>• Embed: {health?.details.embeddingModel || 'nomic-embed-text'} (768d)</p>
-              <p>• Chat LLM: llama3.2</p>
-              <p>• Hybrid Search: Active (Vector + Keyword)</p>
-              <p>• Local Reranker: Enabled</p>
+              <p>• Embedding: {health?.details.embeddingModel || 'nomic-embed-text'}</p>
+              <p>• Vector Dimension: {health?.details.embeddingDimensions || '768'}</p>
+              <p>• LLM Provider: Provider Factory</p>
+            </div>
+          </div>
+
+          {/* RAG Evaluation & Answer Quality */}
+          <div className="rounded-xl bg-slate-950 border border-slate-800 p-4 space-y-3">
+            <div className="flex items-center justify-between">
+              <span className="text-2xl">📈</span>
+              <span className="text-xs font-semibold px-2.5 py-0.5 rounded-full bg-emerald-950 text-emerald-300 border border-emerald-800">
+                Healthy
+              </span>
+            </div>
+            <div>
+              <h3 className="text-sm font-bold text-white">RAG Evaluation Engine</h3>
+              <p className="text-[11px] text-slate-400 font-mono mt-0.5">Phase 19 Quality Analytics</p>
+            </div>
+            <div className="pt-2 border-t border-slate-900 text-[10px] font-mono text-slate-400 space-y-0.5">
+              <p>• Evaluator: LocalHeuristicEvaluator</p>
+              <p>• Telemetry: Non-blocking Async</p>
+              <p>• User Feedback: 👍/👎 Upsert Enabled</p>
             </div>
           </div>
         </div>

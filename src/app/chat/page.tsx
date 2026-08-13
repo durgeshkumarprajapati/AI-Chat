@@ -57,6 +57,35 @@ export default function ChatPage() {
   const [fetchingHistory, setFetchingHistory] = useState(false);
   const [showDebug, setShowDebug] = useState(false);
   const [copiedId, setCopiedId] = useState<string | null>(null);
+  const [userFeedbackState, setUserFeedbackState] = useState<Record<string, { rating: 'POSITIVE' | 'NEGATIVE'; reason?: string }>>({});
+  const [feedbackToast, setFeedbackToast] = useState<string | null>(null);
+
+  const handleFeedbackSubmit = async (messageId: string, rating: 'POSITIVE' | 'NEGATIVE', reason?: string) => {
+    if (!activeConversationId) return;
+    try {
+      const res = await fetch('/api/rag/feedback', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          messageId,
+          conversationId: activeConversationId,
+          rating,
+          reason
+        })
+      });
+      const json = await res.json();
+      if (json.success) {
+        setUserFeedbackState((prev) => ({
+          ...prev,
+          [messageId]: { rating, reason }
+        }));
+        setFeedbackToast('Thanks for your feedback! ✨');
+        setTimeout(() => setFeedbackToast(null), 3000);
+      }
+    } catch (err) {
+      console.error('Failed to submit user feedback:', err);
+    }
+  };
 
   // Rename & Delete Modals
   const [renameConvId, setRenameConvId] = useState<string | null>(null);
@@ -433,6 +462,13 @@ export default function ChatPage() {
         </div>
       )}
 
+      {/* Feedback Toast Notification */}
+      {feedbackToast && (
+        <div className="fixed top-5 right-5 z-50 bg-emerald-950 border border-emerald-700 text-emerald-300 font-mono text-xs px-4 py-2.5 rounded-xl shadow-2xl animate-fade-in flex items-center space-x-2">
+          <span>{feedbackToast}</span>
+        </div>
+      )}
+
       {/* Sidebar - Conversations & Knowledge Base Scope */}
       <aside className="w-full md:w-72 bg-slate-900 border border-slate-800 rounded-2xl p-4 flex flex-col justify-between shadow-xl flex-shrink-0">
         <div className="space-y-4 min-h-0 flex flex-col flex-1">
@@ -692,6 +728,38 @@ export default function ChatPage() {
                           </Link>
                         ))}
                       </div>
+                    </div>
+                  )}
+
+                  {/* Phase 19 User Feedback Buttons */}
+                  {msg.role === 'ASSISTANT' && msg.content && !msg.isStreaming && (
+                    <div className="mt-3 pt-2 border-t border-slate-800/60 flex items-center justify-between text-[11px]">
+                      <div className="flex items-center space-x-2">
+                        <span className="text-slate-500 text-[10px]">Was this answer helpful?</span>
+                        <button
+                          onClick={() => handleFeedbackSubmit(msg.id, 'POSITIVE')}
+                          className={`px-2 py-0.5 rounded border transition-colors text-[10px] font-mono ${
+                            userFeedbackState[msg.id]?.rating === 'POSITIVE'
+                              ? 'bg-emerald-950 border-emerald-700 text-emerald-300 font-bold'
+                              : 'bg-slate-900 border-slate-800 text-slate-400 hover:text-white'
+                          }`}
+                        >
+                          👍 Helpful
+                        </button>
+                        <button
+                          onClick={() => handleFeedbackSubmit(msg.id, 'NEGATIVE', 'INCORRECT_ANSWER')}
+                          className={`px-2 py-0.5 rounded border transition-colors text-[10px] font-mono ${
+                            userFeedbackState[msg.id]?.rating === 'NEGATIVE'
+                              ? 'bg-rose-950 border-rose-700 text-rose-300 font-bold'
+                              : 'bg-slate-900 border-slate-800 text-slate-400 hover:text-white'
+                          }`}
+                        >
+                          👎 Not Helpful
+                        </button>
+                      </div>
+                      {userFeedbackState[msg.id] && (
+                        <span className="text-[10px] text-emerald-400 font-mono">✓ Feedback saved</span>
+                      )}
                     </div>
                   )}
 

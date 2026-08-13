@@ -134,7 +134,21 @@ const serverEnvSchema = z
       .coerce.number()
       .int()
       .positive()
-      .default(4500)
+      .default(4500),
+    RAG_EVALUATOR: z
+      .enum(['heuristic', 'llm'])
+      .default('heuristic'),
+    RAG_EVALUATION_ENABLED: z
+      .coerce.boolean()
+      .default(true),
+    RAG_EVALUATION_ASYNC: z
+      .coerce.boolean()
+      .default(true),
+    RAG_EVALUATION_RETENTION_DAYS: z
+      .coerce.number()
+      .int()
+      .positive()
+      .default(90)
   })
   .refine(
     (data) => {

@@ -22,16 +22,32 @@ enum MessageRole {
   SYSTEM
 }
 
-model User {
-  id            String         @id @default(uuid())
-  email         String         @unique
-  name          String?
-  createdAt     DateTime       @default(now()) @map("created_at")
-  updatedAt     DateTime       @updatedAt @map("updated_at")
+enum FeedbackRating {
+  POSITIVE
+  NEGATIVE
+}
 
-  documents     Document[]
-  conversations Conversation[]
+enum FeedbackReason {
+  INCORRECT_ANSWER
+  NOT_RELEVANT
+  MISSING_INFORMATION
+  INCORRECT_CITATION
+  POOR_EXPLANATION
+  OTHER
+}
+
+model User {
+  id            String          @id @default(uuid())
+  email         String          @unique
+  name          String?
+  createdAt     DateTime        @default(now()) @map("created_at")
+  updatedAt     DateTime        @updatedAt @map("updated_at")
+
+  documents      Document[]
+  conversations  Conversation[]
   knowledgeBases KnowledgeBase[]
+  userFeedbacks  UserFeedback[]
+  ragEvaluations RagEvaluation[]
 
   @@map("users")
 }
@@ -71,6 +87,7 @@ model KnowledgeBase {
   user          User                    @relation(fields: [userId], references: [id], onDelete: Cascade)
   documents     KnowledgeBaseDocument[]
   conversations Conversation[]
+  ragEvaluations RagEvaluation[]
 
   @@index([userId])
   @@map("knowledge_bases")
@@ -99,7 +116,7 @@ model DocumentChunk {
   metadata   Json?    @default("{}")
   createdAt  DateTime @default(now()) @map("created_at")
 
-  embedding  Unsupported("vector")?
+  embedding Unsupported("vector")?
 
   document Document @relation(fields: [documentId], references: [id], onDelete: Cascade)
 
@@ -121,6 +138,8 @@ model Conversation {
   user          User           @relation(fields: [userId], references: [id], onDelete: Cascade)
   knowledgeBase KnowledgeBase? @relation(fields: [knowledgeBaseId], references: [id], onDelete: SetNull)
   messages      Message[]
+  userFeedbacks UserFeedback[]
+  ragEvaluations RagEvaluation[]
 
   @@index([userId])
   @@index([knowledgeBaseId])
@@ -135,8 +154,67 @@ model Message {
   citations      Json?       @default("[]")
   createdAt      DateTime    @default(now()) @map("created_at")
 
-  conversation Conversation @relation(fields: [conversationId], references: [id], onDelete: Cascade)
+  conversation Conversation   @relation(fields: [conversationId], references: [id], onDelete: Cascade)
+  userFeedback UserFeedback?
+  ragEvaluation RagEvaluation?
 
   @@index([conversationId])
   @@map("messages")
+}
+
+model UserFeedback {
+  id             String          @id @default(uuid())
+  userId         String          @map("user_id")
+  conversationId String          @map("conversation_id")
+  messageId      String          @unique @map("message_id")
+  rating         FeedbackRating
+  reason         FeedbackReason?
+  comment        String?         @db.Text
+  createdAt      DateTime        @default(now()) @map("created_at")
+  updatedAt      DateTime        @updatedAt @map("updated_at")
+
+  user         User         @relation(fields: [userId], references: [id], onDelete: Cascade)
+  conversation Conversation @relation(fields: [conversationId], references: [id], onDelete: Cascade)
+  message      Message      @relation(fields: [messageId], references: [id], onDelete: Cascade)
+
+  @@index([userId])
+  @@index([conversationId])
+  @@index([rating])
+  @@map("user_feedbacks")
+}
+
+model RagEvaluation {
+  id                       String    @id @default(uuid())
+  userId                   String    @map("user_id")
+  conversationId           String    @map("conversation_id")
+  messageId                String    @unique @map("message_id")
+  knowledgeBaseId          String?   @map("knowledge_base_id")
+  question                 String    @db.Text
+  retrievalQuery           String?   @db.Text @map("retrieval_query")
+  answer                   String    @db.Text
+  overallScore             Float?    @map("overall_score")
+  groundednessScore        Float?    @map("groundedness_score")
+  relevanceScore           Float?    @map("relevance_score")
+  citationCoverageScore     Float?    @map("citation_coverage_score")
+  retrievalConfidenceScore Float?    @map("retrieval_confidence_score")
+  latencyMs                Int?      @map("latency_ms")
+  retrievalLatencyMs       Int?      @map("retrieval_latency_ms")
+  llmLatencyMs             Int?      @map("llm_latency_ms")
+  retrievedChunkCount      Int       @default(0) @map("retrieved_chunk_count")
+  citedChunkCount          Int       @default(0) @map("cited_chunk_count")
+  isFallback               Boolean   @default(false) @map("is_fallback")
+  evaluatorType            String    @default("heuristic") @map("evaluator_type")
+  createdAt                DateTime  @default(now()) @map("created_at")
+  updatedAt                DateTime  @updatedAt @map("updated_at")
+
+  user          User           @relation(fields: [userId], references: [id], onDelete: Cascade)
+  conversation  Conversation   @relation(fields: [conversationId], references: [id], onDelete: Cascade)
+  message       Message        @relation(fields: [messageId], references: [id], onDelete: Cascade)
+  knowledgeBase KnowledgeBase? @relation(fields: [knowledgeBaseId], references: [id], onDelete: SetNull)
+
+  @@index([userId])
+  @@index([conversationId])
+  @@index([knowledgeBaseId])
+  @@index([createdAt])
+  @@map("rag_evaluations")
 }

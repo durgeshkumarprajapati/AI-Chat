@@ -108,6 +108,13 @@ const TOUR_STEPS: TourStep[] = [
     description: 'Multi-turn conversation memory with follow-up query contextualization, token-bounded context management, background summarization, automatic titling, and strict document-grounded zero-hallucination policy.',
     technicalDetails: 'ConversationContextService • Query Rewriting • Token Budget • Title & Summary Generation • Paginated Conversation CRUD',
     icon: '🧠'
+  },
+  {
+    title: '15. RAG Evaluation, User Feedback & Quality Analytics',
+    badge: 'Phase 19',
+    description: 'Measure RAG answer quality with user 👍/👎 feedback, sentence-level groundedness scoring, citation coverage metrics, response/retrieval latency tracking, and a developer quality dashboard.',
+    technicalDetails: 'UserFeedback & RagEvaluation models • LocalHeuristicEvaluator • Non-blocking async telemetry • /rag-evaluation analytics',
+    icon: '📈'
   }
 ];
 

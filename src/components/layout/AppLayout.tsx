@@ -33,6 +33,7 @@ export function AppLayout({ children }: { children: React.ReactNode }) {
     { name: 'Documents', href: '/documents', icon: '📁' },
     { name: 'Knowledge Bases', href: '/knowledge-bases', icon: '📚', badge: 'Phase 17' },
     { name: 'RAG Chat', href: '/chat', icon: '💬', badge: 'Stream' },
+    { name: 'RAG Quality', href: '/rag-evaluation', icon: '📈', badge: 'Phase 19' },
     { name: 'RAG Inspector', href: '/rag-debug', icon: '🔍', badge: 'Phase 14' },
     { name: 'System Health', href: '/health', icon: '🩺' }
   ];

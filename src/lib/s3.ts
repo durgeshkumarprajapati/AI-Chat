@@ -7,7 +7,7 @@ import {
 } from '@aws-sdk/client-s3';
 import { getSignedUrl } from '@aws-sdk/s3-request-presigner';
 import { env } from '@/config/env';
-import { InfrastructureError, NotFoundError } from '@/errors';
+import { InfrastructureError, NotFoundError, ConfigurationError } from '@/errors';
 import { StorageProvider } from './storage';
 
 export class S3StorageProvider implements StorageProvider {
@@ -15,19 +15,46 @@ export class S3StorageProvider implements StorageProvider {
   private bucketName: string;
 
   constructor() {
-    const region = env.server?.AWS_REGION || process.env.AWS_REGION || 'us-east-1';
-    const accessKeyId = env.server?.AWS_ACCESS_KEY_ID || process.env.AWS_ACCESS_KEY_ID || 'mock-key';
-    const secretAccessKey = env.server?.AWS_SECRET_ACCESS_KEY || process.env.AWS_SECRET_ACCESS_KEY || 'mock-secret';
+    const region = process.env.AWS_REGION || env.server?.AWS_REGION;
+    const bucket =
+      process.env.AWS_S3_BUCKET ||
+      env.server?.AWS_S3_BUCKET ||
+      process.env.AWS_S3_BUCKET_NAME ||
+      env.server?.AWS_S3_BUCKET_NAME;
 
-    this.bucketName = env.server?.AWS_S3_BUCKET_NAME || process.env.AWS_S3_BUCKET_NAME || 'document-ai-bucket';
+    if (!region || !bucket) {
+      throw new ConfigurationError(
+        'AWS S3 Storage Provider requires valid AWS_REGION and AWS_S3_BUCKET (or AWS_S3_BUCKET_NAME) environment variables.'
+      );
+    }
 
-    this.client = new S3Client({
-      region,
-      credentials: {
-        accessKeyId,
-        secretAccessKey
-      }
-    });
+    this.bucketName = bucket;
+
+    const accessKeyId = process.env.AWS_ACCESS_KEY_ID || env.server?.AWS_ACCESS_KEY_ID;
+    const secretAccessKey = process.env.AWS_SECRET_ACCESS_KEY || env.server?.AWS_SECRET_ACCESS_KEY;
+    const sessionToken = process.env.AWS_SESSION_TOKEN || env.server?.AWS_SESSION_TOKEN;
+
+    if (accessKeyId && secretAccessKey) {
+      this.client = new S3Client({
+        region,
+        credentials: {
+          accessKeyId,
+          secretAccessKey,
+          ...(sessionToken ? { sessionToken } : {})
+        }
+      });
+    } else {
+      // Use default SDK credential provider chain (IAM role, environment, metadata service)
+      this.client = new S3Client({ region });
+    }
+  }
+
+  public getBucketName(): string {
+    return this.bucketName;
+  }
+
+  public getS3Client(): S3Client {
+    return this.client;
   }
 
   public async upload(

@@ -11,6 +11,10 @@ type SystemHealth = {
     rabbitmq: string;
     ollama: string;
   };
+  storage?: {
+    provider: string;
+    status: string;
+  };
   details: {
     pgvector: string;
     embeddingModel: string;

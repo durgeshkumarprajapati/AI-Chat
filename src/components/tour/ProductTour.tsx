@@ -80,6 +80,13 @@ const TOUR_STEPS: TourStep[] = [
     description: 'Developers can inspect candidate breakdowns, vector vs keyword scores, hybrid weights, and latency metrics in real time.',
     technicalDetails: 'Route: /rag-debug • POST /api/rag/debug • Latency metrics & candidate step breakdown',
     icon: '🔍'
+  },
+  {
+    title: '11. Pluggable Document Storage (Amazon S3)',
+    badge: 'Phase 15',
+    description: 'The platform supports pluggable document storage backends: default LocalStorageProvider or production Amazon S3 with zero pipeline code changes.',
+    technicalDetails: 'AWS_STORAGE_PROVIDER=local | s3 • S3StorageProvider • Preserved logical keys: documents/{userId}/{documentId}/{filename}',
+    icon: '☁️'
   }
 ];
 

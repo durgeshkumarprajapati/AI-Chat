@@ -301,4 +301,60 @@ $$\text{rerankScore} = \min(1.0, 0.65 \cdot \text{hybridScore} + 0.25 \cdot \tex
 npm run test:phase14
 ```
 
+---
+
+## 9. Phase 15 — Pluggable Document Storage (Amazon S3)
+
+### Overview
+Phase 15 introduces pluggable document storage support for Amazon S3 while preserving 100% backward compatibility for local file storage. The document processing pipeline and database records depend strictly on the `StorageProvider` abstraction, maintaining uniform logical storage keys across both drivers.
+
+### Architecture
+
+```mermaid
+flowchart TD
+    A[PDF Upload Request] --> B[Document API]
+    B --> C[StorageProvider Resolver]
+    C -->|AWS_STORAGE_PROVIDER=local| D[LocalStorageProvider]
+    C -->|AWS_STORAGE_PROVIDER=s3| E[S3StorageProvider]
+
+    D --> F[Local Filesystem storage/]
+    E --> G[Amazon S3 Private Bucket]
+
+    F --> H[RabbitMQ Job Message]
+    G --> H
+
+    H --> I[Decoupled Worker]
+    I --> C
+```
+
+### Configuration & Fail-Fast Validation
+- **Local Storage (Default)**:
+  `AWS_STORAGE_PROVIDER="local"` — Operates without AWS credentials. Suitable for local development.
+- **Amazon S3 Storage (Production)**:
+  `AWS_STORAGE_PROVIDER="s3"` — Uses `@aws-sdk/client-s3`. Fails fast with `ConfigurationError` if `AWS_REGION` or `AWS_S3_BUCKET` is missing.
+
+```ini
+AWS_STORAGE_PROVIDER="s3"
+AWS_REGION="us-east-1"
+AWS_S3_BUCKET="my-private-document-bucket"
+AWS_ACCESS_KEY_ID="AKIA..."
+AWS_SECRET_ACCESS_KEY="..."
+AWS_SESSION_TOKEN="" # Optional
+```
+
+### Security Guidelines
+- S3 Bucket remains private (Block Public Access enabled).
+- Pre-signed URLs are generated server-side with strict expiration.
+- AWS credentials are never exposed to client-side bundles or health check responses.
+
+### Testing Commands
+```bash
+# Automated Mocked Storage Provider Test Suite
+npm run test:phase15
+
+# Real S3 Connectivity Verification Script (Requires live AWS credentials & bucket)
+npm run test:s3-storage
+```
+
+
 

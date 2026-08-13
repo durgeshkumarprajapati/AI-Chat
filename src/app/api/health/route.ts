@@ -2,9 +2,31 @@ import { NextResponse } from 'next/server';
 import { prisma } from '@/lib/prisma';
 import { redis } from '@/lib/redis';
 import { rabbitmq } from '@/lib/rabbitmq';
+import { getStorageProvider } from '@/lib/storage';
+import { S3StorageProvider } from '@/lib/s3';
 
 export async function GET() {
-  const health = {
+  const providerType = process.env.AWS_STORAGE_PROVIDER || process.env.STORAGE_PROVIDER || 'local';
+
+  const health: {
+    status: string;
+    timestamp: string;
+    services: {
+      database: string;
+      redis: string;
+      rabbitmq: string;
+      ollama: string;
+    };
+    storage: {
+      provider: string;
+      status: string;
+    };
+    details: {
+      pgvector: string;
+      embeddingModel: string;
+      embeddingDimensions: string;
+    };
+  } = {
     status: 'ok',
     timestamp: new Date().toISOString(),
     services: {
@@ -12,6 +34,10 @@ export async function GET() {
       redis: 'unknown',
       rabbitmq: 'unknown',
       ollama: 'unknown'
+    },
+    storage: {
+      provider: providerType,
+      status: 'healthy'
     },
     details: {
       pgvector: '0.8.6',
@@ -49,6 +75,24 @@ export async function GET() {
   }
 
   try {
+    // Storage check
+    if (providerType === 's3') {
+      const storageObj = getStorageProvider();
+      if (storageObj instanceof S3StorageProvider) {
+        // Lightweight existence check on health key
+        await storageObj.exists('_health_check');
+        health.storage.status = 'healthy';
+      }
+    } else {
+      health.storage.status = 'healthy';
+    }
+  } catch (err) {
+    console.warn('Storage health check warning:', err instanceof Error ? err.message : String(err));
+    health.storage.status = 'unhealthy';
+    health.status = 'degraded';
+  }
+
+  try {
     // Ollama check
     const ollamaUrl = process.env.OLLAMA_BASE_URL || 'http://localhost:11434';
     const res = await fetch(`${ollamaUrl.replace(/\/+$/, '')}/api/version`, {
@@ -57,7 +101,6 @@ export async function GET() {
     health.services.ollama = res.ok ? 'healthy' : 'unhealthy';
   } catch {
     health.services.ollama = 'unhealthy';
-    // Ollama is optional for overall status if in offline dev mode
   }
 
   const statusCode = health.status === 'ok' ? 200 : 503;

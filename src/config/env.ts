@@ -17,13 +17,20 @@ const serverEnvSchema = z
     REDIS_URL: z
       .string()
       .min(1, { message: 'REDIS_URL is required' }),
+    AWS_STORAGE_PROVIDER: z
+      .enum(['local', 's3'])
+      .optional()
+      .default('local'),
     STORAGE_PROVIDER: z
       .enum(['local', 's3'])
+      .optional()
       .default('local'),
-    AWS_REGION: z.string().optional().default('us-east-1'),
-    AWS_ACCESS_KEY_ID: z.string().optional().default('mock-key'),
-    AWS_SECRET_ACCESS_KEY: z.string().optional().default('mock-secret'),
-    AWS_S3_BUCKET_NAME: z.string().optional().default('document-ai-rag-bucket'),
+    AWS_REGION: z.string().optional(),
+    AWS_ACCESS_KEY_ID: z.string().optional(),
+    AWS_SECRET_ACCESS_KEY: z.string().optional(),
+    AWS_SESSION_TOKEN: z.string().optional(),
+    AWS_S3_BUCKET: z.string().optional(),
+    AWS_S3_BUCKET_NAME: z.string().optional(),
     EMBEDDING_PROVIDER: z
       .enum(['ollama', 'openai'])
       .default('ollama'),

@@ -99,12 +99,22 @@ export class LocalStorageProvider implements StorageProvider {
 
 let storageInstance: StorageProvider | null = null;
 
+export function resetStorageProviderForTest(): void {
+  storageInstance = null;
+}
+
 export function getStorageProvider(): StorageProvider {
   if (storageInstance) return storageInstance;
 
-  const providerType = env.server?.STORAGE_PROVIDER || process.env.STORAGE_PROVIDER || 'local';
+  const providerType =
+    process.env.AWS_STORAGE_PROVIDER ||
+    process.env.STORAGE_PROVIDER ||
+    env.server?.AWS_STORAGE_PROVIDER ||
+    env.server?.STORAGE_PROVIDER ||
+    'local';
 
   if (providerType === 's3') {
+    // Fail fast if S3 configuration is invalid or missing
     storageInstance = new S3StorageProvider();
   } else {
     storageInstance = new LocalStorageProvider();

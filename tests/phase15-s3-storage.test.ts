@@ -82,6 +82,7 @@ async function runPhase15Tests() {
     // Test 7: Worker Storage Provider Resolver Alignment
     console.log('\nTest 7: Worker Storage Provider Resolver Alignment');
     process.env.AWS_STORAGE_PROVIDER = 'local';
+    resetStorageProviderForTest();
     const workerLocal = getWorkerStorageProvider();
     if (workerLocal.constructor.name !== 'LocalStorageProvider') {
       throw new Error(`Worker failed to resolve LocalStorageProvider, got ${workerLocal.constructor.name}`);
@@ -90,9 +91,10 @@ async function runPhase15Tests() {
     process.env.AWS_STORAGE_PROVIDER = 's3';
     process.env.AWS_REGION = 'us-west-2';
     process.env.AWS_S3_BUCKET = 'my-production-rag-bucket';
+    resetStorageProviderForTest();
     const workerS3 = getWorkerStorageProvider();
-    if (workerS3.constructor.name !== 'S3WorkerStorageProvider') {
-      throw new Error(`Worker failed to resolve S3WorkerStorageProvider, got ${workerS3.constructor.name}`);
+    if (workerS3.constructor.name !== 'S3StorageProvider') {
+      throw new Error(`Worker failed to resolve canonical S3StorageProvider, got ${workerS3.constructor.name}`);
     }
     console.log('  ✅ PASSED: Background worker resolves identical StorageProvider abstraction for both local and S3.');
 

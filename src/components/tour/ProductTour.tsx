@@ -22,7 +22,7 @@ const TOUR_STEPS: TourStep[] = [
     title: '2. RabbitMQ Processing Queue',
     badge: 'Phase 7',
     description: 'The upload publishes a versioned job payload to RabbitMQ for asynchronous background processing.',
-    technicalDetails: 'Queue: "document-processing" • Retries: 3 attempts with exponential backoff',
+    technicalDetails: 'Queue: "document-processing" • Retries: 3 attempts with exponential backoff & ACK/NACK mechanics',
     icon: '⚡'
   },
   {
@@ -54,11 +54,32 @@ const TOUR_STEPS: TourStep[] = [
     icon: '🗄️'
   },
   {
-    title: '7. Grounded AI RAG Chat',
-    badge: 'Phase 11',
-    description: 'Ask questions about your documents. Chunks are retrieved via pgvector cosine similarity, passed to Ollama LLM, and answered with strict citations.',
-    technicalDetails: 'pgvector <=> operator • minSimilarity threshold (0.30) • Ollama llama3.2 • Structured Json Citations',
+    title: '7. Hybrid Retrieval (Vector + Keyword Search)',
+    badge: 'Phase 14',
+    description: 'Queries retrieve candidates using semantic vector similarity AND lexical PostgreSQL Full-Text Search for exact matches.',
+    technicalDetails: 'pgvector <=> operator + to_tsvector/plainto_tsquery • Tenant Isolation: d.user_id = $2',
+    icon: '🔀'
+  },
+  {
+    title: '8. Local Reranking & Scoring',
+    badge: 'Phase 14',
+    description: 'Merged candidate sets are deduplicated and scored using a local deterministic reranker with phrase alignment and term coverage bonuses.',
+    technicalDetails: 'Hybrid Weights: 0.70 Vector + 0.30 Keyword • LocalReranker exact phrase match scoring',
+    icon: '📊'
+  },
+  {
+    title: '9. Real-Time Streaming RAG Chat',
+    badge: 'Phase 13',
+    description: 'Ask questions with real-time progressive response streaming via Server-Sent Events (SSE), stop generation, and citation badges.',
+    technicalDetails: 'POST /api/chat/stream • SSE event: delta • AbortController • Ollama llama3.2 / OpenAI gpt-4o-mini',
     icon: '💬'
+  },
+  {
+    title: '10. RAG Retrieval Inspector & Observability',
+    badge: 'Phase 14',
+    description: 'Developers can inspect candidate breakdowns, vector vs keyword scores, hybrid weights, and latency metrics in real time.',
+    technicalDetails: 'Route: /rag-debug • POST /api/rag/debug • Latency metrics & candidate step breakdown',
+    icon: '🔍'
   }
 ];
 

@@ -66,13 +66,13 @@ export default function HomePage() {
 
   const pipelineSteps = [
     { title: 'Upload', desc: 'PDF Multi-part', icon: '📁', status: 'ready' },
-    { title: 'Storage', desc: 'Local Storage Driver', icon: '💾', status: 'ready' },
-    { title: 'RabbitMQ Queue', desc: 'Job Contract v1', icon: '⚡', status: 'ready' },
-    { title: 'PDF Extracted', desc: 'pdfjs-dist Parser', icon: '📄', status: 'ready' },
+    { title: 'Storage', desc: 'Storage Provider', icon: '💾', status: 'ready' },
+    { title: 'RabbitMQ', desc: 'Async Queue', icon: '⚡', status: 'ready' },
+    { title: 'PDF Parser', desc: 'pdfjs-dist Engine', icon: '📄', status: 'ready' },
     { title: 'Chunked', desc: 'cl100k_base 800/120', icon: '🧩', status: 'ready' },
-    { title: 'Embedded', desc: 'Ollama nomic-embed 768d', icon: '🧠', status: 'ready' },
-    { title: 'pgvector DB', desc: 'HNSW Cosine Index', icon: '🗄️', status: 'ready' },
-    { title: 'RAG Retrieval', desc: 'Locked until Phase 11', icon: '🔒', status: 'locked' }
+    { title: 'pgvector', desc: '768d HNSW Index', icon: '🗄️', status: 'ready' },
+    { title: 'Hybrid Search', desc: 'Vector + Lexical', icon: '🔀', status: 'ready' },
+    { title: 'Local Reranker', desc: 'Term & Phrase Match', icon: '📊', status: 'ready' }
   ];
 
   return (

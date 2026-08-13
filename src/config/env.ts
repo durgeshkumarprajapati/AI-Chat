@@ -72,6 +72,29 @@ const serverEnvSchema = z
       .min(0, { message: 'RAG_MIN_SIMILARITY must be 0 or greater' })
       .max(1, { message: 'RAG_MIN_SIMILARITY must be 1 or less' })
       .default(0.30),
+    RAG_VECTOR_CANDIDATE_K: z
+      .coerce.number()
+      .int()
+      .positive({ message: 'RAG_VECTOR_CANDIDATE_K must be greater than 0' })
+      .default(20),
+    RAG_KEYWORD_CANDIDATE_K: z
+      .coerce.number()
+      .int()
+      .positive({ message: 'RAG_KEYWORD_CANDIDATE_K must be greater than 0' })
+      .default(20),
+    RAG_VECTOR_WEIGHT: z
+      .coerce.number()
+      .min(0)
+      .max(1)
+      .default(0.70),
+    RAG_KEYWORD_WEIGHT: z
+      .coerce.number()
+      .min(0)
+      .max(1)
+      .default(0.30),
+    RAG_RERANK_ENABLED: z
+      .coerce.boolean()
+      .default(true),
     DOCUMENT_PROCESSING_TIMEOUT_MINUTES: z
       .coerce.number()
       .int()

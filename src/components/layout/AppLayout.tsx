@@ -31,7 +31,8 @@ export function AppLayout({ children }: { children: React.ReactNode }) {
   const navItems = [
     { name: 'Dashboard', href: '/', icon: '📊' },
     { name: 'Documents', href: '/documents', icon: '📁' },
-    { name: 'RAG Chat', href: '/chat', icon: '💬', badge: 'Phase 11' },
+    { name: 'RAG Chat', href: '/chat', icon: '💬', badge: 'Stream' },
+    { name: 'RAG Inspector', href: '/rag-debug', icon: '🔍', badge: 'Phase 14' },
     { name: 'System Health', href: '/health', icon: '🩺' }
   ];
 

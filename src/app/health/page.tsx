@@ -168,7 +168,8 @@ export default function SystemHealthPage() {
             <div className="pt-2 border-t border-slate-900 text-[10px] font-mono text-slate-400 space-y-0.5">
               <p>• Embed: {health?.details.embeddingModel || 'nomic-embed-text'} (768d)</p>
               <p>• Chat LLM: llama3.2</p>
-              <p>• RAG Pipeline: Ready</p>
+              <p>• Hybrid Search: Active (Vector + Keyword)</p>
+              <p>• Local Reranker: Enabled</p>
             </div>
           </div>
         </div>

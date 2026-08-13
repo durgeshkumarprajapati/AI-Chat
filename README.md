@@ -258,3 +258,47 @@ npm run test:phase13
 npm run test:ollama-chat-stream
 ```
 
+---
+
+## 8. Phase 14 — Hybrid Retrieval, Reranking & Observability
+
+### Overview
+Phase 14 improves retrieval quality by combining semantic vector search (`pgvector`) with lexical keyword search (`PostgreSQL Full-Text Search`). Results are merged, deduplicated, and scored using a zero-overhead local reranker with term coverage and exact phrase match bonuses.
+
+### Architecture
+
+```mermaid
+flowchart TD
+    A[User Question] --> B[Question Embedding]
+    B --> C[Vector Search pgvector]
+    A --> D[Keyword Search tsvector]
+
+    C --> E[Candidate Merge]
+    D --> E
+
+    E --> F[Deduplication by chunkId]
+    F --> G[Hybrid Scoring 0.70/0.30]
+    G --> H[Local Reranker]
+    H --> I[Top K Grounded Chunks]
+    I --> J[Grounded LLM Context]
+    J --> K[Streaming / Non-Streaming Chat]
+    K --> L[Answer + Citations]
+```
+
+### Hybrid Scoring Formula
+$$\text{hybridScore} = 0.70 \cdot \text{vectorScore} + 0.30 \cdot \text{normalizedKeywordScore}$$
+
+$$\text{rerankScore} = \min(1.0, 0.65 \cdot \text{hybridScore} + 0.25 \cdot \text{termCoverage} + 0.25 \cdot \text{phraseMatch})$$
+
+### Developer RAG Inspector
+- **Route**: `/rag-debug`
+- **Debug API**: `POST /api/rag/debug`
+- Displays candidate breakdown (`vector`/`keyword`/`hybrid`), candidate pipeline step bar, score comparison, and execution timing metrics (`vectorMs`, `keywordMs`, `mergeMs`, `rerankMs`, `totalMs`).
+
+### Testing Commands
+```bash
+# Automated Hybrid Retrieval & Local Reranker Test Suite
+npm run test:phase14
+```
+
+

@@ -19,6 +19,7 @@
     "test:phase11": "tsx tests/phase11-rag.test.ts",
     "test:phase12": "tsx tests/phase12-worker-recovery.test.ts",
     "test:phase13": "tsx tests/phase13-streaming-chat.test.ts",
+    "test:phase14": "tsx tests/phase14-hybrid-retrieval.test.ts",
     "test:ollama": "tsx scripts/test-ollama-embeddings.ts",
     "test:ollama-chat": "tsx scripts/test-ollama-chat.ts",
     "test:ollama-chat-stream": "tsx scripts/test-ollama-chat-stream.ts",

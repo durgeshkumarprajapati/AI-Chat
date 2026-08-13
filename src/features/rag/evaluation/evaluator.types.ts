@@ -23,8 +23,12 @@ export interface EvaluationInput {
   citations: Citation[];
   retrievedChunks: RetrievedChunk[];
   latencyMs?: number;
+  responseLatencyMs?: number;
   retrievalLatencyMs?: number;
   llmLatencyMs?: number;
+  llmFirstTokenMs?: number;
+  evaluationLatencyMs?: number;
+  latencyTrace?: Record<string, number>;
 }
 
 export interface UserFeedbackInput {
@@ -48,6 +52,9 @@ export interface AggregatedRagMetrics {
   fallbackRate: number;
   avgResponseLatencyMs: number;
   avgRetrievalLatencyMs: number;
+  avgLlmLatencyMs: number;
+  avgLlmFirstTokenMs: number;
+  avgEvaluationLatencyMs: number;
   avgRetrievedChunks: number;
   avgCitedChunks: number;
   avgCitationCoverage: number;
@@ -72,6 +79,12 @@ export interface PaginatedEvaluations {
     citationCoverageScore: number | null;
     retrievalConfidenceScore: number | null;
     latencyMs: number | null;
+    responseLatencyMs: number | null;
+    retrievalLatencyMs: number | null;
+    llmLatencyMs: number | null;
+    llmFirstTokenMs: number | null;
+    evaluationLatencyMs: number | null;
+    latencyTrace: Record<string, number> | null;
     retrievedChunkCount: number;
     citedChunkCount: number;
     isFallback: boolean;

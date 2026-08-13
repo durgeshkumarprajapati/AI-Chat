@@ -49,6 +49,15 @@ export async function POST(req: NextRequest) {
         retrievalQuery,
         conversationContext: conversationContextDiagnostics,
         trace: result.trace,
+        latencyTrace: {
+          memoryMs: conversationContextDiagnostics?.contextLoadMs ?? 0,
+          embeddingMs: result.trace.metrics.embeddingMs,
+          vectorMs: result.trace.metrics.vectorMs,
+          keywordMs: result.trace.metrics.keywordMs,
+          mergeMs: result.trace.metrics.mergeMs,
+          rerankMs: result.trace.metrics.rerankMs,
+          totalRetrievalMs: result.trace.metrics.totalMs
+        },
         chunks: result.chunks
       }
     });

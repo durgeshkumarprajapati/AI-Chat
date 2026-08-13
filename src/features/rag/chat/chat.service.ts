@@ -70,16 +70,19 @@ export class ChatService {
     }
 
     // 2. Load conversation context & prepare rewritten retrieval query
+    const memoryStart = Date.now();
     const convContext = await this.contextService.loadConversationContext(
       userId,
       conversationId,
       trimmedQuestion
     );
+    const conversationContextMs = Date.now() - memoryStart;
 
     // 3. Retrieve top-K relevant chunks using rewritten retrieval query
     const retrievedChunks = await this.retrievalService.retrieveContext(userId, convContext.retrievalQuery, {
       knowledgeBaseId: targetKbId
     });
+    const retrievalTrace = this.retrievalService.getLastTrace();
 
     const topSimilarity = retrievedChunks.length > 0 ? retrievedChunks[0]!.similarity : 0;
 
@@ -87,10 +90,13 @@ export class ChatService {
     let citations: Citation[] = [];
 
     // 4. Zero Hallucination Policy Check
+    let promptBuildMs = 0;
+    let llmLatencyMs = 0;
     if (retrievedChunks.length === 0) {
       answer = "I couldn't find enough relevant information in your uploaded documents to answer that question.";
     } else {
       // 5. Construct Grounded LLM Context
+      const promptStart = Date.now();
       const contextBlocks: string[] = [];
 
       if (convContext.summary) {
@@ -111,12 +117,15 @@ export class ChatService {
       contextBlocks.push(`=== RETRIEVED DOCUMENT EVIDENCE ===\n${documentEvidence}`);
 
       const fullContextString = contextBlocks.join('\n\n');
+      promptBuildMs = Date.now() - promptStart;
 
       // 6. Generate Answer via LLM Provider
+      const llmStart = Date.now();
       answer = await this.llmProvider.generateAnswer({
         question: trimmedQuestion,
         context: fullContextString
       });
+      llmLatencyMs = Date.now() - llmStart;
 
       citations = retrievedChunks.map((c) => ({
         documentId: c.documentId,
@@ -128,6 +137,7 @@ export class ChatService {
     }
 
     // 7. Persist USER and ASSISTANT messages in PostgreSQL
+    const persistenceStart = Date.now();
     const assistantMessage = await prisma.$transaction(async (tx: Prisma.TransactionClient) => {
       await tx.message.create({
         data: {
@@ -153,6 +163,7 @@ export class ChatService {
 
       return createdAssistantMsg;
     });
+    const persistenceMs = Date.now() - persistenceStart;
 
     // 8. Post-generation title generation & summarization check (non-blocking)
     if (isFirstTurn) {
@@ -162,7 +173,22 @@ export class ChatService {
     }
 
     const duration = Date.now() - startTime;
-    console.log(`[ChatService] RAG query completed: conversationId=${conversationId}, chunks=${retrievedChunks.length}, topSim=${topSimilarity.toFixed(3)}, durationMs=${duration}ms`);
+    const latencyTrace = {
+      conversationContextMs,
+      queryRewriteMs: convContext.queryRewriteMs,
+      embeddingMs: retrievalTrace?.metrics.embeddingMs ?? 0,
+      vectorMs: retrievalTrace?.metrics.vectorMs ?? 0,
+      keywordMs: retrievalTrace?.metrics.keywordMs ?? 0,
+      mergeMs: retrievalTrace?.metrics.mergeMs ?? 0,
+      rerankMs: retrievalTrace?.metrics.rerankMs ?? 0,
+      retrievalMs: retrievalTrace?.metrics.totalMs ?? 0,
+      promptBuildMs,
+      llmFirstTokenMs: 0,
+      llmGenerationMs: llmLatencyMs,
+      persistenceMs,
+      totalResponseMs: duration
+    };
+    console.log(`[RAG Latency] conversationId=${conversationId} memory=${conversationContextMs}ms embedding=${latencyTrace.embeddingMs}ms vector=${latencyTrace.vectorMs}ms keyword=${latencyTrace.keywordMs}ms rerank=${latencyTrace.rerankMs}ms llm=${llmLatencyMs}ms persistence=${persistenceMs}ms totalResponse=${duration}ms`);
 
     // Non-blocking RAG Evaluation
     evaluationService
@@ -177,6 +203,10 @@ export class ChatService {
         citations,
         retrievedChunks,
         latencyMs: duration
+        ,responseLatencyMs: duration
+        ,retrievalLatencyMs: latencyTrace.retrievalMs
+        ,llmLatencyMs
+        ,latencyTrace
       })
       .catch((err) => console.warn('[ChatService] Background evaluation error:', err));
 
@@ -239,16 +269,19 @@ export class ChatService {
     }
 
     // 2. Load conversation context & prepare rewritten retrieval query
+    const memoryStart = Date.now();
     const convContext = await this.contextService.loadConversationContext(
       userId,
       conversationId,
       trimmedQuestion
     );
+    const conversationContextMs = Date.now() - memoryStart;
 
     // 3. Retrieve top-K relevant chunks using rewritten retrieval query
     const retrievedChunks = await this.retrievalService.retrieveContext(userId, convContext.retrievalQuery, {
       knowledgeBaseId: targetKbId
     });
+    const retrievalTrace = this.retrievalService.getLastTrace();
     const topSimilarity = retrievedChunks.length > 0 ? retrievedChunks[0]!.similarity : 0;
 
     let citations: Citation[] = [];
@@ -274,6 +307,9 @@ export class ChatService {
     };
 
     let answer = '';
+    let promptBuildMs = 0;
+    let llmFirstTokenMs = 0;
+    let llmGenerationMs = 0;
 
     // 4. Zero Hallucination Policy Check
     if (retrievedChunks.length === 0) {
@@ -281,6 +317,7 @@ export class ChatService {
       yield { type: 'delta', text: answer };
     } else {
       // 5. Construct Grounded LLM Context
+      const promptStart = Date.now();
       const contextBlocks: string[] = [];
 
       if (convContext.summary) {
@@ -301,22 +338,31 @@ export class ChatService {
       contextBlocks.push(`=== RETRIEVED DOCUMENT EVIDENCE ===\n${documentEvidence}`);
 
       const fullContextString = contextBlocks.join('\n\n');
+      promptBuildMs = Date.now() - promptStart;
 
       // 6. Stream Grounded Answer via LLM Provider
+      const llmStart = Date.now();
+      let receivedFirstToken = false;
       const stream = this.llmProvider.streamAnswer({
         question: trimmedQuestion,
         context: fullContextString
       });
 
       for await (const chunk of stream) {
+        if (!receivedFirstToken) {
+          llmFirstTokenMs = Date.now() - llmStart;
+          receivedFirstToken = true;
+        }
         answer += chunk;
         yield { type: 'delta', text: chunk };
       }
+      llmGenerationMs = receivedFirstToken ? Date.now() - llmStart - llmFirstTokenMs : Date.now() - llmStart;
     }
 
     const finalAnswer = answer.trim();
 
     // 7. Persist USER and ASSISTANT messages in PostgreSQL after stream completes
+    const persistenceStart = Date.now();
     const assistantMessage = await prisma.$transaction(async (tx: Prisma.TransactionClient) => {
       await tx.message.create({
         data: {
@@ -342,6 +388,7 @@ export class ChatService {
 
       return createdAssistantMsg;
     });
+    const persistenceMs = Date.now() - persistenceStart;
 
     // 8. Post-generation title generation & summarization check
     if (isFirstTurn) {
@@ -351,7 +398,22 @@ export class ChatService {
     }
 
     const duration = Date.now() - startTime;
-    console.log(`[ChatService] RAG streaming query completed: conversationId=${conversationId}, chunks=${retrievedChunks.length}, topSim=${topSimilarity.toFixed(3)}, durationMs=${duration}ms`);
+    const latencyTrace = {
+      conversationContextMs,
+      queryRewriteMs: convContext.queryRewriteMs,
+      embeddingMs: retrievalTrace?.metrics.embeddingMs ?? 0,
+      vectorMs: retrievalTrace?.metrics.vectorMs ?? 0,
+      keywordMs: retrievalTrace?.metrics.keywordMs ?? 0,
+      mergeMs: retrievalTrace?.metrics.mergeMs ?? 0,
+      rerankMs: retrievalTrace?.metrics.rerankMs ?? 0,
+      retrievalMs: retrievalTrace?.metrics.totalMs ?? 0,
+      promptBuildMs,
+      llmFirstTokenMs,
+      llmGenerationMs,
+      persistenceMs,
+      totalResponseMs: duration
+    };
+    console.log(`[RAG Latency] conversationId=${conversationId} memory=${conversationContextMs}ms embedding=${latencyTrace.embeddingMs}ms vector=${latencyTrace.vectorMs}ms keyword=${latencyTrace.keywordMs}ms rerank=${latencyTrace.rerankMs}ms llmFirstToken=${llmFirstTokenMs}ms llmGeneration=${llmGenerationMs}ms persistence=${persistenceMs}ms totalResponse=${duration}ms`);
 
     // Non-blocking RAG Evaluation
     evaluationService
@@ -366,6 +428,11 @@ export class ChatService {
         citations,
         retrievedChunks,
         latencyMs: duration
+        ,responseLatencyMs: duration
+        ,retrievalLatencyMs: latencyTrace.retrievalMs
+        ,llmLatencyMs: llmFirstTokenMs + llmGenerationMs
+        ,llmFirstTokenMs
+        ,latencyTrace
       })
       .catch((err) => console.warn('[ChatService] Background evaluation error:', err));
 
@@ -374,7 +441,8 @@ export class ChatService {
       conversationId: conversationId!,
       messageId: assistantMessage.id,
       answer: finalAnswer,
-      citations
+      citations,
+      latencyTrace
     };
   }
 

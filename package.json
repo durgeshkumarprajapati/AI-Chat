@@ -26,6 +26,8 @@
     "test:phase17": "tsx tests/phase17-knowledge-bases.test.ts",
     "test:phase18": "tsx tests/phase18-conversation-memory.test.ts",
     "test:phase19": "tsx tests/phase19-rag-evaluation.test.ts",
+    "test:phase19-latency-optimization": "tsx tests/phase19-latency-optimization.test.ts",
+    "test:rag-latency": "tsx scripts/test-rag-latency.ts",
     "test:s3-storage": "tsx scripts/test-s3-storage.ts",
     "test:ollama": "tsx scripts/test-ollama-embeddings.ts",
     "test:ollama-chat": "tsx scripts/test-ollama-chat.ts",

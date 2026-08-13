@@ -10,6 +10,7 @@ export type LoadedConversationContext = {
   excludedMessageCount: number;
   estimatedTokens: number;
   retrievalQuery: string;
+  queryRewriteMs: number;
 };
 
 export class ConversationContextService {
@@ -81,7 +82,8 @@ export class ConversationContextService {
         includedMessages: [],
         excludedMessageCount: 0,
         estimatedTokens: 0,
-        retrievalQuery: currentQuestion
+        retrievalQuery: currentQuestion,
+        queryRewriteMs: 0
       };
     }
 
@@ -111,10 +113,13 @@ export class ConversationContextService {
 
     // Prepare Retrieval Query
     let retrievalQuery = currentQuestion.trim();
+    let queryRewriteMs = 0;
 
     if (includedMessages.length > 0 && this.isFollowUpQuestion(retrievalQuery)) {
       try {
+        const rewriteStart = Date.now();
         retrievalQuery = await this.prepareRetrievalQuery(includedMessages, currentQuestion, conversation.summary);
+        queryRewriteMs = Date.now() - rewriteStart;
       } catch (err) {
         console.warn('[ConversationContext] Query rewriting fallback to original question:', err);
         retrievalQuery = currentQuestion.trim();
@@ -127,7 +132,8 @@ export class ConversationContextService {
       includedMessages,
       excludedMessageCount: excludedCount,
       estimatedTokens: currentTokenCount,
-      retrievalQuery
+      retrievalQuery,
+      queryRewriteMs
     };
   }
 

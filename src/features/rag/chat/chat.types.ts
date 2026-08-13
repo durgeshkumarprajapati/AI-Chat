@@ -53,5 +53,6 @@ export type StreamEvent =
       messageId: string;
       answer: string;
       citations: Citation[];
+      latencyTrace?: Record<string, number>;
     }
   | { type: 'error'; message: string };

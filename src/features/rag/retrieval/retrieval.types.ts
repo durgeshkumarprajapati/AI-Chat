@@ -27,6 +27,7 @@ export interface RetrievalOptions {
 }
 
 export interface RetrievalMetrics {
+  embeddingMs: number;
   vectorMs: number;
   keywordMs: number;
   mergeMs: number;

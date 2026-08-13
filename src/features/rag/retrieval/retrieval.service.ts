@@ -9,6 +9,7 @@ import { localReranker, Reranker } from './reranker';
 export class RetrievalService {
   private embeddingProvider: EmbeddingProvider;
   private reranker: Reranker;
+  private lastTrace: RetrievalResultWithTrace['trace'] | null = null;
 
   constructor(embeddingProvider?: EmbeddingProvider, reranker?: Reranker) {
     this.embeddingProvider = embeddingProvider || getEmbeddingProvider();
@@ -21,7 +22,13 @@ export class RetrievalService {
     options?: RetrievalOptions
   ): Promise<RetrievedChunk[]> {
     const result = await this.retrieveContextWithTrace(userId, question, options);
+    this.lastTrace = result.trace;
     return result.chunks;
+  }
+
+  /** The trace from the most recent retrieval on this service instance. */
+  public getLastTrace(): RetrievalResultWithTrace['trace'] | null {
+    return this.lastTrace;
   }
 
   public async retrieveContextWithTrace(
@@ -41,7 +48,7 @@ export class RetrievalService {
         deduplicatedCandidatesCount: 0,
         rerankedCandidatesCount: 0,
         finalChunksCount: 0,
-        metrics: { vectorMs: 0, keywordMs: 0, mergeMs: 0, rerankMs: 0, totalMs: 0 }
+        metrics: { embeddingMs: 0, vectorMs: 0, keywordMs: 0, mergeMs: 0, rerankMs: 0, totalMs: 0 }
       }
     };
 
@@ -67,9 +74,10 @@ export class RetrievalService {
       }
     }
 
-    // 1. Vector Search
-    const vectorStart = Date.now();
+    // Generate the query embedding once. Vector and keyword searches below are independent.
+    const embeddingStart = Date.now();
     const vectors = await this.embeddingProvider.embedTexts([question]);
+    const embeddingMs = Date.now() - embeddingStart;
     const questionVector = vectors[0];
 
     if (!questionVector) {
@@ -85,8 +93,10 @@ export class RetrievalService {
 
     const vectorStr = `[${questionVector.join(',')}]`;
 
-    const rawVectorResults = options?.knowledgeBaseId
-      ? await prisma.$queryRaw<
+    const vectorStart = Date.now();
+    let vectorMs = 0;
+    const vectorSearch = options?.knowledgeBaseId
+      ? prisma.$queryRaw<
           Array<{
             id: string;
             documentId: string;
@@ -120,7 +130,7 @@ export class RetrievalService {
           ORDER BY dc.embedding <=> ${vectorStr}::vector ASC
           LIMIT ${vectorK}
         `
-      : await prisma.$queryRaw<
+      : prisma.$queryRaw<
           Array<{
             id: string;
             documentId: string;
@@ -151,11 +161,10 @@ export class RetrievalService {
           LIMIT ${vectorK}
         `;
 
-    const vectorMs = Date.now() - vectorStart;
-
-    // 2. Keyword Search (PostgreSQL Full-Text Search)
+    // PostgreSQL work is concurrent; do not make keyword search wait for vector I/O.
     const keywordStart = Date.now();
-    let rawKeywordResults: Array<{
+    let keywordMs = 0;
+    const keywordSearch: Promise<Array<{
       id: string;
       documentId: string;
       filename: string;
@@ -165,10 +174,9 @@ export class RetrievalService {
       tokenCount: number;
       metadata: Record<string, unknown>;
       rank: number;
-    }> = [];
-
-    try {
-      rawKeywordResults = options?.knowledgeBaseId
+    }>> = (async () => {
+      try {
+        return options?.knowledgeBaseId
         ? await prisma.$queryRaw<
             Array<{
               id: string;
@@ -233,11 +241,22 @@ export class RetrievalService {
             ORDER BY rank DESC
             LIMIT ${keywordK}
           `;
-    } catch {
-      // Fallback if tsquery finds no matches or formatting issue
-      rawKeywordResults = [];
-    }
-    const keywordMs = Date.now() - keywordStart;
+      } catch {
+        // A malformed FTS query must not prevent vector retrieval.
+        return [];
+      }
+    })();
+
+    const [rawVectorResults, rawKeywordResults] = await Promise.all([
+      vectorSearch.then((result) => {
+        vectorMs = Date.now() - vectorStart;
+        return result;
+      }),
+      keywordSearch.then((result) => {
+        keywordMs = Date.now() - keywordStart;
+        return result;
+      })
+    ]);
 
     // 3. Merge & Deduplicate Candidates
     const mergeStart = Date.now();
@@ -332,6 +351,7 @@ export class RetrievalService {
         rerankedCandidatesCount: rerankedCandidates.length,
         finalChunksCount: finalChunks.length,
         metrics: {
+          embeddingMs,
           vectorMs,
           keywordMs,
           mergeMs,

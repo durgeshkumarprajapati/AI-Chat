@@ -31,7 +31,11 @@ export class EvaluationService {
         return;
       }
 
+      const evaluationStart = Date.now();
       const scores = await this.evaluator.evaluateAnswer(input);
+      // Evaluation latency is evaluator execution time; persistence is deliberately
+      // excluded from user-facing response latency and happens after stream completion.
+      const evaluationLatencyMs = Date.now() - evaluationStart;
 
       await prisma.ragEvaluation.upsert({
         where: { messageId: input.messageId },
@@ -42,8 +46,12 @@ export class EvaluationService {
           citationCoverageScore: scores.citationCoverageScore,
           retrievalConfidenceScore: scores.retrievalConfidenceScore,
           latencyMs: input.latencyMs || null,
+          responseLatencyMs: input.responseLatencyMs ?? input.latencyMs ?? null,
           retrievalLatencyMs: input.retrievalLatencyMs || null,
           llmLatencyMs: input.llmLatencyMs || null,
+          llmFirstTokenMs: input.llmFirstTokenMs || null,
+          evaluationLatencyMs,
+          latencyTrace: input.latencyTrace as Prisma.InputJsonValue | undefined,
           retrievedChunkCount: input.retrievedChunks.length,
           citedChunkCount: input.citations.length,
           isFallback: scores.isFallback,
@@ -63,8 +71,12 @@ export class EvaluationService {
           citationCoverageScore: scores.citationCoverageScore,
           retrievalConfidenceScore: scores.retrievalConfidenceScore,
           latencyMs: input.latencyMs || null,
+          responseLatencyMs: input.responseLatencyMs ?? input.latencyMs ?? null,
           retrievalLatencyMs: input.retrievalLatencyMs || null,
           llmLatencyMs: input.llmLatencyMs || null,
+          llmFirstTokenMs: input.llmFirstTokenMs || null,
+          evaluationLatencyMs,
+          latencyTrace: input.latencyTrace as Prisma.InputJsonValue | undefined,
           retrievedChunkCount: input.retrievedChunks.length,
           citedChunkCount: input.citations.length,
           isFallback: scores.isFallback,
@@ -181,7 +193,11 @@ export class EvaluationService {
           citationCoverageScore: true,
           retrievalConfidenceScore: true,
           latencyMs: true,
+          responseLatencyMs: true,
           retrievalLatencyMs: true,
+          llmLatencyMs: true,
+          llmFirstTokenMs: true,
+          evaluationLatencyMs: true,
           retrievedChunkCount: true,
           citedChunkCount: true
         }
@@ -209,8 +225,11 @@ export class EvaluationService {
       positiveFeedbackRate: Number(posRate.toFixed(4)),
       fallbackCount,
       fallbackRate: Number(fallbackRate.toFixed(4)),
-      avgResponseLatencyMs: Math.round(evalStats._avg.latencyMs || 0),
+      avgResponseLatencyMs: Math.round(evalStats._avg.responseLatencyMs || evalStats._avg.latencyMs || 0),
       avgRetrievalLatencyMs: Math.round(evalStats._avg.retrievalLatencyMs || 0),
+      avgLlmLatencyMs: Math.round(evalStats._avg.llmLatencyMs || 0),
+      avgLlmFirstTokenMs: Math.round(evalStats._avg.llmFirstTokenMs || 0),
+      avgEvaluationLatencyMs: Math.round(evalStats._avg.evaluationLatencyMs || 0),
       avgRetrievedChunks: Number((evalStats._avg.retrievedChunkCount || 0).toFixed(1)),
       avgCitedChunks: Number((evalStats._avg.citedChunkCount || 0).toFixed(1)),
       avgCitationCoverage: Number((evalStats._avg.citationCoverageScore || 0).toFixed(4)),
@@ -285,6 +304,12 @@ export class EvaluationService {
         citationCoverageScore: e.citationCoverageScore,
         retrievalConfidenceScore: e.retrievalConfidenceScore,
         latencyMs: e.latencyMs,
+        responseLatencyMs: e.responseLatencyMs ?? e.latencyMs,
+        retrievalLatencyMs: e.retrievalLatencyMs,
+        llmLatencyMs: e.llmLatencyMs,
+        llmFirstTokenMs: e.llmFirstTokenMs,
+        evaluationLatencyMs: e.evaluationLatencyMs,
+        latencyTrace: e.latencyTrace as Record<string, number> | null,
         retrievedChunkCount: e.retrievedChunkCount,
         citedChunkCount: e.citedChunkCount,
         isFallback: e.isFallback,

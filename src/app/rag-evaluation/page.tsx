@@ -14,6 +14,9 @@ type AggregatedMetrics = {
   fallbackRate: number;
   avgResponseLatencyMs: number;
   avgRetrievalLatencyMs: number;
+  avgLlmLatencyMs: number;
+  avgLlmFirstTokenMs: number;
+  avgEvaluationLatencyMs: number;
   avgRetrievedChunks: number;
   avgCitedChunks: number;
   avgCitationCoverage: number;
@@ -37,6 +40,12 @@ type EvaluationItem = {
   citationCoverageScore: number | null;
   retrievalConfidenceScore: number | null;
   latencyMs: number | null;
+  responseLatencyMs: number | null;
+  retrievalLatencyMs: number | null;
+  llmLatencyMs: number | null;
+  llmFirstTokenMs: number | null;
+  evaluationLatencyMs: number | null;
+  latencyTrace: Record<string, number> | null;
   retrievedChunkCount: number;
   citedChunkCount: number;
   isFallback: boolean;
@@ -214,11 +223,11 @@ export default function RAGEvaluationPage() {
         </div>
 
         <div className="rounded-2xl bg-slate-900 border border-slate-800 p-4 space-y-2 shadow-xl">
-          <span className="text-[10px] font-mono uppercase text-slate-400">Avg Latency</span>
+          <span className="text-[10px] font-mono uppercase text-slate-400">Avg Response</span>
           <div className="text-2xl font-bold text-white font-mono">
             {loadingMetrics ? <span className="animate-pulse">...</span> : `${metrics?.avgResponseLatencyMs || 0}ms`}
           </div>
-          <span className="text-[10px] text-slate-500 block font-mono">End-to-End Response</span>
+          <span className="text-[10px] text-slate-500 block font-mono">Request to Persistence</span>
         </div>
 
         <div className="rounded-2xl bg-slate-900 border border-slate-800 p-4 space-y-2 shadow-xl">
@@ -227,6 +236,22 @@ export default function RAGEvaluationPage() {
             {loadingMetrics ? <span className="animate-pulse">...</span> : formatPct(metrics?.fallbackRate)}
           </div>
           <span className="text-[10px] text-slate-500 block font-mono">{metrics?.fallbackCount || 0} Zero-Chunk</span>
+        </div>
+
+        <div className="rounded-2xl bg-slate-900 border border-slate-800 p-4 space-y-2 shadow-xl">
+          <span className="text-[10px] font-mono uppercase text-slate-400">Avg Retrieval</span>
+          <div className="text-2xl font-bold text-sky-400 font-mono">{loadingMetrics ? '...' : `${metrics?.avgRetrievalLatencyMs || 0}ms`}</div>
+          <span className="text-[10px] text-slate-500 block font-mono">Embedding + Hybrid Search</span>
+        </div>
+        <div className="rounded-2xl bg-slate-900 border border-slate-800 p-4 space-y-2 shadow-xl">
+          <span className="text-[10px] font-mono uppercase text-slate-400">Avg LLM / TTFT</span>
+          <div className="text-2xl font-bold text-violet-400 font-mono">{loadingMetrics ? '...' : `${metrics?.avgLlmLatencyMs || 0}ms`}</div>
+          <span className="text-[10px] text-slate-500 block font-mono">TTFT {metrics?.avgLlmFirstTokenMs || 0}ms</span>
+        </div>
+        <div className="rounded-2xl bg-slate-900 border border-slate-800 p-4 space-y-2 shadow-xl">
+          <span className="text-[10px] font-mono uppercase text-slate-400">Avg Evaluation</span>
+          <div className="text-2xl font-bold text-rose-400 font-mono">{loadingMetrics ? '...' : `${metrics?.avgEvaluationLatencyMs || 0}ms`}</div>
+          <span className="text-[10px] text-slate-500 block font-mono">Async, not response time</span>
         </div>
       </div>
 
@@ -363,7 +388,7 @@ export default function RAGEvaluationPage() {
                       </td>
 
                       <td className="p-3 text-slate-300">
-                        {item.latencyMs ? `${item.latencyMs}ms` : 'N/A'}
+                        {item.responseLatencyMs ? `${item.responseLatencyMs}ms` : 'N/A'}
                       </td>
 
                       <td className="p-3 text-slate-500 text-[10px]">
@@ -418,6 +443,15 @@ export default function RAGEvaluationPage() {
                 <p className="bg-slate-900 p-3 rounded-xl border border-slate-800 text-slate-200 leading-relaxed font-sans">
                   {detailItem.answer}
                 </p>
+              </div>
+
+              <div className="rounded-xl border border-slate-800 bg-slate-900 p-3">
+                <span className="text-slate-400 text-[10px] block font-bold mb-2">LATENCY PIPELINE</span>
+                <div className="grid grid-cols-2 md:grid-cols-4 gap-2 text-slate-300">
+                  {Object.entries(detailItem.latencyTrace || { responseLatencyMs: detailItem.responseLatencyMs || 0, retrievalLatencyMs: detailItem.retrievalLatencyMs || 0, llmLatencyMs: detailItem.llmLatencyMs || 0, llmFirstTokenMs: detailItem.llmFirstTokenMs || 0, evaluationLatencyMs: detailItem.evaluationLatencyMs || 0 }).map(([stage, ms]) => (
+                    <div key={stage} className="rounded bg-slate-950 px-2 py-1"><span className="text-slate-500">{stage}</span> <span className="text-indigo-300">{ms}ms</span></div>
+                  ))}
+                </div>
               </div>
 
               {/* Feedback Comment if available */}

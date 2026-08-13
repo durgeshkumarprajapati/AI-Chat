@@ -21,6 +21,9 @@ type ChatMessage = {
   topSimilarity?: number;
   retrievalQuery?: string;
   contextMessagesCount?: number;
+  answerMode?: string;
+  availableActions?: string[];
+  cacheHit?: boolean;
   isStreaming?: boolean;
   createdAt?: string;
 };
@@ -233,7 +236,10 @@ export default function ChatPage() {
     }
   };
 
-  const handleSendMessage = async (promptOverride?: string) => {
+  const handleSendMessage = async (
+    promptOverride?: string,
+    options?: { allowGeneralKnowledge?: boolean; searchAllKbs?: boolean }
+  ) => {
     const q = (promptOverride || question).trim();
     if (!q || loading || streaming) return;
 
@@ -266,7 +272,9 @@ export default function ChatPage() {
         body: JSON.stringify({
           conversationId: activeConversationId || undefined,
           question: q,
-          knowledgeBaseId: selectedKbId || undefined
+          knowledgeBaseId: options?.searchAllKbs ? undefined : selectedKbId || undefined,
+          allowGeneralKnowledge: options?.allowGeneralKnowledge,
+          searchAllKbs: options?.searchAllKbs
         }),
         signal: abortControllerRef.current.signal
       });
@@ -322,7 +330,10 @@ export default function ChatPage() {
                         retrievedChunks: data.retrievedChunks,
                         topSimilarity: data.topSimilarity,
                         retrievalQuery: data.retrievalQuery,
-                        contextMessagesCount: data.contextMessagesCount
+                        contextMessagesCount: data.contextMessagesCount,
+                        answerMode: data.answerMode,
+                        availableActions: data.availableActions,
+                        cacheHit: data.cacheHit
                       }
                     : m
                 )
@@ -692,12 +703,52 @@ export default function ChatPage() {
                     </div>
                   ) : null}
 
+                  {/* Phase 21 Mode Badges */}
+                  {msg.role === 'ASSISTANT' && msg.answerMode === 'GENERAL_KNOWLEDGE' && (
+                    <div className="mb-2 inline-flex items-center space-x-1.5 px-2 py-0.5 rounded bg-amber-950/80 border border-amber-800/60 text-[10px] text-amber-300 font-mono">
+                      <span>🌐 General Knowledge Mode — Not based on uploaded documents</span>
+                    </div>
+                  )}
+
+                  {msg.role === 'ASSISTANT' && msg.cacheHit && (
+                    <div className="mb-2 ml-2 inline-flex items-center space-x-1 px-2 py-0.5 rounded bg-sky-950/80 border border-sky-800/60 text-[10px] text-sky-300 font-mono">
+                      <span>⚡ Cached Response</span>
+                    </div>
+                  )}
+
                   <div className="whitespace-pre-wrap">
                     {msg.content}
                     {msg.isStreaming && (
                       <span className="inline-block w-2 h-3 ml-1 bg-indigo-400 animate-pulse rounded-sm align-middle" />
                     )}
                   </div>
+
+                  {/* Structured Actions for NO_DOCUMENT_EVIDENCE */}
+                  {msg.role === 'ASSISTANT' && msg.answerMode === 'NO_DOCUMENT_EVIDENCE' && !msg.isStreaming && (
+                    <div className="mt-3 pt-3 border-t border-slate-800 space-y-2">
+                      <span className="text-[10px] font-bold text-slate-400 uppercase tracking-wider block">Suggested Next Actions:</span>
+                      <div className="flex flex-wrap gap-2">
+                        <button
+                          onClick={() => {
+                            const lastUserMsg = [...messages].reverse().find((m) => m.role === 'USER');
+                            if (lastUserMsg) handleSendMessage(lastUserMsg.content, { allowGeneralKnowledge: true });
+                          }}
+                          className="px-3 py-1.5 rounded-lg bg-amber-950/60 border border-amber-800/80 hover:bg-amber-900/60 text-amber-300 text-[11px] font-mono transition-all"
+                        >
+                          🌐 Answer using General Knowledge
+                        </button>
+                        <button
+                          onClick={() => {
+                            const lastUserMsg = [...messages].reverse().find((m) => m.role === 'USER');
+                            if (lastUserMsg) handleSendMessage(lastUserMsg.content, { searchAllKbs: true });
+                          }}
+                          className="px-3 py-1.5 rounded-lg bg-indigo-950/60 border border-indigo-800/80 hover:bg-indigo-900/60 text-indigo-300 text-[11px] font-mono transition-all"
+                        >
+                          📚 Search All Knowledge Bases
+                        </button>
+                      </div>
+                    </div>
+                  )}
 
                   {/* Copy Button */}
                   {msg.role === 'ASSISTANT' && msg.content && !msg.isStreaming && (

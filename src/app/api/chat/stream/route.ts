@@ -31,8 +31,11 @@ export async function POST(req: NextRequest) {
           const stream = chatService.streamMessage(authUser.id, {
             conversationId: body.conversationId,
             question: body.question,
-            knowledgeBaseId: body.knowledgeBaseId
-          });
+            knowledgeBaseId: body.knowledgeBaseId,
+            allowGeneralKnowledge: body.allowGeneralKnowledge,
+            requestedAnswerMode: body.requestedAnswerMode,
+            searchAllKbs: body.searchAllKbs
+          } as any);
 
           for await (const evt of stream) {
             if (req.signal.aborted) {

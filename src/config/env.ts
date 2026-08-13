@@ -152,7 +152,43 @@ const serverEnvSchema = z
       .coerce.number()
       .int()
       .positive()
-      .default(90)
+      .default(90),
+    RAG_CACHE_ENABLED: z
+      .coerce.boolean()
+      .default(true),
+    RAG_EXACT_CACHE_ENABLED: z
+      .coerce.boolean()
+      .default(true),
+    RAG_SEMANTIC_CACHE_ENABLED: z
+      .coerce.boolean()
+      .default(false),
+    RAG_EMBEDDING_CACHE_ENABLED: z
+      .coerce.boolean()
+      .default(true),
+    RAG_CACHE_TTL_SECONDS: z
+      .coerce.number()
+      .int()
+      .positive()
+      .default(300),
+    RAG_SEMANTIC_CACHE_THRESHOLD: z
+      .coerce.number()
+      .default(0.94),
+    RAG_MAX_RECOVERY_ATTEMPTS: z
+      .coerce.number()
+      .int()
+      .nonnegative()
+      .default(1),
+    RAG_AUTO_BROADEN_KNOWLEDGE_BASE: z
+      .coerce.boolean()
+      .default(false),
+    RAG_GENERAL_KNOWLEDGE_ENABLED: z
+      .coerce.boolean()
+      .default(true),
+    RAG_MIN_EVIDENCE_CHUNKS: z
+      .coerce.number()
+      .int()
+      .nonnegative()
+      .default(1)
   })
   .refine(
     (data) => {

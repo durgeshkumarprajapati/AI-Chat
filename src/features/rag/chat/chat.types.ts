@@ -34,6 +34,18 @@ export interface ChatResponse {
   topSimilarity: number;
   retrievalQuery?: string;
   contextMessagesCount?: number;
+  answerMode?: string;
+  availableActions?: string[];
+  cacheHit?: boolean;
+  cacheType?: string;
+  llmCalled?: boolean;
+  embeddingCalled?: boolean;
+  vectorSearchCalled?: boolean;
+  keywordSearchCalled?: boolean;
+  rerankCalled?: boolean;
+  recoveryAttempted?: boolean;
+  recoveryAttempts?: number;
+  latencyTrace?: Record<string, number>;
 }
 
 export type StreamEvent =
@@ -45,6 +57,17 @@ export type StreamEvent =
       topSimilarity: number;
       retrievalQuery?: string;
       contextMessagesCount?: number;
+      answerMode?: string;
+      availableActions?: string[];
+      cacheHit?: boolean;
+      cacheType?: string;
+      llmCalled?: boolean;
+      embeddingCalled?: boolean;
+      vectorSearchCalled?: boolean;
+      keywordSearchCalled?: boolean;
+      rerankCalled?: boolean;
+      recoveryAttempted?: boolean;
+      recoveryAttempts?: number;
     }
   | { type: 'delta'; text: string }
   | {

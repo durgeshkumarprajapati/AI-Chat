@@ -18,8 +18,11 @@ export async function POST(req: NextRequest) {
     const response = await chatService.sendMessage(authUser.id, {
       conversationId: body.conversationId,
       question: body.question,
-      knowledgeBaseId: body.knowledgeBaseId
-    });
+      knowledgeBaseId: body.knowledgeBaseId,
+      allowGeneralKnowledge: body.allowGeneralKnowledge,
+      requestedAnswerMode: body.requestedAnswerMode,
+      searchAllKbs: body.searchAllKbs
+    } as any);
 
     return NextResponse.json({
       success: true,

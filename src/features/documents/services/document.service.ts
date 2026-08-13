@@ -188,6 +188,10 @@ export class DocumentService {
 
     await rabbitmq.publishToQueue(QUEUES.DOCUMENT_PROCESSING, jobPayload);
 
+    // Invalidate user RAG cache entries
+    const cacheProvider = (await import('../../rag/cache/rag-cache.factory')).getRAGCacheProvider();
+    await cacheProvider.invalidateUser(userId).catch(() => {});
+
     return updatedDoc || doc;
   }
 
@@ -208,6 +212,10 @@ export class DocumentService {
 
     // 2. Delete database record & chunks transactionally
     await documentRepository.deleteByIdTx(doc.id, userId);
+
+    // 3. Invalidate user RAG cache entries
+    const cacheProvider = (await import('../../rag/cache/rag-cache.factory')).getRAGCacheProvider();
+    await cacheProvider.invalidateUser(userId).catch(() => {});
   }
 
   /**

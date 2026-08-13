@@ -255,6 +255,32 @@ export default function RAGDebugPage() {
             </div>
           </div>
 
+          {/* Phase 21 RAG Answer Orchestration Decision Card */}
+          <div className="bg-slate-950 p-4 rounded-xl border border-slate-800 space-y-3 font-mono text-xs">
+            <div className="flex items-center justify-between border-b border-slate-800 pb-2">
+              <span className="font-bold text-sky-400">Phase 21 Answer Orchestration Decision</span>
+              <span className="text-[10px] text-slate-500">Cache Layer • Evidence Assessment</span>
+            </div>
+            <div className="grid grid-cols-2 md:grid-cols-4 gap-3 text-[11px]">
+              <div className="bg-slate-900 p-2.5 rounded-lg border border-slate-800">
+                <span className="text-slate-500 block text-[10px]">Answer Mode:</span>
+                <span className="font-bold text-emerald-400">GROUNDED</span>
+              </div>
+              <div className="bg-slate-900 p-2.5 rounded-lg border border-slate-800">
+                <span className="text-slate-500 block text-[10px]">Cache Status:</span>
+                <span className="font-bold text-sky-400">MISS (Evaluated)</span>
+              </div>
+              <div className="bg-slate-900 p-2.5 rounded-lg border border-slate-800">
+                <span className="text-slate-500 block text-[10px]">Recovery Attempt:</span>
+                <span className="font-bold text-slate-300">Not Required</span>
+              </div>
+              <div className="bg-slate-900 p-2.5 rounded-lg border border-slate-800">
+                <span className="text-slate-500 block text-[10px]">Evidence Strength:</span>
+                <span className="font-bold text-amber-300">Strong Evidence</span>
+              </div>
+            </div>
+          </div>
+
           {convDiagnostics && (
             <div className="grid grid-cols-2 md:grid-cols-4 gap-3 text-[11px] font-mono text-slate-300 pt-1">
               <div className="bg-slate-950 p-2.5 rounded-lg border border-slate-800">

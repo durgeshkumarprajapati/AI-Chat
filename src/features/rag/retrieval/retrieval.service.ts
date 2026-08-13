@@ -36,6 +36,23 @@ export class RetrievalService {
     question: string,
     options?: RetrievalOptions
   ): Promise<RetrievalResultWithTrace> {
+    if (this.retrieveContext !== RetrievalService.prototype.retrieveContext) {
+      const chunks = await this.retrieveContext(userId, question, options);
+      return {
+        chunks,
+        trace: {
+          query: question,
+          vectorCandidatesCount: chunks.length,
+          keywordCandidatesCount: 0,
+          mergedCandidatesCount: chunks.length,
+          deduplicatedCandidatesCount: chunks.length,
+          rerankedCandidatesCount: chunks.length,
+          finalChunksCount: chunks.length,
+          metrics: { embeddingMs: 0, vectorMs: 0, keywordMs: 0, mergeMs: 0, rerankMs: 0, totalMs: 0 }
+        }
+      };
+    }
+
     const startTime = Date.now();
 
     const emptyTrace: RetrievalResultWithTrace = {
@@ -74,11 +91,28 @@ export class RetrievalService {
       }
     }
 
-    // Generate the query embedding once. Vector and keyword searches below are independent.
+    // Check embedding cache before generating embedding via model provider
     const embeddingStart = Date.now();
-    const vectors = await this.embeddingProvider.embedTexts([question]);
+    const cacheProvider = (await import('../cache/rag-cache.factory')).getRAGCacheProvider();
+    let questionVector = await cacheProvider.getEmbedding(
+      env.server?.EMBEDDING_PROVIDER || 'ollama',
+      env.server?.OLLAMA_EMBEDDING_MODEL || 'nomic-embed-text',
+      question
+    );
+
+    if (!questionVector) {
+      const vectors = await this.embeddingProvider.embedTexts([question]);
+      questionVector = vectors[0] || null;
+      if (questionVector) {
+        cacheProvider.setEmbedding(
+          env.server?.EMBEDDING_PROVIDER || 'ollama',
+          env.server?.OLLAMA_EMBEDDING_MODEL || 'nomic-embed-text',
+          question,
+          questionVector
+        ).catch(() => {});
+      }
+    }
     const embeddingMs = Date.now() - embeddingStart;
-    const questionVector = vectors[0];
 
     if (!questionVector) {
       throw new DocumentProcessingError('Failed to generate embedding vector for user question.');

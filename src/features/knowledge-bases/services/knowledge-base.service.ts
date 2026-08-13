@@ -169,6 +169,9 @@ export class KnowledgeBaseService {
     if (!deleted) {
       throw new NotFoundError('Knowledge Base');
     }
+
+    const cacheProvider = (await import('../../rag/cache/rag-cache.factory')).getRAGCacheProvider();
+    await cacheProvider.invalidateKnowledgeBase(id).catch(() => {});
   }
 
   public async addDocumentToKnowledgeBase(
@@ -193,6 +196,9 @@ export class KnowledgeBaseService {
     if (!added) {
       throw new ConflictError('Document is already a member of this Knowledge Base.');
     }
+
+    const cacheProvider = (await import('../../rag/cache/rag-cache.factory')).getRAGCacheProvider();
+    await cacheProvider.invalidateKnowledgeBase(knowledgeBaseId).catch(() => {});
   }
 
   public async removeDocumentFromKnowledgeBase(
@@ -212,6 +218,9 @@ export class KnowledgeBaseService {
     if (!removed) {
       throw new NotFoundError('Document membership in Knowledge Base');
     }
+
+    const cacheProvider = (await import('../../rag/cache/rag-cache.factory')).getRAGCacheProvider();
+    await cacheProvider.invalidateKnowledgeBase(knowledgeBaseId).catch(() => {});
   }
 
   public async listKnowledgeBaseDocuments(

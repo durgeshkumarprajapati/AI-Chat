@@ -122,6 +122,13 @@ const TOUR_STEPS: TourStep[] = [
     description: 'Real-time grounded streaming with prompt budgets, controlled output, and diagnostics for retrieval, time-to-first-token, LLM inference, and async evaluation.',
     technicalDetails: 'Prompt context optimizer • TTFT telemetry • /rag-debug performance diagnostics',
     icon: '⚡'
+  },
+  {
+    title: '17. Intelligent RAG Orchestration & Safe Caching',
+    badge: 'Phase 21',
+    description: 'Multi-level caching (Exact, Embedding, Semantic) with Redis/Memory fallback, evidence assessment, 1-step retrieval recovery, explicit general knowledge mode, and structured zero-result actions.',
+    technicalDetails: 'AnswerOrchestratorService • EvidenceAssessmentService • RedisRAGCacheProvider • Tenant-isolated cache keys',
+    icon: '🚀'
   }
 ];
 

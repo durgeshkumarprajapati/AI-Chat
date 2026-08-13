@@ -3,25 +3,32 @@ import { getLLMProvider } from '../llm/llm.provider.factory';
 import { LLMProvider } from '../llm/llm.provider';
 import { conversationContextService, ConversationContextService } from './conversation-context.service';
 import { evaluationService } from '../evaluation/evaluation.service';
+import { AnswerOrchestratorService, answerOrchestratorService } from '../orchestration/answer-orchestrator.service';
 import { prisma } from '@/lib/prisma';
 import { ValidationError, NotFoundError, AuthorizationError } from '@/errors';
 import { ChatResponse, Citation, ConversationDetail, StreamEvent } from './chat.types';
 import { MessageRole, Prisma } from '@prisma/client';
 import { promptContextService } from './prompt-context.service';
+import { env } from '@/config/env';
 
 export class ChatService {
-  private retrievalService: RetrievalService;
   private llmProvider: LLMProvider;
   private contextService: ConversationContextService;
+  private orchestratorService: AnswerOrchestratorService;
 
   constructor(
     retrievalService?: RetrievalService,
     llmProvider?: LLMProvider,
-    contextService?: ConversationContextService
+    contextService?: ConversationContextService,
+    orchestratorService?: AnswerOrchestratorService
   ) {
-    this.retrievalService = retrievalService || new RetrievalService();
     this.llmProvider = llmProvider || getLLMProvider();
     this.contextService = contextService || conversationContextService;
+    this.orchestratorService =
+      orchestratorService ||
+      (retrievalService || llmProvider
+        ? new AnswerOrchestratorService(undefined, retrievalService, undefined, this.llmProvider)
+        : answerOrchestratorService);
   }
 
   public async sendMessage(
@@ -79,40 +86,69 @@ export class ChatService {
     );
     const conversationContextMs = Date.now() - memoryStart;
 
-    // 3. Retrieve top-K relevant chunks using rewritten retrieval query
-    const retrievedChunks = await this.retrievalService.retrieveContext(userId, convContext.retrievalQuery, {
-      knowledgeBaseId: targetKbId
-    });
-    const retrievalTrace = this.retrievalService.getLastTrace();
+    // 3. Orchestrate answer & evidence decision
+    const orchResult = await this.orchestratorService.orchestrate(
+      {
+        userId,
+        question: trimmedQuestion,
+        conversationId,
+        knowledgeBaseId: targetKbId,
+        allowGeneralKnowledge: (input as any).allowGeneralKnowledge,
+        requestedAnswerMode: (input as any).requestedAnswerMode,
+        searchAllKbs: (input as any).searchAllKbs,
+        model: (input as any).model || env.server?.LLM_PROVIDER || 'ollama'
+      },
+      convContext.summary,
+      convContext.retrievalQuery,
+      convContext.includedMessages.length
+    );
 
-    const topSimilarity = retrievedChunks.length > 0 ? retrievedChunks[0]!.similarity : 0;
-
-    let answer: string;
-    let citations: Citation[] = [];
-
-    // 4. Zero Hallucination Policy Check
+    let answer = orchResult.answer;
+    let citations = orchResult.citations;
+    let retrievedChunks = orchResult.retrievedChunks;
     let promptBuildMs = 0;
     let llmLatencyMs = 0;
     let promptTokenEstimate = 0;
     let conversationContextTokens = 0;
     let retrievedContextTokens = 0;
-    if (retrievedChunks.length === 0) {
-      answer = "I couldn't find enough relevant information in your uploaded documents to answer that question.";
+
+    if (orchResult.cacheHit) {
+      // Exact Cache Hit — avoid LLM generation entirely
+    } else if (orchResult.answerMode === 'NO_DOCUMENT_EVIDENCE' || orchResult.answerMode === 'CLARIFICATION_REQUIRED' || orchResult.answerMode === 'GENERAL_KNOWLEDGE') {
+      // Answer pre-constructed by orchestrator
+      await this.orchestratorService
+        .cacheCompletedAnswer(
+          {
+            userId,
+            question: trimmedQuestion,
+            knowledgeBaseId: targetKbId,
+            model: (input as any).model || env.server?.LLM_PROVIDER || 'ollama'
+          },
+          answer,
+          citations,
+          retrievedChunks.length,
+          orchResult.topSimilarity,
+          orchResult.answerMode,
+          convContext.summary
+        )
+        .catch(() => {});
     } else {
-      // 5. Construct Grounded LLM Context
+      // Grounded / Retrieval Recovery generation via LLM
       const promptStart = Date.now();
-      const optimizedContext = promptContextService.optimize({ summary: convContext.summary, messages: convContext.includedMessages, chunks: retrievedChunks });
-      const fullContextString = optimizedContext.context;
+      const optimizedContext = promptContextService.optimize({
+        summary: convContext.summary,
+        messages: convContext.includedMessages,
+        chunks: retrievedChunks
+      });
       promptTokenEstimate = optimizedContext.promptTokenEstimate;
       conversationContextTokens = optimizedContext.conversationContextTokens;
       retrievedContextTokens = optimizedContext.retrievedContextTokens;
       promptBuildMs = Date.now() - promptStart;
 
-      // 6. Generate Answer via LLM Provider
       const llmStart = Date.now();
       answer = await this.llmProvider.generateAnswer({
         question: trimmedQuestion,
-        context: fullContextString
+        context: optimizedContext.context
       });
       llmLatencyMs = Date.now() - llmStart;
 
@@ -123,6 +159,24 @@ export class ChatService {
         pageNumber: c.pageNumber,
         similarity: Number(c.similarity.toFixed(4))
       }));
+
+      // Cache completed answer for exact matches
+      await this.orchestratorService
+        .cacheCompletedAnswer(
+          {
+            userId,
+            question: trimmedQuestion,
+            knowledgeBaseId: targetKbId,
+            model: (input as any).model || env.server?.LLM_PROVIDER || 'ollama'
+          },
+          answer,
+          citations,
+          retrievedChunks.length,
+          orchResult.topSimilarity,
+          orchResult.answerMode,
+          convContext.summary
+        )
+        .catch(() => {});
     }
 
     // 7. Persist USER and ASSISTANT messages in PostgreSQL
@@ -162,16 +216,12 @@ export class ChatService {
     }
 
     const duration = Date.now() - startTime;
-    const latencyTrace = {
-      conversationContextMs,
-      queryRewriteMs: convContext.queryRewriteMs,
-      embeddingMs: retrievalTrace?.metrics.embeddingMs ?? 0,
-      vectorMs: retrievalTrace?.metrics.vectorMs ?? 0,
-      keywordMs: retrievalTrace?.metrics.keywordMs ?? 0,
-      mergeMs: retrievalTrace?.metrics.mergeMs ?? 0,
-      rerankMs: retrievalTrace?.metrics.rerankMs ?? 0,
-      retrievalMs: retrievalTrace?.metrics.totalMs ?? 0,
+    const latencyTrace: Record<string, number> = {
+      ...orchResult.latencyTrace,
+      memoryMs: conversationContextMs,
       promptBuildMs,
+      llmMs: llmLatencyMs,
+      llmLatencyMs,
       promptTokenEstimate,
       conversationContextTokens,
       retrievedContextTokens,
@@ -208,9 +258,21 @@ export class ChatService {
       answer,
       citations,
       retrievedChunks: retrievedChunks.length,
-      topSimilarity,
+      topSimilarity: orchResult.topSimilarity,
       retrievalQuery: convContext.retrievalQuery,
-      contextMessagesCount: convContext.includedMessages.length
+      contextMessagesCount: convContext.includedMessages.length,
+      answerMode: orchResult.answerMode,
+      availableActions: orchResult.availableActions,
+      cacheHit: orchResult.cacheHit,
+      cacheType: orchResult.cacheType,
+      llmCalled: orchResult.llmCalled,
+      embeddingCalled: orchResult.embeddingCalled,
+      vectorSearchCalled: orchResult.vectorSearchCalled,
+      keywordSearchCalled: orchResult.keywordSearchCalled,
+      rerankCalled: orchResult.rerankCalled,
+      recoveryAttempted: orchResult.recoveryAttempted,
+      recoveryAttempts: orchResult.recoveryAttempts,
+      latencyTrace
     };
   }
 
@@ -269,21 +331,91 @@ export class ChatService {
     );
     const conversationContextMs = Date.now() - memoryStart;
 
-    // 3. Retrieve top-K relevant chunks using rewritten retrieval query
-    const retrievedChunks = await this.retrievalService.retrieveContext(userId, convContext.retrievalQuery, {
-      knowledgeBaseId: targetKbId
-    });
-    const retrievalTrace = this.retrievalService.getLastTrace();
-    const topSimilarity = retrievedChunks.length > 0 ? retrievedChunks[0]!.similarity : 0;
+    // 3. Orchestrate answer & evidence decision
+    const orchResult = await this.orchestratorService.orchestrate(
+      {
+        userId,
+        question: trimmedQuestion,
+        conversationId,
+        knowledgeBaseId: targetKbId,
+        allowGeneralKnowledge: (input as any).allowGeneralKnowledge,
+        requestedAnswerMode: (input as any).requestedAnswerMode,
+        searchAllKbs: (input as any).searchAllKbs,
+        model: (input as any).model || env.server?.LLM_PROVIDER || 'ollama'
+      },
+      convContext.summary,
+      convContext.retrievalQuery,
+      convContext.includedMessages.length
+    );
 
-    const streamContextStart = Date.now();
-    const optimizedStreamContext = retrievedChunks.length > 0
-      ? promptContextService.optimize({ summary: convContext.summary, messages: convContext.includedMessages, chunks: retrievedChunks })
-      : null;
-    const streamContextPreparationMs = Date.now() - streamContextStart;
-    let citations: Citation[] = [];
+    let retrievedChunks = orchResult.retrievedChunks;
+    let citations = orchResult.citations;
 
-    if (optimizedStreamContext) {
+    yield {
+      type: 'start',
+      conversationId: conversationId!,
+      citations,
+      retrievedChunks: retrievedChunks.length,
+      topSimilarity: orchResult.topSimilarity,
+      retrievalQuery: convContext.retrievalQuery,
+      contextMessagesCount: convContext.includedMessages.length,
+      answerMode: orchResult.answerMode,
+      availableActions: orchResult.availableActions,
+      cacheHit: orchResult.cacheHit,
+      cacheType: orchResult.cacheType,
+      llmCalled: orchResult.llmCalled,
+      embeddingCalled: orchResult.embeddingCalled,
+      vectorSearchCalled: orchResult.vectorSearchCalled,
+      keywordSearchCalled: orchResult.keywordSearchCalled,
+      rerankCalled: orchResult.rerankCalled,
+      recoveryAttempted: orchResult.recoveryAttempted,
+      recoveryAttempts: orchResult.recoveryAttempts
+    };
+
+    let answer = '';
+    let promptBuildMs = 0;
+    let llmFirstTokenMs = 0;
+    let llmGenerationMs = 0;
+    let promptTokenEstimate = 0;
+    let conversationContextTokens = 0;
+    let retrievedContextTokens = 0;
+
+    if (orchResult.cacheHit) {
+      answer = orchResult.answer;
+      yield { type: 'delta', text: answer };
+    } else if (orchResult.answerMode === 'NO_DOCUMENT_EVIDENCE' || orchResult.answerMode === 'CLARIFICATION_REQUIRED' || orchResult.answerMode === 'GENERAL_KNOWLEDGE') {
+      answer = orchResult.answer;
+      yield { type: 'delta', text: answer };
+
+      this.orchestratorService
+        .cacheCompletedAnswer(
+          {
+            userId,
+            question: trimmedQuestion,
+            knowledgeBaseId: targetKbId,
+            model: (input as any).model || env.server?.LLM_PROVIDER || 'ollama'
+          },
+          answer,
+          citations,
+          retrievedChunks.length,
+          orchResult.topSimilarity,
+          orchResult.answerMode,
+          convContext.summary
+        )
+        .catch(() => {});
+    } else {
+      // Stream Grounded / Retrieval Recovery generation via LLM Provider
+      const promptStart = Date.now();
+      const optimizedStreamContext = promptContextService.optimize({
+        summary: convContext.summary,
+        messages: convContext.includedMessages,
+        chunks: retrievedChunks
+      });
+      promptTokenEstimate = optimizedStreamContext.promptTokenEstimate;
+      conversationContextTokens = optimizedStreamContext.conversationContextTokens;
+      retrievedContextTokens = optimizedStreamContext.retrievedContextTokens;
+      promptBuildMs = Date.now() - promptStart;
+
       citations = optimizedStreamContext.chunks.map((c) => ({
         documentId: c.documentId,
         chunkId: c.id,
@@ -291,43 +423,12 @@ export class ChatService {
         pageNumber: c.pageNumber,
         similarity: Number(c.similarity.toFixed(4))
       }));
-    }
 
-    yield {
-      type: 'start',
-      conversationId: conversationId!,
-      citations,
-      retrievedChunks: retrievedChunks.length,
-      topSimilarity,
-      retrievalQuery: convContext.retrievalQuery,
-      contextMessagesCount: convContext.includedMessages.length
-    };
-
-    let answer = '';
-    let promptBuildMs = streamContextPreparationMs;
-    let llmFirstTokenMs = 0;
-    let llmGenerationMs = 0;
-    let promptTokenEstimate = 0;
-    let conversationContextTokens = 0;
-    let retrievedContextTokens = 0;
-
-    // 4. Zero Hallucination Policy Check
-    if (retrievedChunks.length === 0) {
-      answer = "I couldn't find enough relevant information in your uploaded documents to answer that question.";
-      yield { type: 'delta', text: answer };
-    } else {
-      // 5. Construct Grounded LLM Context
-      const fullContextString = optimizedStreamContext!.context;
-      promptTokenEstimate = optimizedStreamContext!.promptTokenEstimate;
-      conversationContextTokens = optimizedStreamContext!.conversationContextTokens;
-      retrievedContextTokens = optimizedStreamContext!.retrievedContextTokens;
-
-      // 6. Stream Grounded Answer via LLM Provider
       const llmStart = Date.now();
       let receivedFirstToken = false;
       const stream = this.llmProvider.streamAnswer({
         question: trimmedQuestion,
-        context: fullContextString
+        context: optimizedStreamContext.context
       });
 
       for await (const chunk of stream) {
@@ -339,6 +440,24 @@ export class ChatService {
         yield { type: 'delta', text: chunk };
       }
       llmGenerationMs = receivedFirstToken ? Date.now() - llmStart - llmFirstTokenMs : Date.now() - llmStart;
+
+      // Cache exact answer
+      this.orchestratorService
+        .cacheCompletedAnswer(
+          {
+            userId,
+            question: trimmedQuestion,
+            knowledgeBaseId: targetKbId,
+            model: (this.llmProvider as any)?.constructor?.name || env.server?.LLM_PROVIDER || 'ollama'
+          },
+          answer.trim(),
+          citations,
+          retrievedChunks.length,
+          orchResult.topSimilarity,
+          orchResult.answerMode,
+          convContext.summary
+        )
+        .catch(() => {});
     }
 
     const finalAnswer = answer.trim();
@@ -383,12 +502,12 @@ export class ChatService {
     const latencyTrace = {
       conversationContextMs,
       queryRewriteMs: convContext.queryRewriteMs,
-      embeddingMs: retrievalTrace?.metrics.embeddingMs ?? 0,
-      vectorMs: retrievalTrace?.metrics.vectorMs ?? 0,
-      keywordMs: retrievalTrace?.metrics.keywordMs ?? 0,
-      mergeMs: retrievalTrace?.metrics.mergeMs ?? 0,
-      rerankMs: retrievalTrace?.metrics.rerankMs ?? 0,
-      retrievalMs: retrievalTrace?.metrics.totalMs ?? 0,
+      embeddingMs: orchResult.latencyTrace?.embeddingMs ?? 0,
+      vectorMs: orchResult.latencyTrace?.vectorMs ?? 0,
+      keywordMs: orchResult.latencyTrace?.keywordMs ?? 0,
+      mergeMs: orchResult.latencyTrace?.mergeMs ?? 0,
+      rerankMs: orchResult.latencyTrace?.rerankMs ?? 0,
+      retrievalMs: orchResult.latencyTrace?.retrievalMs ?? 0,
       promptBuildMs,
       promptTokenEstimate,
       conversationContextTokens,

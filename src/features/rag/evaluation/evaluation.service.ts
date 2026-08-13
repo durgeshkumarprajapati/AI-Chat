@@ -37,54 +37,57 @@ export class EvaluationService {
       // excluded from user-facing response latency and happens after stream completion.
       const evaluationLatencyMs = Date.now() - evaluationStart;
 
-      await prisma.ragEvaluation.upsert({
-        where: { messageId: input.messageId },
-        update: {
-          overallScore: scores.overallScore,
-          groundednessScore: scores.groundednessScore,
-          relevanceScore: scores.relevanceScore,
-          citationCoverageScore: scores.citationCoverageScore,
-          retrievalConfidenceScore: scores.retrievalConfidenceScore,
-          latencyMs: input.latencyMs || null,
-          responseLatencyMs: input.responseLatencyMs ?? input.latencyMs ?? null,
-          retrievalLatencyMs: input.retrievalLatencyMs || null,
-          llmLatencyMs: input.llmLatencyMs || null,
-          llmFirstTokenMs: input.llmFirstTokenMs || null,
-          evaluationLatencyMs,
-          latencyTrace: input.latencyTrace as Prisma.InputJsonValue | undefined,
-          retrievedChunkCount: input.retrievedChunks.length,
-          citedChunkCount: input.citations.length,
-          isFallback: scores.isFallback,
-          evaluatorType: scores.evaluatorType
-        },
-        create: {
-          userId: input.userId,
-          conversationId: input.conversationId,
-          messageId: input.messageId,
-          knowledgeBaseId: input.knowledgeBaseId || msg.conversation.knowledgeBaseId || null,
-          question: input.question,
-          retrievalQuery: input.retrievalQuery || null,
-          answer: input.answer,
-          overallScore: scores.overallScore,
-          groundednessScore: scores.groundednessScore,
-          relevanceScore: scores.relevanceScore,
-          citationCoverageScore: scores.citationCoverageScore,
-          retrievalConfidenceScore: scores.retrievalConfidenceScore,
-          latencyMs: input.latencyMs || null,
-          responseLatencyMs: input.responseLatencyMs ?? input.latencyMs ?? null,
-          retrievalLatencyMs: input.retrievalLatencyMs || null,
-          llmLatencyMs: input.llmLatencyMs || null,
-          llmFirstTokenMs: input.llmFirstTokenMs || null,
-          evaluationLatencyMs,
-          latencyTrace: input.latencyTrace as Prisma.InputJsonValue | undefined,
-          retrievedChunkCount: input.retrievedChunks.length,
-          citedChunkCount: input.citations.length,
-          isFallback: scores.isFallback,
-          evaluatorType: scores.evaluatorType
-        }
-      });
-
-      console.log(`[EvaluationService] Evaluation persisted for message ${input.messageId}: groundedness=${scores.groundednessScore}, overall=${scores.overallScore}`);
+      try {
+        await prisma.ragEvaluation.upsert({
+          where: { messageId: input.messageId },
+          update: {
+            overallScore: scores.overallScore,
+            groundednessScore: scores.groundednessScore,
+            relevanceScore: scores.relevanceScore,
+            citationCoverageScore: scores.citationCoverageScore,
+            retrievalConfidenceScore: scores.retrievalConfidenceScore,
+            latencyMs: input.latencyMs || null,
+            responseLatencyMs: input.responseLatencyMs ?? input.latencyMs ?? null,
+            retrievalLatencyMs: input.retrievalLatencyMs || null,
+            llmLatencyMs: input.llmLatencyMs || null,
+            llmFirstTokenMs: input.llmFirstTokenMs || null,
+            evaluationLatencyMs,
+            latencyTrace: input.latencyTrace as Prisma.InputJsonValue | undefined,
+            retrievedChunkCount: input.retrievedChunks.length,
+            citedChunkCount: input.citations.length,
+            isFallback: scores.isFallback,
+            evaluatorType: scores.evaluatorType
+          },
+          create: {
+            userId: input.userId,
+            conversationId: input.conversationId,
+            messageId: input.messageId,
+            knowledgeBaseId: input.knowledgeBaseId || msg.conversation.knowledgeBaseId || null,
+            question: input.question,
+            retrievalQuery: input.retrievalQuery || input.question,
+            answer: input.answer,
+            overallScore: scores.overallScore,
+            groundednessScore: scores.groundednessScore,
+            relevanceScore: scores.relevanceScore,
+            citationCoverageScore: scores.citationCoverageScore,
+            retrievalConfidenceScore: scores.retrievalConfidenceScore,
+            latencyMs: input.latencyMs || null,
+            responseLatencyMs: input.responseLatencyMs ?? input.latencyMs ?? null,
+            retrievalLatencyMs: input.retrievalLatencyMs || null,
+            llmLatencyMs: input.llmLatencyMs || null,
+            llmFirstTokenMs: input.llmFirstTokenMs || null,
+            evaluationLatencyMs,
+            latencyTrace: input.latencyTrace as Prisma.InputJsonValue | undefined,
+            retrievedChunkCount: input.retrievedChunks.length,
+            citedChunkCount: input.citations.length,
+            isFallback: scores.isFallback,
+            evaluatorType: scores.evaluatorType
+          }
+        });
+        console.log(`[EvaluationService] Evaluation persisted for message ${input.messageId}: groundedness=${scores.groundednessScore}, overall=${scores.overallScore}`);
+      } catch (err) {
+        console.warn(`[EvaluationService] Evaluation persistence skipped (conversation deleted):`, err instanceof Error ? err.message : err);
+      }
     } catch (err) {
       console.error('[EvaluationService] Evaluation failed safely:', err);
     }

@@ -2,13 +2,70 @@
 @tailwind components;
 @tailwind utilities;
 
-:root {
-  --background: #0f172a;
+:root,
+[data-theme='dark'],
+.dark {
+  --background: #020617;
   --foreground: #f8fafc;
+  --surface: #0f172a;
+  --surface-hover: #1e293b;
+  --border: #1e293b;
+  --text-muted: #94a3b8;
+  --card-bg: rgba(15, 23, 42, 0.85);
+  color-scheme: dark;
+}
+
+[data-theme='light'],
+.light {
+  --background: #f8fafc;
+  --foreground: #0f172a;
+  --surface: #ffffff;
+  --surface-hover: #f1f5f9;
+  --border: #e2e8f0;
+  --text-muted: #64748b;
+  --card-bg: rgba(255, 255, 255, 0.95);
+  color-scheme: light;
 }
 
 body {
   color: var(--foreground);
-  background: var(--background);
+  background-color: var(--background);
   font-family: ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
+  transition: background-color 0.15s ease, color 0.15s ease;
+}
+
+/* Light mode overrides for existing dark slate utilities */
+.light .bg-slate-950 {
+  background-color: #f8fafc !important;
+}
+.light .bg-slate-900 {
+  background-color: #ffffff !important;
+}
+.light .bg-slate-900\/90,
+.light .bg-slate-900\/80,
+.light .bg-slate-900\/60,
+.light .bg-slate-900\/50,
+.light .bg-slate-900\/40 {
+  background-color: rgba(255, 255, 255, 0.95) !important;
+}
+.light .bg-slate-800 {
+  background-color: #f1f5f9 !important;
+}
+.light .border-slate-800,
+.light .border-slate-800\/80,
+.light .border-slate-800\/50 {
+  border-color: #e2e8f0 !important;
+}
+.light .text-slate-100,
+.light .text-white {
+  color: #0f172a !important;
+}
+.light .text-slate-400,
+.light .text-slate-300 {
+  color: #475569 !important;
+}
+.light .bg-slate-950\/80,
+.light .bg-slate-950\/60,
+.light .bg-slate-950\/40 {
+  background-color: #f1f5f9 !important;
 }

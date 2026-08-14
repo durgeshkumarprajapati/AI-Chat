@@ -272,7 +272,16 @@ const serverEnvSchema = z
       .default(600),
     CITY_EXPLORER_ENABLED: z
       .coerce.boolean()
-      .default(true)
+      .default(true),
+    VOICE_INPUT_ENABLED: z
+      .coerce.boolean()
+      .default(true),
+    VOICE_INPUT_DEFAULT_LOCALE: z
+      .string()
+      .default('en-US'),
+    VOICE_INPUT_MAX_SESSION_SECONDS: z
+      .coerce.number()
+      .default(120)
   })
   .refine(
     (data) => {

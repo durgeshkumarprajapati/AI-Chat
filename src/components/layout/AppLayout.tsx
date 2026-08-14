@@ -4,6 +4,7 @@ import Link from 'next/link';
 import { usePathname } from 'next/navigation';
 import { useState, useEffect } from 'react';
 import { ProductTour } from '../tour/ProductTour';
+import { ThemeToggle } from '../theme/ThemeToggle';
 import { useWorkspace } from '@/context/WorkspaceContext';
 
 export function AppLayout({ children }: { children: React.ReactNode }) {
@@ -160,6 +161,9 @@ export function AppLayout({ children }: { children: React.ReactNode }) {
                 {healthStatus === 'ok' ? 'Services Healthy' : healthStatus === 'degraded' ? 'Degraded Status' : 'Checking Health...'}
               </span>
             </Link>
+
+            {/* Theme Selector */}
+            <ThemeToggle />
 
             {/* Product Tour Trigger */}
             <button

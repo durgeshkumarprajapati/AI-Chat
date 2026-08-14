@@ -4,6 +4,7 @@ import { useState, useEffect, useRef, useCallback, Suspense } from 'react';
 import { useSearchParams, useRouter } from 'next/navigation';
 import { EvidenceModal } from '@/components/chat/EvidenceModal';
 import { ttsService, TTSLanguage } from '@/features/tts/tts.service';
+import { speechToTextService, VoiceState, SUPPORTED_VOICE_LANGUAGES, getFriendlyVoiceErrorMessage } from '@/features/voice';
 
 type Citation = {
   id?: string;
@@ -88,6 +89,42 @@ function ChatPageContent() {
   const [pausedMsgId, setPausedMsgId] = useState<string | null>(null);
   const [ttsLang, setTtsLang] = useState<TTSLanguage>('en-US');
   const [ttsSpeed, setTtsSpeed] = useState<number>(1.0);
+
+  // Phase 32 Voice STT Input State
+  const [voiceState, setVoiceState] = useState<VoiceState>('IDLE');
+  const [voiceLanguage, setVoiceLanguage] = useState<string>('en-US');
+  const [voiceErrorMsg, setVoiceErrorMsg] = useState<string | null>(null);
+  const [interimTranscript, setInterimTranscript] = useState<string>('');
+
+  useEffect(() => {
+    const unsubState = speechToTextService.onStateChange((st) => setVoiceState(st));
+    const unsubTranscript = speechToTextService.onTranscript((text, isFinal) => {
+      if (isFinal) {
+        setQuestion((prev) => (prev ? `${prev} ${text}`.trim() : text));
+        setInterimTranscript('');
+      } else {
+        setInterimTranscript(text);
+      }
+    });
+    const unsubError = speechToTextService.onError((err) => {
+      setVoiceErrorMsg(getFriendlyVoiceErrorMessage(err));
+    });
+
+    return () => {
+      unsubState();
+      unsubTranscript();
+      unsubError();
+    };
+  }, []);
+
+  const handleToggleVoice = () => {
+    setVoiceErrorMsg(null);
+    if (voiceState === 'LISTENING' || voiceState === 'STARTING') {
+      speechToTextService.stopListening();
+    } else {
+      speechToTextService.startListening({ locale: voiceLanguage });
+    }
+  };
 
   const handleSpeak = (msgId: string, text: string) => {
     if (speakingMsgId === msgId) {
@@ -1226,15 +1263,92 @@ function ChatPageContent() {
               />
             </label>
 
-            <textarea
-              value={question}
-              onChange={(e) => setQuestion(e.target.value)}
-              onKeyDown={handleKeyDown}
-              placeholder={streaming ? "Generating response..." : uploading ? "Uploading attachment..." : `Ask a question in scope of ${selectedKbName}...`}
-              disabled={loading || streaming || uploading}
-              rows={1}
-              className="flex-1 rounded-xl bg-slate-900 border border-slate-800 px-4 py-3 text-xs text-white placeholder-slate-500 focus:outline-none focus:border-indigo-500 resize-none disabled:opacity-50"
-            />
+            {/* Phase 32 Voice Input Microphone Button */}
+            <div className="flex items-center space-x-1 flex-shrink-0">
+              <button
+                type="button"
+                onClick={handleToggleVoice}
+                disabled={loading || streaming || uploading}
+                aria-label={voiceState === 'LISTENING' ? 'Stop voice input' : 'Start voice input'}
+                aria-pressed={voiceState === 'LISTENING'}
+                className={`p-3 rounded-xl border text-xs font-semibold flex items-center space-x-1.5 transition flex-shrink-0 ${
+                  voiceState === 'LISTENING'
+                    ? 'bg-rose-950/90 border-rose-700 text-rose-300 animate-pulse shadow-lg shadow-rose-900/30'
+                    : voiceState === 'STARTING'
+                    ? 'bg-amber-950/90 border-amber-700 text-amber-300 animate-pulse'
+                    : voiceState === 'ERROR'
+                    ? 'bg-rose-950/40 border-rose-800 text-rose-400'
+                    : 'bg-slate-900 border-slate-800 text-slate-300 hover:border-indigo-500/50 hover:text-white'
+                }`}
+                title={voiceState === 'LISTENING' ? 'Stop Listening' : 'Start Voice Input'}
+              >
+                <span className="text-sm">
+                  {voiceState === 'LISTENING' ? '🔴' : voiceState === 'STARTING' ? '⏳' : '🎤'}
+                </span>
+                <span className="hidden sm:inline">
+                  {voiceState === 'LISTENING'
+                    ? 'Listening...'
+                    : voiceState === 'STARTING'
+                    ? 'Starting...'
+                    : 'Voice'}
+                </span>
+              </button>
+
+              <select
+                value={voiceLanguage}
+                onChange={(e) => {
+                  setVoiceLanguage(e.target.value);
+                  speechToTextService.setLanguage(e.target.value);
+                }}
+                aria-label="Select voice input language"
+                disabled={loading || streaming || voiceState === 'LISTENING'}
+                className="hidden lg:block bg-slate-900 border border-slate-800 rounded-xl px-2 py-2.5 text-[11px] text-slate-300 focus:outline-none focus:border-indigo-500"
+              >
+                {SUPPORTED_VOICE_LANGUAGES.map((lang) => (
+                  <option key={lang.value} value={lang.value}>
+                    {lang.label}
+                  </option>
+                ))}
+              </select>
+            </div>
+
+            <div className="flex-1 flex flex-col min-w-0">
+              <textarea
+                value={question}
+                onChange={(e) => setQuestion(e.target.value)}
+                onKeyDown={handleKeyDown}
+                placeholder={
+                  voiceState === 'LISTENING'
+                    ? 'Speak now... (listening)'
+                    : streaming
+                    ? 'Generating response...'
+                    : uploading
+                    ? 'Uploading attachment...'
+                    : `Ask a question in scope of ${selectedKbName}...`
+                }
+                disabled={loading || streaming || uploading}
+                rows={1}
+                className="w-full rounded-xl bg-slate-900 border border-slate-800 px-4 py-3 text-xs text-white placeholder-slate-500 focus:outline-none focus:border-indigo-500 resize-none disabled:opacity-50"
+              />
+              {interimTranscript && (
+                <div className="px-2 pt-1 text-[11px] font-mono text-indigo-400 animate-pulse italic">
+                  Hearing: &quot;{interimTranscript}&quot;
+                </div>
+              )}
+              {voiceErrorMsg && (
+                <div className="px-2 pt-1 text-[11px] font-mono text-rose-400">
+                  ⚠️ {voiceErrorMsg}
+                </div>
+              )}
+            </div>
+
+            {/* Accessibility Live Region */}
+            <div aria-live="polite" className="sr-only">
+              {voiceState === 'LISTENING' && `Listening in ${voiceLanguage}...`}
+              {interimTranscript && `Interim transcript: ${interimTranscript}`}
+              {voiceErrorMsg && `Voice error: ${voiceErrorMsg}`}
+            </div>
+
             {streaming ? (
               <button
                 onClick={handleStopGenerating}

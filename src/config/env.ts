@@ -141,6 +141,15 @@ const serverEnvSchema = z
     WEB_PAGE_CACHE_TTL_SECONDS: z.coerce.number().int().positive().default(1800),
     WEB_MAX_CRAWLS_PER_USER_PER_HOUR: z.coerce.number().int().positive().default(20),
     WEB_DISCOVERY_ALLOWED_SOURCES: z.string().default('wikipedia,medium'),
+    WEB_SEARCH_ENABLED: z.coerce.boolean().default(true),
+    WEB_SEARCH_MAX_QUERIES: z.coerce.number().int().positive().default(3),
+    WEB_SEARCH_MAX_RESULTS_PER_QUERY: z.coerce.number().int().positive().default(5),
+    WEB_SEARCH_MAX_SELECTED_SOURCES: z.coerce.number().int().positive().default(5),
+    WEB_SEARCH_MAX_CONCURRENT_FETCHES: z.coerce.number().int().positive().default(3),
+    WEB_SEARCH_TIMEOUT_MS: z.coerce.number().int().positive().default(10000),
+    WEB_SEARCH_MAX_BYTES: z.coerce.number().int().positive().default(2097152),
+    WEB_SEARCH_SOURCE_DIVERSITY: z.coerce.boolean().default(true),
+    WEB_SEARCH_CACHE_ENABLED: z.coerce.boolean().default(true),
     CONVERSATION_MAX_MESSAGES: z
       .coerce.number()
       .int()

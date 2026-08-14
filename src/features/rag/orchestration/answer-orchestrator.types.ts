@@ -7,6 +7,7 @@ export type AnswerMode =
   | 'WEB_GROUNDED'
   | 'MULTI_SOURCE_GROUNDED'
   | 'WEB_DISCOVERY_GROUNDED'
+  | 'WEB_SEARCH_GROUNDED'
   | 'RETRIEVAL_RECOVERY'
   | 'GENERAL_KNOWLEDGE'
   | 'NO_DOCUMENT_EVIDENCE'
@@ -55,7 +56,7 @@ export interface OrchestrationInput {
   question: string;
   conversationId?: string;
   knowledgeBaseId?: string;
-  sourceMode?: 'documents_only' | 'web_only' | 'all_sources' | 'web_discovery';
+  sourceMode?: 'documents_only' | 'web_only' | 'all_sources' | 'web_discovery' | 'web_search' | 'auto';
   targetWebsite?: string;
   allowedSources?: string[];
   allowGeneralKnowledge?: boolean;

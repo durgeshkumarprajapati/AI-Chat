@@ -10,6 +10,8 @@ import { getLLMProvider } from '../llm/llm.provider.factory';
 import { LLMProvider } from '../llm/llm.provider';
 import { Citation } from '../chat/chat.types';
 import { citationService } from '../citation/citation.service';
+import { webSearchDecisionService } from '../web-search/web-search-decision.service';
+import { webSearchService } from '../web-search/web-search.service';
 import { createHash } from 'crypto';
 
 export class AnswerOrchestratorService {
@@ -208,8 +210,55 @@ export class AnswerOrchestratorService {
       });
       latencyTrace.discoveryMs = discoveryRes.metrics.discoveryMs ?? 0;
       latencyTrace.fetchMs = discoveryRes.metrics.fetchMs ?? 0;
-      // Strict Source Isolation: For web_discovery, ONLY use live web discovery chunks!
       chunks = discoveryRes.chunks;
+    } else if (sourceMode === 'web_search') {
+      const searchRes = await webSearchService.executeWebSearch(input.userId, effectiveQuery, {
+        allowedSources: input.allowedSources,
+        targetWebsite: input.targetWebsite
+      });
+      latencyTrace.searchPlanningMs = searchRes.metrics.planningMs;
+      latencyTrace.webSearchMs = searchRes.metrics.searchMs;
+      latencyTrace.webFetchMs = searchRes.metrics.fetchMs;
+      latencyTrace.webExtractionMs = searchRes.metrics.extractionMs;
+      latencyTrace.webRerankingMs = searchRes.metrics.rerankMs;
+      chunks = searchRes.chunks;
+    } else if (sourceMode === 'auto') {
+      const decisionStart = Date.now();
+      const decision = webSearchDecisionService.classifyQuery(effectiveQuery, 'auto', false);
+      latencyTrace.queryClassificationMs = Date.now() - decisionStart;
+
+      let docChunks: RetrievedChunk[] = [];
+      let webChunks: RetrievedChunk[] = [];
+
+      if (decision.shouldSearchDocs) {
+        const retResult = await this.retrievalService.retrieveContextWithTrace(input.userId, effectiveQuery, {
+          knowledgeBaseId: input.searchAllKbs ? undefined : input.knowledgeBaseId,
+          sourceMode: 'all_sources',
+          queryVector: queryEmbedding.vector
+        });
+        if (retResult.trace && retResult.trace.metrics) {
+          latencyTrace.embeddingMs = retResult.trace.metrics.embeddingMs;
+          latencyTrace.vectorMs = retResult.trace.metrics.vectorMs;
+          latencyTrace.keywordMs = retResult.trace.metrics.keywordMs;
+          latencyTrace.retrievalMs = retResult.trace.metrics.totalMs;
+        }
+        docChunks = retResult.chunks;
+      }
+
+      if (decision.shouldSearchWeb && (decision.classification === 'WEB_REQUIRED' || decision.classification === 'MULTI_SOURCE' || docChunks.length === 0)) {
+        const searchRes = await webSearchService.executeWebSearch(input.userId, effectiveQuery, {
+          allowedSources: input.allowedSources
+        });
+        latencyTrace.searchPlanningMs = searchRes.metrics.planningMs;
+        latencyTrace.webSearchMs = searchRes.metrics.searchMs;
+        latencyTrace.webFetchMs = searchRes.metrics.fetchMs;
+        latencyTrace.webExtractionMs = searchRes.metrics.extractionMs;
+        webChunks = searchRes.chunks;
+      }
+
+      const fusionStart = Date.now();
+      chunks = [...docChunks, ...webChunks];
+      latencyTrace.evidenceFusionMs = Date.now() - fusionStart;
     } else {
       const retResult = await this.retrievalService.retrieveContextWithTrace(input.userId, effectiveQuery, {
         knowledgeBaseId: input.searchAllKbs ? undefined : input.knowledgeBaseId,
@@ -242,6 +291,8 @@ export class AnswerOrchestratorService {
     let currentMode: AnswerMode = 'GROUNDED';
     if (sourceMode === 'web_discovery') {
       currentMode = 'WEB_DISCOVERY_GROUNDED';
+    } else if (sourceMode === 'web_search') {
+      currentMode = 'WEB_SEARCH_GROUNDED';
     } else if (hasDoc && hasWeb) {
       currentMode = 'MULTI_SOURCE_GROUNDED';
     } else if (hasWeb) {
@@ -260,7 +311,7 @@ export class AnswerOrchestratorService {
       if (cleanRecoveryQuery && cleanRecoveryQuery !== effectiveQuery.toLowerCase()) {
         const recResult = await this.retrievalService.retrieveContextWithTrace(input.userId, cleanRecoveryQuery, {
           knowledgeBaseId: input.searchAllKbs ? undefined : input.knowledgeBaseId,
-          sourceMode
+          sourceMode: (sourceMode === 'web_search' || sourceMode === 'auto') ? 'all_sources' : sourceMode
         });
         latencyTrace.recoveryLatencyMs = Date.now() - recStart;
 
@@ -463,8 +514,11 @@ export class AnswerOrchestratorService {
       if (sourceMode === 'all_sources') {
         return isDoc || isWeb;
       }
-      if (sourceMode === 'web_discovery') {
+      if (sourceMode === 'web_discovery' || sourceMode === 'web_search') {
         return isTempWeb || (isWeb && (c.documentId.startsWith('discovered-web-') || c.documentId.startsWith('temp-web-')));
+      }
+      if (sourceMode === 'auto') {
+        return isDoc || isWeb || isTempWeb;
       }
       return true;
     });

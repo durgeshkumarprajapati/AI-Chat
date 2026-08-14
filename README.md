@@ -580,6 +580,23 @@ Phase 23 extends the platform's knowledge scope to include public web pages and 
 npm run test:phase23
 ```
 
+## Phase 25 — Intelligent Web Search & Multi-Source Evidence Fusion
+
+Phase 25 enables automatic live web search and multi-source evidence fusion. Users can obtain real-time web answers without manually entering a target website URL.
+
+### Key Capabilities
+- **Query Classification & Routing**: `WebSearchDecisionService` deterministically classifies questions into `DOCUMENT_SUFFICIENT`, `WEB_REQUIRED`, `WEB_OPTIONAL`, `MULTI_SOURCE`, and `CLARIFICATION_REQUIRED`.
+- **Multi-Query Search Planning**: `WebSearchPlanner` generates up to 3 deduplicated search queries for multi-intent research questions.
+- **Bounded Parallel Search & Safe Fetching**: Bounded concurrency fetching using `SearchEngineWebProvider` and Phase 24 SSRF / Robots.txt protection stack.
+- **Source Quality Ranking & Diversity**: Domain authority scoring (`docs.python.org`, `react.dev`, `owasp.org`, `.gov`, `.edu`) combined with search engine rank signals and source diversity reranking.
+- **Evidence Fusion**: `EvidenceFusionService` merges internal documents, saved web sources, and live web discovery passages with explicit source tagging (`[DOCUMENT]`, `[LIVE_WEB]`).
+- **Source & Cache Isolation**: Absolute tenant, Knowledge Base, and source-mode cache isolation for `auto` and `web_search` modes.
+
+```bash
+# Automated Phase 25 Test Suite
+npm run test:phase25
+```
+
 
 
 

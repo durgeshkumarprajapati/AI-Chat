@@ -30,6 +30,7 @@ export async function GET() {
       ragEvaluation: string;
       webKnowledge?: string;
       webDiscovery?: string;
+      webSearch?: string;
     };
   } = {
     status: 'ok',
@@ -52,7 +53,8 @@ export async function GET() {
       llmModel: process.env.LLM_PROVIDER === 'openai' ? (process.env.OPENAI_CHAT_MODEL || 'gpt-4o-mini') : (process.env.OLLAMA_CHAT_MODEL || 'llama3.2'),
       ragEvaluation: process.env.RAG_EVALUATION_ENABLED === 'false' ? 'disabled' : 'enabled',
       webKnowledge: process.env.WEB_RAG_ENABLED === 'false' ? 'disabled' : 'healthy',
-      webDiscovery: process.env.WEB_DISCOVERY_ENABLED === 'false' ? 'disabled' : 'healthy'
+      webDiscovery: process.env.WEB_DISCOVERY_ENABLED === 'false' ? 'disabled' : 'healthy',
+      webSearch: process.env.WEB_SEARCH_ENABLED === 'false' ? 'disabled' : 'healthy'
     }
   };
 

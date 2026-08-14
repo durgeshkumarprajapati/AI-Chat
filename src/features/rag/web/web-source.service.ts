@@ -19,7 +19,18 @@ export class WebSourceService {
       throw new ValidationError('Web RAG feature is currently disabled.');
     }
 
-    // 1. Validate URL for SSRF protection
+    // 1. Ensure User record exists to prevent foreign key violation
+    await prisma.user.upsert({
+      where: { id: userId },
+      update: {},
+      create: {
+        id: userId,
+        email: `${userId}@user.local`,
+        name: `User ${userId.slice(0, 8)}`
+      }
+    });
+
+    // 2. Validate URL for SSRF protection
     const safeUrl = await webUrlValidator.assertSafeUrl(input.url);
 
     // 2. Check user limit

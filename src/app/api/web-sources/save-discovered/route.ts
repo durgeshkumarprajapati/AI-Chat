@@ -3,7 +3,7 @@ import { webSourceService } from '@/features/rag/web/web-source.service';
 
 export async function POST(req: NextRequest) {
   try {
-    const userId = req.headers.get('x-user-id') || '77777777-aaaa-4000-a000-111111111111';
+    const userId = req.headers.get('x-user-id') || '00000000-0000-0000-0000-000000000000';
     const body = await req.json();
 
     const { url, knowledgeBaseId } = body;

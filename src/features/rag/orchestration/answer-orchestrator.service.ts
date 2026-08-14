@@ -229,6 +229,9 @@ export class AnswerOrchestratorService {
       chunks = retResult.chunks;
     }
 
+    // Hard Validation Boundary for Source Isolation
+    chunks = this.validateEvidenceForSourceMode(chunks, sourceMode);
+
     let evidence = this.evidenceService.assessEvidence(input.question, chunks);
     let recoveryAttempted = false;
 
@@ -435,6 +438,43 @@ export class AnswerOrchestratorService {
     const stopWords = new Set(['can', 'you', 'please', 'tell', 'me', 'what', 'is', 'the', 'about', 'our', 'my', 'how', 'does', 'do', 'a', 'an']);
     const words = lower.replace(/[^\w\s]/g, '').split(/\s+/).filter((w) => !stopWords.has(w) && w.length > 2);
     return words.join(' ');
+  }
+
+  /**
+   * Hard validation boundary ensuring evidence chunks strictly conform to sourceMode contract.
+   */
+  public validateEvidenceForSourceMode(chunks: RetrievedChunk[], sourceMode: string): RetrievedChunk[] {
+    const valid = chunks.filter((c) => {
+      const isDoc = !c.sourceType || c.sourceType === 'DOCUMENT';
+      const isWeb = c.sourceType === 'WEB';
+      const isTempWeb =
+        c.documentId.startsWith('discovered-web-') ||
+        c.documentId.startsWith('temp-web-') ||
+        c.id.startsWith('temp-web-') ||
+        Boolean(c.metadata?.isTemporary) ||
+        Boolean(c.metadata?.isWebDiscovery);
+
+      if (sourceMode === 'documents_only') {
+        return isDoc;
+      }
+      if (sourceMode === 'web_only') {
+        return isWeb && !isTempWeb;
+      }
+      if (sourceMode === 'all_sources') {
+        return isDoc || isWeb;
+      }
+      if (sourceMode === 'web_discovery') {
+        return isTempWeb || (isWeb && (c.documentId.startsWith('discovered-web-') || c.documentId.startsWith('temp-web-')));
+      }
+      return true;
+    });
+
+    if (valid.length < chunks.length) {
+      console.warn(
+        `[SourceIsolationGuard] Filtered out ${chunks.length - valid.length} invalid chunks for sourceMode=${sourceMode}`
+      );
+    }
+    return valid;
   }
 }
 

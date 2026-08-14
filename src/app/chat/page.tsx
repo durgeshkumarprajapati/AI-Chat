@@ -311,7 +311,7 @@ export default function ChatPage() {
           conversationId: activeConversationId || undefined,
           question: q,
           knowledgeBaseId: options?.searchAllKbs ? undefined : selectedKbId || undefined,
-          sourceMode: options?.allowGeneralKnowledge ? 'all_sources' : sourceMode,
+          sourceMode,
           targetWebsite: targetWebsite || undefined,
           allowedSources,
           allowGeneralKnowledge: options?.allowGeneralKnowledge,

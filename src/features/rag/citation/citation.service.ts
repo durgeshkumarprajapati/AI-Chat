@@ -144,7 +144,8 @@ export class CitationService {
     citations: Citation[],
     userId: string,
     knowledgeBaseId?: string | null,
-    retrievedChunks?: RetrievedChunk[]
+    retrievedChunks?: RetrievedChunk[],
+    sourceMode?: string
   ): Promise<Citation[]> {
     if (!citations || citations.length === 0) {
       return [];
@@ -171,6 +172,20 @@ export class CitationService {
         Boolean(matchingRetrievedChunk?.metadata?.isTemporary) ||
         Boolean(matchingRetrievedChunk?.metadata?.isWebDiscovery) ||
         (matchingRetrievedChunk?.sourceType === 'WEB' && matchingRetrievedChunk?.id.startsWith('temp-web-'));
+
+      // 1b. Hard Source Isolation Boundary Guard on Citations
+      if (sourceMode === 'documents_only' && (citation.knowledgeSourceType === 'WEB' || isTemporaryWeb)) {
+        console.warn(`[CitationValidation] Rejected WEB citation in documents_only mode for doc ${citation.documentId}`);
+        continue;
+      }
+      if (sourceMode === 'web_only' && (isTemporaryWeb || (matchingRetrievedChunk && matchingRetrievedChunk.sourceType !== 'WEB'))) {
+        console.warn(`[CitationValidation] Rejected non-WEB or temporary citation in web_only mode for doc ${citation.documentId}`);
+        continue;
+      }
+      if (sourceMode === 'web_discovery' && !isTemporaryWeb) {
+        console.warn(`[CitationValidation] Rejected non-temporary-web citation in web_discovery mode for doc ${citation.documentId}`);
+        continue;
+      }
 
       if (isTemporaryWeb) {
         validCitations.push({

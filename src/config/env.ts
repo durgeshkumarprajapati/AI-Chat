@@ -128,6 +128,19 @@ const serverEnvSchema = z
     WEB_MAX_SOURCES_PER_USER: z.coerce.number().int().positive().default(100),
     WEB_MAX_SOURCES_PER_KB: z.coerce.number().int().positive().default(50),
     WEB_DEFAULT_SOURCE_MODE: z.enum(['documents', 'web', 'all']).default('documents'),
+    WEB_DISCOVERY_ENABLED: z.coerce.boolean().default(true),
+    WEB_DISCOVERY_MAX_RESULTS: z.coerce.number().int().positive().default(5),
+    WEB_CRAWL_MAX_PAGES: z.coerce.number().int().positive().default(20),
+    WEB_CRAWL_MAX_DEPTH: z.coerce.number().int().positive().default(2),
+    WEB_CRAWL_CONCURRENCY: z.coerce.number().int().positive().default(2),
+    WEB_CRAWL_DELAY_MS: z.coerce.number().int().nonnegative().default(500),
+    WEB_DISCOVERY_TIMEOUT_MS: z.coerce.number().int().positive().default(10000),
+    WEB_DISCOVERY_MAX_BYTES: z.coerce.number().int().positive().default(5000000),
+    WEB_DISCOVERY_MAX_REDIRECTS: z.coerce.number().int().positive().default(3),
+    WEB_DISCOVERY_CACHE_TTL_SECONDS: z.coerce.number().int().positive().default(900),
+    WEB_PAGE_CACHE_TTL_SECONDS: z.coerce.number().int().positive().default(1800),
+    WEB_MAX_CRAWLS_PER_USER_PER_HOUR: z.coerce.number().int().positive().default(20),
+    WEB_DISCOVERY_ALLOWED_SOURCES: z.string().default('wikipedia,medium'),
     CONVERSATION_MAX_MESSAGES: z
       .coerce.number()
       .int()

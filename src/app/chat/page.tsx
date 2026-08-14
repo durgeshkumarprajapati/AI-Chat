@@ -18,6 +18,9 @@ type Citation = {
   confidence?: number;
   confidenceLabel?: 'Strong' | 'Moderate' | 'Limited';
   answerSegmentIds?: string[];
+  knowledgeSourceType?: 'WEB' | 'DOCUMENT';
+  webUrl?: string;
+  canonicalUrl?: string;
 };
 
 type ChatMessage = {
@@ -71,7 +74,32 @@ export default function ChatPage() {
   const [userFeedbackState, setUserFeedbackState] = useState<Record<string, { rating: 'POSITIVE' | 'NEGATIVE'; reason?: string }>>({});
   const [feedbackToast, setFeedbackToast] = useState<string | null>(null);
   const [activeModalCitation, setActiveModalCitation] = useState<Citation | null>(null);
-  const [sourceMode, setSourceMode] = useState<'documents_only' | 'web_only' | 'all_sources'>('documents_only');
+  const [sourceMode, setSourceMode] = useState<'documents_only' | 'web_only' | 'all_sources' | 'web_discovery'>('documents_only');
+  const [targetWebsite, setTargetWebsite] = useState('');
+  const [allowedSources, setAllowedSources] = useState<string[]>(['wikipedia', 'medium']);
+  const [savingSourceUrl, setSavingSourceUrl] = useState<string | null>(null);
+  const [saveSuccessMsg, setSaveSuccessMsg] = useState<string | null>(null);
+
+  const handleSaveDiscoveredSource = async (url: string) => {
+    if (!url || savingSourceUrl) return;
+    setSavingSourceUrl(url);
+    try {
+      const res = await fetch('/api/web-sources/save-discovered', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ url, knowledgeBaseId: selectedKbId || undefined })
+      });
+      const json = await res.json();
+      if (json.success) {
+        setSaveSuccessMsg(`Saved ${url} to Knowledge Base!`);
+        setTimeout(() => setSaveSuccessMsg(null), 3000);
+      }
+    } catch (err) {
+      console.error('Failed to save discovered source:', err);
+    } finally {
+      setSavingSourceUrl(null);
+    }
+  };
 
   const handleFeedbackSubmit = async (messageId: string, rating: 'POSITIVE' | 'NEGATIVE', reason?: string) => {
     if (!activeConversationId) return;
@@ -284,6 +312,8 @@ export default function ChatPage() {
           question: q,
           knowledgeBaseId: options?.searchAllKbs ? undefined : selectedKbId || undefined,
           sourceMode: options?.allowGeneralKnowledge ? 'all_sources' : sourceMode,
+          targetWebsite: targetWebsite || undefined,
+          allowedSources,
           allowGeneralKnowledge: options?.allowGeneralKnowledge,
           searchAllKbs: options?.searchAllKbs
         }),
@@ -654,6 +684,7 @@ export default function ChatPage() {
                 <option value="documents_only" className="bg-slate-900 text-slate-200">📄 Uploaded Documents</option>
                 <option value="web_only" className="bg-slate-900 text-slate-200">🌐 Web Sources</option>
                 <option value="all_sources" className="bg-slate-900 text-slate-200">🔎 Documents + Web</option>
+                <option value="web_discovery" className="bg-slate-900 text-slate-200">🌍 Web Discovery</option>
               </select>
             </div>
 
@@ -669,13 +700,62 @@ export default function ChatPage() {
           {streaming && (
             <button
               onClick={handleStopGenerating}
-              className="px-3 py-1 rounded-lg bg-rose-950 border border-rose-800/80 text-rose-300 hover:bg-rose-900 text-xs font-medium flex items-center space-x-1.5 transition-colors"
+              className="px-3 py-1 rounded-lg bg-rose-950/80 border border-rose-800 text-[11px] font-semibold text-rose-300 hover:bg-rose-900 transition-colors flex items-center space-x-1.5"
             >
-              <span className="w-2 h-2 rounded-sm bg-rose-400 animate-pulse" />
-              <span>Stop Generating</span>
+              <span>⏹ Stop Stream</span>
             </button>
           )}
         </div>
+
+        {/* Phase 24 Web Discovery Config Toolbar */}
+        {sourceMode === 'web_discovery' && (
+          <div className="px-6 py-2.5 bg-slate-950/90 border-b border-slate-800/80 flex flex-wrap items-center justify-between gap-3 text-xs flex-shrink-0">
+            <div className="flex items-center space-x-2 min-w-[280px]">
+              <span className="text-slate-400 text-[11px] font-medium">Target Website:</span>
+              <input
+                type="url"
+                value={targetWebsite}
+                onChange={(e) => setTargetWebsite(e.target.value)}
+                placeholder="https://docs.python.org"
+                className="bg-slate-900 border border-slate-800 rounded-lg px-3 py-1 text-xs text-white placeholder-slate-500 font-mono focus:outline-none focus:border-indigo-500 w-64"
+              />
+            </div>
+            <div className="flex items-center space-x-4 text-[11px] text-slate-300">
+              <span className="text-slate-400 font-medium">Trusted Sources:</span>
+              <label className="inline-flex items-center space-x-1.5 cursor-pointer">
+                <input
+                  type="checkbox"
+                  checked={allowedSources.includes('wikipedia')}
+                  onChange={(e) => {
+                    if (e.target.checked) setAllowedSources((prev) => [...prev, 'wikipedia']);
+                    else setAllowedSources((prev) => prev.filter((s) => s !== 'wikipedia'));
+                  }}
+                  className="rounded bg-slate-900 border-slate-700 text-indigo-500 focus:ring-0"
+                />
+                <span>Wikipedia</span>
+              </label>
+              <label className="inline-flex items-center space-x-1.5 cursor-pointer">
+                <input
+                  type="checkbox"
+                  checked={allowedSources.includes('medium')}
+                  onChange={(e) => {
+                    if (e.target.checked) setAllowedSources((prev) => [...prev, 'medium']);
+                    else setAllowedSources((prev) => prev.filter((s) => s !== 'medium'));
+                  }}
+                  className="rounded bg-slate-900 border-slate-700 text-indigo-500 focus:ring-0"
+                />
+                <span>Medium</span>
+              </label>
+            </div>
+          </div>
+        )}
+
+        {saveSuccessMsg && (
+          <div className="mx-6 mt-2 p-2.5 bg-emerald-950 border border-emerald-800 rounded-xl text-emerald-300 text-xs font-mono flex items-center justify-between">
+            <span>✅ {saveSuccessMsg}</span>
+            <button onClick={() => setSaveSuccessMsg(null)}>✕</button>
+          </div>
+        )}
 
         {/* Messages Area */}
         <div className="flex-1 p-6 overflow-y-auto space-y-6">
@@ -808,18 +888,45 @@ export default function ChatPage() {
                         )}
                       </div>
                       <div className="flex flex-wrap gap-2">
-                        {msg.citations.map((c, idx) => (
-                          <button
-                            key={idx}
-                            onClick={() => setActiveModalCitation(c)}
-                            className="inline-flex items-center space-x-1.5 px-2.5 py-1 rounded-lg bg-slate-900 border border-slate-800 hover:border-indigo-500 text-[11px] font-mono text-slate-300 transition-all hover:bg-slate-850 shadow-sm group/cit"
-                          >
-                            <span className="font-bold text-indigo-400 group-hover/cit:text-indigo-300">[{c.index || idx + 1}]</span>
-                            <span className="truncate max-w-[140px]">{c.filename}</span>
-                            <span className="text-slate-500">&bull; Page {c.pageNumber}</span>
-                            <span className="text-[10px] text-indigo-400/80 underline ml-1">View Evidence</span>
-                          </button>
-                        ))}
+                        {msg.citations.map((c, idx) => {
+                          const isWeb = c.knowledgeSourceType === 'WEB' || Boolean(c.webUrl);
+                          return (
+                            <div key={idx} className="inline-flex items-center space-x-1">
+                              <button
+                                onClick={() => setActiveModalCitation(c)}
+                                className="inline-flex items-center space-x-1.5 px-2.5 py-1 rounded-lg bg-slate-900 border border-slate-800 hover:border-indigo-500 text-[11px] font-mono text-slate-300 transition-all hover:bg-slate-850 shadow-sm group/cit"
+                              >
+                                <span className="font-bold text-indigo-400 group-hover/cit:text-indigo-300">[{c.index || idx + 1}]</span>
+                                <span>{isWeb ? '🌐' : '📄'}</span>
+                                <span className="truncate max-w-[140px]">{c.filename}</span>
+                                {!isWeb && <span className="text-slate-500">&bull; Page {c.pageNumber}</span>}
+                                <span className="text-[10px] text-indigo-400/80 underline ml-1">View Evidence</span>
+                              </button>
+
+                              {isWeb && (c.webUrl || c.canonicalUrl) && (
+                                <>
+                                  <a
+                                    href={c.webUrl || c.canonicalUrl}
+                                    target="_blank"
+                                    rel="noopener noreferrer"
+                                    className="p-1 rounded bg-slate-900 border border-slate-800 hover:border-cyan-500 text-cyan-400 text-[10px] transition-colors"
+                                    title="Open external web page"
+                                  >
+                                    ↗
+                                  </a>
+                                  <button
+                                    onClick={() => handleSaveDiscoveredSource(c.webUrl || c.canonicalUrl!)}
+                                    disabled={savingSourceUrl === (c.webUrl || c.canonicalUrl!)}
+                                    className="px-2 py-1 rounded bg-indigo-950 border border-indigo-800 hover:bg-indigo-900 text-indigo-300 text-[10px] font-mono transition-colors disabled:opacity-50"
+                                    title="Save web source to Knowledge Base"
+                                  >
+                                    💾 Save to KB
+                                  </button>
+                                </>
+                              )}
+                            </div>
+                          );
+                        })}
                       </div>
                     </div>
                   )}

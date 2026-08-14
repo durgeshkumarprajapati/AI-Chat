@@ -597,6 +597,23 @@ Phase 25 enables automatic live web search and multi-source evidence fusion. Use
 npm run test:phase25
 ```
 
+## Phase 26 — Multi-Modal Document RAG (Tables, OCR & Vision)
+
+Phase 26 extends the document RAG platform to process, retrieve, and ground answers on visual document content including tables, charts, diagrams, scanned pages, figures, and images.
+
+### Key Capabilities
+- **Visual Content Parsing**: Automatically detects and extracts Markdown/structured tables, embedded images, and figures during worker PDF ingestion.
+- **OCR & Vision Provider Abstractions**: `OCRProvider` and `VisionProvider` generate searchable text representations for scanned PDF pages, architecture diagrams, and financial charts.
+- **Visual Evidence Database Model**: Dedicated `DocumentVisual` Prisma model tracking page numbers, content hashes, storage keys, captions, and confidence scores.
+- **Visual Query Classifier**: `VisualQueryClassifier` automatically identifies questions requesting visual understanding ("chart on page 18", "table revenue values", "architecture diagram").
+- **Visual Citations**: Citations format visual evidence clearly (`Financial_Report.pdf — Page 18 — Chart`, `Annual_Report.pdf — Page 12 — Table`).
+- **Zero Hallucination Policy**: If zero visual evidence exists for a visual query, returns structured safe response without vision guessing.
+
+```bash
+# Automated Phase 26 Test Suite
+npm run test:phase26
+```
+
 
 
 

@@ -12,6 +12,7 @@ import { Citation } from '../chat/chat.types';
 import { citationService } from '../citation/citation.service';
 import { webSearchDecisionService } from '../web-search/web-search-decision.service';
 import { webSearchService } from '../web-search/web-search.service';
+import { visualQueryClassifier } from '../multimodal/visual-query-classifier';
 import { createHash } from 'crypto';
 
 export class AnswerOrchestratorService {
@@ -280,6 +281,22 @@ export class AnswerOrchestratorService {
 
     // Hard Validation Boundary for Source Isolation
     chunks = this.validateEvidenceForSourceMode(chunks, sourceMode);
+
+    // Multimodal Visual Query Classification & Boundary
+    const visStart = Date.now();
+    const visualQueryDec = visualQueryClassifier.classifyQuery(input.question);
+    latencyTrace.visualDetectionMs = Date.now() - visStart;
+
+    if (visualQueryDec.isVisualQuery) {
+      const visualChunks = chunks.filter(
+        (c) =>
+          Boolean(c.metadata?.isVisual) ||
+          (typeof visualQueryDec.targetPageNumber === 'number' && c.pageNumber === visualQueryDec.targetPageNumber)
+      );
+      if (visualChunks.length > 0) {
+        chunks = visualChunks;
+      }
+    }
 
     let evidence = this.evidenceService.assessEvidence(input.question, chunks);
     let recoveryAttempted = false;

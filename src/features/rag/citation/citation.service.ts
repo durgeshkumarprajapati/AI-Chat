@@ -226,6 +226,16 @@ export class CitationService {
         continue;
       }
 
+      if (matchingRetrievedChunk?.metadata?.isVisual) {
+        const vType = (matchingRetrievedChunk.metadata.visualType as string) || 'VISUAL';
+        const vLabel = vType === 'TABLE' ? 'Table' : vType === 'CHART' ? 'Chart' : vType === 'DIAGRAM' ? 'Diagram' : 'Visual';
+        validCitations.push({
+          ...citation,
+          filename: `${doc.filename} — Page ${citation.pageNumber} — ${vLabel}`
+        });
+        continue;
+      }
+
       validCitations.push(citation);
     }
 

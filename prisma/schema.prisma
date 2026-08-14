@@ -79,6 +79,7 @@ model Document {
 
   user           User                    @relation(fields: [userId], references: [id], onDelete: Cascade)
   chunks         DocumentChunk[]
+  visuals        DocumentVisual[]
   knowledgeBases KnowledgeBaseDocument[]
 
   @@index([userId])
@@ -232,4 +233,28 @@ model RagEvaluation {
   @@index([knowledgeBaseId])
   @@index([createdAt])
   @@map("rag_evaluations")
+}
+
+model DocumentVisual {
+  id           String   @id @default(uuid())
+  documentId   String   @map("document_id")
+  pageNumber   Int      @default(1) @map("page_number")
+  type         String   @default("IMAGE")
+  storageKey   String?  @map("storage_key")
+  contentHash  String?  @map("content_hash")
+  caption      String?
+  ocrText      String?  @map("ocr_text")
+  metadata     Json?    @default("{}")
+  width        Int?
+  height       Int?
+  confidence   Float?   @default(1.0)
+  createdAt    DateTime @default(now()) @map("created_at")
+  updatedAt    DateTime @updatedAt @map("updated_at")
+
+  document Document @relation(fields: [documentId], references: [id], onDelete: Cascade)
+
+  @@index([documentId])
+  @@index([pageNumber])
+  @@index([type])
+  @@map("document_visuals")
 }

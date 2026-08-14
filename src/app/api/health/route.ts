@@ -31,6 +31,12 @@ export async function GET() {
       webKnowledge?: string;
       webDiscovery?: string;
       webSearch?: string;
+      multimodal?: {
+        enabled: boolean;
+        ocr: string;
+        vision: string;
+        status: string;
+      };
     };
   } = {
     status: 'ok',
@@ -54,7 +60,13 @@ export async function GET() {
       ragEvaluation: process.env.RAG_EVALUATION_ENABLED === 'false' ? 'disabled' : 'enabled',
       webKnowledge: process.env.WEB_RAG_ENABLED === 'false' ? 'disabled' : 'healthy',
       webDiscovery: process.env.WEB_DISCOVERY_ENABLED === 'false' ? 'disabled' : 'healthy',
-      webSearch: process.env.WEB_SEARCH_ENABLED === 'false' ? 'disabled' : 'healthy'
+      webSearch: process.env.WEB_SEARCH_ENABLED === 'false' ? 'disabled' : 'healthy',
+      multimodal: {
+        enabled: process.env.MULTIMODAL_ENABLED !== 'false',
+        ocr: process.env.MULTIMODAL_OCR_PROVIDER || 'tesseract',
+        vision: process.env.MULTIMODAL_VISION_PROVIDER || 'openai',
+        status: 'healthy'
+      }
     }
   };
 

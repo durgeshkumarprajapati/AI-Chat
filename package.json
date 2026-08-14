@@ -33,6 +33,7 @@
     "test:phase23": "tsx tests/phase23-web-rag.test.ts",
     "test:phase24": "tsx tests/phase24-web-discovery.test.ts",
     "test:phase25": "tsx tests/phase25-intelligent-web-search.test.ts",
+    "test:phase26": "tsx tests/phase26-multimodal-document-rag.test.ts",
     "benchmark:rag": "tsx scripts/test-rag-performance.ts",
     "benchmark:citation": "tsx scripts/test-rag-citation-performance.ts",
     "benchmark:web-discovery": "tsx scripts/test-web-discovery-performance.ts",

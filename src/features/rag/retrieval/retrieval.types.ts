@@ -21,6 +21,7 @@ export interface RetrievedChunk {
 export interface RetrievalOptions {
   knowledgeBaseId?: string;
   sourceMode?: 'documents_only' | 'web_only' | 'all_sources';
+  includeVisualEvidence?: boolean;
   topK?: number;
   minSimilarity?: number;
   vectorK?: number;

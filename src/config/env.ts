@@ -150,6 +150,20 @@ const serverEnvSchema = z
     WEB_SEARCH_MAX_BYTES: z.coerce.number().int().positive().default(2097152),
     WEB_SEARCH_SOURCE_DIVERSITY: z.coerce.boolean().default(true),
     WEB_SEARCH_CACHE_ENABLED: z.coerce.boolean().default(true),
+    MULTIMODAL_ENABLED: z.coerce.boolean().default(true),
+    MULTIMODAL_OCR_ENABLED: z.coerce.boolean().default(true),
+    MULTIMODAL_OCR_PROVIDER: z.string().default('tesseract'),
+    MULTIMODAL_VISION_ENABLED: z.coerce.boolean().default(true),
+    MULTIMODAL_VISION_PROVIDER: z.string().default('openai'),
+    MULTIMODAL_VISION_MODEL: z.string().default('gpt-4o-mini'),
+    MULTIMODAL_MAX_IMAGES_PER_DOCUMENT: z.coerce.number().int().positive().default(30),
+    MULTIMODAL_MAX_IMAGE_BYTES: z.coerce.number().int().positive().default(2097152),
+    MULTIMODAL_MAX_PAGES_PER_DOCUMENT: z.coerce.number().int().positive().default(100),
+    MULTIMODAL_MAX_VISION_CALLS_PER_DOCUMENT: z.coerce.number().int().positive().default(10),
+    MULTIMODAL_MAX_TABLES_PER_DOCUMENT: z.coerce.number().int().positive().default(50),
+    MULTIMODAL_VISUAL_EMBEDDINGS_ENABLED: z.coerce.boolean().default(true),
+    MULTIMODAL_CACHE_ENABLED: z.coerce.boolean().default(true),
+    MULTIMODAL_VISION_TIMEOUT_MS: z.coerce.number().int().positive().default(30000),
     CONVERSATION_MAX_MESSAGES: z
       .coerce.number()
       .int()

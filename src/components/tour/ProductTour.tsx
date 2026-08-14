@@ -157,6 +157,13 @@ const TOUR_STEPS: TourStep[] = [
     description: 'Automatic live web search without requiring a target website URL. Classifies query intent, plans bounded search queries, ranks source authority, and fuses internal document evidence with live web evidence.',
     technicalDetails: 'WebSearchDecisionService • WebSearchPlanner • SearchEngineWebProvider • WebSourceQualityService • EvidenceFusionService',
     icon: '✨'
+  },
+  {
+    title: '22. Multi-Modal Document Intelligence (Tables, OCR & Vision)',
+    badge: 'Phase 26',
+    description: 'Ask questions about charts, diagrams, tables, scanned PDF pages, and figures. Visual content is parsed into grounded, searchable evidence.',
+    technicalDetails: 'MultimodalService • TableExtractorService • LocalOCRProvider • DefaultVisionProvider • VisualQueryClassifier',
+    icon: '📊'
   }
 ];
 

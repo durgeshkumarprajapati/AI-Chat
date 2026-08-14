@@ -75,6 +75,31 @@ export class DocumentProcessor {
       console.log(`[Worker] Generating chunks for document ID: ${document.id}...`);
       const chunks = workerDocumentChunker.chunk(parsedDoc);
 
+      // 7.5 Process Multimodal Visuals (Tables, Figures, OCR, Images)
+      try {
+        console.log(`[Worker] Extracting visual elements and tables for document ID: ${document.id}...`);
+        const { multimodalService } = await import('@/features/rag/multimodal/multimodal.service.js');
+        const pageTextMap = new Map<number, string>();
+        for (const p of parsedDoc.pages) {
+          pageTextMap.set(p.pageNumber, p.text);
+        }
+        const visualRes = await multimodalService.processDocumentVisuals(job.userId, job.documentId, pageTextMap);
+        if (visualRes.chunks.length > 0) {
+          let nextIndex = chunks.length;
+          for (const vc of visualRes.chunks) {
+            chunks.push({
+              chunkIndex: nextIndex++,
+              pageNumber: vc.pageNumber,
+              content: vc.content,
+              tokenCount: Math.ceil(vc.content.length / 4),
+              metadata: vc.metadata
+            });
+          }
+        }
+      } catch (visualErr) {
+        console.warn(`[Worker] Non-fatal visual processing warning for document ${job.documentId}:`, visualErr);
+      }
+
       // 8. Persist chunks transactionally in PostgreSQL (idempotent replacement)
       console.log(`[Worker] Persisting ${chunks.length} chunks transactionally...`);
       await workerDocumentRepository.saveChunksTx(job.documentId, chunks);

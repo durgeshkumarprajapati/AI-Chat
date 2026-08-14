@@ -21,6 +21,7 @@
     "../src/lib/storage.ts",
     "../src/lib/s3.ts",
     "../src/config/env.ts",
-    "../src/errors/**/*"
+    "../src/errors/**/*",
+    "../src/features/rag/multimodal/**/*"
   ]
 }

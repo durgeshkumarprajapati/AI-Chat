@@ -25,13 +25,13 @@ async function runPhase25Tests() {
   const originalFetchUrl = webFetcher.fetchUrl.bind(webFetcher);
   webFetcher.fetchUrl = async (url: string) => {
     if (url.includes('unmatched') || url.includes('404')) {
-      return { html: '<html><body>404 Not Found</body></html>', finalUrl: url, statusCode: 404, headers: {} };
+      return { html: '<html><body>404 Not Found</body></html>', finalUrl: url, statusCode: 404, headers: {} as Record<string, string> };
     }
     return {
       html: `<html><head><title>Node.js JWT Security Best Practices</title></head><body><h1>JWT Security Guide</h1><p>According to OWASP, JWT tokens should be signed with strong algorithms like RS256, stored securely in httpOnly cookies, and rotated regularly.</p></body></html>`,
       finalUrl: url,
       statusCode: 200,
-      headers: { 'content-type': 'text/html' }
+      headers: { 'content-type': 'text/html' } as Record<string, string>
     };
   };
 
@@ -316,7 +316,7 @@ async function runPhase25Tests() {
 
     // 37. Latency Trace Telemetry
     console.log('\nTest 37: Latency trace telemetry for web_search');
-    if (typeof webSearchRes.latencyTrace.totalResponseMs !== 'number') {
+    if (!webSearchRes.latencyTrace || typeof webSearchRes.latencyTrace.totalResponseMs !== 'number') {
       throw new Error('Test 37 failed: latencyTrace missing totalResponseMs.');
     }
     console.log('  ✅ PASSED: Latency trace telemetry includes complete performance breakdown.');

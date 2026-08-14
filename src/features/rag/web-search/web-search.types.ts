@@ -22,7 +22,7 @@ export interface SearchQueryPlan {
 export interface WebSearchResult {
   title: string;
   url: string;
-  canonicalUrl?: string;
+  canonicalUrl?: string | null;
   snippet: string;
   domain: string;
   sourceType: 'WEB';

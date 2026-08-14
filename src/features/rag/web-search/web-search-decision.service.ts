@@ -1,4 +1,4 @@
-import { SearchDecisionResult, QueryClassification } from './web-search.types';
+import { SearchDecisionResult } from './web-search.types';
 
 export class WebSearchDecisionService {
   /**

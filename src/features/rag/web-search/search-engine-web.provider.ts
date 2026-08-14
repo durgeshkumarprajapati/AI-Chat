@@ -17,6 +17,7 @@ export class SearchEngineWebProvider implements WebSearchProvider {
     // 1. Target website specific search if provided
     if (options?.targetWebsite) {
       const domainRes = await domainDiscoveryProvider.search({
+        query,
         targetWebsite: options.targetWebsite,
         maxResults: options.maxResultsPerQuery || 5
       });

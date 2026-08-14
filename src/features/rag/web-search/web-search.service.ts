@@ -26,7 +26,7 @@ export class WebSearchService {
    * Executes multi-query parallel web search, safe page fetching, passage extraction, deduplication, and quality reranking.
    */
   public async executeWebSearch(
-    userId: string,
+    _userId: string,
     question: string,
     options?: WebSearchOptions
   ): Promise<{ chunks: RetrievedChunk[]; metrics: WebSearchMetrics; searchQueries: string[] }> {

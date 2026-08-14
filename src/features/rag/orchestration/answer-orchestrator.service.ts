@@ -12,7 +12,6 @@ import { Citation } from '../chat/chat.types';
 import { citationService } from '../citation/citation.service';
 import { webSearchDecisionService } from '../web-search/web-search-decision.service';
 import { webSearchService } from '../web-search/web-search.service';
-import { evidenceFusionService } from '../evidence/evidence-fusion.service';
 import { createHash } from 'crypto';
 
 export class AnswerOrchestratorService {
@@ -312,7 +311,7 @@ export class AnswerOrchestratorService {
       if (cleanRecoveryQuery && cleanRecoveryQuery !== effectiveQuery.toLowerCase()) {
         const recResult = await this.retrievalService.retrieveContextWithTrace(input.userId, cleanRecoveryQuery, {
           knowledgeBaseId: input.searchAllKbs ? undefined : input.knowledgeBaseId,
-          sourceMode
+          sourceMode: (sourceMode === 'web_search' || sourceMode === 'auto') ? 'all_sources' : sourceMode
         });
         latencyTrace.recoveryLatencyMs = Date.now() - recStart;
 

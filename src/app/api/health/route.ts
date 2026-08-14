@@ -30,6 +30,7 @@ export async function GET() {
       ragEvaluation: string;
       webKnowledge?: string;
       webDiscovery?: string;
+      webSearch?: string;
     };
   } = {
     status: 'ok',

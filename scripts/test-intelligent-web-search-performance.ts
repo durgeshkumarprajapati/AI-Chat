@@ -17,7 +17,7 @@ async function runPerformanceBenchmark() {
       html: '<html><body><h1>Benchmark Security Guide</h1><p>OWASP security guidance for authentication and caching.</p></body></html>',
       finalUrl: url,
       statusCode: 200,
-      headers: { 'content-type': 'text/html' }
+      headers: { 'content-type': 'text/html' } as Record<string, string>
     };
   };
 
@@ -39,11 +39,11 @@ async function runPerformanceBenchmark() {
     const coldTotal = Date.now() - startCold;
 
     console.log('1. COLD WEB SEARCH LATENCY BREAKDOWN:');
-    console.log(`   - Search Planning: ${coldRes.latencyTrace.searchPlanningMs ?? 0}ms`);
-    console.log(`   - Provider Web Search: ${coldRes.latencyTrace.webSearchMs ?? 0}ms`);
-    console.log(`   - Web Page Fetch: ${coldRes.latencyTrace.webFetchMs ?? 0}ms`);
-    console.log(`   - Content Extraction: ${coldRes.latencyTrace.webExtractionMs ?? 0}ms`);
-    console.log(`   - LLM Generation: ${coldRes.latencyTrace.llmMs ?? 0}ms`);
+    console.log(`   - Search Planning: ${coldRes.latencyTrace?.searchPlanningMs ?? 0}ms`);
+    console.log(`   - Provider Web Search: ${coldRes.latencyTrace?.webSearchMs ?? 0}ms`);
+    console.log(`   - Web Page Fetch: ${coldRes.latencyTrace?.webFetchMs ?? 0}ms`);
+    console.log(`   - Content Extraction: ${coldRes.latencyTrace?.webExtractionMs ?? 0}ms`);
+    console.log(`   - LLM Generation: ${coldRes.latencyTrace?.llmMs ?? 0}ms`);
     console.log(`   - Total Response: ${coldTotal}ms (Cache: ${coldRes.cacheType || 'miss'})\n`);
 
     // 2. Warm Exact Cache Benchmark
@@ -55,7 +55,7 @@ async function runPerformanceBenchmark() {
     const warmTotal = Date.now() - startWarm;
 
     console.log('2. WARM EXACT CACHE HIT LATENCY BREAKDOWN:');
-    console.log(`   - Cache Lookup: ${warmRes.latencyTrace.semanticCacheLookupMs ?? 1}ms`);
+    console.log(`   - Cache Lookup: ${warmRes.latencyTrace?.semanticCacheLookupMs ?? 1}ms`);
     console.log(`   - LLM Bypassed (0ms generation): ${warmRes.llmCalled ? 'NO' : 'YES'}`);
     console.log(`   - Total Response: ${warmTotal}ms (Cache: ${warmRes.cacheType || 'exact'})\n`);
 
@@ -68,8 +68,8 @@ async function runPerformanceBenchmark() {
     const autoTotal = Date.now() - startAuto;
 
     console.log('3. AUTO MULTI-SOURCE FUSION LATENCY BREAKDOWN:');
-    console.log(`   - Query Classification: ${autoRes.latencyTrace.queryClassificationMs ?? 0}ms`);
-    console.log(`   - Evidence Fusion: ${autoRes.latencyTrace.evidenceFusionMs ?? 0}ms`);
+    console.log(`   - Query Classification: ${autoRes.latencyTrace?.queryClassificationMs ?? 0}ms`);
+    console.log(`   - Evidence Fusion: ${autoRes.latencyTrace?.evidenceFusionMs ?? 0}ms`);
     console.log(`   - Total Response: ${autoTotal}ms (Answer Mode: ${autoRes.answerMode})\n`);
 
     // Cleanup

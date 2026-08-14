@@ -23,6 +23,9 @@ export interface SemanticCacheItem extends ExactCacheItem {
   question: string;
   userId: string;
   knowledgeBaseId?: string | null;
+  sourceMode?: string;
+  targetWebsite?: string;
+  allowedSources?: string[];
   model: string;
   answerMode: string;
   validEvidence: boolean;
@@ -44,6 +47,7 @@ export interface CacheKeyOptions {
   knowledgeBaseId?: string | null;
   sourceMode?: string;
   targetWebsite?: string;
+  allowedSources?: string[];
   model?: string;
   answerMode?: string;
   query: string;

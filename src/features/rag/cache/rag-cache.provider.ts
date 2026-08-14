@@ -21,6 +21,7 @@ export function generateExactCacheKey(opts: CacheKeyOptions): string {
   const normQuery = opts.query.trim().toLowerCase();
   const sourceMode = opts.sourceMode || 'documents_only';
   const targetSite = opts.targetWebsite ? opts.targetWebsite.trim().toLowerCase() : '';
+  const sourcesStr = opts.allowedSources ? opts.allowedSources.slice().sort().join(',') : '';
   const modeKey =
     opts.answerMode &&
     opts.answerMode !== 'GROUNDED' &&
@@ -30,7 +31,7 @@ export function generateExactCacheKey(opts: CacheKeyOptions): string {
     opts.answerMode !== 'WEB_DISCOVERY_GROUNDED'
       ? opts.answerMode
       : 'GROUNDED';
-  const rawString = `${opts.userId}|${opts.knowledgeBaseId || 'global'}|${sourceMode}|${targetSite}|${opts.model || 'default'}|${modeKey}|${opts.contextSummary || ''}|${normQuery}`;
+  const rawString = `${opts.userId}|${opts.knowledgeBaseId || 'global'}|${sourceMode}|${targetSite}|${sourcesStr}|${opts.model || 'default'}|${modeKey}|${opts.contextSummary || ''}|${normQuery}`;
   const hash = createHash('sha256').update(rawString).digest('hex');
   return `rag:exact:${opts.userId}:${hash}`;
 }
@@ -38,6 +39,7 @@ export function generateExactCacheKey(opts: CacheKeyOptions): string {
 export function generateSemanticScopeKey(opts: CacheKeyOptions): string {
   const sourceMode = opts.sourceMode || 'documents_only';
   const targetSite = opts.targetWebsite ? opts.targetWebsite.trim().toLowerCase() : '';
+  const sourcesStr = opts.allowedSources ? opts.allowedSources.slice().sort().join(',') : '';
   const modeKey =
     opts.answerMode &&
     opts.answerMode !== 'GROUNDED' &&
@@ -47,7 +49,7 @@ export function generateSemanticScopeKey(opts: CacheKeyOptions): string {
     opts.answerMode !== 'WEB_DISCOVERY_GROUNDED'
       ? opts.answerMode
       : 'GROUNDED';
-  return `rag:semantic:index:${opts.userId}:${opts.knowledgeBaseId || 'global'}:${sourceMode}:${targetSite}:${opts.model || 'default'}:${modeKey}`;
+  return `rag:semantic:index:${opts.userId}:${opts.knowledgeBaseId || 'global'}:${sourceMode}:${targetSite}:${sourcesStr}:${opts.model || 'default'}:${modeKey}`;
 }
 
 export function generateEmbeddingCacheKey(provider: string, model: string, text: string): string {

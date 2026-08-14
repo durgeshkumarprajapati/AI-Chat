@@ -41,17 +41,45 @@ export async function POST(req: NextRequest) {
       };
     }
 
+    const sourceMode = body.sourceMode || 'documents_only';
+    const targetWebsite = body.targetWebsite || null;
+    const allowedSources = body.allowedSources || ['wikipedia', 'medium'];
+
     const cacheStart = Date.now();
     const cached = classification === 'STANDALONE'
       ? await answerOrchestratorService.findCachedAnswer({
         userId: authUser.id, question: originalQuestion, knowledgeBaseId: body.knowledgeBaseId,
-        conversationId: body.conversationId, model: env.server?.LLM_PROVIDER || 'ollama'
+        conversationId: body.conversationId, sourceMode, targetWebsite, allowedSources,
+        model: env.server?.LLM_PROVIDER || 'ollama'
       })
       : null;
     const cacheLookupMs = Date.now() - cacheStart;
-    const result = await retrievalService.retrieveContextWithTrace(authUser.id, retrievalQuery, {
-      knowledgeBaseId: body.knowledgeBaseId
-    });
+
+    let result = { chunks: [] as any[], trace: { metrics: { embeddingMs: 0, vectorMs: 0, keywordMs: 0, mergeMs: 0, rerankMs: 0, totalMs: 0 } } };
+    let discoveryMetrics = { discoveryMs: 0, fetchMs: 0, candidateCount: 0 };
+
+    if (sourceMode === 'web_discovery') {
+      const { webDiscoveryService } = await import('@/features/rag/web-discovery/web-discovery.service');
+      const discRes = await webDiscoveryService.discoverAndFetchCandidates(authUser.id, {
+        query: retrievalQuery,
+        targetWebsite,
+        allowedSources
+      });
+      result.chunks = discRes.chunks;
+      discoveryMetrics = {
+        discoveryMs: discRes.metrics.discoveryMs ?? 0,
+        fetchMs: discRes.metrics.fetchMs ?? 0,
+        candidateCount: discRes.candidates.length
+      };
+    } else {
+      result = await retrievalService.retrieveContextWithTrace(authUser.id, retrievalQuery, {
+        knowledgeBaseId: body.knowledgeBaseId,
+        sourceMode
+      });
+    }
+
+    const retrievedWebChunks = result.chunks.filter((c) => c.sourceType === 'WEB').length;
+    const retrievedDocumentChunks = result.chunks.filter((c) => !c.sourceType || c.sourceType === 'DOCUMENT').length;
 
     return NextResponse.json({
       success: true,
@@ -61,10 +89,20 @@ export async function POST(req: NextRequest) {
         conversationContext: conversationContextDiagnostics,
         answerOrchestration: {
           classification,
+          sourceMode,
+          targetWebsite,
+          allowedSources,
           cache: cached?.cacheType || 'miss',
+          cacheHit: !!cached,
+          cacheType: cached?.cacheType || 'none',
+          answerMode: sourceMode === 'web_discovery' ? 'WEB_DISCOVERY_GROUNDED' : (retrievedWebChunks > 0 && retrievedDocumentChunks > 0 ? 'MULTI_SOURCE_GROUNDED' : (retrievedWebChunks > 0 ? 'WEB_GROUNDED' : 'DOCUMENT_GROUNDED')),
           semanticSimilarity: cached?.latencyTrace.semanticSimilarity ?? null,
           semanticThreshold: env.server?.RAG_SEMANTIC_CACHE_THRESHOLD ?? 0.90,
-          candidateCount: cached?.latencyTrace.semanticCandidateCount ?? 0,
+          candidateCount: discoveryMetrics.candidateCount || cached?.latencyTrace.semanticCandidateCount || 0,
+          retrievedWebChunks,
+          retrievedDocumentChunks,
+          discoveryMs: discoveryMetrics.discoveryMs,
+          fetchMs: discoveryMetrics.fetchMs,
           sourceEvidenceFingerprint: cached?.sourceEvidenceFingerprint ?? null,
           cacheLookupMs: cached?.latencyTrace.semanticCacheLookupMs ?? cacheLookupMs,
           embeddingMs: cached?.latencyTrace.embeddingGenerationMs ?? 0
@@ -72,6 +110,8 @@ export async function POST(req: NextRequest) {
         trace: result.trace,
         latencyTrace: {
           memoryMs: conversationContextDiagnostics?.contextLoadMs ?? 0,
+          discoveryMs: discoveryMetrics.discoveryMs,
+          fetchMs: discoveryMetrics.fetchMs,
           embeddingMs: result.trace.metrics.embeddingMs,
           vectorMs: result.trace.metrics.vectorMs,
           keywordMs: result.trace.metrics.keywordMs,

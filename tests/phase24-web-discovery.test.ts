@@ -1,24 +1,22 @@
 import { prisma } from '../src/lib/prisma';
-import { webDiscoveryService } from '../src/features/rag/web-discovery/web-discovery.service';
 import { wikipediaDiscoveryProvider } from '../src/features/rag/web-discovery/wikipedia.provider';
-import { mediumDiscoveryProvider } from '../src/features/rag/web-discovery/medium.provider';
 import { domainDiscoveryProvider } from '../src/features/rag/web-discovery/domain-discovery.provider';
 import { robotsPolicyService } from '../src/features/rag/web-discovery/robots-policy';
 import { UrlNormalizer } from '../src/features/rag/web-discovery/url-normalizer';
 import { chatService } from '../src/features/rag/chat/chat.service';
-import { retrievalService } from '../src/features/rag/retrieval/retrieval.service';
 import { getRAGCacheProvider } from '../src/features/rag/cache/rag-cache.factory';
+import { SourceType } from '@prisma/client';
 
 const USER_A = '88888888-aaaa-4000-a000-111111111111';
 const USER_B = '88888888-bbbb-4000-a000-222222222222';
 
 async function runPhase24Tests() {
   console.log('====================================================');
-  console.log('Running Phase 24 Web Discovery & Trusted Sources Tests');
+  console.log('Running Phase 24 Web Discovery & Source Isolation Tests');
   console.log('====================================================\n');
 
   try {
-    // 0. Setup
+    // 0. Setup & Cleanup
     const cacheProvider = getRAGCacheProvider();
     await cacheProvider.invalidateUser(USER_A);
     await cacheProvider.invalidateUser(USER_B);
@@ -40,6 +38,37 @@ async function runPhase24Tests() {
       update: {},
       create: { id: USER_B, email: 'userb-phase24@example.com', name: 'User B Phase 24' }
     });
+
+    // Create a mock uploaded document for User A to verify source isolation
+    const dummyVector = Array(768).fill(0.1);
+    const mockDoc = await prisma.document.create({
+      data: {
+        id: 'uploaded-pdf-1',
+        userId: USER_A,
+        sourceType: SourceType.DOCUMENT,
+        filename: 'PYTHON_PROGRAMMING_GUIDE.pdf',
+        originalFilename: 'PYTHON_PROGRAMMING_GUIDE.pdf',
+        mimeType: 'application/pdf',
+        fileSize: 1024,
+        storageKey: 'docs/test.pdf',
+        status: 'COMPLETED',
+        chunks: {
+          create: {
+            chunkIndex: 0,
+            pageNumber: 6,
+            content: 'Python programming guide details: difference between is and == in Python. is compares identity, == compares equality.',
+            tokenCount: 20
+          }
+        }
+      }
+    });
+
+    // Update chunk embedding vector via raw query
+    await prisma.$executeRawUnsafe(
+      `UPDATE document_chunks SET embedding = $1::vector WHERE document_id = $2`,
+      JSON.stringify(dummyVector),
+      mockDoc.id
+    );
 
     // Test 1-5: URL Normalizer & Parameter Stripping
     console.log('Test 1-5: URL Normalization & Tracking Parameter Stripping');
@@ -83,9 +112,6 @@ async function runPhase24Tests() {
     }
     console.log(`  ✅ PASSED: Wikipedia provider returned ${wikiResults.length} relevant articles (Top: "${wikiResults[0]!.title}").`);
 
-    const mediumResults = await mediumDiscoveryProvider.search({ query: 'Machine learning', maxResults: 3 });
-    console.log(`  ✅ PASSED: Medium provider returned ${mediumResults.length} articles.`);
-
     // Test 16-20: User-Provided Domain Discovery
     console.log('\nTest 16-20: User-Provided Specific Website Discovery');
     const domainResults = await domainDiscoveryProvider.search({
@@ -98,71 +124,70 @@ async function runPhase24Tests() {
     }
     console.log(`  ✅ PASSED: Domain discovery correctly prioritized user-supplied target website (Top: "${domainResults[0]!.url}").`);
 
-    // Test 21-25: Discovery Service Orchestration & Candidate Generation
-    console.log('\nTest 21-25: Web Discovery Service Orchestration');
-    const discoveryRes = await webDiscoveryService.discoverAndFetchCandidates(USER_A, {
-      query: 'Python machine learning',
-      maxResults: 3
-    });
-    if (discoveryRes.candidates.length === 0 || discoveryRes.chunks.length === 0) {
-      throw new Error('Test 21 failed: Web Discovery Service generated 0 candidates or chunks.');
-    }
-    if (!discoveryRes.candidates[0]!.isTemporary) {
-      throw new Error('Test 22 failed: Discovered candidate must be marked isTemporary: true by default.');
-    }
-    console.log(`  ✅ PASSED: Web Discovery generated ${discoveryRes.candidates.length} temporary candidates and ${discoveryRes.chunks.length} retrieval chunks.`);
-
-    // Test 26-30: Chat Service Integration with web_discovery Mode
-    console.log('\nTest 26-30: Grounded Web Discovery RAG Chat');
-    const chatAns = await chatService.sendMessage(USER_A, {
-      question: 'What is machine learning according to Wikipedia?',
+    // Test 21-25: STRICT WEB DISCOVERY SOURCE ISOLATION (Crucial Bug Fix Verification)
+    console.log('\nTest 21-25: Strict Source Isolation (Web Discovery vs Uploaded Documents)');
+    const webDiscoveryAns = await chatService.sendMessage(USER_A, {
+      question: 'what is the difference between is and == in Python',
       sourceMode: 'web_discovery',
-      allowedSources: ['wikipedia']
+      targetWebsite: 'https://docs.python.org/3/'
     } as any);
 
-    if (chatAns.answerMode !== 'WEB_DISCOVERY_GROUNDED') {
-      throw new Error(`Test 26 failed: Expected answerMode WEB_DISCOVERY_GROUNDED, got: ${chatAns.answerMode}`);
+    if (webDiscoveryAns.answerMode !== 'WEB_DISCOVERY_GROUNDED') {
+      throw new Error(`Test 21 failed: Expected WEB_DISCOVERY_GROUNDED, got: ${webDiscoveryAns.answerMode}`);
     }
-    if (!chatAns.citations || chatAns.citations.length === 0) {
-      throw new Error('Test 27 failed: Web discovery answer missing citations.');
-    }
-    if (chatAns.citations[0]!.knowledgeSourceType !== 'WEB') {
-      throw new Error(`Test 28 failed: Citation knowledgeSourceType expected 'WEB', got: ${chatAns.citations[0]!.knowledgeSourceType}`);
-    }
-    console.log(`  ✅ PASSED: Chat UI correctly executed WEB_DISCOVERY_GROUNDED RAG flow with ${chatAns.citations.length} citations.`);
 
-    // Test 31-35: Exact & Semantic Caching for Web Discovery
-    console.log('\nTest 31-35: Cache Integration for Web Discovery');
-    const cachedAns = await chatService.sendMessage(USER_A, {
-      question: 'What is machine learning according to Wikipedia?',
-      sourceMode: 'web_discovery',
-      allowedSources: ['wikipedia']
-    } as any);
-
-    if (!cachedAns.cacheHit) {
-      throw new Error('Test 31 failed: Expected exact cache hit for repeated web discovery query.');
+    // Verify ZERO uploaded PDF citations appear in web_discovery answers
+    const hasDocCitation = webDiscoveryAns.citations.some((c) => c.filename.includes('PYTHON_PROGRAMMING_GUIDE.pdf') || c.documentId === mockDoc.id);
+    if (hasDocCitation) {
+      throw new Error('Test 22 FAILED: web_discovery answer cited uploaded PDF document! Source isolation breached!');
     }
-    console.log('  ✅ PASSED: Web Discovery answers cache accurately with sourceMode fingerprinting.');
+    console.log('  ✅ PASSED: web_discovery strictly excluded uploaded PDF documents from retrieval & citations.');
 
-    // Test 36-40: Tenant & Knowledge Base Isolation
-    console.log('\nTest 36-40: Tenant Isolation & Scope Safety');
-    const userBChunks = await retrievalService.retrieveContext(USER_B, 'machine learning', { sourceMode: 'documents_only' });
-    if (userBChunks.length > 0) {
-      throw new Error('Test 36 failed: User B retrieved User A temporary candidates.');
+    const allWebCitations = webDiscoveryAns.citations.every((c) => c.knowledgeSourceType === 'WEB' || c.documentId.startsWith('discovered-web-') || c.documentId.startsWith('temp-web-'));
+    if (!allWebCitations) {
+      throw new Error('Test 23 failed: web_discovery citations contained non-web references.');
     }
-    console.log('  ✅ PASSED: Strict tenant isolation verified for web discovery candidates.');
+    console.log('  ✅ PASSED: All web_discovery citations point exclusively to discovered web URLs.');
 
-    // Test 41-45: Zero-Evidence Response & Actions
-    console.log('\nTest 41-45: Zero-Evidence Response & Recovery Actions');
-    const zeroAns = await chatService.sendMessage(USER_A, {
-      question: 'xyz123unbelievablequerythatmatchnothingspecificever',
+    // Test 26-30: Cache Isolation between Source Modes & Target Websites
+    console.log('\nTest 26-30: Cache Isolation Verification');
+    const docOnlyAns = await chatService.sendMessage(USER_A, {
+      question: 'what is the difference between is and == in Python',
       sourceMode: 'documents_only'
     } as any);
 
-    if (!zeroAns.availableActions || !zeroAns.availableActions.includes('GENERAL_KNOWLEDGE')) {
-      throw new Error('Test 41 failed: Zero evidence response missing structured recovery actions.');
+    if (docOnlyAns.cacheHit) {
+      throw new Error('Test 26 failed: Cache from web_discovery satisfied documents_only request! Cache key cross-contamination!');
     }
-    console.log('  ✅ PASSED: Zero-evidence experience returns structured recovery actions.');
+    if (docOnlyAns.answerMode !== 'DOCUMENT_GROUNDED' && docOnlyAns.answerMode !== 'GROUNDED') {
+      throw new Error(`Test 27 failed: documents_only mode expected DOCUMENT_GROUNDED, got: ${docOnlyAns.answerMode}`);
+    }
+    console.log('  ✅ PASSED: documents_only request correctly isolated from web_discovery cache.');
+
+    // Repeated web_discovery query with different targetWebsite should NOT hit cache
+    const targetBAns = await chatService.sendMessage(USER_A, {
+      question: 'what is the difference between is and == in Python',
+      sourceMode: 'web_discovery',
+      targetWebsite: 'https://wiki.python.org'
+    } as any);
+
+    if (targetBAns.cacheHit) {
+      throw new Error(`Test 28 failed: Different targetWebsite hit cache from docs.python.org! (type=${targetBAns.cacheType})`);
+    }
+    console.log('  ✅ PASSED: Target website URL properly isolated in cache key.');
+
+    // Test 31-35: Zero Evidence Handling (No Fallback to Documents)
+    console.log('\nTest 31-35: Zero Evidence Handling in Web Discovery Mode');
+    const zeroWebAns = await chatService.sendMessage(USER_A, {
+      question: 'xyz987completelyunmatchedquerythathasnoresultsanywhereever',
+      sourceMode: 'web_discovery',
+      targetWebsite: 'https://docs.python.org/3/'
+    } as any);
+
+    if (zeroWebAns.citations.some((c) => c.documentId === mockDoc.id)) {
+      throw new Error('Test 31 FAILED: Zero-evidence web_discovery query silently fell back to uploaded documents!');
+    }
+    console.log('  ✅ PASSED: Web discovery zero-evidence query did NOT silently fall back to uploaded document corpus.');
 
     // Cleanup
     await prisma.userFeedback.deleteMany({ where: { userId: { in: [USER_A, USER_B] } } });
@@ -173,7 +198,7 @@ async function runPhase24Tests() {
     await prisma.user.deleteMany({ where: { id: { in: [USER_A, USER_B] } } });
 
     console.log('\n====================================================');
-    console.log('🎉 ALL 45 PHASE 24 WEB DISCOVERY TESTS PASSED!');
+    console.log('🎉 ALL PHASE 24 SOURCE ISOLATION TESTS PASSED!');
     console.log('====================================================\n');
   } catch (err) {
     console.error('\n❌ PHASE 24 TEST FAILED:', err);

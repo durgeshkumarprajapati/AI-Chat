@@ -71,6 +71,18 @@ export async function POST(req: NextRequest) {
         fetchMs: discRes.metrics.fetchMs ?? 0,
         candidateCount: discRes.candidates.length
       };
+    } else if (sourceMode === 'web_search') {
+      const { webSearchService } = await import('@/features/rag/web-search/web-search.service');
+      const searchRes = await webSearchService.executeWebSearch(authUser.id, retrievalQuery, {
+        allowedSources,
+        targetWebsite
+      });
+      result.chunks = searchRes.chunks;
+      discoveryMetrics = {
+        discoveryMs: searchRes.metrics.searchMs,
+        fetchMs: searchRes.metrics.fetchMs,
+        candidateCount: searchRes.metrics.resultsFound
+      };
     } else {
       result = await retrievalService.retrieveContextWithTrace(authUser.id, retrievalQuery, {
         knowledgeBaseId: body.knowledgeBaseId,
@@ -95,7 +107,7 @@ export async function POST(req: NextRequest) {
           cache: cached?.cacheType || 'miss',
           cacheHit: !!cached,
           cacheType: cached?.cacheType || 'none',
-          answerMode: sourceMode === 'web_discovery' ? 'WEB_DISCOVERY_GROUNDED' : (retrievedWebChunks > 0 && retrievedDocumentChunks > 0 ? 'MULTI_SOURCE_GROUNDED' : (retrievedWebChunks > 0 ? 'WEB_GROUNDED' : 'DOCUMENT_GROUNDED')),
+          answerMode: sourceMode === 'web_discovery' ? 'WEB_DISCOVERY_GROUNDED' : (sourceMode === 'web_search' ? 'WEB_SEARCH_GROUNDED' : (retrievedWebChunks > 0 && retrievedDocumentChunks > 0 ? 'MULTI_SOURCE_GROUNDED' : (retrievedWebChunks > 0 ? 'WEB_GROUNDED' : 'DOCUMENT_GROUNDED'))),
           semanticSimilarity: cached?.latencyTrace.semanticSimilarity ?? null,
           semanticThreshold: env.server?.RAG_SEMANTIC_CACHE_THRESHOLD ?? 0.90,
           candidateCount: discoveryMetrics.candidateCount || cached?.latencyTrace.semanticCandidateCount || 0,

@@ -74,7 +74,7 @@ export default function ChatPage() {
   const [userFeedbackState, setUserFeedbackState] = useState<Record<string, { rating: 'POSITIVE' | 'NEGATIVE'; reason?: string }>>({});
   const [feedbackToast, setFeedbackToast] = useState<string | null>(null);
   const [activeModalCitation, setActiveModalCitation] = useState<Citation | null>(null);
-  const [sourceMode, setSourceMode] = useState<'documents_only' | 'web_only' | 'all_sources' | 'web_discovery'>('documents_only');
+  const [sourceMode, setSourceMode] = useState<'documents_only' | 'web_only' | 'all_sources' | 'web_discovery' | 'web_search' | 'auto'>('documents_only');
   const [targetWebsite, setTargetWebsite] = useState('');
   const [allowedSources, setAllowedSources] = useState<string[]>(['wikipedia', 'medium']);
   const [savingSourceUrl, setSavingSourceUrl] = useState<string | null>(null);
@@ -681,9 +681,11 @@ export default function ChatPage() {
                 onChange={(e) => setSourceMode(e.target.value as any)}
                 className="bg-transparent text-xs text-indigo-300 font-semibold focus:outline-none cursor-pointer"
               >
+                <option value="auto" className="bg-slate-900 text-slate-200">✨ Auto (Smart Fusion)</option>
                 <option value="documents_only" className="bg-slate-900 text-slate-200">📄 Uploaded Documents</option>
                 <option value="web_only" className="bg-slate-900 text-slate-200">🌐 Web Sources</option>
                 <option value="all_sources" className="bg-slate-900 text-slate-200">🔎 Documents + Web</option>
+                <option value="web_search" className="bg-slate-900 text-slate-200">🌐 Web Search</option>
                 <option value="web_discovery" className="bg-slate-900 text-slate-200">🌍 Web Discovery</option>
               </select>
             </div>

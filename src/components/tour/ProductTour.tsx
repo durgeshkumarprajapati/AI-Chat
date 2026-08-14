@@ -150,6 +150,13 @@ const TOUR_STEPS: TourStep[] = [
     description: 'Ask questions against public web sources (Wikipedia, Medium) or specify any domain URL. Discovered sources are cited and can be saved to your Knowledge Base.',
     technicalDetails: 'WebDiscoveryService • WikipediaProvider • MediumProvider • DomainDiscoveryProvider • RobotsPolicyService • UrlNormalizer',
     icon: '🌍'
+  },
+  {
+    title: '21. Intelligent Web Search & Multi-Source Evidence Fusion',
+    badge: 'Phase 25',
+    description: 'Automatic live web search without requiring a target website URL. Classifies query intent, plans bounded search queries, ranks source authority, and fuses internal document evidence with live web evidence.',
+    technicalDetails: 'WebSearchDecisionService • WebSearchPlanner • SearchEngineWebProvider • WebSourceQualityService • EvidenceFusionService',
+    icon: '✨'
   }
 ];
 

@@ -182,8 +182,8 @@ export class CitationService {
         console.warn(`[CitationValidation] Rejected non-WEB or temporary citation in web_only mode for doc ${citation.documentId}`);
         continue;
       }
-      if (sourceMode === 'web_discovery' && !isTemporaryWeb) {
-        console.warn(`[CitationValidation] Rejected non-temporary-web citation in web_discovery mode for doc ${citation.documentId}`);
+      if ((sourceMode === 'web_discovery' || sourceMode === 'web_search') && !isTemporaryWeb) {
+        console.warn(`[CitationValidation] Rejected non-temporary-web citation in ${sourceMode} mode for doc ${citation.documentId}`);
         continue;
       }
 

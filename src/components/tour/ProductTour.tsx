@@ -171,6 +171,13 @@ const TOUR_STEPS: TourStep[] = [
     description: 'Listen to assistant answers with customizable speed & language TTS. Explore your city with real-time weather and AI city queries.',
     technicalDetails: 'TextToSpeechService • TTSTextCleaner • LocationService • WeatherService • CityExplorerService',
     icon: '🔊'
+  },
+  {
+    title: '24. AI Roadmap Builder & Personal Learning Workspace',
+    badge: 'Phase 31',
+    description: 'Build structured, personalized learning paths with guided questionnaires, task progress tracking, phase regeneration, and peer sharing.',
+    technicalDetails: 'RoadmapGenerationService • RoadmapPlannerService • RoadmapValidatorService • RoadmapSharingService • WorkspaceContext',
+    icon: '🚀'
   }
 ];
 

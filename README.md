@@ -609,10 +609,29 @@ Phase 26 extends the document RAG platform to process, retrieve, and ground answ
 - **Visual Citations**: Citations format visual evidence clearly (`Financial_Report.pdf — Page 18 — Chart`, `Annual_Report.pdf — Page 12 — Table`).
 - **Zero Hallucination Policy**: If zero visual evidence exists for a visual query, returns structured safe response without vision guessing.
 
+## Phase 31 — AI Roadmap Builder & Personal Learning Workspace
+
+Phase 31 introduces a production-grade AI Roadmap Builder and Personal Learning Workspace. Users can generate structured, personalized learning roadmaps through a guided questionnaire, track task completion, regenerate individual phases, access evidence-aware web resources, and share roadmaps with peers.
+
+### Key Capabilities
+- **Guided Questionnaire Engine**: Interactive 7-step wizard (`goal`, `targetSkill`, `experienceLevel`, `dailyTimeCommitment`, `targetDurationWeeks`, `learningStyle`, `interviewRole`/`certification`) with server-side validation.
+- **Curated Baseline Catalog**: Baseline curriculum templates for Next.js, React, TypeScript, Python, and System Design Architecture.
+- **Controlled AI Architecture**: LLM generates structured JSON plans validated against strict schemas (`RoadmapValidatorService`) and business constraints.
+- **Relational Domain Model**: `Roadmap`, `RoadmapPhase`, `RoadmapTask`, and `RoadmapShare` schema with PostgreSQL cascade constraints and indexes.
+- **Workspace Progress Tracking**: Real-time progress calculation (`0-100%`) based on server-validated task status updates.
+- **Controlled Phase Regeneration**: Regenerate specific roadmap phases without destroying the overall roadmap context.
+- **Granular Peer Sharing & RBAC**: Share roadmaps with registered users using `VIEW` or `EDIT` permissions, with owner-only revocation.
+- **Evidence-Aware Web Search Integration**: Integrates Phase 25 live web search to attach official documentation and tutorial links to tasks.
+- **User Session & Cache Isolation**: User-scoped cache keys (`docai_user_<id>_preferred_city`, `roadmap:cache:user:<id>`), IDOR protection, and tenant state sync.
+
 ```bash
-# Automated Phase 26 Test Suite
-npm run test:phase26
+# Automated Phase 31 Test Suite
+npm run test:phase31
+
+# Universal 25-Phase Regression Test Suite (Phase 7 through 31)
+npm run test:all-phases
 ```
+
 
 
 

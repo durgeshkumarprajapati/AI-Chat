@@ -35,6 +35,7 @@ export function AppLayout({ children }: { children: React.ReactNode }) {
   const navItems = [
     { name: 'Dashboard', href: '/dashboard', icon: '📊' },
     { name: 'RAG Chat', href: '/chat', icon: '💬', badge: 'Stream' },
+    { name: 'AI Roadmaps', href: '/roadmaps', icon: '🚀', badge: 'New' },
     { name: 'Documents', href: '/documents', icon: '📁' },
     { name: 'Knowledge Bases', href: '/knowledge-bases', icon: '📚' },
     { name: `Explore ${activeCity}`, href: `/explore?city=${encodeURIComponent(activeCity)}`, icon: '🌍' },

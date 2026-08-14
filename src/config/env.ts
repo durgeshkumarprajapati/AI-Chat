@@ -164,6 +164,16 @@ const serverEnvSchema = z
     MULTIMODAL_VISUAL_EMBEDDINGS_ENABLED: z.coerce.boolean().default(true),
     MULTIMODAL_CACHE_ENABLED: z.coerce.boolean().default(true),
     MULTIMODAL_VISION_TIMEOUT_MS: z.coerce.number().int().positive().default(30000),
+    AUTH_ENABLED: z.coerce.boolean().default(true),
+    SESSION_SECRET: z.string().default('rag-platform-super-secret-session-key-32chars!'),
+    SESSION_EXPIRY_DAYS: z.coerce.number().int().positive().default(7),
+    GOOGLE_CLIENT_ID: z.string().optional(),
+    GOOGLE_CLIENT_SECRET: z.string().optional(),
+    CHAT_UPLOAD_ENABLED: z.coerce.boolean().default(true),
+    CHAT_UPLOAD_MAX_BYTES: z.coerce.number().int().positive().default(10485760),
+    CHAT_UPLOAD_MAX_FILES: z.coerce.number().int().positive().default(5),
+    CHAT_UPLOAD_ALLOWED_TYPES: z.string().default('pdf,png,jpg,jpeg,webp,txt,md'),
+    CHAT_ATTACHMENT_TTL_HOURS: z.coerce.number().int().positive().default(24),
     CONVERSATION_MAX_MESSAGES: z
       .coerce.number()
       .int()

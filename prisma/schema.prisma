@@ -36,18 +36,32 @@ enum FeedbackReason {
   OTHER
 }
 
-model User {
-  id            String          @id @default(uuid())
-  email         String          @unique
-  name          String?
-  createdAt     DateTime        @default(now()) @map("created_at")
-  updatedAt     DateTime        @updatedAt @map("updated_at")
+enum UserRole {
+  ADMIN
+  USER
+}
 
-  documents      Document[]
-  conversations  Conversation[]
-  knowledgeBases KnowledgeBase[]
-  userFeedbacks  UserFeedback[]
-  ragEvaluations RagEvaluation[]
+model User {
+  id                   String            @id @default(uuid())
+  email                String            @unique
+  name                 String?
+  role                 UserRole          @default(USER)
+  passwordHash         String?           @map("password_hash")
+  googleId             String?           @unique @map("google_id")
+  avatarUrl            String?           @map("avatar_url")
+  passwordResetToken   String?           @map("password_reset_token")
+  passwordResetExpires DateTime?         @map("password_reset_expires")
+  createdAt            DateTime          @default(now()) @map("created_at")
+  updatedAt            DateTime          @updatedAt @map("updated_at")
+
+  documents       Document[]
+  conversations   Conversation[]
+  knowledgeBases  KnowledgeBase[]
+  userFeedbacks   UserFeedback[]
+  ragEvaluations  RagEvaluation[]
+  sessions        Session[]
+  chatAttachments ChatAttachment[]
+  auditLogs       AuditLog[]        @relation("ActorAuditLogs")
 
   @@map("users")
 }
@@ -257,4 +271,55 @@ model DocumentVisual {
   @@index([pageNumber])
   @@index([type])
   @@map("document_visuals")
+}
+
+model Session {
+  id           String   @id @default(uuid())
+  userId       String   @map("user_id")
+  sessionToken String   @unique @map("session_token")
+  expiresAt    DateTime @map("expires_at")
+  createdAt    DateTime @default(now()) @map("created_at")
+  updatedAt    DateTime @updatedAt @map("updated_at")
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId])
+  @@index([expiresAt])
+  @@map("sessions")
+}
+
+model ChatAttachment {
+  id             String   @id @default(uuid())
+  userId         String   @map("user_id")
+  conversationId String?  @map("conversation_id")
+  filename       String
+  mimeType       String   @map("mime_type")
+  fileSize       Int      @map("file_size")
+  storageKey     String   @map("storage_key")
+  isTemporary    Boolean  @default(true) @map("is_temporary")
+  documentId     String?  @map("document_id")
+  createdAt      DateTime @default(now()) @map("created_at")
+  updatedAt      DateTime @updatedAt @map("updated_at")
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId])
+  @@index([conversationId])
+  @@map("chat_attachments")
+}
+
+model AuditLog {
+  id         String   @id @default(uuid())
+  actorId    String   @map("actor_id")
+  action     String
+  targetType String   @map("target_type")
+  targetId   String?  @map("target_id")
+  details    Json?    @default("{}")
+  createdAt  DateTime @default(now()) @map("created_at")
+
+  actor User @relation("ActorAuditLogs", fields: [actorId], references: [id], onDelete: Cascade)
+
+  @@index([actorId])
+  @@index([action])
+  @@map("audit_logs")
 }

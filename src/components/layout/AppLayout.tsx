@@ -29,12 +29,14 @@ export function AppLayout({ children }: { children: React.ReactNode }) {
   }, []);
 
   const navItems = [
-    { name: 'Dashboard', href: '/', icon: '📊' },
-    { name: 'Documents', href: '/documents', icon: '📁' },
-    { name: 'Knowledge Bases', href: '/knowledge-bases', icon: '📚', badge: 'Phase 17' },
+    { name: 'Dashboard', href: '/dashboard', icon: '📊' },
     { name: 'RAG Chat', href: '/chat', icon: '💬', badge: 'Stream' },
-    { name: 'RAG Quality', href: '/rag-evaluation', icon: '📈', badge: 'Phase 19' },
-    { name: 'RAG Inspector', href: '/rag-debug', icon: '🔍', badge: 'Phase 14' },
+    { name: 'Documents', href: '/documents', icon: '📁' },
+    { name: 'Knowledge Bases', href: '/knowledge-bases', icon: '📚' },
+    { name: 'My Account', href: '/account', icon: '👤' },
+    { name: 'Admin Dashboard', href: '/admin', icon: '👑', badge: 'ADMIN' },
+    { name: 'RAG Quality', href: '/rag-evaluation', icon: '📈' },
+    { name: 'RAG Inspector', href: '/rag-debug', icon: '🔍' },
     { name: 'System Health', href: '/health', icon: '🩺' }
   ];
 

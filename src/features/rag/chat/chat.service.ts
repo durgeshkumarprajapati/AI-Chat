@@ -134,12 +134,7 @@ export class ChatService {
       citations = [];
       await this.orchestratorService
         .cacheCompletedAnswer(
-          {
-            userId,
-            question: trimmedQuestion,
-            knowledgeBaseId: targetKbId,
-            model: (input as any).model || env.server?.LLM_PROVIDER || 'ollama'
-          },
+          orchestrationInput,
           answer,
           citations,
           retrievedChunks.length,
@@ -175,13 +170,7 @@ export class ChatService {
       // Cache completed answer for exact matches
       await this.orchestratorService
         .cacheCompletedAnswer(
-          {
-            userId,
-            question: trimmedQuestion,
-            knowledgeBaseId: targetKbId,
-            sourceMode: (input as any).sourceMode || 'documents_only',
-            model: (input as any).model || env.server?.LLM_PROVIDER || 'ollama'
-          },
+          orchestrationInput,
           answer,
           citations,
           retrievedChunks.length,
@@ -471,12 +460,7 @@ export class ChatService {
       // Cache exact answer
       this.orchestratorService
         .cacheCompletedAnswer(
-          {
-            userId,
-            question: trimmedQuestion,
-            knowledgeBaseId: targetKbId,
-            model: (input as any).model || env.server?.LLM_PROVIDER || 'ollama'
-          },
+          orchestrationInput,
           answer.trim(),
           citations,
           retrievedChunks.length,

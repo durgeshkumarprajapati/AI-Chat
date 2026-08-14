@@ -246,19 +246,21 @@ export default function RAGDebugPage() {
 
       {orchestration && (
         <div className="bg-slate-900 border border-slate-800 rounded-2xl p-5 shadow-xl space-y-3">
-          <span className="text-xs font-bold text-indigo-400 uppercase tracking-wider">Answer Orchestration</span>
+          <div className="flex items-center justify-between">
+            <span className="text-xs font-bold text-indigo-400 uppercase tracking-wider">Answer Orchestration & Source Isolation</span>
+            <span className="text-[10px] font-mono px-2 py-0.5 rounded bg-indigo-950 text-indigo-300 border border-indigo-800">
+              Mode: {(orchestration as any).answerMode || (orchestration as any).sourceMode || 'DOCUMENT_GROUNDED'}
+            </span>
+          </div>
           <div className="grid grid-cols-2 md:grid-cols-4 gap-3 text-[11px] font-mono">
-            <div className="bg-slate-950 p-2.5 rounded-lg border border-slate-800"><span className="text-slate-500 block">Classification</span><b className="text-white">{orchestration.classification}</b></div>
-            <div className="bg-slate-950 p-2.5 rounded-lg border border-slate-800"><span className="text-slate-500 block">Cache</span><b className="text-emerald-400">{orchestration.cache.toUpperCase()}</b></div>
-            <div className="bg-slate-950 p-2.5 rounded-lg border border-slate-800"><span className="text-slate-500 block">Semantic Similarity</span><b className="text-white">{orchestration.semanticSimilarity?.toFixed(3) ?? 'N/A'} / {orchestration.semanticThreshold.toFixed(2)}</b></div>
-            <div className="bg-slate-950 p-2.5 rounded-lg border border-slate-800"><span className="text-slate-500 block">Cache Lookup</span><b className="text-white">{orchestration.cacheLookupMs}ms · {orchestration.candidateCount} candidates</b></div>
-            {(orchestration as any).discoveryMs !== undefined && (
-              <div className="bg-slate-950 p-2.5 rounded-lg border border-cyan-800 col-span-2">
-                <span className="text-cyan-400 block text-[10px]">🌍 Phase 24 Web Discovery Latency</span>
-                <b className="text-slate-200">{(orchestration as any).discoveryMs}ms discovery · {(orchestration as any).fetchMs ?? 0}ms page fetch</b>
-              </div>
-            )}
-            {orchestration.sourceEvidenceFingerprint && <div className="bg-slate-950 p-2.5 rounded-lg border border-slate-800 col-span-2"><span className="text-slate-500 block">Evidence Fingerprint</span><b className="text-slate-300 break-all">{orchestration.sourceEvidenceFingerprint}</b></div>}
+            <div className="bg-slate-950 p-2.5 rounded-lg border border-slate-800"><span className="text-slate-500 block">Source Mode</span><b className="text-indigo-300">{(orchestration as any).sourceMode || 'documents_only'}</b></div>
+            <div className="bg-slate-950 p-2.5 rounded-lg border border-slate-800"><span className="text-slate-500 block">Target Website</span><b className="text-white font-mono truncate block">{(orchestration as any).targetWebsite || 'None (Public Discovery)'}</b></div>
+            <div className="bg-slate-950 p-2.5 rounded-lg border border-slate-800"><span className="text-slate-500 block">Allowed Sources</span><b className="text-white font-mono">{(orchestration as any).allowedSources?.join(', ') || 'wikipedia, medium'}</b></div>
+            <div className="bg-slate-950 p-2.5 rounded-lg border border-slate-800"><span className="text-slate-500 block">Cache Status</span><b className="text-emerald-400">{((orchestration as any).cacheType || orchestration.cache || 'miss').toUpperCase()} (Hit: {String((orchestration as any).cacheHit ?? false)})</b></div>
+            <div className="bg-slate-950 p-2.5 rounded-lg border border-slate-800"><span className="text-slate-500 block">Web Chunks</span><b className="text-cyan-400">{(orchestration as any).retrievedWebChunks ?? 0} Chunks</b></div>
+            <div className="bg-slate-950 p-2.5 rounded-lg border border-slate-800"><span className="text-slate-500 block">Doc Chunks</span><b className="text-emerald-400">{(orchestration as any).retrievedDocumentChunks ?? 0} Chunks</b></div>
+            <div className="bg-slate-950 p-2.5 rounded-lg border border-slate-800"><span className="text-slate-500 block">Candidates</span><b className="text-white">{orchestration.candidateCount} Candidates</b></div>
+            <div className="bg-slate-950 p-2.5 rounded-lg border border-slate-800"><span className="text-slate-500 block">Discovery Latency</span><b className="text-cyan-300">{(orchestration as any).discoveryMs ?? 0}ms search · {(orchestration as any).fetchMs ?? 0}ms fetch</b></div>
           </div>
         </div>
       )}

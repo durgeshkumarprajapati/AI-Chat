@@ -168,6 +168,8 @@ export class RedisRAGCacheProvider implements RAGCacheProvider {
   private isCompatible(item: SemanticCacheItem, options: CacheKeyOptions): boolean {
     return item.userId === options.userId
       && item.knowledgeBaseId === (options.knowledgeBaseId || null)
+      && (item.sourceMode || 'documents_only') === (options.sourceMode || 'documents_only')
+      && (item.targetWebsite || '') === (options.targetWebsite || '')
       && item.model === (options.model || 'default')
       && item.answerMode === (options.answerMode || 'GROUNDED')
       && item.validEvidence && !item.invalidated && item.citations.length > 0

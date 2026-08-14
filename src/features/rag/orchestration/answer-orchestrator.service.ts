@@ -2,6 +2,7 @@ import { env } from '@/config/env';
 import { getRAGCacheProvider } from '../cache/rag-cache.factory';
 import { RAGCacheProvider } from '../cache/rag-cache.provider';
 import { RetrievalService } from '../retrieval/retrieval.service';
+import { RetrievedChunk } from '../retrieval/retrieval.types';
 import { evidenceAssessmentService, EvidenceAssessmentService } from './evidence-assessment.service';
 import { webDiscoveryService } from '../web-discovery/web-discovery.service';
 import { AnswerMode, OrchestrationInput, OrchestratedAnswer, UserAction } from './answer-orchestrator.types';
@@ -41,6 +42,9 @@ export class AnswerOrchestratorService {
     const options = {
       userId: input.userId,
       knowledgeBaseId: input.searchAllKbs ? null : input.knowledgeBaseId || null,
+      sourceMode: input.sourceMode || 'documents_only',
+      targetWebsite: input.targetWebsite,
+      allowedSources: input.allowedSources,
       model: input.model || env.server?.LLM_PROVIDER || 'ollama',
       answerMode: input.requestedAnswerMode || 'GROUNDED',
       query: input.question.trim()
@@ -128,6 +132,8 @@ export class AnswerOrchestratorService {
       userId: input.userId,
       knowledgeBaseId: input.searchAllKbs ? null : input.knowledgeBaseId || null,
       sourceMode: input.sourceMode || 'documents_only',
+      targetWebsite: input.targetWebsite,
+      allowedSources: input.allowedSources,
       model: input.model || env.server?.LLM_PROVIDER || 'ollama',
       answerMode: requestedMode || 'GROUNDED',
       query: effectiveQuery,
@@ -192,22 +198,7 @@ export class AnswerOrchestratorService {
     const sourceMode = input.sourceMode || 'documents_only';
 
     // 4. Primary Retrieval & Evidence Assessment
-    const retResult = await this.retrievalService.retrieveContextWithTrace(input.userId, effectiveQuery, {
-      knowledgeBaseId: input.searchAllKbs ? undefined : input.knowledgeBaseId,
-      sourceMode: sourceMode === 'web_discovery' ? 'all_sources' : sourceMode,
-      queryVector: queryEmbedding.vector
-    });
-
-    if (retResult.trace && retResult.trace.metrics) {
-      latencyTrace.embeddingMs = retResult.trace.metrics.embeddingMs;
-      latencyTrace.vectorMs = retResult.trace.metrics.vectorMs;
-      latencyTrace.keywordMs = retResult.trace.metrics.keywordMs;
-      latencyTrace.mergeMs = retResult.trace.metrics.mergeMs;
-      latencyTrace.rerankMs = retResult.trace.metrics.rerankMs;
-      latencyTrace.retrievalMs = retResult.trace.metrics.totalMs;
-    }
-
-    let chunks = retResult.chunks;
+    let chunks: RetrievedChunk[] = [];
 
     if (sourceMode === 'web_discovery') {
       const discoveryRes = await webDiscoveryService.discoverAndFetchCandidates(input.userId, {
@@ -217,7 +208,25 @@ export class AnswerOrchestratorService {
       });
       latencyTrace.discoveryMs = discoveryRes.metrics.discoveryMs ?? 0;
       latencyTrace.fetchMs = discoveryRes.metrics.fetchMs ?? 0;
-      chunks = [...discoveryRes.chunks, ...chunks];
+      // Strict Source Isolation: For web_discovery, ONLY use live web discovery chunks!
+      chunks = discoveryRes.chunks;
+    } else {
+      const retResult = await this.retrievalService.retrieveContextWithTrace(input.userId, effectiveQuery, {
+        knowledgeBaseId: input.searchAllKbs ? undefined : input.knowledgeBaseId,
+        sourceMode,
+        queryVector: queryEmbedding.vector
+      });
+
+      if (retResult.trace && retResult.trace.metrics) {
+        latencyTrace.embeddingMs = retResult.trace.metrics.embeddingMs;
+        latencyTrace.vectorMs = retResult.trace.metrics.vectorMs;
+        latencyTrace.keywordMs = retResult.trace.metrics.keywordMs;
+        latencyTrace.mergeMs = retResult.trace.metrics.mergeMs;
+        latencyTrace.rerankMs = retResult.trace.metrics.rerankMs;
+        latencyTrace.retrievalMs = retResult.trace.metrics.totalMs;
+      }
+
+      chunks = retResult.chunks;
     }
 
     let evidence = this.evidenceService.assessEvidence(input.question, chunks);
@@ -374,6 +383,8 @@ export class AnswerOrchestratorService {
       userId: input.userId,
       knowledgeBaseId: input.searchAllKbs ? null : input.knowledgeBaseId || null,
       sourceMode: input.sourceMode || 'documents_only',
+      targetWebsite: input.targetWebsite,
+      allowedSources: input.allowedSources,
       model: input.model || env.server?.LLM_PROVIDER || 'ollama',
       answerMode: mode,
       query: input.question,
@@ -386,6 +397,9 @@ export class AnswerOrchestratorService {
       retrievedChunks: retrievedCount,
       topSimilarity: topSim,
       answerMode: mode,
+      sourceMode: input.sourceMode || 'documents_only',
+      targetWebsite: input.targetWebsite,
+      allowedSources: input.allowedSources,
       cachedAt: new Date().toISOString()
     };
     await this.cacheProvider.setExact(cacheOptions, item);

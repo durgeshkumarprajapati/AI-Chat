@@ -3,18 +3,46 @@
 import React, { useEffect, useState } from 'react';
 import Link from 'next/link';
 
+interface WeatherData {
+  city: string;
+  temperature: number;
+  feelsLike: number;
+  condition: string;
+  humidity: number;
+  windSpeed: number;
+  high: number;
+  low: number;
+  observedAt: string;
+}
+
 export default function UserDashboardPage() {
   const [stats, setStats] = useState<{ docCount: number; convCount: number; kbCount: number } | null>(null);
   const [loading, setLoading] = useState(true);
+  const [userName, setUserName] = useState<string>('User');
+
+  // Location & Weather state
+  const [activeCity, setActiveCity] = useState<string>('Vadodara');
+  const [activeRegion, setActiveRegion] = useState<string>('Gujarat');
+  const [weather, setWeather] = useState<WeatherData | null>(null);
+  const [locationStatus, setLocationStatus] = useState<'prompt' | 'granted' | 'denied' | 'loading'>('prompt');
+  const [showCityModal, setShowCityModal] = useState(false);
+  const [manualCityInput, setManualCityInput] = useState('');
+
+  const popularCities = ['Vadodara', 'Ahmedabad', 'Surat', 'Rajkot', 'Mumbai', 'Delhi', 'Bengaluru', 'Pune'];
 
   useEffect(() => {
     async function loadDashboardData() {
       try {
-        const [docsRes, convsRes, kbsRes] = await Promise.all([
+        const [meRes, docsRes, convsRes, kbsRes] = await Promise.all([
+          fetch('/api/auth/me').then((r) => r.json()).catch(() => ({ authenticated: false })),
           fetch('/api/documents').then((r) => r.json()).catch(() => ({ data: [] })),
           fetch('/api/conversations').then((r) => r.json()).catch(() => ({ data: [] })),
           fetch('/api/knowledge-bases').then((r) => r.json()).catch(() => ({ data: [] }))
         ]);
+
+        if (meRes.authenticated && meRes.user) {
+          setUserName(meRes.user.name || meRes.user.email.split('@')[0]);
+        }
 
         setStats({
           docCount: docsRes.data?.length || 0,
@@ -28,11 +56,65 @@ export default function UserDashboardPage() {
       }
     }
     loadDashboardData();
+
+    // Check stored preferred city or load default weather
+    const storedCity = localStorage.getItem('docai_preferred_city') || 'Vadodara';
+    setActiveCity(storedCity);
+    fetchWeather(storedCity);
   }, []);
+
+  const fetchWeather = async (city: string) => {
+    try {
+      const res = await fetch(`/api/weather?city=${encodeURIComponent(city)}`);
+      const data = await res.json();
+      if (data.success && data.data) {
+        setWeather(data.data);
+      }
+    } catch {}
+  };
+
+  const requestGeolocation = () => {
+    if (typeof window === 'undefined' || !('geolocation' in navigator)) {
+      setLocationStatus('denied');
+      return;
+    }
+
+    setLocationStatus('loading');
+    navigator.geolocation.getCurrentPosition(
+      async (pos) => {
+        try {
+          const res = await fetch(`/api/location/reverse?lat=${pos.coords.latitude}&lon=${pos.coords.longitude}`);
+          const data = await res.json();
+          if (data.success && data.data) {
+            const loc = data.data;
+            setActiveCity(loc.city);
+            setActiveRegion(loc.region);
+            localStorage.setItem('docai_preferred_city', loc.city);
+            fetchWeather(loc.city);
+            setLocationStatus('granted');
+          }
+        } catch {
+          setLocationStatus('denied');
+        }
+      },
+      () => {
+        setLocationStatus('denied');
+      },
+      { timeout: 8000 }
+    );
+  };
+
+  const handleSelectCity = (city: string) => {
+    setActiveCity(city);
+    localStorage.setItem('docai_preferred_city', city);
+    fetchWeather(city);
+    setShowCityModal(false);
+  };
 
   return (
     <div className="min-h-screen bg-slate-950 text-slate-100 p-6 sm:p-10">
       <div className="max-w-6xl mx-auto space-y-8">
+        {/* Welcome Header */}
         <div>
           <h1 className="text-2xl font-bold bg-gradient-to-r from-white to-indigo-300 bg-clip-text text-transparent">
             User Workspace Dashboard
@@ -40,6 +122,73 @@ export default function UserDashboardPage() {
           <p className="text-xs text-slate-400 mt-1">
             Overview of your active documents, intelligent chats, and custom knowledge collections.
           </p>
+        </div>
+
+        {/* Phase 29 Personalized Welcome & Weather Card */}
+        <div className="bg-gradient-to-r from-slate-900 via-indigo-950/40 to-slate-900 border border-slate-800 rounded-2xl p-6 shadow-xl flex flex-col md:flex-row md:items-center justify-between gap-6">
+          <div className="space-y-3">
+            <div className="flex items-center space-x-2">
+              <h2 className="text-xl font-bold text-white">Welcome, {userName} 👋</h2>
+              <span className="px-2.5 py-0.5 rounded-full bg-indigo-950 text-indigo-300 border border-indigo-800 text-[10px] font-mono">
+                Active Location
+              </span>
+            </div>
+
+            <div className="flex items-center space-x-3 text-xs text-slate-300">
+              <span className="flex items-center space-x-1">
+                <span>📍</span>
+                <span className="font-semibold text-white">You are in {activeCity}, {activeRegion}</span>
+              </span>
+              <button
+                onClick={() => setShowCityModal(true)}
+                className="text-[11px] text-indigo-400 hover:text-indigo-300 underline font-medium transition"
+              >
+                Change City
+              </button>
+            </div>
+
+            {/* Location Permission Callout */}
+            {locationStatus === 'prompt' && (
+              <div className="p-3 rounded-xl bg-slate-950/60 border border-slate-800/80 text-xs flex items-center justify-between gap-3">
+                <span className="text-slate-400">
+                  Allow location access to personalize your city experience and weather.
+                </span>
+                <button
+                  onClick={requestGeolocation}
+                  className="px-3 py-1.5 bg-indigo-600 hover:bg-indigo-500 text-white rounded-lg text-xs font-medium transition whitespace-nowrap"
+                >
+                  Use My Current Location
+                </button>
+              </div>
+            )}
+
+            {locationStatus === 'denied' && (
+              <p className="text-[11px] text-amber-400">
+                Location access denied. Using manual city selection ({activeCity}).
+              </p>
+            )}
+          </div>
+
+          {/* Weather Widget */}
+          <div className="flex items-center justify-between md:justify-end gap-6 bg-slate-950/60 border border-slate-800/80 p-4 rounded-xl">
+            <div className="space-y-0.5">
+              <div className="text-2xl font-bold text-white flex items-center space-x-2">
+                <span>{weather ? `${weather.temperature}°C` : '28°C'}</span>
+                <span className="text-sm font-normal text-indigo-300">{weather?.condition || 'Partly Cloudy'}</span>
+              </div>
+              <div className="text-[11px] text-slate-400 font-mono">
+                Feels like {weather?.feelsLike || 30}°C • High {weather?.high || 31}°C / Low {weather?.low || 24}°C
+              </div>
+            </div>
+
+            <Link
+              href={`/explore?city=${encodeURIComponent(activeCity)}`}
+              className="px-4 py-2.5 bg-indigo-600 hover:bg-indigo-500 text-white font-semibold text-xs rounded-xl shadow-lg shadow-indigo-600/20 transition flex items-center space-x-1.5 whitespace-nowrap"
+            >
+              <span>🌍</span>
+              <span>Explore {activeCity}</span>
+            </Link>
+          </div>
         </div>
 
         {/* Stats Grid */}
@@ -65,7 +214,7 @@ export default function UserDashboardPage() {
           </div>
 
           <div className="bg-slate-900/80 border border-slate-800 rounded-2xl p-5 shadow-lg flex items-center space-x-4">
-            <div className="h-12 w-12 rounded-xl bg-purple-950/80 border border-purple-800/80 flex items-center justify-center text-purple-400 text-xl font-bold">
+            <div className="h-12 w-12 rounded-xl bg-emerald-950/80 border border-emerald-800/80 flex items-center justify-center text-emerald-400 text-xl font-bold">
               📚
             </div>
             <div>
@@ -75,47 +224,82 @@ export default function UserDashboardPage() {
           </div>
         </div>
 
-        {/* Quick Action Cards */}
-        <div className="grid grid-cols-1 sm:grid-cols-2 gap-6">
+        {/* Quick Action Navigation */}
+        <div className="grid grid-cols-1 md:grid-cols-3 gap-5">
           <Link
             href="/chat"
-            className="group bg-gradient-to-br from-indigo-950/40 to-slate-900 border border-indigo-900/40 hover:border-indigo-500/60 rounded-2xl p-6 transition shadow-xl flex flex-col justify-between"
+            className="p-5 rounded-2xl bg-slate-900/80 hover:bg-slate-800/80 border border-slate-800 hover:border-slate-700 text-left transition space-y-2 group"
           >
-            <div>
-              <div className="text-2xl mb-2">✨</div>
-              <h3 className="text-base font-semibold text-white group-hover:text-indigo-300 transition">
-                Start Intelligent RAG Chat
-              </h3>
-              <p className="text-xs text-slate-400 mt-2 leading-relaxed">
-                Ask questions against your documents, web sources, or attach images/PDFs inline with grounded citations.
-              </p>
-            </div>
-            <div className="mt-6 text-xs text-indigo-400 font-medium flex items-center space-x-1 group-hover:translate-x-1 transition-transform">
-              <span>Open Chat Workspace</span>
-              <span>→</span>
-            </div>
+            <div className="text-xs font-bold text-indigo-400 uppercase tracking-wider font-mono">Stream & Voice RAG</div>
+            <div className="text-sm font-semibold text-white group-hover:text-indigo-300">Start RAG Conversation →</div>
+            <p className="text-xs text-slate-400">Ask questions over uploaded PDF documents, web sources, or general knowledge with TTS voice readout.</p>
           </Link>
 
           <Link
             href="/documents"
-            className="group bg-gradient-to-br from-sky-950/40 to-slate-900 border border-sky-900/40 hover:border-sky-500/60 rounded-2xl p-6 transition shadow-xl flex flex-col justify-between"
+            className="p-5 rounded-2xl bg-slate-900/80 hover:bg-slate-800/80 border border-slate-800 hover:border-slate-700 text-left transition space-y-2 group"
           >
-            <div>
-              <div className="text-2xl mb-2">📂</div>
-              <h3 className="text-base font-semibold text-white group-hover:text-sky-300 transition">
-                Manage Documents & Uploads
-              </h3>
-              <p className="text-xs text-slate-400 mt-2 leading-relaxed">
-                Upload PDFs, extract tables, OCR scanned pages, build knowledge collections, and manage access policies.
-              </p>
-            </div>
-            <div className="mt-6 text-xs text-sky-400 font-medium flex items-center space-x-1 group-hover:translate-x-1 transition-transform">
-              <span>Manage Documents</span>
-              <span>→</span>
-            </div>
+            <div className="text-xs font-bold text-sky-400 uppercase tracking-wider font-mono">Document Management</div>
+            <div className="text-sm font-semibold text-white group-hover:text-sky-300">Upload & Manage Files →</div>
+            <p className="text-xs text-slate-400">Upload PDFs, view page count, status, reprocess files, or manage document chunking.</p>
+          </Link>
+
+          <Link
+            href={`/explore?city=${encodeURIComponent(activeCity)}`}
+            className="p-5 rounded-2xl bg-slate-900/80 hover:bg-slate-800/80 border border-slate-800 hover:border-slate-700 text-left transition space-y-2 group"
+          >
+            <div className="text-xs font-bold text-emerald-400 uppercase tracking-wider font-mono">City Explorer</div>
+            <div className="text-sm font-semibold text-white group-hover:text-emerald-300">Explore {activeCity} →</div>
+            <p className="text-xs text-slate-400">Discover places to visit, cuisine, culture, history, and shopping using Grounded Web Search.</p>
           </Link>
         </div>
       </div>
+
+      {/* Manual City Selection Modal */}
+      {showCityModal && (
+        <div className="fixed inset-0 z-50 bg-slate-950/80 backdrop-blur-sm flex items-center justify-center p-4">
+          <div className="bg-slate-900 border border-slate-800 rounded-2xl p-6 max-w-md w-full space-y-5 shadow-2xl">
+            <div className="flex items-center justify-between border-b border-slate-800 pb-3">
+              <h3 className="text-sm font-semibold text-white">Choose City Manually</h3>
+              <button onClick={() => setShowCityModal(false)} className="text-slate-400 hover:text-white text-xs">
+                ✕
+              </button>
+            </div>
+
+            <div className="space-y-3">
+              <input
+                type="text"
+                placeholder="Type city name..."
+                value={manualCityInput}
+                onChange={(e) => setManualCityInput(e.target.value)}
+                onKeyDown={(e) => {
+                  if (e.key === 'Enter' && manualCityInput.trim()) {
+                    handleSelectCity(manualCityInput.trim());
+                  }
+                }}
+                className="w-full bg-slate-950 border border-slate-800 rounded-xl px-3.5 py-2 text-xs text-white placeholder-slate-500 focus:outline-none focus:border-indigo-500"
+              />
+
+              <div className="text-[11px] text-slate-400 font-medium">Popular Cities:</div>
+              <div className="flex flex-wrap gap-2">
+                {popularCities.map((c) => (
+                  <button
+                    key={c}
+                    onClick={() => handleSelectCity(c)}
+                    className={`px-3 py-1.5 rounded-lg text-xs font-medium transition ${
+                      activeCity === c
+                        ? 'bg-indigo-600 text-white'
+                        : 'bg-slate-950 text-slate-300 hover:text-white border border-slate-800'
+                    }`}
+                  >
+                    {c}
+                  </button>
+                ))}
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 }

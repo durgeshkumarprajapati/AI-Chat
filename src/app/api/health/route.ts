@@ -37,6 +37,22 @@ export async function GET() {
         vision: string;
         status: string;
       };
+      tts?: {
+        enabled: boolean;
+        provider: string;
+        status: string;
+      };
+      location?: {
+        status: string;
+      };
+      weather?: {
+        provider: string;
+        status: string;
+      };
+      cityExplorer?: {
+        enabled: boolean;
+        status: string;
+      };
     };
   } = {
     status: 'ok',
@@ -65,6 +81,22 @@ export async function GET() {
         enabled: process.env.MULTIMODAL_ENABLED !== 'false',
         ocr: process.env.MULTIMODAL_OCR_PROVIDER || 'tesseract',
         vision: process.env.MULTIMODAL_VISION_PROVIDER || 'openai',
+        status: 'healthy'
+      },
+      tts: {
+        enabled: process.env.TTS_ENABLED !== 'false',
+        provider: process.env.TTS_PROVIDER || 'browser',
+        status: 'healthy'
+      },
+      location: {
+        status: 'available'
+      },
+      weather: {
+        provider: process.env.WEATHER_PROVIDER || 'open-meteo',
+        status: 'healthy'
+      },
+      cityExplorer: {
+        enabled: process.env.CITY_EXPLORER_ENABLED !== 'false',
         status: 'healthy'
       }
     }

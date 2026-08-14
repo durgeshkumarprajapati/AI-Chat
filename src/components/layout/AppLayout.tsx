@@ -12,6 +12,8 @@ export function AppLayout({ children }: { children: React.ReactNode }) {
   const [healthStatus, setHealthStatus] = useState<'ok' | 'degraded' | 'loading'>('loading');
   const [currentUser, setCurrentUser] = useState<{ name: string; email: string; role: string; avatarUrl?: string | null } | null>(null);
 
+  const [activeCity, setActiveCity] = useState<string>('Vadodara');
+
   useEffect(() => {
     // Fetch canonical user identity from /api/auth/me
     fetch('/api/auth/me')
@@ -22,6 +24,9 @@ export function AppLayout({ children }: { children: React.ReactNode }) {
         }
       })
       .catch(() => {});
+
+    const city = localStorage.getItem('docai_preferred_city') || 'Vadodara';
+    setActiveCity(city);
 
     // Check if tour was completed
     const completed = localStorage.getItem('docai_tour_completed');
@@ -46,6 +51,7 @@ export function AppLayout({ children }: { children: React.ReactNode }) {
     { name: 'RAG Chat', href: '/chat', icon: '💬', badge: 'Stream' },
     { name: 'Documents', href: '/documents', icon: '📁' },
     { name: 'Knowledge Bases', href: '/knowledge-bases', icon: '📚' },
+    { name: `Explore ${activeCity}`, href: `/explore?city=${encodeURIComponent(activeCity)}`, icon: '🌍' },
     { name: 'My Account', href: '/account', icon: '👤' },
     ...(isAdmin
       ? [

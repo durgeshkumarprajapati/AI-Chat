@@ -1,8 +1,9 @@
 'use client';
 
 import { useState, useEffect, useRef, useCallback, Suspense } from 'react';
-import { useSearchParams } from 'next/navigation';
+import { useSearchParams, useRouter } from 'next/navigation';
 import { EvidenceModal } from '@/components/chat/EvidenceModal';
+import { ttsService, TTSLanguage } from '@/features/tts/tts.service';
 
 type Citation = {
   id?: string;
@@ -82,6 +83,51 @@ function ChatPageContent() {
   const [uploading, setUploading] = useState(false);
   const [saveSuccessMsg, setSaveSuccessMsg] = useState<string | null>(null);
 
+  // Phase 29 TTS Audio State
+  const [speakingMsgId, setSpeakingMsgId] = useState<string | null>(null);
+  const [pausedMsgId, setPausedMsgId] = useState<string | null>(null);
+  const [ttsLang, setTtsLang] = useState<TTSLanguage>('en-US');
+  const [ttsSpeed, setTtsSpeed] = useState<number>(1.0);
+
+  const handleSpeak = (msgId: string, text: string) => {
+    if (speakingMsgId === msgId) {
+      ttsService.pause();
+      setSpeakingMsgId(null);
+      setPausedMsgId(msgId);
+      return;
+    }
+
+    if (pausedMsgId === msgId) {
+      ttsService.resume();
+      setSpeakingMsgId(msgId);
+      setPausedMsgId(null);
+      return;
+    }
+
+    ttsService.speak(text, {
+      language: ttsLang,
+      speed: ttsSpeed,
+      onStart: () => {
+        setSpeakingMsgId(msgId);
+        setPausedMsgId(null);
+      },
+      onEnd: () => {
+        setSpeakingMsgId(null);
+        setPausedMsgId(null);
+      },
+      onError: () => {
+        setSpeakingMsgId(null);
+        setPausedMsgId(null);
+      }
+    });
+  };
+
+  const handleStopSpeak = () => {
+    ttsService.stop();
+    setSpeakingMsgId(null);
+    setPausedMsgId(null);
+  };
+
   const handleSaveDiscoveredSource = async (url: string) => {
     if (!url || savingSourceUrl) return;
     setSavingSourceUrl(url);
@@ -137,6 +183,8 @@ function ChatPageContent() {
 
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const abortControllerRef = useRef<AbortController | null>(null);
+  const autoSubmittedRef = useRef<string | null>(null);
+  const router = useRouter();
 
   const fetchConversations = useCallback(async (querySearch?: string) => {
     try {
@@ -204,6 +252,8 @@ function ChatPageContent() {
   useEffect(() => {
     messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
   }, [messages, loading, streaming]);
+
+
 
   const handleStartNewChat = () => {
     if (streaming && abortControllerRef.current) {
@@ -276,51 +326,58 @@ function ChatPageContent() {
     }
   };
 
-  const handleSendMessage = async (
-    promptOverride?: string,
-    options?: { allowGeneralKnowledge?: boolean; searchAllKbs?: boolean }
-  ) => {
-    const q = (promptOverride || question).trim();
-    if (!q || loading || streaming) return;
+  const handleSendMessage = useCallback(
+    async (
+      promptOverride?: string,
+      options?: {
+        allowGeneralKnowledge?: boolean;
+        searchAllKbs?: boolean;
+        overrideSourceMode?: 'documents_only' | 'web_only' | 'all_sources' | 'web_discovery' | 'web_search' | 'auto';
+      }
+    ) => {
+      const q = (promptOverride || question).trim();
+      if (!q || loading || streaming) return;
 
-    const tempUserMsg: ChatMessage = {
-      id: `user-${Date.now()}`,
-      role: 'USER',
-      content: q
-    };
+      const effectiveSourceMode = options?.overrideSourceMode || sourceMode;
 
-    const tempAssistantId = `assistant-${Date.now()}`;
-    const tempAssistantMsg: ChatMessage = {
-      id: tempAssistantId,
-      role: 'ASSISTANT',
-      content: '',
-      isStreaming: true,
-      citations: []
-    };
+      const tempUserMsg: ChatMessage = {
+        id: `user-${Date.now()}`,
+        role: 'USER',
+        content: q
+      };
 
-    setMessages((prev) => [...prev, tempUserMsg, tempAssistantMsg]);
-    setQuestion('');
-    setLoading(true);
-    setStreaming(true);
+      const tempAssistantId = `assistant-${Date.now()}`;
+      const tempAssistantMsg: ChatMessage = {
+        id: tempAssistantId,
+        role: 'ASSISTANT',
+        content: '',
+        isStreaming: true,
+        citations: []
+      };
 
-    abortControllerRef.current = new AbortController();
+      setMessages((prev) => [...prev, tempUserMsg, tempAssistantMsg]);
+      setQuestion('');
+      setLoading(true);
+      setStreaming(true);
 
-    try {
-      const response = await fetch('/api/chat/stream', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          conversationId: activeConversationId || undefined,
-          question: q,
-          knowledgeBaseId: options?.searchAllKbs ? undefined : selectedKbId || undefined,
-          sourceMode,
-          targetWebsite: targetWebsite || undefined,
-          allowedSources,
-          allowGeneralKnowledge: options?.allowGeneralKnowledge,
-          searchAllKbs: options?.searchAllKbs
-        }),
-        signal: abortControllerRef.current.signal
-      });
+      abortControllerRef.current = new AbortController();
+
+      try {
+        const response = await fetch('/api/chat/stream', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            conversationId: activeConversationId || undefined,
+            question: q,
+            knowledgeBaseId: options?.searchAllKbs ? undefined : selectedKbId || undefined,
+            sourceMode: effectiveSourceMode,
+            targetWebsite: targetWebsite || undefined,
+            allowedSources,
+            allowGeneralKnowledge: options?.allowGeneralKnowledge,
+            searchAllKbs: options?.searchAllKbs
+          }),
+          signal: abortControllerRef.current.signal
+        });
 
       if (!response.ok || !response.body) {
         throw new Error(`Streaming failed with status ${response.status}`);
@@ -431,7 +488,41 @@ function ChatPageContent() {
       setStreaming(false);
       abortControllerRef.current = null;
     }
-  };
+  }, [question, loading, streaming, sourceMode, activeConversationId, selectedKbId, targetWebsite, allowedSources, fetchConversations]);
+
+  // Phase 29 Hotfix: Auto-submit initial query 'q' from URL parameter (e.g. from City Explorer)
+  useEffect(() => {
+    const qParam = searchParams.get('q');
+    const sourceModeParam = searchParams.get('sourceMode');
+
+    if (sourceModeParam) {
+      const validModes = ['documents_only', 'web_only', 'all_sources', 'web_discovery', 'web_search', 'auto'];
+      if (validModes.includes(sourceModeParam)) {
+        setSourceMode(sourceModeParam as any);
+      }
+    }
+
+    if (!qParam || !qParam.trim()) return;
+
+    const normalizedQuery = qParam.trim();
+    if (autoSubmittedRef.current === normalizedQuery) return;
+
+    // Set auto-submit ref guard BEFORE triggering submission to prevent double execution (e.g. React Strict Mode)
+    autoSubmittedRef.current = normalizedQuery;
+
+    const effectiveMode = (sourceModeParam && ['documents_only', 'web_only', 'all_sources', 'web_discovery', 'web_search', 'auto'].includes(sourceModeParam))
+      ? (sourceModeParam as any)
+      : sourceMode;
+
+    // Auto-execute submission using the exact same handleSendMessage function
+    handleSendMessage(normalizedQuery, { overrideSourceMode: effectiveMode });
+
+    // URL Query Cleanup: Remove 'q' parameter from URL using router.replace without re-triggering submission
+    const params = new URLSearchParams(searchParams.toString());
+    params.delete('q');
+    const cleanUrl = `/chat${params.toString() ? `?${params.toString()}` : ''}`;
+    router.replace(cleanUrl);
+  }, [searchParams, handleSendMessage, sourceMode, router]);
 
   const handleKeyDown = (e: React.KeyboardEvent<HTMLTextAreaElement>) => {
     if (e.key === 'Enter' && !e.shiftKey) {
@@ -935,31 +1026,119 @@ function ChatPageContent() {
                     </div>
                   )}
 
-                  {/* Phase 19 User Feedback Buttons */}
+                  {/* Phase 19 User Feedback & Phase 29 TTS Audio Controls */}
                   {msg.role === 'ASSISTANT' && msg.content && !msg.isStreaming && (
-                    <div className="mt-3 pt-2 border-t border-slate-800/60 flex items-center justify-between text-[11px]">
-                      <div className="flex items-center space-x-2">
-                        <span className="text-slate-500 text-[10px]">Was this answer helpful?</span>
-                        <button
-                          onClick={() => handleFeedbackSubmit(msg.id, 'POSITIVE')}
-                          className={`px-2 py-0.5 rounded border transition-colors text-[10px] font-mono ${
-                            userFeedbackState[msg.id]?.rating === 'POSITIVE'
-                              ? 'bg-emerald-950 border-emerald-700 text-emerald-300 font-bold'
-                              : 'bg-slate-900 border-slate-800 text-slate-400 hover:text-white'
-                          }`}
-                        >
-                          👍 Helpful
-                        </button>
-                        <button
-                          onClick={() => handleFeedbackSubmit(msg.id, 'NEGATIVE', 'INCORRECT_ANSWER')}
-                          className={`px-2 py-0.5 rounded border transition-colors text-[10px] font-mono ${
-                            userFeedbackState[msg.id]?.rating === 'NEGATIVE'
-                              ? 'bg-rose-950 border-rose-700 text-rose-300 font-bold'
-                              : 'bg-slate-900 border-slate-800 text-slate-400 hover:text-white'
-                          }`}
-                        >
-                          👎 Not Helpful
-                        </button>
+                    <div className="mt-3 pt-2 border-t border-slate-800/60 flex flex-col space-y-2 text-[11px]">
+                      <div className="flex items-center justify-between gap-2 flex-wrap">
+                        {/* TTS Audio Controls */}
+                        <div className="flex items-center space-x-2">
+                          {speakingMsgId === msg.id ? (
+                            <>
+                              <button
+                                onClick={() => handleSpeak(msg.id, msg.content)}
+                                aria-label="Pause speech"
+                                className="px-2.5 py-1 rounded bg-amber-950 border border-amber-800 text-amber-300 font-mono text-[10px] font-bold flex items-center space-x-1"
+                              >
+                                <span>⏸</span>
+                                <span>Pause</span>
+                              </button>
+                              <button
+                                onClick={handleStopSpeak}
+                                aria-label="Stop speech"
+                                className="px-2 py-1 rounded bg-rose-950 border border-rose-800 text-rose-300 font-mono text-[10px] font-bold flex items-center space-x-1"
+                              >
+                                <span>⏹</span>
+                                <span>Stop</span>
+                              </button>
+                            </>
+                          ) : pausedMsgId === msg.id ? (
+                            <>
+                              <button
+                                onClick={() => handleSpeak(msg.id, msg.content)}
+                                aria-label="Resume speech"
+                                className="px-2.5 py-1 rounded bg-indigo-950 border border-indigo-800 text-indigo-300 font-mono text-[10px] font-bold flex items-center space-x-1"
+                              >
+                                <span>▶</span>
+                                <span>Resume</span>
+                              </button>
+                              <button
+                                onClick={handleStopSpeak}
+                                aria-label="Stop speech"
+                                className="px-2 py-1 rounded bg-rose-950 border border-rose-800 text-rose-300 font-mono text-[10px] font-bold flex items-center space-x-1"
+                              >
+                                <span>⏹</span>
+                                <span>Stop</span>
+                              </button>
+                            </>
+                          ) : (
+                            <button
+                              onClick={() => handleSpeak(msg.id, msg.content)}
+                              aria-label="Listen to response"
+                              className="px-2.5 py-1 rounded bg-slate-900 border border-slate-800 hover:border-slate-700 text-indigo-300 hover:text-white font-mono text-[10px] font-bold flex items-center space-x-1.5 transition"
+                            >
+                              <span>🔊</span>
+                              <span>Listen</span>
+                            </button>
+                          )}
+
+                          {/* Speed Selector */}
+                          <select
+                            value={ttsSpeed}
+                            onChange={(e) => setTtsSpeed(Number(e.target.value))}
+                            className="bg-slate-950 border border-slate-800 text-[10px] text-slate-300 rounded px-1.5 py-0.5 focus:outline-none"
+                          >
+                            <option value="0.75">0.75x</option>
+                            <option value="1">1x</option>
+                            <option value="1.25">1.25x</option>
+                            <option value="1.5">1.5x</option>
+                            <option value="2">2x</option>
+                          </select>
+
+                          {/* Language Selector */}
+                          <select
+                            value={ttsLang}
+                            onChange={(e) => setTtsLang(e.target.value as TTSLanguage)}
+                            className="bg-slate-950 border border-slate-800 text-[10px] text-slate-300 rounded px-1.5 py-0.5 focus:outline-none"
+                          >
+                            <option value="en-US">English</option>
+                            <option value="hi-IN">हिन्दी</option>
+                            <option value="gu-IN">ગુજરાતી</option>
+                          </select>
+                        </div>
+
+                        {/* Copy & Feedback */}
+                        <div className="flex items-center space-x-2">
+                          <button
+                            onClick={() => {
+                              navigator.clipboard.writeText(msg.content);
+                            }}
+                            aria-label="Copy text"
+                            className="px-2 py-0.5 rounded bg-slate-900 border border-slate-800 text-slate-400 hover:text-white text-[10px] font-mono"
+                          >
+                            📋 Copy
+                          </button>
+
+                          <button
+                            onClick={() => handleFeedbackSubmit(msg.id, 'POSITIVE')}
+                            className={`px-2 py-0.5 rounded border transition-colors text-[10px] font-mono ${
+                              userFeedbackState[msg.id]?.rating === 'POSITIVE'
+                                ? 'bg-emerald-950 border-emerald-700 text-emerald-300 font-bold'
+                                : 'bg-slate-900 border-slate-800 text-slate-400 hover:text-white'
+                            }`}
+                          >
+                            👍
+                          </button>
+                          <button
+                            onClick={() => handleFeedbackSubmit(msg.id, 'NEGATIVE', 'INCORRECT_ANSWER')}
+                            className={`px-2 py-0.5 rounded border transition-colors text-[10px] font-mono ${
+                              userFeedbackState[msg.id]?.rating === 'NEGATIVE'
+                                ? 'bg-rose-950 border-rose-700 text-rose-300 font-bold'
+                                : 'bg-slate-900 border-slate-800 text-slate-400 hover:text-white'
+                            }`}
+                          >
+                            👎
+                          </button>
+                        </div>
                       </div>
                       {userFeedbackState[msg.id] && (
                         <span className="text-[10px] text-emerald-400 font-mono">✓ Feedback saved</span>

@@ -9,20 +9,20 @@ import { prisma } from '../src/lib/prisma';
 import { DocumentStatus } from '@prisma/client';
 import { AuthorizationError, NotFoundError } from '../src/errors';
 
-const USER_A = '88888888-aaaa-4000-a000-111111111111';
-const USER_B = '88888888-bbbb-4000-a000-222222222222';
+const USER_A = '88888888-p18a-4000-a000-111111111111';
+const USER_B = '88888888-p18b-4000-a000-222222222222';
 
 async function setupTestUsers() {
-  await prisma.user.upsert({
-    where: { id: USER_A },
-    update: {},
-    create: { id: USER_A, email: 'p18-user-a@example.com', name: 'Phase 18 User A' }
+  await prisma.user.deleteMany({
+    where: { email: { in: ['p18-user-a@example.com', 'p18-user-b@example.com'] } }
+  }).catch(() => {});
+
+  await prisma.user.create({
+    data: { id: USER_A, email: 'p18-user-a@example.com', name: 'Phase 18 User A' }
   });
 
-  await prisma.user.upsert({
-    where: { id: USER_B },
-    update: {},
-    create: { id: USER_B, email: 'p18-user-b@example.com', name: 'Phase 18 User B' }
+  await prisma.user.create({
+    data: { id: USER_B, email: 'p18-user-b@example.com', name: 'Phase 18 User B' }
   });
 
   // Clean existing test data

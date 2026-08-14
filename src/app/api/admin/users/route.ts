@@ -6,6 +6,8 @@ import { sessionService } from '@/features/auth/session.service';
 import { UserRole, UserStatus } from '@prisma/client';
 import { AppError } from '@/errors';
 
+export const dynamic = 'force-dynamic';
+
 export async function GET(req: NextRequest) {
   try {
     const authUser = await getAuthUser(req);

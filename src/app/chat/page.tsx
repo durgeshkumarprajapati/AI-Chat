@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useEffect, useRef, useCallback } from 'react';
+import { useState, useEffect, useRef, useCallback, Suspense } from 'react';
 import { useSearchParams } from 'next/navigation';
 import { EvidenceModal } from '@/components/chat/EvidenceModal';
 
@@ -54,7 +54,7 @@ type KnowledgeBaseOption = {
   documentCount: number;
 };
 
-export default function ChatPage() {
+function ChatPageContent() {
   const searchParams = useSearchParams();
   const initialKbId = searchParams.get('knowledgeBaseId');
 
@@ -1083,5 +1083,13 @@ export default function ChatPage() {
         onClose={() => setActiveModalCitation(null)}
       />
     </div>
+  );
+}
+
+export default function ChatPage() {
+  return (
+    <Suspense fallback={<div className="min-h-screen bg-slate-950 text-indigo-400 font-mono text-xs flex items-center justify-center">Loading Chat Workspace...</div>}>
+      <ChatPageContent />
+    </Suspense>
   );
 }

@@ -4,6 +4,8 @@ import { sessionService } from '@/features/auth/session.service';
 import { auditService } from '@/features/auth/audit.service';
 import { AppError } from '@/errors';
 
+export const dynamic = 'force-dynamic';
+
 export async function GET(req: NextRequest) {
   try {
     const authUser = await getAuthUser(req);

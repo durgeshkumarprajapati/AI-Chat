@@ -42,6 +42,7 @@ export interface SemanticCacheLookupResult {
 export interface CacheKeyOptions {
   userId: string;
   knowledgeBaseId?: string | null;
+  sourceMode?: string;
   model?: string;
   answerMode?: string;
   query: string;

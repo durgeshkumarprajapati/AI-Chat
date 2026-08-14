@@ -30,6 +30,7 @@
     "test:phase20": "tsx tests/phase20-rag-performance.test.ts",
     "test:phase21": "tsx tests/phase21-rag-orchestration-cache.test.ts",
     "test:phase22": "tsx tests/phase22-citation-aware-rag.test.ts",
+    "test:phase23": "tsx tests/phase23-web-rag.test.ts",
     "benchmark:rag": "tsx scripts/test-rag-performance.ts",
     "benchmark:citation": "tsx scripts/test-rag-citation-performance.ts",
     "test:rag-latency": "tsx scripts/test-rag-latency.ts",

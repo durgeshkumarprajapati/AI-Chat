@@ -52,14 +52,24 @@ model User {
   @@map("users")
 }
 
+enum SourceType {
+  DOCUMENT
+  WEB
+}
+
 model Document {
   id               String                  @id @default(uuid())
   userId           String                  @map("user_id")
+  sourceType       SourceType              @default(DOCUMENT) @map("source_type")
   filename         String
   originalFilename String                  @map("original_filename")
   mimeType         String                  @map("mime_type")
   fileSize         Int                     @map("file_size")
   storageKey       String                  @map("storage_key")
+  webUrl           String?                 @map("web_url")
+  canonicalUrl     String?                 @map("canonical_url")
+  contentHash      String?                 @map("content_hash")
+  fetchedAt        DateTime?               @map("fetched_at")
   status           DocumentStatus          @default(UPLOADING)
   version          Int                     @default(1)
   pageCount        Int                     @default(0) @map("page_count")
@@ -73,6 +83,7 @@ model Document {
 
   @@index([userId])
   @@index([status])
+  @@index([sourceType])
   @@map("documents")
 }
 

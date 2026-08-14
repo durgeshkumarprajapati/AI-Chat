@@ -136,6 +136,13 @@ const TOUR_STEPS: TourStep[] = [
     description: 'Inspect exact document evidence snippets, page numbers, similarity scores, and evidence confidence levels for complete trust and transparency.',
     technicalDetails: 'CitationService • Deterministic Evidence Snippet Extraction • Server-side Citation Validation • Evidence Confidence & Coverage',
     icon: '🔍'
+  },
+  {
+    title: 'Web Knowledge & External Sources',
+    badge: 'Phase 23 Web RAG',
+    description: 'Ingest public web documentation with SSRF protection into the same pgvector hybrid retrieval pipeline. Select Documents, Web, or Both in Chat UI.',
+    technicalDetails: 'WebUrlValidator (SSRF) • WebFetcher • WebContentExtractor • WebSourceService • Multi-source RAG Orchestration',
+    icon: '🌐'
   }
 ];
 

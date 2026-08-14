@@ -82,6 +82,7 @@ export class ChatService {
 
     const orchestrationInput = {
       userId, question: trimmedQuestion, conversationId, knowledgeBaseId: targetKbId,
+      sourceMode: (input as any).sourceMode || 'documents_only',
       allowGeneralKnowledge: (input as any).allowGeneralKnowledge,
       requestedAnswerMode: (input as any).requestedAnswerMode,
       searchAllKbs: (input as any).searchAllKbs,
@@ -176,6 +177,7 @@ export class ChatService {
             userId,
             question: trimmedQuestion,
             knowledgeBaseId: targetKbId,
+            sourceMode: (input as any).sourceMode || 'documents_only',
             model: (input as any).model || env.server?.LLM_PROVIDER || 'ollama'
           },
           answer,
@@ -334,6 +336,7 @@ export class ChatService {
 
     const orchestrationInput = {
       userId, question: trimmedQuestion, conversationId, knowledgeBaseId: targetKbId,
+      sourceMode: (input as any).sourceMode || 'documents_only',
       allowGeneralKnowledge: (input as any).allowGeneralKnowledge,
       requestedAnswerMode: (input as any).requestedAnswerMode,
       searchAllKbs: (input as any).searchAllKbs,

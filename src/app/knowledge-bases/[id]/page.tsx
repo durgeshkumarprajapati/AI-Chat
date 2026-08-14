@@ -247,6 +247,13 @@ export default function KnowledgeBaseDetailPage() {
             + Add Existing Docs
           </button>
 
+          <Link
+            href="/web-sources"
+            className="px-3.5 py-2 rounded-xl bg-slate-900 border border-slate-800 text-xs font-semibold text-indigo-300 hover:bg-slate-800 transition-colors"
+          >
+            🌐 Add Web Source
+          </Link>
+
           <input
             type="file"
             ref={fileInputRef}

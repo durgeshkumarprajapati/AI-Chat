@@ -126,6 +126,7 @@ export class AnswerOrchestratorService {
     const cacheOptions = {
       userId: input.userId,
       knowledgeBaseId: input.searchAllKbs ? null : input.knowledgeBaseId || null,
+      sourceMode: input.sourceMode || 'documents_only',
       model: input.model || env.server?.LLM_PROVIDER || 'ollama',
       answerMode: requestedMode || 'GROUNDED',
       query: effectiveQuery,
@@ -187,9 +188,12 @@ export class AnswerOrchestratorService {
       };
     }
 
+    const sourceMode = input.sourceMode || 'documents_only';
+
     // 4. Primary Retrieval & Evidence Assessment
     const retResult = await this.retrievalService.retrieveContextWithTrace(input.userId, effectiveQuery, {
       knowledgeBaseId: input.searchAllKbs ? undefined : input.knowledgeBaseId,
+      sourceMode,
       queryVector: queryEmbedding.vector
     });
 
@@ -205,7 +209,19 @@ export class AnswerOrchestratorService {
     let chunks = retResult.chunks;
     let evidence = this.evidenceService.assessEvidence(input.question, chunks);
     let recoveryAttempted = false;
+
+    // Classify Answer Mode based on source types
+    const hasDoc = chunks.some((c) => !c.sourceType || c.sourceType === 'DOCUMENT');
+    const hasWeb = chunks.some((c) => c.sourceType === 'WEB');
+
     let currentMode: AnswerMode = 'GROUNDED';
+    if (hasDoc && hasWeb) {
+      currentMode = 'MULTI_SOURCE_GROUNDED';
+    } else if (hasWeb) {
+      currentMode = 'WEB_GROUNDED';
+    } else if (hasDoc) {
+      currentMode = 'DOCUMENT_GROUNDED';
+    }
 
     // 5. Safe Retrieval Recovery (1-step Query Reformulation if evidence is weak)
     const maxRecovery = env.server?.RAG_MAX_RECOVERY_ATTEMPTS ?? 1;
@@ -216,7 +232,8 @@ export class AnswerOrchestratorService {
 
       if (cleanRecoveryQuery && cleanRecoveryQuery !== effectiveQuery.toLowerCase()) {
         const recResult = await this.retrievalService.retrieveContextWithTrace(input.userId, cleanRecoveryQuery, {
-          knowledgeBaseId: input.searchAllKbs ? undefined : input.knowledgeBaseId
+          knowledgeBaseId: input.searchAllKbs ? undefined : input.knowledgeBaseId,
+          sourceMode
         });
         latencyTrace.recoveryLatencyMs = Date.now() - recStart;
 
@@ -329,10 +346,18 @@ export class AnswerOrchestratorService {
     contextMessagesCount = 0
   ): Promise<void> {
     if (input.skipCache) return;
-    if ((mode !== 'GROUNDED' && mode !== 'RETRIEVAL_RECOVERY') || !answer.trim() || citations.length === 0) return;
+    const isGroundedMode =
+      mode === 'GROUNDED' ||
+      mode === 'DOCUMENT_GROUNDED' ||
+      mode === 'WEB_GROUNDED' ||
+      mode === 'MULTI_SOURCE_GROUNDED' ||
+      mode === 'RETRIEVAL_RECOVERY';
+    if (!isGroundedMode || !answer.trim() || citations.length === 0) return;
+
     const cacheOptions = {
       userId: input.userId,
       knowledgeBaseId: input.searchAllKbs ? null : input.knowledgeBaseId || null,
+      sourceMode: input.sourceMode || 'documents_only',
       model: input.model || env.server?.LLM_PROVIDER || 'ollama',
       answerMode: mode,
       query: input.question,

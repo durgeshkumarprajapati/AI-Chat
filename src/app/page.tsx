@@ -150,6 +150,17 @@ export default function HomePage() {
           <p className="text-xs text-slate-500 font-mono">Scoped Collections</p>
         </div>
 
+        <Link href="/web-sources" className="rounded-2xl bg-slate-900 border border-slate-800 p-5 space-y-3 shadow-xl hover:border-indigo-500 transition-all block">
+          <div className="flex items-center justify-between text-slate-400">
+            <span className="text-xs font-semibold uppercase tracking-wider">Web Sources</span>
+            <span className="text-xl">🌐</span>
+          </div>
+          <div className="text-3xl font-bold text-cyan-400">
+            {loading ? <span className="animate-pulse">...</span> : 'Active'}
+          </div>
+          <p className="text-xs text-indigo-400 font-mono underline">Manage Sources ↗</p>
+        </Link>
+
         <div className="rounded-2xl bg-slate-900 border border-slate-800 p-5 space-y-3 shadow-xl">
           <div className="flex items-center justify-between text-slate-400">
             <span className="text-xs font-semibold uppercase tracking-wider">Total Documents</span>

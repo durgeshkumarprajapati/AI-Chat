@@ -127,6 +127,10 @@ export class RetrievalService {
     const vectorStr = `[${questionVector.join(',')}]`;
 
     const vectorStart = Date.now();
+    const sourceMode = options?.sourceMode || 'documents_only';
+    const isWebOnly = sourceMode === 'web_only';
+    const isDocOnly = sourceMode === 'documents_only';
+
     let vectorMs = 0;
     const vectorSearch = options?.knowledgeBaseId
       ? prisma.$queryRaw<
@@ -140,6 +144,9 @@ export class RetrievalService {
             tokenCount: number;
             metadata: Record<string, unknown>;
             similarity: number;
+            sourceType: 'DOCUMENT' | 'WEB';
+            webUrl?: string;
+            canonicalUrl?: string;
           }>
         >`
           SELECT 
@@ -151,11 +158,16 @@ export class RetrievalService {
             dc.content,
             dc.token_count as "tokenCount",
             dc.metadata,
+            d.source_type as "sourceType",
+            d.web_url as "webUrl",
+            d.canonical_url as "canonicalUrl",
             (1 - (dc.embedding <=> ${vectorStr}::vector)) as similarity
           FROM document_chunks dc
           INNER JOIN documents d ON d.id = dc.document_id
           WHERE d.user_id = ${userId} 
             AND dc.embedding IS NOT NULL
+            AND (${!isDocOnly} OR d.source_type = 'DOCUMENT' OR d.source_type IS NULL)
+            AND (${!isWebOnly} OR d.source_type = 'WEB')
             AND EXISTS (
               SELECT 1 FROM knowledge_base_documents kbd
               WHERE kbd.document_id = d.id AND kbd.knowledge_base_id = ${options.knowledgeBaseId}
@@ -174,6 +186,9 @@ export class RetrievalService {
             tokenCount: number;
             metadata: Record<string, unknown>;
             similarity: number;
+            sourceType: 'DOCUMENT' | 'WEB';
+            webUrl?: string;
+            canonicalUrl?: string;
           }>
         >`
           SELECT 
@@ -185,11 +200,16 @@ export class RetrievalService {
             dc.content,
             dc.token_count as "tokenCount",
             dc.metadata,
+            d.source_type as "sourceType",
+            d.web_url as "webUrl",
+            d.canonical_url as "canonicalUrl",
             (1 - (dc.embedding <=> ${vectorStr}::vector)) as similarity
           FROM document_chunks dc
           INNER JOIN documents d ON d.id = dc.document_id
           WHERE d.user_id = ${userId} 
             AND dc.embedding IS NOT NULL
+            AND (${!isDocOnly} OR d.source_type = 'DOCUMENT' OR d.source_type IS NULL)
+            AND (${!isWebOnly} OR d.source_type = 'WEB')
           ORDER BY dc.embedding <=> ${vectorStr}::vector ASC
           LIMIT ${vectorK}
         `;
@@ -207,6 +227,9 @@ export class RetrievalService {
       tokenCount: number;
       metadata: Record<string, unknown>;
       rank: number;
+      sourceType: 'DOCUMENT' | 'WEB';
+      webUrl?: string;
+      canonicalUrl?: string;
     }>> = (async () => {
       try {
         return options?.knowledgeBaseId
@@ -221,6 +244,9 @@ export class RetrievalService {
               tokenCount: number;
               metadata: Record<string, unknown>;
               rank: number;
+              sourceType: 'DOCUMENT' | 'WEB';
+              webUrl?: string;
+              canonicalUrl?: string;
             }>
           >`
             SELECT 
@@ -232,11 +258,16 @@ export class RetrievalService {
               dc.content,
               dc.token_count as "tokenCount",
               dc.metadata,
+              d.source_type as "sourceType",
+              d.web_url as "webUrl",
+              d.canonical_url as "canonicalUrl",
               ts_rank_cd(to_tsvector('english', dc.content), plainto_tsquery('english', ${question})) as rank
             FROM document_chunks dc
             INNER JOIN documents d ON d.id = dc.document_id
             WHERE d.user_id = ${userId} 
               AND to_tsvector('english', dc.content) @@ plainto_tsquery('english', ${question})
+              AND (${!isDocOnly} OR d.source_type = 'DOCUMENT' OR d.source_type IS NULL)
+              AND (${!isWebOnly} OR d.source_type = 'WEB')
               AND EXISTS (
                 SELECT 1 FROM knowledge_base_documents kbd
                 WHERE kbd.document_id = d.id AND kbd.knowledge_base_id = ${options.knowledgeBaseId}
@@ -255,6 +286,9 @@ export class RetrievalService {
               tokenCount: number;
               metadata: Record<string, unknown>;
               rank: number;
+              sourceType: 'DOCUMENT' | 'WEB';
+              webUrl?: string;
+              canonicalUrl?: string;
             }>
           >`
             SELECT 
@@ -266,11 +300,16 @@ export class RetrievalService {
               dc.content,
               dc.token_count as "tokenCount",
               dc.metadata,
+              d.source_type as "sourceType",
+              d.web_url as "webUrl",
+              d.canonical_url as "canonicalUrl",
               ts_rank_cd(to_tsvector('english', dc.content), plainto_tsquery('english', ${question})) as rank
             FROM document_chunks dc
             INNER JOIN documents d ON d.id = dc.document_id
             WHERE d.user_id = ${userId} 
               AND to_tsvector('english', dc.content) @@ plainto_tsquery('english', ${question})
+              AND (${!isDocOnly} OR d.source_type = 'DOCUMENT' OR d.source_type IS NULL)
+              AND (${!isWebOnly} OR d.source_type = 'WEB')
             ORDER BY rank DESC
             LIMIT ${keywordK}
           `;
@@ -312,6 +351,9 @@ export class RetrievalService {
         keywordScore: 0,
         hybridScore: Number(vScore.toFixed(4)),
         retrievalSource: 'vector',
+        sourceType: (v as any).sourceType || 'DOCUMENT',
+        webUrl: (v as any).webUrl,
+        canonicalUrl: (v as any).canonicalUrl,
         metadata: v.metadata || {}
       });
     }
@@ -344,6 +386,9 @@ export class RetrievalService {
           keywordScore: normKScore,
           hybridScore: hScore,
           retrievalSource: 'keyword',
+          sourceType: (k as any).sourceType || 'DOCUMENT',
+          webUrl: (k as any).webUrl,
+          canonicalUrl: (k as any).canonicalUrl,
           metadata: k.metadata || {}
         });
       }

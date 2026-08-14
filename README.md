@@ -564,7 +564,21 @@ User → Chat API → Conversation Context → Hybrid Retrieval → Reranking
 RAG Pipeline → Latency Trace → Memory | Retrieval | Context | TTFT | LLM | Persistence | Async Evaluation
 ```
 
-Run `npm run test:rag-latency` against a running application for current measurements. CPU-only Ollama performance remains hardware/model dependent; selecting a smaller model is an optional deployment decision and is never changed automatically.
+## Phase 23 — Web RAG & External Knowledge Sources
+
+Phase 23 extends the platform's knowledge scope to include public web pages and documentation as an optional, explicitly selected knowledge source alongside uploaded PDF documents.
+
+### Key Capabilities
+- **Strict SSRF Security Protection**: Pre-fetch hostname validation and asynchronous DNS IP lookup rejecting loopback (`127.0.0.1`, `localhost`), private IPs (`10.0.0.0/8`, `172.16.0.0/12`, `192.168.0.0/16`, `169.254.0.0/16`), cloud metadata (`169.254.169.254`), and non-HTTP/HTTPS schemes.
+- **Unified Hybrid Vector Search**: Web pages are ingested as first-class `Document` records (`sourceType: WEB`) with token-aware chunking and pgvector embeddings.
+- **Explicit Knowledge Source Modes**: `📄 Uploaded Documents` (`documents_only`), `🌐 Web Sources` (`web_only`), and `🔎 Documents + Web` (`all_sources`). Defaults strictly to `documents_only`.
+- **Idempotent Refresh**: SHA-256 `contentHash` tracking avoids redundant chunking and embedding when re-fetching web pages.
+- **External Web Citations**: Citation markers (`🌐 Title • host.com ↗`) open original web pages safely in new browser tabs (`target="_blank" rel="noopener noreferrer"`).
+
+```bash
+# Automated Phase 23 Web RAG Test Suite
+npm run test:phase23
+```
 
 
 

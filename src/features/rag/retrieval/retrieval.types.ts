@@ -12,11 +12,15 @@ export interface RetrievedChunk {
   hybridScore?: number;
   rerankScore?: number;
   retrievalSource?: 'vector' | 'keyword' | 'hybrid';
+  sourceType?: 'DOCUMENT' | 'WEB';
+  webUrl?: string;
+  canonicalUrl?: string;
   metadata: Record<string, unknown>;
 }
 
 export interface RetrievalOptions {
   knowledgeBaseId?: string;
+  sourceMode?: 'documents_only' | 'web_only' | 'all_sources';
   topK?: number;
   minSimilarity?: number;
   vectorK?: number;

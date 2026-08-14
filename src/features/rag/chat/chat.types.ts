@@ -8,6 +8,9 @@ export interface Citation {
   similarity: number;
   rerankScore?: number;
   sourceType?: 'vector' | 'keyword' | 'hybrid';
+  knowledgeSourceType?: 'DOCUMENT' | 'WEB';
+  webUrl?: string;
+  canonicalUrl?: string;
   evidenceSnippet?: string;
   confidence?: number;
   confidenceLabel?: 'Strong' | 'Moderate' | 'Limited';

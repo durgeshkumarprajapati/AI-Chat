@@ -3,6 +3,9 @@ import { RetrievedChunk } from '../retrieval/retrieval.types';
 
 export type AnswerMode =
   | 'GROUNDED'
+  | 'DOCUMENT_GROUNDED'
+  | 'WEB_GROUNDED'
+  | 'MULTI_SOURCE_GROUNDED'
   | 'RETRIEVAL_RECOVERY'
   | 'GENERAL_KNOWLEDGE'
   | 'NO_DOCUMENT_EVIDENCE'
@@ -51,6 +54,7 @@ export interface OrchestrationInput {
   question: string;
   conversationId?: string;
   knowledgeBaseId?: string;
+  sourceMode?: 'documents_only' | 'web_only' | 'all_sources';
   allowGeneralKnowledge?: boolean;
   requestedAnswerMode?: AnswerMode;
   searchAllKbs?: boolean;

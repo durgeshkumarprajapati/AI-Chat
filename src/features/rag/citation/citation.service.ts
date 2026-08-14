@@ -90,6 +90,9 @@ export class CitationService {
         similarity: Number(chunk.similarity.toFixed(4)),
         rerankScore: chunk.rerankScore ? Number(chunk.rerankScore.toFixed(4)) : undefined,
         sourceType: chunk.retrievalSource || 'hybrid',
+        knowledgeSourceType: chunk.sourceType || 'DOCUMENT',
+        webUrl: chunk.webUrl,
+        canonicalUrl: chunk.canonicalUrl,
         evidenceSnippet: this.createEvidenceSnippet(chunk.content, query),
         confidence,
         confidenceLabel: label

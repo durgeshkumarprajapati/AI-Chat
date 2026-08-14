@@ -203,10 +203,17 @@ User Question: ${firstQuestion}`;
       const cleanTitle = generatedTitle?.trim().replace(/^["']|["']$/g, '').slice(0, 60);
 
       if (cleanTitle && cleanTitle.length > 0) {
-        await prisma.conversation.update({
-          where: { id: conversationId },
-          data: { title: cleanTitle }
-        });
+        try {
+          const exists = await prisma.conversation.findUnique({ where: { id: conversationId }, select: { id: true } });
+          if (exists) {
+            await prisma.conversation.update({
+              where: { id: conversationId },
+              data: { title: cleanTitle }
+            });
+          }
+        } catch {
+          // Ignore if conversation was deleted during async title generation
+        }
       }
     } catch (err) {
       console.warn('[ConversationContext] Failed to generate title:', err);

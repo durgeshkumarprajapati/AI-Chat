@@ -119,8 +119,15 @@ const serverEnvSchema = z
     DOCUMENT_CHUNK_OVERLAP: z
       .coerce.number()
       .int()
-      .min(0, { message: 'DOCUMENT_CHUNK_OVERLAP must be 0 or greater' })
-      .default(120),
+      .min(0)
+      .default(150),
+    WEB_RAG_ENABLED: z.coerce.boolean().default(true),
+    WEB_FETCH_TIMEOUT_MS: z.coerce.number().int().positive().default(10000),
+    WEB_FETCH_MAX_BYTES: z.coerce.number().int().positive().default(5000000),
+    WEB_MAX_REDIRECTS: z.coerce.number().int().min(0).max(10).default(3),
+    WEB_MAX_SOURCES_PER_USER: z.coerce.number().int().positive().default(100),
+    WEB_MAX_SOURCES_PER_KB: z.coerce.number().int().positive().default(50),
+    WEB_DEFAULT_SOURCE_MODE: z.enum(['documents', 'web', 'all']).default('documents'),
     CONVERSATION_MAX_MESSAGES: z
       .coerce.number()
       .int()

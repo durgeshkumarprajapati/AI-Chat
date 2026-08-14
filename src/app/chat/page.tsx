@@ -71,6 +71,7 @@ export default function ChatPage() {
   const [userFeedbackState, setUserFeedbackState] = useState<Record<string, { rating: 'POSITIVE' | 'NEGATIVE'; reason?: string }>>({});
   const [feedbackToast, setFeedbackToast] = useState<string | null>(null);
   const [activeModalCitation, setActiveModalCitation] = useState<Citation | null>(null);
+  const [sourceMode, setSourceMode] = useState<'documents_only' | 'web_only' | 'all_sources'>('documents_only');
 
   const handleFeedbackSubmit = async (messageId: string, rating: 'POSITIVE' | 'NEGATIVE', reason?: string) => {
     if (!activeConversationId) return;
@@ -282,6 +283,7 @@ export default function ChatPage() {
           conversationId: activeConversationId || undefined,
           question: q,
           knowledgeBaseId: options?.searchAllKbs ? undefined : selectedKbId || undefined,
+          sourceMode: options?.allowGeneralKnowledge ? 'all_sources' : sourceMode,
           allowGeneralKnowledge: options?.allowGeneralKnowledge,
           searchAllKbs: options?.searchAllKbs
         }),
@@ -640,6 +642,20 @@ export default function ChatPage() {
             <span className="font-bold text-white truncate max-w-[200px]">{activeTitle}</span>
             <span className="text-slate-600">•</span>
             <span className="text-indigo-400 font-mono truncate">{selectedKbName}</span>
+
+            {/* Knowledge Source Selector */}
+            <div className="flex items-center space-x-1.5 bg-slate-900 border border-slate-800 rounded-lg px-2.5 py-1">
+              <span className="text-[10px] text-slate-400 font-medium uppercase tracking-wider">Source:</span>
+              <select
+                value={sourceMode}
+                onChange={(e) => setSourceMode(e.target.value as any)}
+                className="bg-transparent text-xs text-indigo-300 font-semibold focus:outline-none cursor-pointer"
+              >
+                <option value="documents_only" className="bg-slate-900 text-slate-200">📄 Uploaded Documents</option>
+                <option value="web_only" className="bg-slate-900 text-slate-200">🌐 Web Sources</option>
+                <option value="all_sources" className="bg-slate-900 text-slate-200">🔎 Documents + Web</option>
+              </select>
+            </div>
 
             {/* Context Indicator Pill */}
             {messages.length > 0 && (

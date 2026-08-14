@@ -128,7 +128,7 @@ export class ChatService {
 
     if (orchResult.cacheHit) {
       // Exact Cache Hit — validate cached citations
-      citations = await citationService.validateCitations(citations, userId, targetKbId, retrievedChunks).catch(() => citations);
+      citations = await citationService.validateCitations(citations, userId, targetKbId, retrievedChunks, orchestrationInput.sourceMode).catch(() => citations);
     } else if (orchResult.answerMode === 'NO_DOCUMENT_EVIDENCE' || orchResult.answerMode === 'CLARIFICATION_REQUIRED' || orchResult.answerMode === 'GENERAL_KNOWLEDGE') {
       // Answer pre-constructed by orchestrator
       citations = [];
@@ -165,7 +165,7 @@ export class ChatService {
       llmLatencyMs = Date.now() - llmStart;
 
       const citationResult = citationService.mapCitationsToAnswer(answer, retrievedChunks, trimmedQuestion);
-      citations = await citationService.validateCitations(citationResult.citations, userId, targetKbId, retrievedChunks);
+      citations = await citationService.validateCitations(citationResult.citations, userId, targetKbId, retrievedChunks, orchestrationInput.sourceMode);
 
       // Cache completed answer for exact matches
       await this.orchestratorService
@@ -455,7 +455,7 @@ export class ChatService {
       llmGenerationMs = receivedFirstToken ? Date.now() - llmStart - llmFirstTokenMs : Date.now() - llmStart;
 
       const citationResult = citationService.mapCitationsToAnswer(answer.trim(), retrievedChunks, trimmedQuestion);
-      citations = await citationService.validateCitations(citationResult.citations, userId, targetKbId, retrievedChunks);
+      citations = await citationService.validateCitations(citationResult.citations, userId, targetKbId, retrievedChunks, orchestrationInput.sourceMode);
 
       // Cache exact answer
       this.orchestratorService

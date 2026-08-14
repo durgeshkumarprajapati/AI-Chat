@@ -19,6 +19,9 @@ export async function POST(req: NextRequest) {
       conversationId: body.conversationId,
       question: body.question,
       knowledgeBaseId: body.knowledgeBaseId,
+      sourceMode: body.sourceMode,
+      targetWebsite: body.targetWebsite,
+      allowedSources: body.allowedSources,
       allowGeneralKnowledge: body.allowGeneralKnowledge,
       requestedAnswerMode: body.requestedAnswerMode,
       searchAllKbs: body.searchAllKbs

@@ -29,7 +29,8 @@ const PHASES: PhaseConfig[] = [
   { phase: 26, name: 'Multimodal Document RAG', command: 'npm run test:phase26' },
   { phase: 27, name: 'Production Auth, RBAC & User Workspace', command: 'npm run test:phase27' },
   { phase: 28, name: 'Production Identity & Admin Workspace', command: 'npm run test:phase28' },
-  { phase: 29, name: 'Voice Assistant & Location-Aware City Explorer', command: 'npm run test:phase29' }
+  { phase: 29, name: 'Voice Assistant & Location-Aware City Explorer', command: 'npm run test:phase29' },
+  { phase: 30, name: 'Session, User & City State Synchronization', command: 'npm run test:phase30' }
 ];
 
 async function runAllPhases() {

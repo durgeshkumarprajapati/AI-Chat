@@ -2,6 +2,7 @@
 
 import React, { useEffect, useState } from 'react';
 import { useRouter } from 'next/navigation';
+import { useWorkspace } from '@/context/WorkspaceContext';
 
 interface UserProfile {
   id: string;
@@ -27,6 +28,7 @@ interface SessionItem {
 
 export default function AccountPage() {
   const router = useRouter();
+  const { logout } = useWorkspace();
   const [profile, setProfile] = useState<UserProfile | null>(null);
   const [sessions, setSessions] = useState<SessionItem[]>([]);
   const [loading, setLoading] = useState(true);
@@ -66,8 +68,7 @@ export default function AccountPage() {
       if (!data.success) throw new Error(data.error?.message || 'Revocation failed');
 
       if (revokeAll) {
-        await fetch('/api/auth/logout', { method: 'POST' });
-        router.push('/login');
+        await logout();
         return;
       }
 
@@ -80,9 +81,7 @@ export default function AccountPage() {
   };
 
   const handleLogout = async () => {
-    await fetch('/api/auth/logout', { method: 'POST' });
-    router.push('/login');
-    router.refresh();
+    await logout();
   };
 
   if (loading) {

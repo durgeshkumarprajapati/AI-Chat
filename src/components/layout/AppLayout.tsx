@@ -4,30 +4,16 @@ import Link from 'next/link';
 import { usePathname } from 'next/navigation';
 import { useState, useEffect } from 'react';
 import { ProductTour } from '../tour/ProductTour';
+import { useWorkspace } from '@/context/WorkspaceContext';
 
 export function AppLayout({ children }: { children: React.ReactNode }) {
   const pathname = usePathname();
+  const { currentUser, activeCity } = useWorkspace();
   const [isTourOpen, setIsTourOpen] = useState(false);
   const [isMobileMenuOpen, setIsMobileMenuOpen] = useState(false);
   const [healthStatus, setHealthStatus] = useState<'ok' | 'degraded' | 'loading'>('loading');
-  const [currentUser, setCurrentUser] = useState<{ name: string; email: string; role: string; avatarUrl?: string | null } | null>(null);
-
-  const [activeCity, setActiveCity] = useState<string>('Vadodara');
 
   useEffect(() => {
-    // Fetch canonical user identity from /api/auth/me
-    fetch('/api/auth/me')
-      .then((res) => res.json())
-      .then((data) => {
-        if (data.authenticated && data.user) {
-          setCurrentUser(data.user);
-        }
-      })
-      .catch(() => {});
-
-    const city = localStorage.getItem('docai_preferred_city') || 'Vadodara';
-    setActiveCity(city);
-
     // Check if tour was completed
     const completed = localStorage.getItem('docai_tour_completed');
     if (!completed) {

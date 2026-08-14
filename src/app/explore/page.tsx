@@ -1,8 +1,9 @@
 'use client';
 
-import React, { useState, Suspense } from 'react';
+import React, { useState, Suspense, Component, ErrorInfo, ReactNode } from 'react';
 import { useSearchParams, useRouter } from 'next/navigation';
 import Link from 'next/link';
+import { useWorkspace } from '@/context/WorkspaceContext';
 
 interface CategoryQuery {
   category: string;
@@ -11,10 +12,61 @@ interface CategoryQuery {
   prompts: string[];
 }
 
+// React Error Boundary for City Explorer rendering safety
+interface ErrorBoundaryProps {
+  children: ReactNode;
+}
+
+interface ErrorBoundaryState {
+  hasError: boolean;
+  error?: Error;
+}
+
+class CityExplorerErrorBoundary extends Component<ErrorBoundaryProps, ErrorBoundaryState> {
+  constructor(props: ErrorBoundaryProps) {
+    super(props);
+    this.state = { hasError: false };
+  }
+
+  static getDerivedStateFromError(error: Error): ErrorBoundaryState {
+    return { hasError: true, error };
+  }
+
+  componentDidCatch(error: Error, errorInfo: ErrorInfo) {
+    console.error('CityExplorer caught runtime error:', error, errorInfo);
+  }
+
+  render() {
+    if (this.state.hasError) {
+      return (
+        <div className="min-h-screen bg-slate-950 text-slate-100 p-8 flex flex-col items-center justify-center space-y-4">
+          <div className="text-4xl">📍</div>
+          <h2 className="text-xl font-bold text-white">City Explorer Unavailable</h2>
+          <p className="text-xs text-slate-400 max-w-md text-center">
+            Something went wrong while rendering city exploration data. Please select a city or return to your workspace dashboard.
+          </p>
+          <div className="flex items-center space-x-3 pt-2">
+            <Link
+              href="/dashboard"
+              className="px-4 py-2 bg-indigo-600 hover:bg-indigo-500 text-white font-medium text-xs rounded-xl shadow-lg transition"
+            >
+              Return to Dashboard
+            </Link>
+          </div>
+        </div>
+      );
+    }
+    return this.props.children;
+  }
+}
+
 function CityExplorerContent() {
   const searchParams = useSearchParams();
   const router = useRouter();
-  const city = searchParams.get('city') || 'Vadodara';
+  const { activeCity } = useWorkspace();
+
+  const urlCity = searchParams.get('city');
+  const city = (urlCity && urlCity.trim()) ? urlCity.trim() : (activeCity || 'Vadodara');
 
   const [activeCategory, setActiveCategory] = useState<string>('All');
   const [searchTerm, setSearchTerm] = useState('');
@@ -108,17 +160,17 @@ function CityExplorerContent() {
   ];
 
   const handlePromptClick = (promptText: string) => {
-    // Navigate to Chat UI with pre-filled question and web_search source mode
     router.push(`/chat?q=${encodeURIComponent(promptText)}&sourceMode=web_search`);
   };
 
   const filteredCategories = categories.filter((cat) => {
+    if (!cat) return false;
     if (activeCategory !== 'All' && cat.category !== activeCategory) return false;
     if (searchTerm) {
       const q = searchTerm.toLowerCase();
       return (
         cat.category.toLowerCase().includes(q) ||
-        cat.prompts.some((p) => p.toLowerCase().includes(q))
+        (cat.prompts && cat.prompts.some((p) => p.toLowerCase().includes(q)))
       );
     }
     return true;
@@ -192,7 +244,7 @@ function CityExplorerContent() {
                       : 'bg-slate-900 text-slate-400 hover:text-white border border-slate-800'
                   }`}
                 >
-                  <span>{cat.icon}</span>
+                  <span>{cat.icon || '📍'}</span>
                   <span>{cat.category}</span>
                 </button>
               ))}
@@ -208,7 +260,7 @@ function CityExplorerContent() {
               className="bg-slate-900/80 border border-slate-800 hover:border-slate-700/80 rounded-2xl p-6 shadow-xl space-y-4 transition"
             >
               <div className="flex items-center space-x-3 border-b border-slate-800/80 pb-3">
-                <span className="text-2xl p-2 rounded-xl bg-slate-950 border border-slate-800">{cat.icon}</span>
+                <span className="text-2xl p-2 rounded-xl bg-slate-950 border border-slate-800">{cat.icon || '📍'}</span>
                 <div>
                   <h3 className="text-sm font-semibold text-white">{cat.category}</h3>
                   <p className="text-[11px] text-slate-400 mt-0.5">{cat.description}</p>
@@ -216,7 +268,7 @@ function CityExplorerContent() {
               </div>
 
               <div className="space-y-2">
-                {cat.prompts.map((prompt, idx) => (
+                {(cat.prompts || []).map((prompt, idx) => (
                   <button
                     key={idx}
                     onClick={() => handlePromptClick(prompt)}
@@ -239,8 +291,10 @@ function CityExplorerContent() {
 
 export default function CityExplorerPage() {
   return (
-    <Suspense fallback={<div className="min-h-screen bg-slate-950 text-indigo-400 font-mono text-xs flex items-center justify-center">Loading City Explorer...</div>}>
-      <CityExplorerContent />
-    </Suspense>
+    <CityExplorerErrorBoundary>
+      <Suspense fallback={<div className="min-h-screen bg-slate-950 text-indigo-400 font-mono text-xs flex items-center justify-center">Loading City Explorer...</div>}>
+        <CityExplorerContent />
+      </Suspense>
+    </CityExplorerErrorBoundary>
   );
 }

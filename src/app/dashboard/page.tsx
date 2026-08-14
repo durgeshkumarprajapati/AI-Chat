@@ -2,47 +2,37 @@
 
 import React, { useEffect, useState } from 'react';
 import Link from 'next/link';
-
-interface WeatherData {
-  city: string;
-  temperature: number;
-  feelsLike: number;
-  condition: string;
-  humidity: number;
-  windSpeed: number;
-  high: number;
-  low: number;
-  observedAt: string;
-}
+import { useWorkspace } from '@/context/WorkspaceContext';
+import { useRouter } from 'next/navigation';
 
 export default function UserDashboardPage() {
+  const router = useRouter();
+  const {
+    currentUser,
+    activeCity,
+    activeRegion,
+    weather,
+    locationStatus,
+    updateCity,
+    requestGeolocation
+  } = useWorkspace();
+
   const [stats, setStats] = useState<{ docCount: number; convCount: number; kbCount: number } | null>(null);
   const [loading, setLoading] = useState(true);
-  const [userName, setUserName] = useState<string>('User');
-
-  // Location & Weather state
-  const [activeCity, setActiveCity] = useState<string>('Vadodara');
-  const [activeRegion, setActiveRegion] = useState<string>('Gujarat');
-  const [weather, setWeather] = useState<WeatherData | null>(null);
-  const [locationStatus, setLocationStatus] = useState<'prompt' | 'granted' | 'denied' | 'loading'>('prompt');
   const [showCityModal, setShowCityModal] = useState(false);
   const [manualCityInput, setManualCityInput] = useState('');
 
+  const userName = currentUser?.name || currentUser?.email.split('@')[0] || 'User';
   const popularCities = ['Vadodara', 'Ahmedabad', 'Surat', 'Rajkot', 'Mumbai', 'Delhi', 'Bengaluru', 'Pune'];
 
   useEffect(() => {
     async function loadDashboardData() {
       try {
-        const [meRes, docsRes, convsRes, kbsRes] = await Promise.all([
-          fetch('/api/auth/me').then((r) => r.json()).catch(() => ({ authenticated: false })),
+        const [docsRes, convsRes, kbsRes] = await Promise.all([
           fetch('/api/documents').then((r) => r.json()).catch(() => ({ data: [] })),
           fetch('/api/conversations').then((r) => r.json()).catch(() => ({ data: [] })),
           fetch('/api/knowledge-bases').then((r) => r.json()).catch(() => ({ data: [] }))
         ]);
-
-        if (meRes.authenticated && meRes.user) {
-          setUserName(meRes.user.name || meRes.user.email.split('@')[0]);
-        }
 
         setStats({
           docCount: docsRes.data?.length || 0,
@@ -56,59 +46,16 @@ export default function UserDashboardPage() {
       }
     }
     loadDashboardData();
+  }, [currentUser]);
 
-    // Check stored preferred city or load default weather
-    const storedCity = localStorage.getItem('docai_preferred_city') || 'Vadodara';
-    setActiveCity(storedCity);
-    fetchWeather(storedCity);
-  }, []);
-
-  const fetchWeather = async (city: string) => {
-    try {
-      const res = await fetch(`/api/weather?city=${encodeURIComponent(city)}`);
-      const data = await res.json();
-      if (data.success && data.data) {
-        setWeather(data.data);
-      }
-    } catch {}
-  };
-
-  const requestGeolocation = () => {
-    if (typeof window === 'undefined' || !('geolocation' in navigator)) {
-      setLocationStatus('denied');
-      return;
-    }
-
-    setLocationStatus('loading');
-    navigator.geolocation.getCurrentPosition(
-      async (pos) => {
-        try {
-          const res = await fetch(`/api/location/reverse?lat=${pos.coords.latitude}&lon=${pos.coords.longitude}`);
-          const data = await res.json();
-          if (data.success && data.data) {
-            const loc = data.data;
-            setActiveCity(loc.city);
-            setActiveRegion(loc.region);
-            localStorage.setItem('docai_preferred_city', loc.city);
-            fetchWeather(loc.city);
-            setLocationStatus('granted');
-          }
-        } catch {
-          setLocationStatus('denied');
-        }
-      },
-      () => {
-        setLocationStatus('denied');
-      },
-      { timeout: 8000 }
-    );
-  };
-
-  const handleSelectCity = (city: string) => {
-    setActiveCity(city);
-    localStorage.setItem('docai_preferred_city', city);
-    fetchWeather(city);
+  const handleSelectCity = async (city: string) => {
+    await updateCity(city);
     setShowCityModal(false);
+  };
+
+  const handleExplore = (targetCity?: string) => {
+    const destination = targetCity || activeCity;
+    router.push(`/explore?city=${encodeURIComponent(destination)}`);
   };
 
   return (
@@ -181,13 +128,13 @@ export default function UserDashboardPage() {
               </div>
             </div>
 
-            <Link
-              href={`/explore?city=${encodeURIComponent(activeCity)}`}
+            <button
+              onClick={() => handleExplore(activeCity)}
               className="px-4 py-2.5 bg-indigo-600 hover:bg-indigo-500 text-white font-semibold text-xs rounded-xl shadow-lg shadow-indigo-600/20 transition flex items-center space-x-1.5 whitespace-nowrap"
             >
               <span>🌍</span>
               <span>Explore {activeCity}</span>
-            </Link>
+            </button>
           </div>
         </div>
 
@@ -244,14 +191,14 @@ export default function UserDashboardPage() {
             <p className="text-xs text-slate-400">Upload PDFs, view page count, status, reprocess files, or manage document chunking.</p>
           </Link>
 
-          <Link
-            href={`/explore?city=${encodeURIComponent(activeCity)}`}
-            className="p-5 rounded-2xl bg-slate-900/80 hover:bg-slate-800/80 border border-slate-800 hover:border-slate-700 text-left transition space-y-2 group"
+          <button
+            onClick={() => handleExplore(activeCity)}
+            className="p-5 rounded-2xl bg-slate-900/80 hover:bg-slate-800/80 border border-slate-800 hover:border-slate-700 text-left transition space-y-2 group w-full"
           >
             <div className="text-xs font-bold text-emerald-400 uppercase tracking-wider font-mono">City Explorer</div>
             <div className="text-sm font-semibold text-white group-hover:text-emerald-300">Explore {activeCity} →</div>
             <p className="text-xs text-slate-400">Discover places to visit, cuisine, culture, history, and shopping using Grounded Web Search.</p>
-          </Link>
+          </button>
         </div>
       </div>
 

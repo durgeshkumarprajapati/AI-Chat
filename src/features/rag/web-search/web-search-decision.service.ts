@@ -107,11 +107,32 @@ export class WebSearchDecisionService {
       'news',
       'weather',
       'market rate',
-      'best practices for'
+      'best practices for',
+      'info about',
+      'information about',
+      'tell me about',
+      'overview of',
+      'history of',
+      'attractions',
+      'vadodara',
+      'city',
+      'क्या है',
+      'बताओ',
+      'जानकारी',
+      'के बारे में'
     ];
 
     for (const kw of temporalWebKeywords) {
       if (lower.includes(kw)) {
+        if (refersToDoc) {
+          return {
+            classification: 'MULTI_SOURCE',
+            shouldSearchWeb: true,
+            shouldSearchDocs: true,
+            confidence: 0.9,
+            reasoning: `Question references document content and temporal web keyword "${kw}".`
+          };
+        }
         return {
           classification: 'WEB_REQUIRED',
           shouldSearchWeb: true,

@@ -225,11 +225,12 @@ export class AnswerOrchestratorService {
       chunks = searchRes.chunks;
     } else if (sourceMode === 'auto') {
       const decisionStart = Date.now();
-      const decision = webSearchDecisionService.classifyQuery(effectiveQuery, 'auto', false);
+      let decision = webSearchDecisionService.classifyQuery(effectiveQuery, 'auto', false);
       latencyTrace.queryClassificationMs = Date.now() - decisionStart;
 
       let docChunks: RetrievedChunk[] = [];
       let webChunks: RetrievedChunk[] = [];
+      let hasStrongDoc = false;
 
       if (decision.shouldSearchDocs) {
         const retResult = await this.retrievalService.retrieveContextWithTrace(input.userId, effectiveQuery, {
@@ -244,9 +245,23 @@ export class AnswerOrchestratorService {
           latencyTrace.retrievalMs = retResult.trace.metrics.totalMs;
         }
         docChunks = retResult.chunks;
+
+        if (docChunks.length > 0) {
+          const docEvidence = this.evidenceService.assessEvidence(input.question, docChunks);
+          hasStrongDoc = docEvidence.hasStrongEvidence;
+        }
       }
 
-      if (decision.shouldSearchWeb && (decision.classification === 'WEB_REQUIRED' || decision.classification === 'MULTI_SOURCE' || docChunks.length === 0)) {
+      decision = webSearchDecisionService.classifyQuery(effectiveQuery, 'auto', hasStrongDoc);
+
+      const needWeb =
+        decision.shouldSearchWeb &&
+        (decision.classification === 'WEB_REQUIRED' ||
+          decision.classification === 'MULTI_SOURCE' ||
+          decision.classification === 'WEB_OPTIONAL' ||
+          !hasStrongDoc);
+
+      if (needWeb) {
         const searchRes = await webSearchService.executeWebSearch(input.userId, effectiveQuery, {
           allowedSources: input.allowedSources
         });
@@ -374,7 +389,12 @@ export class AnswerOrchestratorService {
       latencyTrace.totalMs = Date.now() - startTime;
       const actions: UserAction[] = ['GENERAL_KNOWLEDGE', 'SEARCH_ALL_KNOWLEDGE_BASES', 'REFINE_QUERY'];
 
-      const fallbackText = "I couldn't find enough relevant information in your uploaded documents to answer that question.";
+      let fallbackText = "I couldn't find enough relevant information in your uploaded documents to answer that question.";
+      if (sourceMode === 'auto') {
+        fallbackText = "I couldn't find enough reliable information in your documents or available web sources to answer this accurately.";
+      } else if (sourceMode === 'web_only' || sourceMode === 'web_search' || sourceMode === 'web_discovery') {
+        fallbackText = "I couldn't find enough relevant information on the web to answer that question.";
+      }
 
       return {
         conversationId: input.conversationId || '',

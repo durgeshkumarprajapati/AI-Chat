@@ -2,14 +2,19 @@ import { prisma } from '@/lib/prisma';
 import { env } from '@/config/env';
 import { randomBytes } from 'crypto';
 import { cookies } from 'next/headers';
-import { UserRole } from '@prisma/client';
+import { UserRole, AuthProvider, UserStatus } from '@prisma/client';
 
 export interface SessionUser {
   id: string;
   email: string;
   name?: string | null;
   role: UserRole;
+  authProvider: AuthProvider;
+  status: UserStatus;
+  emailVerified: boolean;
   avatarUrl?: string | null;
+  createdAt: Date;
+  lastLoginAt?: Date | null;
 }
 
 export class SessionService {
@@ -18,7 +23,10 @@ export class SessionService {
   /**
    * Creates a new authenticated session in PostgreSQL and returns the session token.
    */
-  public async createSession(userId: string): Promise<string> {
+  public async createSession(
+    userId: string,
+    metadata?: { ipAddress?: string; userAgent?: string; deviceInfo?: string }
+  ): Promise<string> {
     const sessionToken = randomBytes(32).toString('hex');
     const expiryDays = env.server?.SESSION_EXPIRY_DAYS ?? 7;
     const expiresAt = new Date(Date.now() + expiryDays * 24 * 60 * 60 * 1000);
@@ -27,9 +35,18 @@ export class SessionService {
       data: {
         userId,
         sessionToken,
+        ipAddress: metadata?.ipAddress || null,
+        userAgent: metadata?.userAgent || null,
+        deviceInfo: metadata?.deviceInfo || (metadata?.userAgent ? this.parseDeviceInfo(metadata.userAgent) : 'Browser'),
         expiresAt
       }
     });
+
+    // Update lastLoginAt
+    await prisma.user.update({
+      where: { id: userId },
+      data: { lastLoginAt: new Date() }
+    }).catch(() => {});
 
     return sessionToken;
   }
@@ -54,7 +71,7 @@ export class SessionService {
   }
 
   /**
-   * Validates a session token and returns the authenticated user if valid and unexpired.
+   * Validates a session token and returns the authenticated user if valid, active, and unexpired.
    */
   public async validateSession(sessionToken: string): Promise<SessionUser | null> {
     if (!sessionToken || !sessionToken.trim()) return null;
@@ -67,8 +84,13 @@ export class SessionService {
     if (!session) return null;
 
     if (session.expiresAt < new Date()) {
-      // Session expired — clean up asynchronously
       await prisma.session.delete({ where: { id: session.id } }).catch(() => {});
+      return null;
+    }
+
+    // Account status check (Disabled / Suspended accounts are immediately rejected)
+    if (session.user.status !== UserStatus.ACTIVE) {
+      await prisma.session.deleteMany({ where: { userId: session.user.id } }).catch(() => {});
       return null;
     }
 
@@ -77,16 +99,44 @@ export class SessionService {
       email: session.user.email,
       name: session.user.name,
       role: session.user.role,
-      avatarUrl: session.user.avatarUrl
+      authProvider: session.user.authProvider,
+      status: session.user.status,
+      emailVerified: session.user.emailVerified,
+      avatarUrl: session.user.avatarUrl,
+      createdAt: session.user.createdAt,
+      lastLoginAt: session.user.lastLoginAt
     };
   }
 
   /**
-   * Invalidate and delete an active session.
+   * Lists active sessions for a user.
    */
-  public async invalidateSession(sessionToken: string): Promise<void> {
-    if (!sessionToken) return;
-    await prisma.session.deleteMany({ where: { sessionToken } }).catch(() => {});
+  public async listUserSessions(userId: string, currentSessionToken?: string) {
+    const sessions = await prisma.session.findMany({
+      where: { userId, expiresAt: { gte: new Date() } },
+      orderBy: { createdAt: 'desc' }
+    });
+
+    return sessions.map((s) => ({
+      id: s.id,
+      deviceInfo: s.deviceInfo || 'Browser Session',
+      ipAddress: s.ipAddress || '127.0.0.1',
+      createdAt: s.createdAt,
+      expiresAt: s.expiresAt,
+      isCurrent: s.sessionToken === currentSessionToken
+    }));
+  }
+
+  /**
+   * Invalidate and delete an active session by token or ID.
+   */
+  public async invalidateSession(sessionTokenOrId: string): Promise<void> {
+    if (!sessionTokenOrId) return;
+    await prisma.session.deleteMany({
+      where: {
+        OR: [{ sessionToken: sessionTokenOrId }, { id: sessionTokenOrId }]
+      }
+    }).catch(() => {});
   }
 
   /**
@@ -94,6 +144,14 @@ export class SessionService {
    */
   public async invalidateAllUserSessions(userId: string): Promise<void> {
     await prisma.session.deleteMany({ where: { userId } }).catch(() => {});
+  }
+
+  private parseDeviceInfo(ua: string): string {
+    if (ua.includes('Chrome')) return 'Chrome / Desktop';
+    if (ua.includes('Firefox')) return 'Firefox / Desktop';
+    if (ua.includes('Safari')) return 'Safari / Mac';
+    if (ua.includes('Mobile')) return 'Mobile Browser';
+    return 'Browser Session';
   }
 }
 

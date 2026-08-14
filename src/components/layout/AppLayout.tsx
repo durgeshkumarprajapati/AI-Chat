@@ -10,8 +10,19 @@ export function AppLayout({ children }: { children: React.ReactNode }) {
   const [isTourOpen, setIsTourOpen] = useState(false);
   const [isMobileMenuOpen, setIsMobileMenuOpen] = useState(false);
   const [healthStatus, setHealthStatus] = useState<'ok' | 'degraded' | 'loading'>('loading');
+  const [currentUser, setCurrentUser] = useState<{ name: string; email: string; role: string; avatarUrl?: string | null } | null>(null);
 
   useEffect(() => {
+    // Fetch canonical user identity from /api/auth/me
+    fetch('/api/auth/me')
+      .then((res) => res.json())
+      .then((data) => {
+        if (data.authenticated && data.user) {
+          setCurrentUser(data.user);
+        }
+      })
+      .catch(() => {});
+
     // Check if tour was completed
     const completed = localStorage.getItem('docai_tour_completed');
     if (!completed) {
@@ -28,16 +39,23 @@ export function AppLayout({ children }: { children: React.ReactNode }) {
       .catch(() => setHealthStatus('degraded'));
   }, []);
 
+  const isAdmin = currentUser?.role === 'ADMIN';
+
   const navItems = [
     { name: 'Dashboard', href: '/dashboard', icon: '📊' },
     { name: 'RAG Chat', href: '/chat', icon: '💬', badge: 'Stream' },
     { name: 'Documents', href: '/documents', icon: '📁' },
     { name: 'Knowledge Bases', href: '/knowledge-bases', icon: '📚' },
     { name: 'My Account', href: '/account', icon: '👤' },
-    { name: 'Admin Dashboard', href: '/admin', icon: '👑', badge: 'ADMIN' },
-    { name: 'RAG Quality', href: '/rag-evaluation', icon: '📈' },
-    { name: 'RAG Inspector', href: '/rag-debug', icon: '🔍' },
-    { name: 'System Health', href: '/health', icon: '🩺' }
+    ...(isAdmin
+      ? [
+          { name: 'Admin Dashboard', href: '/admin', icon: '👑', badge: 'ADMIN' },
+          { name: 'Audit Logs', href: '/admin/audit-logs', icon: '📜', badge: 'ADMIN' },
+          { name: 'RAG Quality', href: '/rag-evaluation', icon: '📈' },
+          { name: 'RAG Inspector', href: '/rag-debug', icon: '🔍' },
+          { name: 'System Health', href: '/health', icon: '🩺' }
+        ]
+      : [])
   ];
 
   return (
@@ -112,9 +130,22 @@ export function AppLayout({ children }: { children: React.ReactNode }) {
             <span className="font-bold text-white text-lg">Document AI</span>
           </div>
 
-          <div className="hidden md:flex items-center space-x-2 text-xs font-mono text-slate-400">
-            <span className="text-slate-500">Workspace:</span>
-            <span className="px-2 py-0.5 rounded bg-slate-800 text-slate-300">Local Dev Pipeline</span>
+          <div className="hidden md:flex items-center space-x-3 text-xs">
+            {currentUser ? (
+              <Link href="/account" className="flex items-center space-x-2 px-3 py-1.5 rounded-full bg-slate-900 border border-slate-800 hover:border-slate-700 transition">
+                <div className="w-5 h-5 rounded-full bg-indigo-600 flex items-center justify-center text-[10px] font-bold text-white uppercase">
+                  {currentUser.name?.[0] || currentUser.email[0]}
+                </div>
+                <span className="font-medium text-slate-200">{currentUser.name || currentUser.email}</span>
+                <span className={`px-1.5 py-0.2 text-[9px] font-mono font-bold rounded ${currentUser.role === 'ADMIN' ? 'bg-rose-950 text-rose-300 border border-rose-800' : 'bg-indigo-950 text-indigo-300 border border-indigo-800'}`}>
+                  {currentUser.role}
+                </span>
+              </Link>
+            ) : (
+              <Link href="/login" className="px-3 py-1.5 rounded-lg bg-indigo-600 hover:bg-indigo-500 text-white font-medium">
+                Sign In
+              </Link>
+            )}
           </div>
 
           <div className="flex items-center space-x-3">

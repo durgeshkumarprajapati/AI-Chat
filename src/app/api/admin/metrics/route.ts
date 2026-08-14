@@ -4,6 +4,8 @@ import { prisma } from '@/lib/prisma';
 import { UserRole } from '@prisma/client';
 import { AppError } from '@/errors';
 
+export const dynamic = 'force-dynamic';
+
 export async function GET(req: NextRequest) {
   try {
     const authUser = await getAuthUser(req);

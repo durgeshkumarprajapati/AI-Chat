@@ -1,6 +1,6 @@
 import { prisma } from '@/lib/prisma';
 import { SessionUser, sessionService } from './session.service';
-import { UserRole } from '@prisma/client';
+import { UserRole, AuthProvider, UserStatus } from '@prisma/client';
 
 export interface GoogleUserProfile {
   googleId: string;
@@ -27,14 +27,17 @@ export class GoogleAuthService {
     });
 
     if (!user) {
-      // Create new USER with default role USER
+      // Create new USER with default role USER and authProvider GOOGLE
       user = await prisma.user.create({
         data: {
           email: profile.email.toLowerCase(),
           name: profile.name || profile.email.split('@')[0],
           googleId: profile.googleId,
           avatarUrl: profile.picture,
-          role: UserRole.USER
+          role: UserRole.USER,
+          authProvider: AuthProvider.GOOGLE,
+          status: UserStatus.ACTIVE,
+          emailVerified: true
         }
       });
     } else if (!user.googleId) {
@@ -55,7 +58,12 @@ export class GoogleAuthService {
         email: user.email,
         name: user.name,
         role: user.role,
-        avatarUrl: user.avatarUrl
+        authProvider: user.authProvider,
+        status: user.status,
+        emailVerified: user.emailVerified,
+        avatarUrl: user.avatarUrl,
+        createdAt: user.createdAt,
+        lastLoginAt: user.lastLoginAt
       },
       sessionToken
     };

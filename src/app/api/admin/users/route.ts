@@ -2,8 +2,11 @@ import { NextRequest, NextResponse } from 'next/server';
 import { getAuthUser, requireRole } from '@/lib/auth';
 import { prisma } from '@/lib/prisma';
 import { auditService } from '@/features/auth/audit.service';
-import { UserRole } from '@prisma/client';
+import { sessionService } from '@/features/auth/session.service';
+import { UserRole, UserStatus } from '@prisma/client';
 import { AppError } from '@/errors';
+
+export const dynamic = 'force-dynamic';
 
 export async function GET(req: NextRequest) {
   try {
@@ -27,10 +30,13 @@ export async function GET(req: NextRequest) {
         email: true,
         name: true,
         role: true,
+        authProvider: true,
+        status: true,
+        emailVerified: true,
         googleId: true,
         avatarUrl: true,
         createdAt: true,
-        updatedAt: true,
+        lastLoginAt: true,
         _count: {
           select: {
             documents: true,
@@ -53,7 +59,6 @@ export async function GET(req: NextRequest) {
         { status: error.statusCode }
       );
     }
-    console.error('GET /api/admin/users error:', error);
     return NextResponse.json(
       { success: false, error: { code: 'INTERNAL_SERVER_ERROR', message: 'Failed to fetch users.' } },
       { status: 500 }
@@ -68,30 +73,55 @@ export async function PATCH(req: NextRequest) {
 
     const body = await req.json().catch(() => ({}));
     const targetUserId = typeof body.userId === 'string' ? body.userId : '';
-    const newRole = body.role as UserRole;
+    const newRole = body.role as UserRole | undefined;
+    const newStatus = body.status as UserStatus | undefined;
 
-    if (!targetUserId || !['ADMIN', 'USER'].includes(newRole)) {
+    if (!targetUserId) {
       return NextResponse.json(
-        { success: false, error: { code: 'VALIDATION_ERROR', message: 'userId and valid role are required.' } },
+        { success: false, error: { code: 'VALIDATION_ERROR', message: 'targetUserId is required.' } },
         { status: 400 }
       );
     }
 
-    // Self-demotion safety check
-    if (targetUserId === authUser.id && newRole !== UserRole.ADMIN) {
+    const targetUser = await prisma.user.findUnique({ where: { id: targetUserId } });
+    if (!targetUser) {
       return NextResponse.json(
-        { success: false, error: { code: 'FORBIDDEN', message: 'Admin users cannot demote themselves.' } },
-        { status: 403 }
+        { success: false, error: { code: 'NOT_FOUND', message: 'User not found.' } },
+        { status: 404 }
       );
     }
 
+    // LAST ADMIN PROTECTION RULE
+    if (
+      (newRole === UserRole.USER && targetUser.role === UserRole.ADMIN) ||
+      (newStatus === UserStatus.DISABLED && targetUser.role === UserRole.ADMIN)
+    ) {
+      const activeAdminCount = await prisma.user.count({
+        where: { role: UserRole.ADMIN, status: UserStatus.ACTIVE }
+      });
+      if (activeAdminCount <= 1) {
+        return NextResponse.json(
+          { success: false, error: { code: 'FORBIDDEN', message: 'Cannot remove the final active administrator.' } },
+          { status: 403 }
+        );
+      }
+    }
+
+    const updateData: any = {};
+    if (newRole && ['ADMIN', 'USER'].includes(newRole)) updateData.role = newRole;
+    if (newStatus && ['ACTIVE', 'SUSPENDED', 'DISABLED'].includes(newStatus)) updateData.status = newStatus;
+
     const updatedUser = await prisma.user.update({
       where: { id: targetUserId },
-      data: { role: newRole },
-      select: { id: true, email: true, name: true, role: true }
+      data: updateData,
+      select: { id: true, email: true, name: true, role: true, status: true }
     });
 
-    await auditService.log(authUser.id, 'ROLE_CHANGE', 'USER', targetUserId, { newRole });
+    if (newStatus === UserStatus.DISABLED || newStatus === UserStatus.SUSPENDED) {
+      await sessionService.invalidateAllUserSessions(targetUserId);
+    }
+
+    await auditService.log(authUser.id, 'ADMIN_ACTION', 'USER', targetUserId, { newRole, newStatus });
 
     return NextResponse.json({
       success: true,
@@ -104,9 +134,8 @@ export async function PATCH(req: NextRequest) {
         { status: error.statusCode }
       );
     }
-    console.error('PATCH /api/admin/users error:', error);
     return NextResponse.json(
-      { success: false, error: { code: 'INTERNAL_SERVER_ERROR', message: 'Failed to update user role.' } },
+      { success: false, error: { code: 'INTERNAL_SERVER_ERROR', message: 'Failed to update user.' } },
       { status: 500 }
     );
   }

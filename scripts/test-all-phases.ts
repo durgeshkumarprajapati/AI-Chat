@@ -27,7 +27,8 @@ const PHASES: PhaseConfig[] = [
   { phase: 24, name: 'Web Discovery & Source Isolation', command: 'npm run test:phase24' },
   { phase: 25, name: 'Intelligent Web Search & Fusion', command: 'npm run test:phase25' },
   { phase: 26, name: 'Multimodal Document RAG', command: 'npm run test:phase26' },
-  { phase: 27, name: 'Production Auth, RBAC & User Workspace', command: 'npm run test:phase27' }
+  { phase: 27, name: 'Production Auth, RBAC & User Workspace', command: 'npm run test:phase27' },
+  { phase: 28, name: 'Production Identity & Admin Workspace', command: 'npm run test:phase28' }
 ];
 
 async function runAllPhases() {

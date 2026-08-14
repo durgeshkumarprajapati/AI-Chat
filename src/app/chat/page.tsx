@@ -78,6 +78,8 @@ export default function ChatPage() {
   const [targetWebsite, setTargetWebsite] = useState('');
   const [allowedSources, setAllowedSources] = useState<string[]>(['wikipedia', 'medium']);
   const [savingSourceUrl, setSavingSourceUrl] = useState<string | null>(null);
+  const [attachment, setAttachment] = useState<{ id: string; filename: string; mimeType: string; fileSize: number; storageKey: string } | null>(null);
+  const [uploading, setUploading] = useState(false);
   const [saveSuccessMsg, setSaveSuccessMsg] = useState<string | null>(null);
 
   const handleSaveDiscoveredSource = async (url: string) => {
@@ -991,32 +993,86 @@ export default function ChatPage() {
         </div>
 
         {/* Input Bar */}
-        <div className="p-4 border-t border-slate-800 bg-slate-950/60 flex items-center space-x-3 flex-shrink-0">
-          <textarea
-            value={question}
-            onChange={(e) => setQuestion(e.target.value)}
-            onKeyDown={handleKeyDown}
-            placeholder={streaming ? "Generating response..." : `Ask a question in scope of ${selectedKbName}...`}
-            disabled={loading || streaming}
-            rows={1}
-            className="flex-1 rounded-xl bg-slate-900 border border-slate-800 px-4 py-3 text-xs text-white placeholder-slate-500 focus:outline-none focus:border-indigo-500 resize-none disabled:opacity-50"
-          />
-          {streaming ? (
-            <button
-              onClick={handleStopGenerating}
-              className="px-5 py-3 rounded-xl bg-rose-600 hover:bg-rose-500 text-white font-semibold text-xs shadow-lg shadow-rose-600/20 transition-all flex-shrink-0"
-            >
-              Stop ⏹
-            </button>
-          ) : (
-            <button
-              onClick={() => handleSendMessage()}
-              disabled={loading || !question.trim()}
-              className="px-5 py-3 rounded-xl bg-indigo-600 hover:bg-indigo-500 disabled:opacity-40 text-white font-semibold text-xs shadow-lg shadow-indigo-600/20 transition-all flex-shrink-0"
-            >
-              Send →
-            </button>
+        <div className="p-4 border-t border-slate-800 bg-slate-950/60 flex flex-col space-y-2 flex-shrink-0">
+          {/* Attachment Preview Badge */}
+          {attachment && (
+            <div className="flex items-center justify-between px-3 py-1.5 rounded-lg bg-indigo-950/80 border border-indigo-800 text-xs text-indigo-300">
+              <div className="flex items-center space-x-2 truncate">
+                <span>📎</span>
+                <span className="font-medium truncate">{attachment.filename}</span>
+                <span className="text-[10px] text-indigo-400">({Math.round(attachment.fileSize / 1024)} KB)</span>
+              </div>
+              <button
+                onClick={() => setAttachment(null)}
+                className="text-indigo-400 hover:text-white text-xs px-1"
+              >
+                ✕
+              </button>
+            </div>
           )}
+
+          <div className="flex items-center space-x-3">
+            <label className="cursor-pointer px-3 py-3 rounded-xl bg-slate-900 border border-slate-800 hover:border-slate-700 text-slate-300 hover:text-white text-xs font-medium transition flex items-center space-x-1.5 flex-shrink-0">
+              <span>📎</span>
+              <span className="hidden sm:inline">Attach</span>
+              <input
+                type="file"
+                accept=".pdf,.png,.jpg,.jpeg,.webp,.txt,.md"
+                className="hidden"
+                disabled={loading || streaming || uploading}
+                onChange={async (e) => {
+                  const file = e.target.files?.[0];
+                  if (!file) return;
+                  setUploading(true);
+                  try {
+                    const fd = new FormData();
+                    fd.append('file', file);
+                    if (activeConversationId) fd.append('conversationId', activeConversationId);
+
+                    const res = await fetch('/api/chat/upload', {
+                      method: 'POST',
+                      body: fd
+                    });
+                    const data = await res.json();
+                    if (!res.ok || !data.success) {
+                      throw new Error(data.error?.message || 'Upload failed');
+                    }
+                    setAttachment(data.data.attachment);
+                  } catch (err) {
+                    alert(err instanceof Error ? err.message : 'Upload failed');
+                  } finally {
+                    setUploading(false);
+                  }
+                }}
+              />
+            </label>
+
+            <textarea
+              value={question}
+              onChange={(e) => setQuestion(e.target.value)}
+              onKeyDown={handleKeyDown}
+              placeholder={streaming ? "Generating response..." : uploading ? "Uploading attachment..." : `Ask a question in scope of ${selectedKbName}...`}
+              disabled={loading || streaming || uploading}
+              rows={1}
+              className="flex-1 rounded-xl bg-slate-900 border border-slate-800 px-4 py-3 text-xs text-white placeholder-slate-500 focus:outline-none focus:border-indigo-500 resize-none disabled:opacity-50"
+            />
+            {streaming ? (
+              <button
+                onClick={handleStopGenerating}
+                className="px-5 py-3 rounded-xl bg-rose-600 hover:bg-rose-500 text-white font-semibold text-xs shadow-lg shadow-rose-600/20 transition-all flex-shrink-0"
+              >
+                Stop ⏹
+              </button>
+            ) : (
+              <button
+                onClick={() => handleSendMessage()}
+                disabled={loading || uploading || (!question.trim() && !attachment)}
+                className="px-5 py-3 rounded-xl bg-indigo-600 hover:bg-indigo-500 disabled:opacity-50 text-white font-semibold text-xs shadow-lg shadow-indigo-600/20 transition-all flex-shrink-0"
+              >
+                {loading ? 'Sending...' : 'Send ✨'}
+              </button>
+            )}
+          </div>
         </div>
       </main>
 

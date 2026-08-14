@@ -36,7 +36,14 @@ export class ChatService {
 
   public async sendMessage(
     userId: string,
-    input: { conversationId?: string; question: string; knowledgeBaseId?: string }
+    input: {
+      conversationId?: string;
+      question: string;
+      knowledgeBaseId?: string;
+      sourceMode?: 'documents_only' | 'web_only' | 'all_sources' | 'web_discovery' | 'web_search' | 'auto';
+      targetWebsite?: string;
+      allowedSources?: string[];
+    }
   ): Promise<ChatResponse> {
     const trimmedQuestion = input.question?.trim();
     if (!trimmedQuestion) {

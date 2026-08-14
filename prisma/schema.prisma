@@ -36,6 +36,17 @@ enum FeedbackReason {
   OTHER
 }
 
+enum AuthProvider {
+  EMAIL
+  GOOGLE
+}
+
+enum UserStatus {
+  ACTIVE
+  SUSPENDED
+  DISABLED
+}
+
 enum UserRole {
   ADMIN
   USER
@@ -46,6 +57,10 @@ model User {
   email                String            @unique
   name                 String?
   role                 UserRole          @default(USER)
+  authProvider         AuthProvider      @default(EMAIL) @map("auth_provider")
+  status               UserStatus        @default(ACTIVE)
+  emailVerified        Boolean           @default(true) @map("email_verified")
+  lastLoginAt          DateTime?         @map("last_login_at")
   passwordHash         String?           @map("password_hash")
   googleId             String?           @unique @map("google_id")
   avatarUrl            String?           @map("avatar_url")
@@ -277,6 +292,9 @@ model Session {
   id           String   @id @default(uuid())
   userId       String   @map("user_id")
   sessionToken String   @unique @map("session_token")
+  ipAddress    String?  @map("ip_address")
+  userAgent    String?  @map("user_agent")
+  deviceInfo   String?  @map("device_info")
   expiresAt    DateTime @map("expires_at")
   createdAt    DateTime @default(now()) @map("created_at")
   updatedAt    DateTime @updatedAt @map("updated_at")

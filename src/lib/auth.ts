@@ -1,20 +1,30 @@
 import { NextRequest } from 'next/server';
 import { prisma } from './prisma';
 import { AuthenticationError, AuthorizationError } from '@/errors';
-import { UserRole } from '@prisma/client';
+import { UserRole, AuthProvider, UserStatus } from '@prisma/client';
 
 export interface AuthenticatedUser {
   id: string;
   email: string;
   name?: string | null;
   role: UserRole;
+  authProvider: AuthProvider;
+  status: UserStatus;
+  emailVerified: boolean;
+  avatarUrl?: string | null;
+  createdAt: Date;
+  lastLoginAt?: Date | null;
 }
 
 export const DEFAULT_DEV_USER: AuthenticatedUser = {
   id: '00000000-0000-4000-a000-000000000001',
   email: 'dev-user@example.com',
   name: 'Development User',
-  role: UserRole.USER
+  role: UserRole.USER,
+  authProvider: AuthProvider.EMAIL,
+  status: UserStatus.ACTIVE,
+  emailVerified: true,
+  createdAt: new Date()
 };
 
 /**
@@ -38,12 +48,22 @@ export async function getAuthUser(req?: NextRequest): Promise<AuthenticatedUser>
         where: { sessionToken },
         include: { user: true }
       });
+
       if (session && session.expiresAt > new Date()) {
+        if (session.user.status !== UserStatus.ACTIVE) {
+          throw new AuthenticationError('Account is disabled or suspended.');
+        }
         return {
           id: session.user.id,
           email: session.user.email,
           name: session.user.name,
-          role: session.user.role
+          role: session.user.role,
+          authProvider: session.user.authProvider,
+          status: session.user.status,
+          emailVerified: session.user.emailVerified,
+          avatarUrl: session.user.avatarUrl,
+          createdAt: session.user.createdAt,
+          lastLoginAt: session.user.lastLoginAt
         };
       }
     }
@@ -68,7 +88,7 @@ export async function getAuthUser(req?: NextRequest): Promise<AuthenticatedUser>
     throw new AuthenticationError('User authentication required');
   }
 
-  // Ensure user exists in Prisma DB with proper role
+  // Ensure user exists in Prisma DB with proper role and status
   const user = await prisma.user.upsert({
     where: { id: userId },
     update: {},
@@ -76,15 +96,28 @@ export async function getAuthUser(req?: NextRequest): Promise<AuthenticatedUser>
       id: userId,
       email,
       name: `User ${userId.slice(0, 8)}`,
-      role: UserRole.USER
+      role: UserRole.USER,
+      authProvider: AuthProvider.EMAIL,
+      status: UserStatus.ACTIVE,
+      emailVerified: true
     }
   });
+
+  if (user.status !== UserStatus.ACTIVE) {
+    throw new AuthenticationError('Account is disabled or suspended.');
+  }
 
   return {
     id: user.id,
     email: user.email,
     name: user.name,
-    role: user.role
+    role: user.role,
+    authProvider: user.authProvider,
+    status: user.status,
+    emailVerified: user.emailVerified,
+    avatarUrl: user.avatarUrl,
+    createdAt: user.createdAt,
+    lastLoginAt: user.lastLoginAt
   };
 }
 
@@ -104,7 +137,7 @@ export async function requireAuthenticatedUser(req?: NextRequest): Promise<Authe
  */
 export function requireRole(user: AuthenticatedUser, requiredRole: UserRole): void {
   if (user.role !== requiredRole) {
-    throw new AuthorizationError(`Access denied: Requires ${requiredRole} role.`);
+    throw new AuthorizationError('Administrator privileges are required.');
   }
 }
 

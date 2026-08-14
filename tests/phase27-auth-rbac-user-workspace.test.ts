@@ -5,7 +5,7 @@ import { googleAuthService } from '../src/features/auth/google-auth.service';
 import { auditService } from '../src/features/auth/audit.service';
 import { getAuthUser, requireRole, requireResourceOwnership } from '../src/lib/auth';
 import { chatService } from '../src/features/rag/chat/chat.service';
-import { UserRole } from '@prisma/client';
+import { UserRole, AuthProvider, UserStatus } from '@prisma/client';
 import { NextRequest } from 'next/server';
 
 const USER_ALICE_ID = '97777777-aaaa-4000-a000-111111111111';
@@ -118,13 +118,19 @@ async function runPhase27Tests() {
 
     // 12. requireRole guard checks
     try {
-      requireRole({ id: alice.id, email: alice.email, role: alice.role }, UserRole.ADMIN);
+      requireRole(
+        { id: alice.id, email: alice.email, role: alice.role, authProvider: AuthProvider.EMAIL, status: UserStatus.ACTIVE, emailVerified: true, createdAt: new Date() },
+        UserRole.ADMIN
+      );
       throw new Error('Test 13 failed: requireRole allowed USER to bypass ADMIN restriction!');
     } catch (err: any) {
-      if (!err.message.includes('Access denied')) throw err;
+      if (!err.message.includes('Administrator privileges are required')) throw err;
     }
 
-    requireRole({ id: carol.id, email: carol.email, role: carol.role }, UserRole.ADMIN);
+    requireRole(
+      { id: carol.id, email: carol.email, role: carol.role, authProvider: AuthProvider.EMAIL, status: UserStatus.ACTIVE, emailVerified: true, createdAt: new Date() },
+      UserRole.ADMIN
+    );
     console.log('  ✅ PASSED: Server-side RBAC guards correctly reject non-admin users.');
 
     // 13. Client role spoofing protection

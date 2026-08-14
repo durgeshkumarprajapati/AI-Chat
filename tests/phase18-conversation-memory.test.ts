@@ -9,8 +9,8 @@ import { prisma } from '../src/lib/prisma';
 import { DocumentStatus } from '@prisma/client';
 import { AuthorizationError, NotFoundError } from '../src/errors';
 
-const USER_A = '88888888-aaaa-4000-a000-111111111111';
-const USER_B = '88888888-bbbb-4000-a000-222222222222';
+const USER_A = '88888888-p18a-4000-a000-111111111111';
+const USER_B = '88888888-p18b-4000-a000-222222222222';
 
 async function setupTestUsers() {
   await prisma.user.upsert({

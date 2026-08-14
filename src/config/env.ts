@@ -245,7 +245,34 @@ const serverEnvSchema = z
       .coerce.number()
       .int()
       .nonnegative()
-      .default(1)
+      .default(1),
+    TTS_ENABLED: z
+      .coerce.boolean()
+      .default(true),
+    TTS_PROVIDER: z
+      .enum(['browser', 'openai'])
+      .default('browser'),
+    TTS_DEFAULT_LANGUAGE: z
+      .string()
+      .default('en-US'),
+    TTS_DEFAULT_SPEED: z
+      .coerce.number()
+      .default(1),
+    LOCATION_PERSONALIZATION_ENABLED: z
+      .coerce.boolean()
+      .default(true),
+    WEATHER_ENABLED: z
+      .coerce.boolean()
+      .default(true),
+    WEATHER_PROVIDER: z
+      .string()
+      .default('open-meteo'),
+    WEATHER_CACHE_TTL_SECONDS: z
+      .coerce.number()
+      .default(600),
+    CITY_EXPLORER_ENABLED: z
+      .coerce.boolean()
+      .default(true)
   })
   .refine(
     (data) => {

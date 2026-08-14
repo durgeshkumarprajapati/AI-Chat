@@ -164,6 +164,13 @@ const TOUR_STEPS: TourStep[] = [
     description: 'Ask questions about charts, diagrams, tables, scanned PDF pages, and figures. Visual content is parsed into grounded, searchable evidence.',
     technicalDetails: 'MultimodalService • TableExtractorService • LocalOCRProvider • DefaultVisionProvider • VisualQueryClassifier',
     icon: '📊'
+  },
+  {
+    title: '23. Voice Assistant & Location-Aware City Explorer',
+    badge: 'Phase 29',
+    description: 'Listen to assistant answers with customizable speed & language TTS. Explore your city with real-time weather and AI city queries.',
+    technicalDetails: 'TextToSpeechService • TTSTextCleaner • LocationService • WeatherService • CityExplorerService',
+    icon: '🔊'
   }
 ];
 

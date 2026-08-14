@@ -38,6 +38,7 @@
     "test:phase27": "tsx tests/phase27-auth-rbac-user-workspace.test.ts",
     "test:phase28": "tsx tests/phase28-production-identity.test.ts",
     "test:phase29": "tsx tests/phase29-voice-city-explorer.test.ts",
+    "test:phase29-auto-submit": "tsx tests/phase29-city-explorer-auto-submit.test.ts",
     "test:all": "tsx scripts/test-all-phases.ts",
     "test:all-phases": "tsx scripts/test-all-phases.ts",
     "benchmark:rag": "tsx scripts/test-rag-performance.ts",

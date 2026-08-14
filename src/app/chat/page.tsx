@@ -1,7 +1,7 @@
 'use client';
 
 import { useState, useEffect, useRef, useCallback, Suspense } from 'react';
-import { useSearchParams } from 'next/navigation';
+import { useSearchParams, useRouter } from 'next/navigation';
 import { EvidenceModal } from '@/components/chat/EvidenceModal';
 import { ttsService, TTSLanguage } from '@/features/tts/tts.service';
 
@@ -183,6 +183,8 @@ function ChatPageContent() {
 
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const abortControllerRef = useRef<AbortController | null>(null);
+  const autoSubmittedRef = useRef<string | null>(null);
+  const router = useRouter();
 
   const fetchConversations = useCallback(async (querySearch?: string) => {
     try {
@@ -250,6 +252,8 @@ function ChatPageContent() {
   useEffect(() => {
     messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
   }, [messages, loading, streaming]);
+
+
 
   const handleStartNewChat = () => {
     if (streaming && abortControllerRef.current) {
@@ -322,51 +326,58 @@ function ChatPageContent() {
     }
   };
 
-  const handleSendMessage = async (
-    promptOverride?: string,
-    options?: { allowGeneralKnowledge?: boolean; searchAllKbs?: boolean }
-  ) => {
-    const q = (promptOverride || question).trim();
-    if (!q || loading || streaming) return;
+  const handleSendMessage = useCallback(
+    async (
+      promptOverride?: string,
+      options?: {
+        allowGeneralKnowledge?: boolean;
+        searchAllKbs?: boolean;
+        overrideSourceMode?: 'documents_only' | 'web_only' | 'all_sources' | 'web_discovery' | 'web_search' | 'auto';
+      }
+    ) => {
+      const q = (promptOverride || question).trim();
+      if (!q || loading || streaming) return;
 
-    const tempUserMsg: ChatMessage = {
-      id: `user-${Date.now()}`,
-      role: 'USER',
-      content: q
-    };
+      const effectiveSourceMode = options?.overrideSourceMode || sourceMode;
 
-    const tempAssistantId = `assistant-${Date.now()}`;
-    const tempAssistantMsg: ChatMessage = {
-      id: tempAssistantId,
-      role: 'ASSISTANT',
-      content: '',
-      isStreaming: true,
-      citations: []
-    };
+      const tempUserMsg: ChatMessage = {
+        id: `user-${Date.now()}`,
+        role: 'USER',
+        content: q
+      };
 
-    setMessages((prev) => [...prev, tempUserMsg, tempAssistantMsg]);
-    setQuestion('');
-    setLoading(true);
-    setStreaming(true);
+      const tempAssistantId = `assistant-${Date.now()}`;
+      const tempAssistantMsg: ChatMessage = {
+        id: tempAssistantId,
+        role: 'ASSISTANT',
+        content: '',
+        isStreaming: true,
+        citations: []
+      };
 
-    abortControllerRef.current = new AbortController();
+      setMessages((prev) => [...prev, tempUserMsg, tempAssistantMsg]);
+      setQuestion('');
+      setLoading(true);
+      setStreaming(true);
 
-    try {
-      const response = await fetch('/api/chat/stream', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          conversationId: activeConversationId || undefined,
-          question: q,
-          knowledgeBaseId: options?.searchAllKbs ? undefined : selectedKbId || undefined,
-          sourceMode,
-          targetWebsite: targetWebsite || undefined,
-          allowedSources,
-          allowGeneralKnowledge: options?.allowGeneralKnowledge,
-          searchAllKbs: options?.searchAllKbs
-        }),
-        signal: abortControllerRef.current.signal
-      });
+      abortControllerRef.current = new AbortController();
+
+      try {
+        const response = await fetch('/api/chat/stream', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            conversationId: activeConversationId || undefined,
+            question: q,
+            knowledgeBaseId: options?.searchAllKbs ? undefined : selectedKbId || undefined,
+            sourceMode: effectiveSourceMode,
+            targetWebsite: targetWebsite || undefined,
+            allowedSources,
+            allowGeneralKnowledge: options?.allowGeneralKnowledge,
+            searchAllKbs: options?.searchAllKbs
+          }),
+          signal: abortControllerRef.current.signal
+        });
 
       if (!response.ok || !response.body) {
         throw new Error(`Streaming failed with status ${response.status}`);
@@ -477,7 +488,41 @@ function ChatPageContent() {
       setStreaming(false);
       abortControllerRef.current = null;
     }
-  };
+  }, [question, loading, streaming, sourceMode, activeConversationId, selectedKbId, targetWebsite, allowedSources, fetchConversations]);
+
+  // Phase 29 Hotfix: Auto-submit initial query 'q' from URL parameter (e.g. from City Explorer)
+  useEffect(() => {
+    const qParam = searchParams.get('q');
+    const sourceModeParam = searchParams.get('sourceMode');
+
+    if (sourceModeParam) {
+      const validModes = ['documents_only', 'web_only', 'all_sources', 'web_discovery', 'web_search', 'auto'];
+      if (validModes.includes(sourceModeParam)) {
+        setSourceMode(sourceModeParam as any);
+      }
+    }
+
+    if (!qParam || !qParam.trim()) return;
+
+    const normalizedQuery = qParam.trim();
+    if (autoSubmittedRef.current === normalizedQuery) return;
+
+    // Set auto-submit ref guard BEFORE triggering submission to prevent double execution (e.g. React Strict Mode)
+    autoSubmittedRef.current = normalizedQuery;
+
+    const effectiveMode = (sourceModeParam && ['documents_only', 'web_only', 'all_sources', 'web_discovery', 'web_search', 'auto'].includes(sourceModeParam))
+      ? (sourceModeParam as any)
+      : sourceMode;
+
+    // Auto-execute submission using the exact same handleSendMessage function
+    handleSendMessage(normalizedQuery, { overrideSourceMode: effectiveMode });
+
+    // URL Query Cleanup: Remove 'q' parameter from URL using router.replace without re-triggering submission
+    const params = new URLSearchParams(searchParams.toString());
+    params.delete('q');
+    const cleanUrl = `/chat${params.toString() ? `?${params.toString()}` : ''}`;
+    router.replace(cleanUrl);
+  }, [searchParams, handleSendMessage, sourceMode, router]);
 
   const handleKeyDown = (e: React.KeyboardEvent<HTMLTextAreaElement>) => {
     if (e.key === 'Enter' && !e.shiftKey) {

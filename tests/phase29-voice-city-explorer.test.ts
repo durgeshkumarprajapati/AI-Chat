@@ -6,7 +6,7 @@ import { chatService } from '../src/features/rag/chat/chat.service';
 import { prisma } from '../src/lib/prisma';
 import { UserRole, AuthProvider, UserStatus } from '@prisma/client';
 
-const TEST_USER_ID = '99999999-9999-4000-a000-999999999999';
+const TEST_USER_ID = `99999999-9999-4000-a000-${Date.now().toString().padStart(12, '0').slice(-12)}`;
 
 async function runPhase29Tests() {
   console.log('====================================================');
@@ -15,11 +15,11 @@ async function runPhase29Tests() {
 
   try {
     // Setup test user
-    await prisma.user.deleteMany({ where: { id: TEST_USER_ID } });
+    await prisma.user.deleteMany({ where: { email: { startsWith: 'phase29.user' } } }).catch(() => {});
     const user = await prisma.user.create({
       data: {
         id: TEST_USER_ID,
-        email: 'phase29.user@example.com',
+        email: `phase29.user.${Date.now()}@example.com`,
         name: 'Phase 29 User',
         role: UserRole.USER,
         authProvider: AuthProvider.EMAIL,
@@ -151,6 +151,8 @@ async function runPhase29Tests() {
     console.log('  ✅ PASSED: Public city query strictly isolated from user private documents.');
 
     // Cleanup
+    await prisma.message.deleteMany({ where: { conversationId: conv.id } }).catch(() => {});
+    await prisma.conversation.deleteMany({ where: { id: conv.id } }).catch(() => {});
     await prisma.user.deleteMany({ where: { id: TEST_USER_ID } }).catch(() => {});
     await prisma.$disconnect();
 

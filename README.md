@@ -624,13 +624,28 @@ Phase 31 introduces a production-grade AI Roadmap Builder and Personal Learning 
 - **Evidence-Aware Web Search Integration**: Integrates Phase 25 live web search to attach official documentation and tutorial links to tasks.
 - **User Session & Cache Isolation**: User-scoped cache keys (`docai_user_<id>_preferred_city`, `roadmap:cache:user:<id>`), IDOR protection, and tenant state sync.
 
-```bash
-# Automated Phase 31 Test Suite
-npm run test:phase31
+## Phase 32 — Voice Input Assistant & Global Theme System
 
-# Universal 25-Phase Regression Test Suite (Phase 7 through 31)
+Phase 32 introduces a production-grade Voice Input Speech-to-Text Assistant and an application-wide Global Light / Dark / System Theme System.
+
+### Key Capabilities
+- **Voice Input / Speech-to-Text**: Browser Web Speech API provider abstraction (`SpeechToTextService`, `BrowserSpeechProvider`) allowing users to speak questions in RAG Chat.
+- **Multilingual Voice Support**: Supports English (`en-US`), Hindi (`hi-IN`), and Gujarati (`gu-IN`) with locale fallback.
+- **Interim & Final Transcription**: Live transcript rendering into the chat input allowing user review and editing before submission.
+- **Privacy & Security**: Zero raw audio persistence or audio upload to backend/LLMs; voice input converts to standard chat question text.
+- **TTS & Pipeline Compatibility**: Full compatibility with Phase 29 TTS, streaming chat, web search, multimodal queries, and conversation memory.
+- **Global Theme System**: Centralized `ThemeContext` supporting `Light`, `Dark`, and `System` theme modes across all 41 application pages and components.
+- **User-Scoped Theme Isolation**: Persists user-scoped theme preferences (`docai_user_<id>_theme`) to avoid cross-user theme leakage on login/logout.
+- **Zero-Flash Hydration**: Inline `<script>` execution in `<head>` ensures theme attributes apply before initial browser paint.
+
+```bash
+# Automated Phase 32 Test Suite
+npm run test:phase32
+
+# Universal 26-Phase Regression Test Suite (Phase 7 through 32)
 npm run test:all-phases
 ```
+
 
 
 

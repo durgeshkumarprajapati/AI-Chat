@@ -53,6 +53,15 @@ export async function GET() {
         enabled: boolean;
         status: string;
       };
+      voiceInput?: {
+        enabled: boolean;
+        provider: string;
+        status: string;
+      };
+      theme?: {
+        enabled: boolean;
+        status: string;
+      };
     };
   } = {
     status: 'ok',
@@ -97,6 +106,15 @@ export async function GET() {
       },
       cityExplorer: {
         enabled: process.env.CITY_EXPLORER_ENABLED !== 'false',
+        status: 'healthy'
+      },
+      voiceInput: {
+        enabled: process.env.VOICE_INPUT_ENABLED !== 'false',
+        provider: 'browser-speech',
+        status: 'healthy'
+      },
+      theme: {
+        enabled: true,
         status: 'healthy'
       }
     }

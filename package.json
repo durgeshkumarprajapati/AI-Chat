@@ -41,6 +41,7 @@
     "test:phase29-auto-submit": "tsx tests/phase29-city-explorer-auto-submit.test.ts",
     "test:phase30": "tsx tests/phase30-session-city-state-sync.test.ts",
     "test:phase31": "tsx tests/phase31-roadmap-builder.test.ts",
+    "test:phase32": "tsx tests/phase32-voice-input-theme.test.ts",
     "test:all": "tsx scripts/test-all-phases.ts",
     "test:all-phases": "tsx scripts/test-all-phases.ts",
     "benchmark:rag": "tsx scripts/test-rag-performance.ts",

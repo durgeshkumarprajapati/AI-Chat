@@ -178,6 +178,13 @@ const TOUR_STEPS: TourStep[] = [
     description: 'Build structured, personalized learning paths with guided questionnaires, task progress tracking, phase regeneration, and peer sharing.',
     technicalDetails: 'RoadmapGenerationService • RoadmapPlannerService • RoadmapValidatorService • RoadmapSharingService • WorkspaceContext',
     icon: '🚀'
+  },
+  {
+    title: '25. Voice Input Assistant & Global Theme System',
+    badge: 'Phase 32',
+    description: 'Speak your questions with browser STT (English, Hindi, Gujarati) and switch application themes (Light, Dark, System) seamlessly.',
+    technicalDetails: 'SpeechToTextService • BrowserSpeechProvider • ThemeContext • User-Scoped Theme Isolation • Flash Prevention Script',
+    icon: '🎤'
   }
 ];
 

@@ -164,6 +164,22 @@ export class CitationService {
         continue;
       }
 
+      const matchingRetrievedChunk = allowedChunkMap?.get(citation.chunkId);
+      const isTemporaryWeb =
+        citation.documentId.startsWith('discovered-web-') ||
+        citation.documentId.startsWith('temp-web-') ||
+        Boolean(matchingRetrievedChunk?.metadata?.isTemporary) ||
+        Boolean(matchingRetrievedChunk?.metadata?.isWebDiscovery) ||
+        (matchingRetrievedChunk?.sourceType === 'WEB' && matchingRetrievedChunk?.id.startsWith('temp-web-'));
+
+      if (isTemporaryWeb) {
+        validCitations.push({
+          ...citation,
+          knowledgeSourceType: 'WEB'
+        });
+        continue;
+      }
+
       // 2. Fetch document from database & verify tenant ownership & Knowledge Base membership
       const doc = await prisma.document.findFirst({
         where: { id: citation.documentId, userId },

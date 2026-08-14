@@ -43,6 +43,7 @@ export interface CacheKeyOptions {
   userId: string;
   knowledgeBaseId?: string | null;
   sourceMode?: string;
+  targetWebsite?: string;
   model?: string;
   answerMode?: string;
   query: string;

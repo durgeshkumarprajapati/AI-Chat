@@ -143,6 +143,13 @@ const TOUR_STEPS: TourStep[] = [
     description: 'Ingest public web documentation with SSRF protection into the same pgvector hybrid retrieval pipeline. Select Documents, Web, or Both in Chat UI.',
     technicalDetails: 'WebUrlValidator (SSRF) • WebFetcher • WebContentExtractor • WebSourceService • Multi-source RAG Orchestration',
     icon: '🌐'
+  },
+  {
+    title: 'Web Discovery & Trusted Sources',
+    badge: 'Phase 24 Discovery',
+    description: 'Ask questions against public web sources (Wikipedia, Medium) or specify any domain URL. Discovered sources are cited and can be saved to your Knowledge Base.',
+    technicalDetails: 'WebDiscoveryService • WikipediaProvider • MediumProvider • DomainDiscoveryProvider • RobotsPolicyService • UrlNormalizer',
+    icon: '🌍'
   }
 ];
 

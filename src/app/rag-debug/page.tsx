@@ -252,6 +252,12 @@ export default function RAGDebugPage() {
             <div className="bg-slate-950 p-2.5 rounded-lg border border-slate-800"><span className="text-slate-500 block">Cache</span><b className="text-emerald-400">{orchestration.cache.toUpperCase()}</b></div>
             <div className="bg-slate-950 p-2.5 rounded-lg border border-slate-800"><span className="text-slate-500 block">Semantic Similarity</span><b className="text-white">{orchestration.semanticSimilarity?.toFixed(3) ?? 'N/A'} / {orchestration.semanticThreshold.toFixed(2)}</b></div>
             <div className="bg-slate-950 p-2.5 rounded-lg border border-slate-800"><span className="text-slate-500 block">Cache Lookup</span><b className="text-white">{orchestration.cacheLookupMs}ms · {orchestration.candidateCount} candidates</b></div>
+            {(orchestration as any).discoveryMs !== undefined && (
+              <div className="bg-slate-950 p-2.5 rounded-lg border border-cyan-800 col-span-2">
+                <span className="text-cyan-400 block text-[10px]">🌍 Phase 24 Web Discovery Latency</span>
+                <b className="text-slate-200">{(orchestration as any).discoveryMs}ms discovery · {(orchestration as any).fetchMs ?? 0}ms page fetch</b>
+              </div>
+            )}
             {orchestration.sourceEvidenceFingerprint && <div className="bg-slate-950 p-2.5 rounded-lg border border-slate-800 col-span-2"><span className="text-slate-500 block">Evidence Fingerprint</span><b className="text-slate-300 break-all">{orchestration.sourceEvidenceFingerprint}</b></div>}
           </div>
         </div>

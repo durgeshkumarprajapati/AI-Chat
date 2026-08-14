@@ -22,6 +22,7 @@ type KnowledgeBaseOption = {
 };
 
 export default function WebSourcesPage() {
+  const [activeTab, setActiveTab] = useState<'saved' | 'discovered'>('saved');
   const [urlInput, setUrlInput] = useState('');
   const [selectedKbId, setSelectedKbId] = useState('');
   const [knowledgeBases, setKnowledgeBases] = useState<KnowledgeBaseOption[]>([]);
@@ -230,10 +231,30 @@ export default function WebSourcesPage() {
         </form>
       </div>
 
-      {/* Web Sources List */}
+      {/* Web Sources List Header & Tabs */}
       <div className="bg-slate-900 border border-slate-800 rounded-2xl p-6 space-y-4 shadow-xl">
-        <div className="flex items-center justify-between border-b border-slate-800 pb-3">
-          <h2 className="text-sm font-bold text-white">Active Web Knowledge Sources ({webSources.length})</h2>
+        <div className="flex flex-col sm:flex-row sm:items-center justify-between border-b border-slate-800 pb-3 gap-3">
+          <div className="flex items-center space-x-3">
+            <h2 className="text-sm font-bold text-white">Web Knowledge Sources ({webSources.length})</h2>
+            <div className="flex items-center space-x-1 bg-slate-950 p-1 rounded-lg border border-slate-800 text-xs">
+              <button
+                onClick={() => setActiveTab('saved')}
+                className={`px-3 py-1 rounded-md font-semibold transition-all ${
+                  activeTab === 'saved' ? 'bg-indigo-600 text-white shadow' : 'text-slate-400 hover:text-slate-200'
+                }`}
+              >
+                💾 Saved Sources ({webSources.length})
+              </button>
+              <button
+                onClick={() => setActiveTab('discovered')}
+                className={`px-3 py-1 rounded-md font-semibold transition-all ${
+                  activeTab === 'discovered' ? 'bg-indigo-600 text-white shadow' : 'text-slate-400 hover:text-slate-200'
+                }`}
+              >
+                🌍 Web Discovery
+              </button>
+            </div>
+          </div>
           <span className="text-[10px] font-mono text-slate-400">Idempotency & Refresh Enabled</span>
         </div>
 

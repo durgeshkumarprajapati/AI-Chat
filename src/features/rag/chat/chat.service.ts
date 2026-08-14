@@ -83,6 +83,8 @@ export class ChatService {
     const orchestrationInput = {
       userId, question: trimmedQuestion, conversationId, knowledgeBaseId: targetKbId,
       sourceMode: (input as any).sourceMode || 'documents_only',
+      targetWebsite: (input as any).targetWebsite,
+      allowedSources: (input as any).allowedSources,
       allowGeneralKnowledge: (input as any).allowGeneralKnowledge,
       requestedAnswerMode: (input as any).requestedAnswerMode,
       searchAllKbs: (input as any).searchAllKbs,
@@ -337,6 +339,8 @@ export class ChatService {
     const orchestrationInput = {
       userId, question: trimmedQuestion, conversationId, knowledgeBaseId: targetKbId,
       sourceMode: (input as any).sourceMode || 'documents_only',
+      targetWebsite: (input as any).targetWebsite,
+      allowedSources: (input as any).allowedSources,
       allowGeneralKnowledge: (input as any).allowGeneralKnowledge,
       requestedAnswerMode: (input as any).requestedAnswerMode,
       searchAllKbs: (input as any).searchAllKbs,

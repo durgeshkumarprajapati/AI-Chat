@@ -20,30 +20,34 @@ export interface RAGCacheProvider {
 export function generateExactCacheKey(opts: CacheKeyOptions): string {
   const normQuery = opts.query.trim().toLowerCase();
   const sourceMode = opts.sourceMode || 'documents_only';
+  const targetSite = opts.targetWebsite ? opts.targetWebsite.trim().toLowerCase() : '';
   const modeKey =
     opts.answerMode &&
     opts.answerMode !== 'GROUNDED' &&
     opts.answerMode !== 'DOCUMENT_GROUNDED' &&
     opts.answerMode !== 'WEB_GROUNDED' &&
-    opts.answerMode !== 'MULTI_SOURCE_GROUNDED'
+    opts.answerMode !== 'MULTI_SOURCE_GROUNDED' &&
+    opts.answerMode !== 'WEB_DISCOVERY_GROUNDED'
       ? opts.answerMode
       : 'GROUNDED';
-  const rawString = `${opts.userId}|${opts.knowledgeBaseId || 'global'}|${sourceMode}|${opts.model || 'default'}|${modeKey}|${opts.contextSummary || ''}|${normQuery}`;
+  const rawString = `${opts.userId}|${opts.knowledgeBaseId || 'global'}|${sourceMode}|${targetSite}|${opts.model || 'default'}|${modeKey}|${opts.contextSummary || ''}|${normQuery}`;
   const hash = createHash('sha256').update(rawString).digest('hex');
   return `rag:exact:${opts.userId}:${hash}`;
 }
 
 export function generateSemanticScopeKey(opts: CacheKeyOptions): string {
   const sourceMode = opts.sourceMode || 'documents_only';
+  const targetSite = opts.targetWebsite ? opts.targetWebsite.trim().toLowerCase() : '';
   const modeKey =
     opts.answerMode &&
     opts.answerMode !== 'GROUNDED' &&
     opts.answerMode !== 'DOCUMENT_GROUNDED' &&
     opts.answerMode !== 'WEB_GROUNDED' &&
-    opts.answerMode !== 'MULTI_SOURCE_GROUNDED'
+    opts.answerMode !== 'MULTI_SOURCE_GROUNDED' &&
+    opts.answerMode !== 'WEB_DISCOVERY_GROUNDED'
       ? opts.answerMode
       : 'GROUNDED';
-  return `rag:semantic:index:${opts.userId}:${opts.knowledgeBaseId || 'global'}:${sourceMode}:${opts.model || 'default'}:${modeKey}`;
+  return `rag:semantic:index:${opts.userId}:${opts.knowledgeBaseId || 'global'}:${sourceMode}:${targetSite}:${opts.model || 'default'}:${modeKey}`;
 }
 
 export function generateEmbeddingCacheKey(provider: string, model: string, text: string): string {

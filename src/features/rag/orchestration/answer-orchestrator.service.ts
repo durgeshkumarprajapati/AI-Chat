@@ -3,6 +3,7 @@ import { getRAGCacheProvider } from '../cache/rag-cache.factory';
 import { RAGCacheProvider } from '../cache/rag-cache.provider';
 import { RetrievalService } from '../retrieval/retrieval.service';
 import { evidenceAssessmentService, EvidenceAssessmentService } from './evidence-assessment.service';
+import { webDiscoveryService } from '../web-discovery/web-discovery.service';
 import { AnswerMode, OrchestrationInput, OrchestratedAnswer, UserAction } from './answer-orchestrator.types';
 import { getLLMProvider } from '../llm/llm.provider.factory';
 import { LLMProvider } from '../llm/llm.provider';
@@ -193,7 +194,7 @@ export class AnswerOrchestratorService {
     // 4. Primary Retrieval & Evidence Assessment
     const retResult = await this.retrievalService.retrieveContextWithTrace(input.userId, effectiveQuery, {
       knowledgeBaseId: input.searchAllKbs ? undefined : input.knowledgeBaseId,
-      sourceMode,
+      sourceMode: sourceMode === 'web_discovery' ? 'all_sources' : sourceMode,
       queryVector: queryEmbedding.vector
     });
 
@@ -207,6 +208,18 @@ export class AnswerOrchestratorService {
     }
 
     let chunks = retResult.chunks;
+
+    if (sourceMode === 'web_discovery') {
+      const discoveryRes = await webDiscoveryService.discoverAndFetchCandidates(input.userId, {
+        query: effectiveQuery,
+        targetWebsite: input.targetWebsite,
+        allowedSources: input.allowedSources
+      });
+      latencyTrace.discoveryMs = discoveryRes.metrics.discoveryMs ?? 0;
+      latencyTrace.fetchMs = discoveryRes.metrics.fetchMs ?? 0;
+      chunks = [...discoveryRes.chunks, ...chunks];
+    }
+
     let evidence = this.evidenceService.assessEvidence(input.question, chunks);
     let recoveryAttempted = false;
 
@@ -215,7 +228,9 @@ export class AnswerOrchestratorService {
     const hasWeb = chunks.some((c) => c.sourceType === 'WEB');
 
     let currentMode: AnswerMode = 'GROUNDED';
-    if (hasDoc && hasWeb) {
+    if (sourceMode === 'web_discovery') {
+      currentMode = 'WEB_DISCOVERY_GROUNDED';
+    } else if (hasDoc && hasWeb) {
       currentMode = 'MULTI_SOURCE_GROUNDED';
     } else if (hasWeb) {
       currentMode = 'WEB_GROUNDED';
@@ -223,9 +238,9 @@ export class AnswerOrchestratorService {
       currentMode = 'DOCUMENT_GROUNDED';
     }
 
-    // 5. Safe Retrieval Recovery (1-step Query Reformulation if evidence is weak)
+    // 5. Retrieval Recovery Layer
     const maxRecovery = env.server?.RAG_MAX_RECOVERY_ATTEMPTS ?? 1;
-    if (!evidence.hasStrongEvidence && maxRecovery > 0) {
+    if (!evidence.hasStrongEvidence && maxRecovery > 0 && sourceMode !== 'web_discovery') {
       recoveryAttempted = true;
       const recStart = Date.now();
       const cleanRecoveryQuery = this.buildRecoveryQuery(input.question);
@@ -351,6 +366,7 @@ export class AnswerOrchestratorService {
       mode === 'DOCUMENT_GROUNDED' ||
       mode === 'WEB_GROUNDED' ||
       mode === 'MULTI_SOURCE_GROUNDED' ||
+      mode === 'WEB_DISCOVERY_GROUNDED' ||
       mode === 'RETRIEVAL_RECOVERY';
     if (!isGroundedMode || !answer.trim() || citations.length === 0) return;
 

@@ -77,6 +77,9 @@ model User {
   sessions        Session[]
   chatAttachments ChatAttachment[]
   auditLogs       AuditLog[]        @relation("ActorAuditLogs")
+  roadmaps               Roadmap[]
+  sharedRoadmapsOwned    RoadmapShare[] @relation("RoadmapShareOwner")
+  sharedRoadmapsReceived RoadmapShare[] @relation("RoadmapShareRecipient")
 
   @@map("users")
 }
@@ -340,4 +343,107 @@ model AuditLog {
   @@index([actorId])
   @@index([action])
   @@map("audit_logs")
+}
+
+enum RoadmapStatus {
+  DRAFT
+  ACTIVE
+  COMPLETED
+  ARCHIVED
+}
+
+enum SharePermission {
+  VIEW
+  EDIT
+}
+
+model Roadmap {
+  id                    String        @id @default(uuid())
+  userId                String        @map("user_id")
+  title                 String
+  description           String
+  goal                  String
+  targetSkill           String        @map("target_skill")
+  experienceLevel       String        @map("experience_level")
+  dailyTimeCommitment   String        @map("daily_time_commitment")
+  targetDurationWeeks   Int           @map("target_duration_weeks")
+  learningStyle         String        @map("learning_style")
+  status                RoadmapStatus @default(ACTIVE)
+  currentProgress       Float         @default(0) @map("current_progress")
+  questionnaireSnapshot Json          @map("questionnaire_snapshot")
+  generationVersion     Int           @default(1) @map("generation_version")
+  createdAt             DateTime      @default(now()) @map("created_at")
+  updatedAt             DateTime      @updatedAt @map("updated_at")
+
+  user   User           @relation(fields: [userId], references: [id], onDelete: Cascade)
+  phases RoadmapPhase[]
+  shares RoadmapShare[]
+
+  @@index([userId])
+  @@index([status])
+  @@index([createdAt])
+  @@map("roadmaps")
+}
+
+model RoadmapPhase {
+  id            String   @id @default(uuid())
+  roadmapId     String   @map("roadmap_id")
+  title         String
+  description   String
+  order         Int
+  durationWeeks Int      @default(1) @map("duration_weeks")
+  status        String   @default("NOT_STARTED")
+  createdAt     DateTime @default(now()) @map("created_at")
+  updatedAt     DateTime @updatedAt @map("updated_at")
+
+  roadmap Roadmap       @relation(fields: [roadmapId], references: [id], onDelete: Cascade)
+  tasks   RoadmapTask[]
+
+  @@index([roadmapId])
+  @@index([roadmapId, order])
+  @@map("roadmap_phases")
+}
+
+model RoadmapTask {
+  id             String    @id @default(uuid())
+  phaseId        String    @map("phase_id")
+  title          String
+  description    String
+  order          Int
+  estimatedHours Float     @default(1) @map("estimated_hours")
+  status         String    @default("PENDING")
+  completedAt    DateTime? @map("completed_at")
+  notes          String?
+  resources      Json?     @default("[]")
+  createdAt      DateTime  @default(now()) @map("created_at")
+  updatedAt      DateTime  @updatedAt @map("updated_at")
+
+  phase RoadmapPhase @relation(fields: [phaseId], references: [id], onDelete: Cascade)
+
+  @@index([phaseId])
+  @@index([phaseId, order])
+  @@index([status])
+  @@map("roadmap_tasks")
+}
+
+model RoadmapShare {
+  id               String          @id @default(uuid())
+  roadmapId        String          @map("roadmap_id")
+  ownerId          String          @map("owner_id")
+  sharedWithUserId String          @map("shared_with_user_id")
+  permission       SharePermission @default(VIEW)
+  revokedAt        DateTime?       @map("revoked_at")
+  expiresAt        DateTime?       @map("expires_at")
+  createdAt        DateTime        @default(now()) @map("created_at")
+  updatedAt        DateTime        @updatedAt @map("updated_at")
+
+  roadmap        Roadmap @relation(fields: [roadmapId], references: [id], onDelete: Cascade)
+  owner          User    @relation("RoadmapShareOwner", fields: [ownerId], references: [id], onDelete: Cascade)
+  sharedWithUser User    @relation("RoadmapShareRecipient", fields: [sharedWithUserId], references: [id], onDelete: Cascade)
+
+  @@index([roadmapId])
+  @@index([sharedWithUserId])
+  @@index([ownerId])
+  @@index([revokedAt])
+  @@map("roadmap_shares")
 }

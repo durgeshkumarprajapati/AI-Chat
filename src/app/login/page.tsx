@@ -4,8 +4,11 @@ import React, { useState } from 'react';
 import Link from 'next/link';
 import { useRouter } from 'next/navigation';
 
+import { useWorkspace } from '@/context/WorkspaceContext';
+
 export default function LoginPage() {
   const router = useRouter();
+  const { refreshUser } = useWorkspace();
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [error, setError] = useState<string | null>(null);
@@ -28,8 +31,8 @@ export default function LoginPage() {
         throw new Error(data.error?.message || 'Login failed.');
       }
 
+      await refreshUser();
       router.push('/dashboard');
-      router.refresh();
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Invalid credentials.');
     } finally {
@@ -51,8 +54,8 @@ export default function LoginPage() {
       });
       const data = await res.json();
       if (data.success) {
+        await refreshUser();
         router.push('/dashboard');
-        router.refresh();
       }
     } catch {
       setError('Google authentication failed.');

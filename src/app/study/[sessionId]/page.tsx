@@ -28,6 +28,26 @@ export default function StudySessionPage({ params }: { params: { sessionId: stri
   const [fetchingHint, setFetchingHint] = useState(false);
 
   useEffect(() => {
+    async function loadSession() {
+      try {
+        const res = await fetch(`/api/study/sessions/${params.sessionId}`);
+        const data = await res.json();
+        if (data.success) {
+          setSession(data.data);
+          setCurrentMode(data.data.currentMode || 'TEACH');
+
+          const topic = data.data.topics?.[0];
+          if (topic && topic.questions?.length > 0) {
+            setActiveQuestion(topic.questions[0]);
+          }
+        }
+      } catch (err) {
+        console.error('Failed to load study session', err);
+      } finally {
+        setLoading(false);
+      }
+    }
+
     loadSession();
 
     const unsubVoiceState = speechToTextService.onStateChange((st) => setVoiceState(st));
@@ -42,26 +62,6 @@ export default function StudySessionPage({ params }: { params: { sessionId: stri
       unsubVoiceTranscript();
     };
   }, [params.sessionId]);
-
-  const loadSession = async () => {
-    try {
-      const res = await fetch(`/api/study/sessions/${params.sessionId}`);
-      const data = await res.json();
-      if (data.success) {
-        setSession(data.data);
-        setCurrentMode(data.data.currentMode || 'TEACH');
-
-        const topic = data.data.topics?.[0];
-        if (topic && topic.questions?.length > 0) {
-          setActiveQuestion(topic.questions[0]);
-        }
-      }
-    } catch (err) {
-      console.error('Failed to load study session', err);
-    } finally {
-      setLoading(false);
-    }
-  };
 
   const handleToggleVoice = () => {
     if (voiceState === 'LISTENING' || voiceState === 'STARTING') {

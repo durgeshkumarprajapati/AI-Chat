@@ -36,9 +36,36 @@ export default function NewStudySessionPage() {
         const rmData = await rmRes.json();
         const docData = await docRes.json();
 
-        if (kbData.success) setKnowledgeBases(kbData.data || []);
-        if (rmData.success) setRoadmaps(rmData.data || []);
-        if (docData.success) setDocuments(docData.data || []);
+        if (kbData.success) {
+          const kbList = Array.isArray(kbData.data)
+            ? kbData.data
+            : Array.isArray(kbData.data?.items)
+            ? kbData.data.items
+            : [];
+          setKnowledgeBases(kbList);
+        }
+
+        if (rmData.success) {
+          const rmList = Array.isArray(rmData.data)
+            ? rmData.data
+            : Array.isArray(rmData.data?.owned)
+            ? rmData.data.owned
+            : Array.isArray(rmData.data?.items)
+            ? rmData.data.items
+            : [];
+          setRoadmaps(rmList);
+        }
+
+        if (docData.success) {
+          const docList = Array.isArray(docData.data)
+            ? docData.data
+            : Array.isArray(docData.data?.documents)
+            ? docData.data.documents
+            : Array.isArray(docData.data?.items)
+            ? docData.data.items
+            : [];
+          setDocuments(docList);
+        }
       } catch (err) {
         console.error('Failed to load user resources', err);
       }
@@ -127,7 +154,7 @@ export default function NewStudySessionPage() {
               className="w-full bg-slate-950 border border-slate-800 rounded-xl px-3 py-2.5 text-xs text-white focus:outline-none focus:border-indigo-500"
             >
               <option value="">None / Custom Documents</option>
-              {knowledgeBases.map((kb) => (
+              {(Array.isArray(knowledgeBases) ? knowledgeBases : []).map((kb) => (
                 <option key={kb.id} value={kb.id}>
                   {kb.name}
                 </option>
@@ -143,7 +170,7 @@ export default function NewStudySessionPage() {
               className="w-full bg-slate-950 border border-slate-800 rounded-xl px-3 py-2.5 text-xs text-white focus:outline-none focus:border-indigo-500"
             >
               <option value="">None</option>
-              {roadmaps.map((rm) => (
+              {(Array.isArray(roadmaps) ? roadmaps : []).map((rm) => (
                 <option key={rm.id} value={rm.id}>
                   {rm.title}
                 </option>
@@ -156,10 +183,10 @@ export default function NewStudySessionPage() {
         <div>
           <label className="block text-xs font-semibold text-slate-300 mb-2">Select Individual Documents</label>
           <div className="max-h-36 overflow-y-auto bg-slate-950 border border-slate-800 rounded-xl p-3 space-y-2">
-            {documents.length === 0 ? (
+            {!Array.isArray(documents) || documents.length === 0 ? (
               <p className="text-[11px] text-slate-500">No standalone documents found.</p>
             ) : (
-              documents.map((doc) => (
+              (Array.isArray(documents) ? documents : []).map((doc) => (
                 <label key={doc.id} className="flex items-center space-x-2 text-xs text-slate-300 cursor-pointer">
                   <input
                     type="checkbox"

@@ -658,10 +658,32 @@ npm run test:phase33
 
 # AI Study Performance Benchmark
 npx tsx scripts/test-ai-study-performance.ts
+```
 
-# Universal 27-Phase Regression Test Suite (Phase 7 through 33)
+## Phase 34 — Agentic Research & Autonomous Evidence Investigation
+
+Phase 34 adds an autonomous, bounded, observable, and multi-source research investigation subsystem. It transforms single-shot RAG answers into iterative evidence collection, claim extraction, conflict detection, gap analysis, and synthesis of cited research reports.
+
+### Key Capabilities
+- **Bounded Agent Engine**: Strictly controls maximum steps, searches, LLM calls, concurrent tasks, SSRF rules, and timeouts (`QUICK`, `STANDARD`, `DEEP` modes).
+- **Multi-Source Evidence Collection**: Investigates across authorized uploaded documents, Knowledge Bases, and live web search.
+- **Deduplication & Quality Ranking**: Canonical URL normalization, SHA-256 evidence hashing, and combined relevance/authority/freshness scoring.
+- **Claim Extraction & Conflict Detection**: Identifies atomic claims and discloses contradictions, numeric disagreements, or date disagreements.
+- **Gap Analysis & Follow-up**: Detects evidence gaps and triggers bounded follow-up searches.
+- **Real-Time Execution Timeline**: Streams progress events (`PLAN_CREATED`, `SEARCH_STARTED`, `CONFLICT_DETECTED`, `REPORT_READY`).
+- **Export & Security**: Markdown and JSON exports; strict prompt injection defense and SSRF blocklists.
+
+```bash
+# Automated Phase 34 Test Suite
+npm run test:phase34
+
+# Agentic Research Performance Benchmark
+npx tsx scripts/test-agentic-research-performance.ts
+
+# Universal 28-Phase Regression Test Suite (Phase 7 through 34)
 npm run test:all-phases
 ```
+
 
 
 

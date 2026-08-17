@@ -37,6 +37,7 @@ export function AppLayout({ children }: { children: React.ReactNode }) {
     { name: 'Dashboard', href: '/dashboard', icon: '📊' },
     { name: 'RAG Chat', href: '/chat', icon: '💬' },
     { name: 'AI Study Mode', href: '/study', icon: '🎓', badge: 'NEW' },
+    { name: 'Agentic Research', href: '/research', icon: '🤖', badge: 'NEW' },
     { name: 'AI Roadmaps', href: '/roadmaps', icon: '🚀' },
     { name: 'Documents', href: '/documents', icon: '📁' },
     { name: 'Knowledge Bases', href: '/knowledge-bases', icon: '📚' },

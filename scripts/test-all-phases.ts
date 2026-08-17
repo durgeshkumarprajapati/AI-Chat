@@ -33,7 +33,8 @@ const PHASES: PhaseConfig[] = [
   { phase: 30, name: 'Session, User & City State Synchronization', command: 'npm run test:phase30' },
   { phase: 31, name: 'AI Roadmap Builder & Personal Learning Workspace', command: 'npm run test:phase31' },
   { phase: 32, name: 'Voice Input Assistant & Global Theme System', command: 'npm run test:phase32' },
-  { phase: 33, name: 'AI Study / Tutor Mode', command: 'npm run test:phase33' }
+  { phase: 33, name: 'AI Study / Tutor Mode', command: 'npm run test:phase33' },
+  { phase: 34, name: 'Agentic Research & Autonomous Evidence Investigation', command: 'npm run test:phase34' }
 ];
 
 async function runAllPhases() {

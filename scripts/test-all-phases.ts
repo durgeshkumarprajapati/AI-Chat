@@ -34,7 +34,8 @@ const PHASES: PhaseConfig[] = [
   { phase: 31, name: 'AI Roadmap Builder & Personal Learning Workspace', command: 'npm run test:phase31' },
   { phase: 32, name: 'Voice Input Assistant & Global Theme System', command: 'npm run test:phase32' },
   { phase: 33, name: 'AI Study / Tutor Mode', command: 'npm run test:phase33' },
-  { phase: 34, name: 'Agentic Research & Autonomous Evidence Investigation', command: 'npm run test:phase34' }
+  { phase: 34, name: 'Agentic Research & Autonomous Evidence Investigation', command: 'npm run test:phase34' },
+  { phase: 35, name: 'AI Workflow Builder & Automation Engine', command: 'npm run test:phase35' }
 ];
 
 async function runAllPhases() {
@@ -82,7 +83,7 @@ async function runAllPhases() {
     console.log('====================================================\n');
     process.exit(1);
   } else {
-    console.log('\n🎉 ALL 21 PHASES PASSED CLEANLY!');
+    console.log('\n🎉 ALL 29 PHASES PASSED CLEANLY!');
     console.log('====================================================\n');
     process.exit(0);
   }

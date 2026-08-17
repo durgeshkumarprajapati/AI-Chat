@@ -336,6 +336,21 @@ const serverEnvSchema = z
     AGENTIC_RESEARCH_CACHE_ENABLED: z
       .coerce.boolean()
       .default(true),
+    WORKFLOW_ENABLED: z.coerce.boolean().default(true),
+    WORKFLOW_MAX_NODES: z.coerce.number().default(100),
+    WORKFLOW_MAX_EDGES: z.coerce.number().default(150),
+    WORKFLOW_MAX_EXECUTION_STEPS: z.coerce.number().default(200),
+    WORKFLOW_MAX_LOOP_ITERATIONS: z.coerce.number().default(20),
+    WORKFLOW_MAX_CONCURRENT_NODES: z.coerce.number().default(5),
+    WORKFLOW_NODE_TIMEOUT_MS: z.coerce.number().default(30000),
+    WORKFLOW_RUN_TIMEOUT_MS: z.coerce.number().default(300000),
+    WORKFLOW_MAX_LLM_CALLS: z.coerce.number().default(30),
+    WORKFLOW_MAX_WEB_SEARCHES: z.coerce.number().default(10),
+    WORKFLOW_MAX_DOCUMENT_RETRIEVALS: z.coerce.number().default(20),
+    WORKFLOW_MAX_OUTPUT_BYTES: z.coerce.number().default(10485760),
+    WORKFLOW_MAX_RETRIES: z.coerce.number().default(2),
+    WORKFLOW_CACHE_ENABLED: z.coerce.boolean().default(true),
+    WORKFLOW_SCHEDULER_ENABLED: z.coerce.boolean().default(true),
     AGENTIC_RESEARCH_CONFLICT_DETECTION: z
       .coerce.boolean()
       .default(true),

@@ -84,6 +84,10 @@ model User {
   studyAnswers           StudyAnswer[]
   studyAttempts          StudyAttempt[]
   researchSessions       ResearchSession[]
+  workflows              Workflow[]
+  workflowRuns           WorkflowRun[]
+  sharedWorkflowsOwned   WorkflowShare[] @relation("WorkflowShareOwner")
+  sharedWorkflowsReceived WorkflowShare[] @relation("WorkflowShareRecipient")
 
   @@map("users")
 }
@@ -954,5 +958,248 @@ model ResearchEvent {
   @@index([createdAt])
   @@map("research_events")
 }
+
+// ==========================================
+// PHASE 35 — AI WORKFLOW BUILDER MODELS & ENUMS
+// ==========================================
+
+enum WorkflowStatus {
+  DRAFT
+  VALIDATED
+  PUBLISHED
+  ARCHIVED
+}
+
+enum WorkflowRunStatus {
+  QUEUED
+  RUNNING
+  PAUSED
+  WAITING
+  COMPLETED
+  FAILED
+  CANCELLED
+  TIMEOUT
+  LIMIT_REACHED
+}
+
+enum WorkflowRunNodeStatus {
+  PENDING
+  READY
+  RUNNING
+  RETRYING
+  COMPLETED
+  FAILED
+  SKIPPED
+  CANCELLED
+}
+
+enum WorkflowTriggerType {
+  MANUAL
+  DOCUMENT_UPLOADED
+  SCHEDULED
+  WEBHOOK
+}
+
+enum WorkflowVariableType {
+  STRING
+  NUMBER
+  BOOLEAN
+  JSON
+  ARRAY
+  DOCUMENT
+  EVIDENCE
+}
+
+enum WorkflowSharePermission {
+  VIEWER
+  EDITOR
+  OWNER
+}
+
+model Workflow {
+  id               String         @id @default(uuid())
+  userId           String         @map("user_id")
+  name             String
+  description      String?        @db.Text
+  status           WorkflowStatus @default(DRAFT)
+  activeVersionId  String?        @map("active_version_id")
+  createdAt        DateTime       @default(now()) @map("created_at")
+  updatedAt        DateTime       @updatedAt @map("updated_at")
+
+  user      User               @relation(fields: [userId], references: [id], onDelete: Cascade)
+  versions  WorkflowVersion[]
+  runs      WorkflowRun[]
+  variables WorkflowVariable[]
+  triggers  WorkflowTrigger[]
+  shares    WorkflowShare[]
+
+  @@index([userId])
+  @@index([status])
+  @@index([createdAt])
+  @@map("workflows")
+}
+
+model WorkflowVersion {
+  id          String   @id @default(uuid())
+  workflowId  String   @map("workflow_id")
+  version     Int      @default(1)
+  definition  Json
+  checksum    String
+  status      String   @default("PUBLISHED")
+  createdBy   String   @map("created_by")
+  createdAt   DateTime @default(now()) @map("created_at")
+
+  workflow Workflow          @relation(fields: [workflowId], references: [id], onDelete: Cascade)
+  nodes    WorkflowNode[]
+  edges    WorkflowEdge[]
+  runs     WorkflowRun[]
+
+  @@unique([workflowId, version])
+  @@index([workflowId])
+  @@map("workflow_versions")
+}
+
+model WorkflowNode {
+  id            String   @id @default(uuid())
+  versionId     String   @map("version_id")
+  nodeKey       String   @map("node_key")
+  nodeType      String   @map("node_type")
+  nodeVersion   Int      @default(1) @map("node_version")
+  positionX     Float    @default(0) @map("position_x")
+  positionY     Float    @default(0) @map("position_y")
+  configuration Json     @default("{}")
+  createdAt     DateTime @default(now()) @map("created_at")
+  updatedAt     DateTime @updatedAt @map("updated_at")
+
+  version WorkflowVersion @relation(fields: [versionId], references: [id], onDelete: Cascade)
+
+  @@unique([versionId, nodeKey])
+  @@index([versionId])
+  @@index([nodeType])
+  @@map("workflow_nodes")
+}
+
+model WorkflowEdge {
+  id            String   @id @default(uuid())
+  versionId     String   @map("version_id")
+  sourceNodeKey String   @map("source_node_key")
+  targetNodeKey String   @map("target_node_key")
+  sourceHandle  String?  @map("source_handle")
+  targetHandle  String?  @map("target_handle")
+  condition     String?  @db.Text
+  createdAt     DateTime @default(now()) @map("created_at")
+
+  version WorkflowVersion @relation(fields: [versionId], references: [id], onDelete: Cascade)
+
+  @@index([versionId])
+  @@index([sourceNodeKey])
+  @@index([targetNodeKey])
+  @@map("workflow_edges")
+}
+
+model WorkflowRun {
+  id             String            @id @default(uuid())
+  workflowId     String            @map("workflow_id")
+  versionId      String            @map("version_id")
+  userId         String            @map("user_id")
+  status         WorkflowRunStatus @default(QUEUED)
+  triggerType    WorkflowTriggerType @default(MANUAL) @map("trigger_type")
+  idempotencyKey String?           @map("idempotency_key")
+  input          Json              @default("{}")
+  output         Json?
+  error          String?           @db.Text
+  stepCount      Int               @default(0) @map("step_count")
+  startedAt      DateTime?         @map("started_at")
+  completedAt    DateTime?         @map("completed_at")
+  createdAt      DateTime          @default(now()) @map("created_at")
+
+  workflow Workflow           @relation(fields: [workflowId], references: [id], onDelete: Cascade)
+  version  WorkflowVersion    @relation(fields: [versionId], references: [id], onDelete: Cascade)
+  user     User               @relation(fields: [userId], references: [id], onDelete: Cascade)
+  runNodes WorkflowRunNode[]
+
+  @@index([workflowId])
+  @@index([versionId])
+  @@index([userId])
+  @@index([status])
+  @@index([idempotencyKey])
+  @@index([createdAt])
+  @@map("workflow_runs")
+}
+
+model WorkflowRunNode {
+  id          String                @id @default(uuid())
+  runId       String                @map("run_id")
+  nodeKey     String                @map("node_key")
+  status      WorkflowRunNodeStatus @default(PENDING)
+  input       Json?
+  output      Json?
+  error       String?               @db.Text
+  attempt     Int                   @default(1)
+  startedAt   DateTime?             @map("started_at")
+  completedAt DateTime?             @map("completed_at")
+
+  run WorkflowRun @relation(fields: [runId], references: [id], onDelete: Cascade)
+
+  @@unique([runId, nodeKey])
+  @@index([runId])
+  @@index([status])
+  @@map("workflow_run_nodes")
+}
+
+model WorkflowVariable {
+  id           String               @id @default(uuid())
+  workflowId   String               @map("workflow_id")
+  name         String
+  type         WorkflowVariableType @default(STRING)
+  defaultValue String?              @db.Text @map("default_value")
+  isSecret     Boolean              @default(false) @map("is_secret")
+  createdAt    DateTime             @default(now()) @map("created_at")
+  updatedAt    DateTime             @updatedAt @map("updated_at")
+
+  workflow Workflow @relation(fields: [workflowId], references: [id], onDelete: Cascade)
+
+  @@unique([workflowId, name])
+  @@index([workflowId])
+  @@map("workflow_variables")
+}
+
+model WorkflowTrigger {
+  id             String              @id @default(uuid())
+  workflowId     String              @map("workflow_id")
+  type           WorkflowTriggerType @map("type")
+  configuration  Json                @default("{}")
+  enabled        Boolean             @default(true)
+  lastExecutedAt DateTime?           @map("last_executed_at")
+  createdAt      DateTime            @default(now()) @map("created_at")
+  updatedAt      DateTime            @updatedAt @map("updated_at")
+
+  workflow Workflow @relation(fields: [workflowId], references: [id], onDelete: Cascade)
+
+  @@index([workflowId])
+  @@index([type])
+  @@map("workflow_triggers")
+}
+
+model WorkflowShare {
+  id               String                  @id @default(uuid())
+  workflowId       String                  @map("workflow_id")
+  ownerId          String                  @map("owner_id")
+  sharedWithUserId String                  @map("shared_with_user_id")
+  permission       WorkflowSharePermission @default(VIEWER)
+  expiresAt        DateTime?               @map("expires_at")
+  createdAt        DateTime                @default(now()) @map("created_at")
+
+  workflow   Workflow @relation(fields: [workflowId], references: [id], onDelete: Cascade)
+  owner      User     @relation("WorkflowShareOwner", fields: [ownerId], references: [id], onDelete: Cascade)
+  sharedWith User     @relation("WorkflowShareRecipient", fields: [sharedWithUserId], references: [id], onDelete: Cascade)
+
+  @@unique([workflowId, sharedWithUserId])
+  @@index([workflowId])
+  @@index([ownerId])
+  @@index([sharedWithUserId])
+  @@map("workflow_shares")
+}
+
 
 

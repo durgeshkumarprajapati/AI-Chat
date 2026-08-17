@@ -680,9 +680,30 @@ npm run test:phase34
 # Agentic Research Performance Benchmark
 npx tsx scripts/test-agentic-research-performance.ts
 
-# Universal 28-Phase Regression Test Suite (Phase 7 through 34)
+## Phase 35 — AI Workflow Builder & Automation Engine
+
+Phase 35 adds a production-grade, secure, observable, versioned, resumable, and backward-compatible AI Workflow Builder & Automation Engine. It allows users to build, visually edit, validate, publish, and automate complex pipelines connecting Document AI, RAG, Web Search, Multimodal parsing, and Agentic Research.
+
+### Key Capabilities
+- **Dual Creation Methods**: Supports (1) Visual Drag-and-Drop Canvas Editor and (2) Natural Language AI Workflow Generator.
+- **Controlled Node Registry**: 30 controlled node types across 8 categories (`TRIGGERS`, `DATA`, `AI`, `LOGIC`, `DOCUMENT`, `RESEARCH`, `OUTPUT`, `CONTROL`).
+- **Graph & Schema Validation**: Server-side DAG validation, orphan node detection, loop bounds (`maxIterations <= 20`), and schema verification via `WorkflowValidatorService`.
+- **Immutable Versioning**: Workflows are immutable once published. Edits create new versions (e.g. Version 2), and runs reference the exact published version.
+- **Deterministic Resumable Engine**: Controlled execution engine with server step limits (`WORKFLOW_MAX_EXECUTION_STEPS=200`), concurrency caps, backoff retries, and cancellation support.
+- **Safe Conditions & Variables**: Expression evaluator (`==`, `!=`, `>`, `>=`, `<`, `<=`, `AND`, `OR`, `IN`, `CONTAINS`) without `eval()`, mustache variable interpolation, and secret redaction.
+- **Real-Time Execution Monitoring**: Live execution view (`/workflows/[id]/runs/[runId]`) displaying node status highlights, input/output inspection, and step log.
+
+```bash
+# Automated Phase 35 Test Suite (110+ Tests)
+npm run test:phase35
+
+# Workflow Engine Performance Benchmark
+npx tsx scripts/test-workflow-performance.ts
+
+# Universal 29-Phase Regression Test Suite (Phase 7 through 35)
 npm run test:all-phases
 ```
+
 
 
 

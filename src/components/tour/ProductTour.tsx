@@ -199,6 +199,13 @@ const TOUR_STEPS: TourStep[] = [
     description: 'Autonomous multi-source evidence investigation, claim extraction, conflict detection, gap analysis, and report synthesis.',
     technicalDetails: 'ResearchAgentService • ResearchPlannerService • ResearchToolExecutor • ResearchClaimService • ResearchConflictService • ResearchReportService',
     icon: '🤖'
+  },
+  {
+    title: '28. AI Workflow Builder & Automation Engine',
+    badge: 'Phase 35',
+    description: 'Visual drag-and-drop node graph canvas and AI-assisted workflow generator for orchestrating Document AI, RAG, Web Search, and Agentic Research pipelines.',
+    technicalDetails: 'WorkflowEngineService • WorkflowNodeExecutor • GraphValidator • WorkflowValidatorService • AIWorkflowGeneratorService • WorkflowVariableService • WorkflowConditionEvaluator',
+    icon: '🧩'
   }
 ];
 

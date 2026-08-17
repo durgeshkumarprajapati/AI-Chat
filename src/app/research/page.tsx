@@ -99,10 +99,10 @@ export default function ResearchDashboardPage() {
             <Link
               key={s.id}
               href={`/research/${s.id}`}
-              className="group block p-5 rounded-2xl bg-slate-900/80 border border-slate-800 hover:border-indigo-500/50 transition hover:shadow-xl space-y-4"
+              className="group block p-5 rounded-2xl bg-white dark:bg-slate-900/80 border border-slate-200 dark:border-slate-800 hover:border-indigo-500/50 transition hover:shadow-xl space-y-4 shadow-sm"
             >
               <div className="flex items-start justify-between gap-2">
-                <h3 className="text-sm font-semibold text-white group-hover:text-indigo-400 transition line-clamp-2">
+                <h3 className="text-sm font-semibold text-slate-900 dark:text-white group-hover:text-indigo-600 dark:group-hover:text-indigo-400 transition line-clamp-2">
                   {s.title}
                 </h3>
                 <span

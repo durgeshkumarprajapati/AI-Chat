@@ -3,28 +3,60 @@
 @tailwind utilities;
 
 :root,
-[data-theme='dark'],
-.dark {
-  --background: #020617;
-  --foreground: #f8fafc;
-  --surface: #0f172a;
-  --surface-hover: #1e293b;
-  --border: #1e293b;
-  --text-muted: #94a3b8;
-  --card-bg: rgba(15, 23, 42, 0.85);
-  color-scheme: dark;
-}
-
 [data-theme='light'],
 .light {
   --background: #f8fafc;
   --foreground: #0f172a;
   --surface: #ffffff;
   --surface-hover: #f1f5f9;
+  --surface-elevated: #ffffff;
+  --surface-muted: #f1f5f9;
   --border: #e2e8f0;
+  --border-strong: #cbd5e1;
+  --text-primary: #0f172a;
+  --text-secondary: #334155;
   --text-muted: #64748b;
-  --card-bg: rgba(255, 255, 255, 0.95);
+  --text-disabled: #94a3b8;
+  --card-bg: #ffffff;
+  --primary: #4f46e5;
+  --primary-hover: #4338ca;
+  --primary-foreground: #ffffff;
+  --secondary: #f1f5f9;
+  --secondary-foreground: #0f172a;
+  --success: #10b981;
+  --warning: #f59e0b;
+  --danger: #ef4444;
+  --info: #3b82f6;
+  --focus-ring: rgba(99, 102, 241, 0.4);
   color-scheme: light;
+}
+
+.dark,
+[data-theme='dark'] {
+  --background: #020617;
+  --foreground: #f8fafc;
+  --surface: #0f172a;
+  --surface-hover: #1e293b;
+  --surface-elevated: #1e293b;
+  --surface-muted: #0f172a;
+  --border: #1e293b;
+  --border-strong: #334155;
+  --text-primary: #f8fafc;
+  --text-secondary: #cbd5e1;
+  --text-muted: #94a3b8;
+  --text-disabled: #64748b;
+  --card-bg: rgba(15, 23, 42, 0.85);
+  --primary: #6366f1;
+  --primary-hover: #4f46e5;
+  --primary-foreground: #ffffff;
+  --secondary: #1e293b;
+  --secondary-foreground: #f8fafc;
+  --success: #10b981;
+  --warning: #f59e0b;
+  --danger: #ef4444;
+  --info: #3b82f6;
+  --focus-ring: rgba(99, 102, 241, 0.4);
+  color-scheme: dark;
 }
 
 body {
@@ -34,38 +66,30 @@ body {
   transition: background-color 0.15s ease, color 0.15s ease;
 }
 
-/* Light mode overrides for existing dark slate utilities */
-.light .bg-slate-950 {
-  background-color: #f8fafc !important;
-}
-.light .bg-slate-900 {
-  background-color: #ffffff !important;
-}
-.light .bg-slate-900\/90,
-.light .bg-slate-900\/80,
-.light .bg-slate-900\/60,
-.light .bg-slate-900\/50,
-.light .bg-slate-900\/40 {
-  background-color: rgba(255, 255, 255, 0.95) !important;
-}
-.light .bg-slate-800 {
-  background-color: #f1f5f9 !important;
-}
-.light .border-slate-800,
-.light .border-slate-800\/80,
-.light .border-slate-800\/50 {
-  border-color: #e2e8f0 !important;
-}
-.light .text-slate-100,
-.light .text-white {
-  color: #0f172a !important;
-}
-.light .text-slate-400,
-.light .text-slate-300 {
-  color: #475569 !important;
-}
-.light .bg-slate-950\/80,
-.light .bg-slate-950\/60,
-.light .bg-slate-950\/40 {
-  background-color: #f1f5f9 !important;
+/* Custom Utilities for Theme Tokens */
+@layer utilities {
+  .bg-theme-bg {
+    background-color: var(--background);
+  }
+  .bg-theme-surface {
+    background-color: var(--surface);
+  }
+  .bg-theme-surface-hover {
+    background-color: var(--surface-hover);
+  }
+  .text-theme-primary {
+    color: var(--text-primary);
+  }
+  .text-theme-secondary {
+    color: var(--text-secondary);
+  }
+  .text-theme-muted {
+    color: var(--text-muted);
+  }
+  .border-theme {
+    border-color: var(--border);
+  }
+  .border-theme-strong {
+    border-color: var(--border-strong);
+  }
 }

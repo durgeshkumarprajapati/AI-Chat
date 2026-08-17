@@ -700,9 +700,24 @@ npm run test:phase35
 # Workflow Engine Performance Benchmark
 npx tsx scripts/test-workflow-performance.ts
 
-# Universal 29-Phase Regression Test Suite (Phase 7 through 35)
+## Phase 36 — Global Light Mode Accessibility & Visual Consistency
+
+Phase 36 implements a production-grade, accessible, high-contrast, visually consistent Light Mode across all modules and pages of the Document AI & RAG platform, while preserving existing Dark Mode design and system behavior.
+
+### Key Capabilities
+- **Semantic CSS Token System**: Comprehensive design token architecture in `src/app/globals.css` (`--background`, `--surface`, `--border`, `--text-primary`, `--text-secondary`, `--primary`, `--focus-ring`) supporting seamless light and dark mode switching.
+- **Clean Contrast Across Modules**: High contrast WCAG 4.5:1 text readability across Study Mode question cards, MCQ option letters A/B/C/D, City Explorer header gradients, Agentic Research timelines, Workflow visual canvas, Knowledge Base cards, and Document tables.
+- **Zero Brittle Overrides**: Removed destructive `!important` text overrides, preserving crisp white text on primary indigo action buttons and badge indicators.
+- **Zero-Flash Theme Persistence**: User-scoped theme persistence (`docai_user_<id>_theme`) and system preference fallback (`prefers-color-scheme`) without hydration mismatch or visual flash.
+
+```bash
+# Automated Phase 36 Accessibility Test Suite (35 Assertions)
+npm run test:light-mode
+
+# Universal 30-Phase Regression Test Suite (Phase 7 through 36)
 npm run test:all-phases
 ```
+
 
 
 

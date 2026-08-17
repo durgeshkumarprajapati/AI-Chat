@@ -45,6 +45,8 @@
     "test:phase33": "tsx tests/phase33-ai-study-tutor.test.ts",
     "test:phase34": "tsx tests/phase34-agentic-research.test.ts",
     "test:phase35": "tsx tests/phase35-ai-workflow-builder.test.ts",
+    "test:phase36": "tsx tests/light-mode-accessibility.test.ts",
+    "test:light-mode": "tsx tests/light-mode-accessibility.test.ts",
     "test:all": "tsx scripts/test-all-phases.ts",
     "test:all-phases": "tsx scripts/test-all-phases.ts",
     "benchmark:rag": "tsx scripts/test-rag-performance.ts",

@@ -56,19 +56,19 @@ export function AppLayout({ children }: { children: React.ReactNode }) {
   ];
 
   return (
-    <div className="min-h-screen bg-slate-950 text-slate-100 flex flex-col md:flex-row font-sans antialiased">
+    <div className="min-h-screen bg-slate-50 dark:bg-slate-950 text-slate-900 dark:text-slate-100 flex flex-col md:flex-row font-sans antialiased">
       {/* Product Tour Modal */}
       <ProductTour isOpen={isTourOpen} onClose={() => setIsTourOpen(false)} />
 
       {/* Sidebar Navigation - Desktop */}
-      <aside className="hidden md:flex flex-col w-64 border-r border-slate-800 bg-slate-900/50 p-4 space-y-6 flex-shrink-0">
+      <aside className="hidden md:flex flex-col w-64 border-r border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900/50 p-4 space-y-6 flex-shrink-0">
         <div className="flex items-center space-x-3 px-2 py-1">
           <div className="w-9 h-9 rounded-xl bg-gradient-to-tr from-indigo-600 to-indigo-400 flex items-center justify-center font-bold text-white shadow-lg shadow-indigo-500/20 text-lg">
             AI
           </div>
           <div>
-            <h1 className="font-bold text-white tracking-tight text-base">Document AI</h1>
-            <p className="text-xs text-slate-400 font-mono">RAG Platform v0.10</p>
+            <h1 className="font-bold text-slate-900 dark:text-white tracking-tight text-base">Document AI</h1>
+            <p className="text-xs text-slate-500 dark:text-slate-400 font-mono">RAG Platform v0.10</p>
           </div>
         </div>
 
@@ -81,8 +81,8 @@ export function AppLayout({ children }: { children: React.ReactNode }) {
                 href={item.href}
                 className={`flex items-center justify-between px-3 py-2.5 rounded-xl text-sm font-medium transition-all ${
                   isActive
-                    ? 'bg-indigo-600/10 text-indigo-400 border border-indigo-500/20'
-                    : 'text-slate-400 hover:text-slate-200 hover:bg-slate-800/50'
+                    ? 'bg-indigo-50 dark:bg-indigo-600/10 text-indigo-700 dark:text-indigo-400 border border-indigo-200 dark:border-indigo-500/20 font-semibold'
+                    : 'text-slate-600 dark:text-slate-400 hover:text-slate-900 dark:hover:text-slate-200 hover:bg-slate-100 dark:hover:bg-slate-800/50'
                 }`}
               >
                 <div className="flex items-center space-x-3">
@@ -90,7 +90,7 @@ export function AppLayout({ children }: { children: React.ReactNode }) {
                   <span>{item.name}</span>
                 </div>
                 {item.badge && (
-                  <span className="text-[10px] font-bold px-1.5 py-0.5 rounded bg-slate-800 text-indigo-400 border border-slate-700">
+                  <span className="text-[10px] font-bold px-1.5 py-0.5 rounded bg-slate-100 dark:bg-slate-800 text-indigo-700 dark:text-indigo-400 border border-slate-200 dark:border-slate-700">
                     {item.badge}
                   </span>
                 )}
@@ -100,12 +100,12 @@ export function AppLayout({ children }: { children: React.ReactNode }) {
         </nav>
 
         {/* Local Infrastructure Badge */}
-        <div className="rounded-xl bg-slate-900 border border-slate-800 p-3 space-y-2 text-xs">
-          <div className="flex items-center justify-between text-slate-400">
+        <div className="rounded-xl bg-slate-50 dark:bg-slate-900 border border-slate-200 dark:border-slate-800 p-3 space-y-2 text-xs">
+          <div className="flex items-center justify-between text-slate-500 dark:text-slate-400">
             <span>Pipeline Infrastructure</span>
-            <span className="w-2 h-2 rounded-full bg-emerald-400 animate-pulse" />
+            <span className="w-2 h-2 rounded-full bg-emerald-500 dark:bg-emerald-400 animate-pulse" />
           </div>
-          <div className="font-mono text-[11px] text-slate-300 space-y-0.5">
+          <div className="font-mono text-[11px] text-slate-700 dark:text-slate-300 space-y-0.5">
             <p>• Pgvector 0.8.6 (768d)</p>
             <p>• Ollama nomic-embed</p>
             <p>• RabbitMQ Worker</p>
@@ -116,25 +116,25 @@ export function AppLayout({ children }: { children: React.ReactNode }) {
       {/* Main Content Container */}
       <div className="flex-1 flex flex-col min-w-0">
         {/* Top Header */}
-        <header className="h-16 border-b border-slate-800 bg-slate-900/30 px-4 md:px-8 flex items-center justify-between flex-shrink-0">
+        <header className="h-16 border-b border-slate-200 dark:border-slate-800 bg-white/80 dark:bg-slate-900/30 px-4 md:px-8 flex items-center justify-between flex-shrink-0 backdrop-blur-sm">
           <div className="flex items-center space-x-3 md:hidden">
             <button
               onClick={() => setIsMobileMenuOpen(!isMobileMenuOpen)}
-              className="p-2 rounded-lg text-slate-400 hover:text-white hover:bg-slate-800"
+              className="p-2 rounded-lg text-slate-600 dark:text-slate-400 hover:text-slate-900 dark:hover:text-white hover:bg-slate-100 dark:hover:bg-slate-800"
             >
               ☰
             </button>
-            <span className="font-bold text-white text-lg">Document AI</span>
+            <span className="font-bold text-slate-900 dark:text-white text-lg">Document AI</span>
           </div>
 
           <div className="hidden md:flex items-center space-x-3 text-xs">
             {currentUser ? (
-              <Link href="/account" className="flex items-center space-x-2 px-3 py-1.5 rounded-full bg-slate-900 border border-slate-800 hover:border-slate-700 transition">
+              <Link href="/account" className="flex items-center space-x-2 px-3 py-1.5 rounded-full bg-slate-50 dark:bg-slate-900 border border-slate-200 dark:border-slate-800 hover:border-slate-300 dark:hover:border-slate-700 transition">
                 <div className="w-5 h-5 rounded-full bg-indigo-600 flex items-center justify-center text-[10px] font-bold text-white uppercase">
                   {currentUser.name?.[0] || currentUser.email[0]}
                 </div>
-                <span className="font-medium text-slate-200">{currentUser.name || currentUser.email}</span>
-                <span className={`px-1.5 py-0.2 text-[9px] font-mono font-bold rounded ${currentUser.role === 'ADMIN' ? 'bg-rose-950 text-rose-300 border border-rose-800' : 'bg-indigo-950 text-indigo-300 border border-indigo-800'}`}>
+                <span className="font-medium text-slate-800 dark:text-slate-200">{currentUser.name || currentUser.email}</span>
+                <span className={`px-1.5 py-0.2 text-[9px] font-mono font-bold rounded ${currentUser.role === 'ADMIN' ? 'bg-rose-100 text-rose-800 border border-rose-200 dark:bg-rose-950 dark:text-rose-300 dark:border-rose-800' : 'bg-indigo-100 text-indigo-800 border border-indigo-200 dark:bg-indigo-950 dark:text-indigo-300 dark:border-indigo-800'}`}>
                   {currentUser.role}
                 </span>
               </Link>
@@ -149,18 +149,18 @@ export function AppLayout({ children }: { children: React.ReactNode }) {
             {/* System Status Pill */}
             <Link
               href="/health"
-              className="flex items-center space-x-2 px-3 py-1.5 rounded-full bg-slate-900 border border-slate-800 text-xs font-medium hover:border-slate-700 transition-colors"
+              className="flex items-center space-x-2 px-3 py-1.5 rounded-full bg-slate-50 dark:bg-slate-900 border border-slate-200 dark:border-slate-800 text-xs font-medium hover:border-slate-300 dark:hover:border-slate-700 transition-colors"
             >
               <span
                 className={`w-2 h-2 rounded-full ${
                   healthStatus === 'ok'
-                    ? 'bg-emerald-400 shadow-sm shadow-emerald-400/50'
+                    ? 'bg-emerald-500 dark:bg-emerald-400 shadow-sm shadow-emerald-400/50'
                     : healthStatus === 'degraded'
-                    ? 'bg-amber-400'
-                    : 'bg-slate-500'
+                    ? 'bg-amber-500 dark:bg-amber-400'
+                    : 'bg-slate-400 dark:bg-slate-500'
                 }`}
               />
-              <span className="text-slate-300">
+              <span className="text-slate-700 dark:text-slate-300">
                 {healthStatus === 'ok' ? 'Services Healthy' : healthStatus === 'degraded' ? 'Degraded Status' : 'Checking Health...'}
               </span>
             </Link>
@@ -171,7 +171,7 @@ export function AppLayout({ children }: { children: React.ReactNode }) {
             {/* Product Tour Trigger */}
             <button
               onClick={() => setIsTourOpen(true)}
-              className="flex items-center space-x-1.5 px-3 py-1.5 rounded-lg bg-indigo-600/10 hover:bg-indigo-600/20 text-indigo-400 border border-indigo-500/20 text-xs font-semibold transition-all"
+              className="flex items-center space-x-1.5 px-3 py-1.5 rounded-lg bg-indigo-50 dark:bg-indigo-600/10 hover:bg-indigo-100 dark:hover:bg-indigo-600/20 text-indigo-700 dark:text-indigo-400 border border-indigo-200 dark:border-indigo-500/20 text-xs font-semibold transition-all"
             >
               <span>Take Tour</span>
               <span>✨</span>
@@ -181,16 +181,16 @@ export function AppLayout({ children }: { children: React.ReactNode }) {
 
         {/* Mobile Menu Drawer */}
         {isMobileMenuOpen && (
-          <div className="md:hidden bg-slate-900 border-b border-slate-800 p-4 space-y-2">
+          <div className="md:hidden bg-white dark:bg-slate-900 border-b border-slate-200 dark:border-slate-800 p-4 space-y-2">
             {navItems.map((item) => (
               <Link
                 key={item.name}
                 href={item.href}
                 onClick={() => setIsMobileMenuOpen(false)}
-                className="flex items-center justify-between px-3 py-2.5 rounded-lg text-sm text-slate-300 hover:bg-slate-800"
+                className="flex items-center justify-between px-3 py-2.5 rounded-lg text-sm text-slate-700 dark:text-slate-300 hover:bg-slate-100 dark:hover:bg-slate-800"
               >
                 <span>{item.name}</span>
-                {item.badge && <span className="text-xs text-indigo-400">{item.badge}</span>}
+                {item.badge && <span className="text-xs text-indigo-600 dark:text-indigo-400">{item.badge}</span>}
               </Link>
             ))}
           </div>

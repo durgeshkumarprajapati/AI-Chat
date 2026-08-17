@@ -72,6 +72,12 @@ export async function GET() {
         maxSteps: number;
         maxSearchQueries: number;
       };
+      workflow?: {
+        enabled: boolean;
+        status: string;
+        engine: string;
+        scheduler: string;
+      };
     };
   } = {
     status: 'ok',
@@ -136,6 +142,12 @@ export async function GET() {
         status: 'healthy',
         maxSteps: Number(process.env.AGENTIC_RESEARCH_MAX_STEPS) || 12,
         maxSearchQueries: Number(process.env.AGENTIC_RESEARCH_MAX_SEARCH_QUERIES) || 8
+      },
+      workflow: {
+        enabled: process.env.WORKFLOW_ENABLED !== 'false',
+        status: 'healthy',
+        engine: 'healthy',
+        scheduler: 'healthy'
       }
     }
   };

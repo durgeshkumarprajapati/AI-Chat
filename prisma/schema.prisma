@@ -83,6 +83,7 @@ model User {
   studySessions          StudySession[]
   studyAnswers           StudyAnswer[]
   studyAttempts          StudyAttempt[]
+  researchSessions       ResearchSession[]
 
   @@map("users")
 }
@@ -117,6 +118,8 @@ model Document {
   visuals        DocumentVisual[]
   knowledgeBases KnowledgeBaseDocument[]
   studySessionSources StudySessionSource[]
+  researchSources     ResearchSource[]
+  researchEvidences   ResearchEvidence[]
 
   @@index([userId])
   @@index([status])
@@ -138,6 +141,7 @@ model KnowledgeBase {
   ragEvaluations RagEvaluation[]
   studySessions       StudySession[]
   studySessionSources StudySessionSource[]
+  researchSessions    ResearchSession[]
 
   @@index([userId])
   @@map("knowledge_bases")
@@ -386,6 +390,7 @@ model Roadmap {
   shares RoadmapShare[]
   studySessions       StudySession[]
   studySessionSources StudySessionSource[]
+  researchSessions    ResearchSession[]
 
   @@index([userId])
   @@index([status])
@@ -665,4 +670,289 @@ model StudyAttempt {
   @@index([userId])
   @@map("study_attempts")
 }
+
+// ==========================================
+// PHASE 34 — AGENTIC RESEARCH MODELS & ENUMS
+// ==========================================
+
+enum ResearchSessionStatus {
+  RECEIVED
+  PLANNING
+  READY
+  SEARCHING
+  COLLECTING_EVIDENCE
+  ANALYZING
+  GAP_ANALYSIS
+  FOLLOW_UP_RESEARCH
+  VERIFYING
+  SYNTHESIZING
+  COMPLETED
+  PARTIAL
+  NO_EVIDENCE
+  LIMIT_REACHED
+  CANCELLED
+  FAILED
+}
+
+enum ResearchMode {
+  QUICK
+  STANDARD
+  DEEP
+}
+
+enum ResearchSourceMode {
+  DOCUMENTS_ONLY
+  WEB_ONLY
+  ALL_SOURCES
+  WEB_SEARCH
+  AUTO
+  RESEARCH_DOCUMENTS
+  RESEARCH_WEB
+  RESEARCH_ALL
+}
+
+enum ResearchTaskType {
+  SEARCH
+  DOCUMENT_RETRIEVAL
+  WEB_RETRIEVAL
+  COMPARE
+  VERIFY
+  GAP_ANALYSIS
+  SUMMARIZE
+  VISUAL_ANALYSIS
+}
+
+enum ResearchTaskStatus {
+  PENDING
+  IN_PROGRESS
+  COMPLETED
+  FAILED
+  SKIPPED
+}
+
+enum ResearchConfidence {
+  HIGH
+  MEDIUM
+  LOW
+  CONFLICTING
+  INSUFFICIENT
+}
+
+enum ResearchConflictType {
+  CONTRADICTION
+  NUMERIC_DISAGREEMENT
+  DATE_DISAGREEMENT
+  DEFINITION_DISAGREEMENT
+  SCOPE_DISAGREEMENT
+}
+
+enum ResearchConflictStatus {
+  UNRESOLVED
+  RESOLVED
+  DISCLOSED
+}
+
+enum ResearchEventType {
+  RESEARCH_STARTED
+  PLAN_CREATED
+  TASK_STARTED
+  SEARCH_STARTED
+  SEARCH_COMPLETED
+  EVIDENCE_COLLECTED
+  GAP_DETECTED
+  FOLLOW_UP_STARTED
+  CONFLICT_DETECTED
+  VERIFICATION_STARTED
+  SYNTHESIS_STARTED
+  REPORT_READY
+  RESEARCH_COMPLETED
+  RESEARCH_FAILED
+  RESEARCH_CANCELLED
+  LIMIT_REACHED
+}
+
+model ResearchSession {
+  id                 String                @id @default(uuid())
+  userId             String                @map("user_id")
+  title              String
+  question           String                @db.Text
+  status             ResearchSessionStatus @default(RECEIVED)
+  researchMode       ResearchMode          @default(STANDARD) @map("research_mode")
+  sourceMode         ResearchSourceMode    @default(AUTO) @map("source_mode")
+  knowledgeBaseId    String?               @map("knowledge_base_id")
+  roadmapId          String?               @map("roadmap_id")
+  maxSteps           Int                   @default(8) @map("max_steps")
+  stepsUsed          Int                   @default(0) @map("steps_used")
+  searchCount        Int                   @default(0) @map("search_count")
+  llmCallCount       Int                   @default(0) @map("llm_call_count")
+  sourceCount        Int                   @default(0) @map("source_count")
+  evidenceCount      Int                   @default(0) @map("evidence_count")
+  claimCount         Int                   @default(0) @map("claim_count")
+  conflictCount      Int                   @default(0) @map("conflict_count")
+  progressPercent    Int                   @default(0) @map("progress_percent")
+  externalWebEnabled Boolean               @default(true) @map("external_web_enabled")
+  startedAt          DateTime?             @map("started_at")
+  completedAt        DateTime?             @map("completed_at")
+  createdAt          DateTime              @default(now()) @map("created_at")
+  updatedAt          DateTime              @updatedAt @map("updated_at")
+
+  user          User             @relation(fields: [userId], references: [id], onDelete: Cascade)
+  knowledgeBase KnowledgeBase?   @relation(fields: [knowledgeBaseId], references: [id], onDelete: SetNull)
+  roadmap       Roadmap?         @relation(fields: [roadmapId], references: [id], onDelete: SetNull)
+  tasks         ResearchTask[]
+  sources       ResearchSource[]
+  evidences     ResearchEvidence[]
+  claims        ResearchClaim[]
+  conflicts     ResearchConflict[]
+  reports       ResearchReport[]
+  events        ResearchEvent[]
+
+  @@index([userId])
+  @@index([status])
+  @@index([createdAt])
+  @@map("research_sessions")
+}
+
+model ResearchTask {
+  id               String             @id @default(uuid())
+  sessionId        String             @map("session_id")
+  parentTaskId     String?            @map("parent_task_id")
+  objective        String             @db.Text
+  type             ResearchTaskType
+  status           ResearchTaskStatus @default(PENDING)
+  priority         Int                @default(1)
+  query            String?            @db.Text
+  attemptCount     Int                @default(0) @map("attempt_count")
+  evidenceRequired Boolean            @default(true) @map("evidence_required")
+  evidenceCount    Int                @default(0) @map("evidence_count")
+  createdAt        DateTime           @default(now()) @map("created_at")
+  startedAt        DateTime?          @map("started_at")
+  completedAt      DateTime?          @map("completed_at")
+
+  session   ResearchSession    @relation(fields: [sessionId], references: [id], onDelete: Cascade)
+  evidences ResearchEvidence[]
+
+  @@index([sessionId])
+  @@index([status])
+  @@index([type])
+  @@map("research_tasks")
+}
+
+model ResearchSource {
+  id              String   @id @default(uuid())
+  sessionId       String   @map("session_id")
+  url             String?  @db.Text
+  title           String
+  domain          String?
+  sourceType      String   @default("WEB") @map("source_type")
+  documentId      String?  @map("document_id")
+  authorityScore  Float    @default(0.5) @map("authority_score")
+  relevanceScore  Float    @default(0.5) @map("relevance_score")
+  freshnessScore  Float    @default(0.5) @map("freshness_score")
+  qualityScore    Float    @default(0.5) @map("quality_score")
+  contentHash     String?  @map("content_hash")
+  retrievedAt     DateTime @default(now()) @map("retrieved_at")
+  createdAt       DateTime @default(now()) @map("created_at")
+
+  session   ResearchSession    @relation(fields: [sessionId], references: [id], onDelete: Cascade)
+  document  Document?          @relation(fields: [documentId], references: [id], onDelete: SetNull)
+  evidences ResearchEvidence[]
+
+  @@index([sessionId])
+  @@index([documentId])
+  @@index([sourceType])
+  @@map("research_sources")
+}
+
+model ResearchEvidence {
+  id           String             @id @default(uuid())
+  taskId       String?            @map("task_id")
+  sessionId    String             @map("session_id")
+  sourceId     String             @map("source_id")
+  documentId   String?            @map("document_id")
+  chunkId      String?            @map("chunk_id")
+  visualId     String?            @map("visual_id")
+  contentHash  String             @map("content_hash")
+  evidenceText String             @db.Text @map("evidence_text")
+  claimText    String?            @db.Text @map("claim_text")
+  pageNumber   Int?               @map("page_number")
+  confidence   ResearchConfidence @default(MEDIUM)
+  createdAt    DateTime           @default(now()) @map("created_at")
+
+  session  ResearchSession @relation(fields: [sessionId], references: [id], onDelete: Cascade)
+  task     ResearchTask?   @relation(fields: [taskId], references: [id], onDelete: SetNull)
+  source   ResearchSource  @relation(fields: [sourceId], references: [id], onDelete: Cascade)
+  document Document?       @relation(fields: [documentId], references: [id], onDelete: SetNull)
+
+  @@index([sessionId])
+  @@index([taskId])
+  @@index([sourceId])
+  @@index([contentHash])
+  @@map("research_evidences")
+}
+
+model ResearchClaim {
+  id              String             @id @default(uuid())
+  sessionId       String             @map("session_id")
+  claimText       String             @db.Text @map("claim_text")
+  normalizedClaim String             @db.Text @map("normalized_claim")
+  confidence      ResearchConfidence @default(MEDIUM)
+  status          String             @default("VERIFIED")
+  createdAt       DateTime           @default(now()) @map("created_at")
+  updatedAt       DateTime           @updatedAt @map("updated_at")
+
+  session ResearchSession @relation(fields: [sessionId], references: [id], onDelete: Cascade)
+
+  @@index([sessionId])
+  @@map("research_claims")
+}
+
+model ResearchConflict {
+  id                String                 @id @default(uuid())
+  sessionId         String                 @map("session_id")
+  claimAId          String                 @map("claim_a_id")
+  claimBId          String                 @map("claim_b_id")
+  conflictType      ResearchConflictType   @map("conflict_type")
+  severity          String                 @default("MEDIUM")
+  resolutionStatus  ResearchConflictStatus @default(UNRESOLVED) @map("resolution_status")
+  resolutionSummary String?                @db.Text @map("resolution_summary")
+  createdAt         DateTime               @default(now()) @map("created_at")
+  updatedAt         DateTime               @updatedAt @map("updated_at")
+
+  session ResearchSession @relation(fields: [sessionId], references: [id], onDelete: Cascade)
+
+  @@index([sessionId])
+  @@map("research_conflicts")
+}
+
+model ResearchReport {
+  id                String          @id @default(uuid())
+  sessionId         String          @map("session_id")
+  summary           String          @db.Text
+  reportContent     String          @db.Text @map("report_content")
+  reportVersion     Int             @default(1) @map("report_version")
+  sourceFingerprint String?         @map("source_fingerprint")
+  createdAt         DateTime        @default(now()) @map("created_at")
+  updatedAt         DateTime        @updatedAt @map("updated_at")
+
+  session ResearchSession @relation(fields: [sessionId], references: [id], onDelete: Cascade)
+
+  @@index([sessionId])
+  @@map("research_reports")
+}
+
+model ResearchEvent {
+  id        String            @id @default(uuid())
+  sessionId String            @map("session_id")
+  eventType ResearchEventType @map("event_type")
+  metadata  Json              @default("{}")
+  createdAt DateTime          @default(now()) @map("created_at")
+
+  session ResearchSession @relation(fields: [sessionId], references: [id], onDelete: Cascade)
+
+  @@index([sessionId])
+  @@index([createdAt])
+  @@map("research_events")
+}
+
 

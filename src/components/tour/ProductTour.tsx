@@ -192,6 +192,13 @@ const TOUR_STEPS: TourStep[] = [
     description: 'Interactive AI tutor mode with grounded Socratic questioning, quizzes, flashcards, practice code exercises, and adaptive mastery tracking.',
     technicalDetails: 'StudySessionService • StudyQuestionGeneratorService • StudyAnswerEvaluatorService • StudyAdaptiveEngineService • StudyHintService',
     icon: '🎓'
+  },
+  {
+    title: '27. Bounded Agentic Research',
+    badge: 'Phase 34',
+    description: 'Autonomous multi-source evidence investigation, claim extraction, conflict detection, gap analysis, and report synthesis.',
+    technicalDetails: 'ResearchAgentService • ResearchPlannerService • ResearchToolExecutor • ResearchClaimService • ResearchConflictService • ResearchReportService',
+    icon: '🤖'
   }
 ];
 

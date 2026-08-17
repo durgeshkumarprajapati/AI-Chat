@@ -66,6 +66,12 @@ export async function GET() {
         enabled: boolean;
         status: string;
       };
+      agenticResearch?: {
+        enabled: boolean;
+        status: string;
+        maxSteps: number;
+        maxSearchQueries: number;
+      };
     };
   } = {
     status: 'ok',
@@ -124,6 +130,12 @@ export async function GET() {
       studyMode: {
         enabled: process.env.STUDY_MODE_ENABLED !== 'false',
         status: 'healthy'
+      },
+      agenticResearch: {
+        enabled: process.env.AGENTIC_RESEARCH_ENABLED !== 'false',
+        status: 'healthy',
+        maxSteps: Number(process.env.AGENTIC_RESEARCH_MAX_STEPS) || 12,
+        maxSearchQueries: Number(process.env.AGENTIC_RESEARCH_MAX_SEARCH_QUERIES) || 8
       }
     }
   };

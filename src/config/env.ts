@@ -303,6 +303,45 @@ const serverEnvSchema = z
     STUDY_CACHE_ENABLED: z
       .coerce.boolean()
       .default(true),
+    AGENTIC_RESEARCH_ENABLED: z
+      .coerce.boolean()
+      .default(true),
+    AGENTIC_RESEARCH_MAX_STEPS: z
+      .coerce.number()
+      .default(12),
+    AGENTIC_RESEARCH_MAX_SEARCH_QUERIES: z
+      .coerce.number()
+      .default(8),
+    AGENTIC_RESEARCH_MAX_FOLLOW_UP_SEARCHES: z
+      .coerce.number()
+      .default(3),
+    AGENTIC_RESEARCH_MAX_RESULTS_PER_QUERY: z
+      .coerce.number()
+      .default(5),
+    AGENTIC_RESEARCH_MAX_SELECTED_SOURCES: z
+      .coerce.number()
+      .default(12),
+    AGENTIC_RESEARCH_MAX_LLM_CALLS: z
+      .coerce.number()
+      .default(15),
+    AGENTIC_RESEARCH_MAX_CONCURRENT_TASKS: z
+      .coerce.number()
+      .default(3),
+    AGENTIC_RESEARCH_TIMEOUT_MS: z
+      .coerce.number()
+      .default(60000),
+    AGENTIC_RESEARCH_MAX_FETCH_BYTES: z
+      .coerce.number()
+      .default(20971520),
+    AGENTIC_RESEARCH_CACHE_ENABLED: z
+      .coerce.boolean()
+      .default(true),
+    AGENTIC_RESEARCH_CONFLICT_DETECTION: z
+      .coerce.boolean()
+      .default(true),
+    AGENTIC_RESEARCH_CLAIM_EXTRACTION: z
+      .coerce.boolean()
+      .default(true),
     STUDY_MAX_GENERATION_RETRIES: z
       .coerce.number()
       .default(2),

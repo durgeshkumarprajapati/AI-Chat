@@ -638,13 +638,31 @@ Phase 32 introduces a production-grade Voice Input Speech-to-Text Assistant and 
 - **User-Scoped Theme Isolation**: Persists user-scoped theme preferences (`docai_user_<id>_theme`) to avoid cross-user theme leakage on login/logout.
 - **Zero-Flash Hydration**: Inline `<script>` execution in `<head>` ensures theme attributes apply before initial browser paint.
 
-```bash
-# Automated Phase 32 Test Suite
-npm run test:phase32
+## Phase 33 — AI Study / Tutor Mode
 
-# Universal 26-Phase Regression Test Suite (Phase 7 through 32)
+Phase 33 transforms the platform into an AI-powered personalized study and tutoring workspace. Users can select authorized Knowledge Bases, Documents, or Roadmaps to create interactive study sessions with grounded tutoring, adaptive mastery tracking, and Socratic questioning.
+
+### Key Capabilities
+- **6 Interactive Study Modes**: Teach, Socratic, Quiz, Flashcards, Practice, and Review modes.
+- **Grounded Evidence Boundary**: Questions and explanations strictly generated from authorized documents/KBs. If evidence is insufficient, returns `NO_STUDY_EVIDENCE`.
+- **Adaptive Learning Engine**: Dynamically calculates topic mastery (`0-100%`), adjusts difficulty (`Beginner`, `Intermediate`, `Advanced`), and schedules review dates (`1`, `3`, `7` days).
+- **Grounded Answer Evaluation**: Objective & LLM grounded evaluation returning scores (`0-10`), feedback, missing concepts, strengths, and citations.
+- **Anti-Cheating & Security**: Correct answers remain server-side during initial question payload delivery.
+- **Progressive Hint System**: 3-level hints providing clues without revealing exact answer text.
+- **Multimodal & Voice Integration**: Full support for Phase 26 multimodal document questions and Phase 32 Speech-to-Text voice answers.
+- **Roadmap Integration**: Connects with Phase 31 roadmaps to convert incomplete learning tasks into study sessions.
+
+```bash
+# Automated Phase 33 Test Suite
+npm run test:phase33
+
+# AI Study Performance Benchmark
+npx tsx scripts/test-ai-study-performance.ts
+
+# Universal 27-Phase Regression Test Suite (Phase 7 through 33)
 npm run test:all-phases
 ```
+
 
 
 

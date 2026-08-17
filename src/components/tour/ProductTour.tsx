@@ -185,6 +185,13 @@ const TOUR_STEPS: TourStep[] = [
     description: 'Speak your questions with browser STT (English, Hindi, Gujarati) and switch application themes (Light, Dark, System) seamlessly.',
     technicalDetails: 'SpeechToTextService • BrowserSpeechProvider • ThemeContext • User-Scoped Theme Isolation • Flash Prevention Script',
     icon: '🎤'
+  },
+  {
+    title: '26. AI Study & Tutor Workspace',
+    badge: 'Phase 33',
+    description: 'Interactive AI tutor mode with grounded Socratic questioning, quizzes, flashcards, practice code exercises, and adaptive mastery tracking.',
+    technicalDetails: 'StudySessionService • StudyQuestionGeneratorService • StudyAnswerEvaluatorService • StudyAdaptiveEngineService • StudyHintService',
+    icon: '🎓'
   }
 ];
 

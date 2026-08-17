@@ -80,6 +80,9 @@ model User {
   roadmaps               Roadmap[]
   sharedRoadmapsOwned    RoadmapShare[] @relation("RoadmapShareOwner")
   sharedRoadmapsReceived RoadmapShare[] @relation("RoadmapShareRecipient")
+  studySessions          StudySession[]
+  studyAnswers           StudyAnswer[]
+  studyAttempts          StudyAttempt[]
 
   @@map("users")
 }
@@ -113,6 +116,7 @@ model Document {
   chunks         DocumentChunk[]
   visuals        DocumentVisual[]
   knowledgeBases KnowledgeBaseDocument[]
+  studySessionSources StudySessionSource[]
 
   @@index([userId])
   @@index([status])
@@ -132,6 +136,8 @@ model KnowledgeBase {
   documents     KnowledgeBaseDocument[]
   conversations Conversation[]
   ragEvaluations RagEvaluation[]
+  studySessions       StudySession[]
+  studySessionSources StudySessionSource[]
 
   @@index([userId])
   @@map("knowledge_bases")
@@ -378,6 +384,8 @@ model Roadmap {
   user   User           @relation(fields: [userId], references: [id], onDelete: Cascade)
   phases RoadmapPhase[]
   shares RoadmapShare[]
+  studySessions       StudySession[]
+  studySessionSources StudySessionSource[]
 
   @@index([userId])
   @@index([status])
@@ -447,3 +455,214 @@ model RoadmapShare {
   @@index([revokedAt])
   @@map("roadmap_shares")
 }
+
+// ====================================================
+// PHASE 33 — AI STUDY / TUTOR MODE ENUMS & MODELS
+// ====================================================
+
+enum StudyGoal {
+  DEEP_UNDERSTANDING
+  EXAM_PREPARATION
+  INTERVIEW_PREP
+  QUICK_REVISION
+  CERTIFICATION_PREP
+}
+
+enum StudyDifficulty {
+  BEGINNER
+  INTERMEDIATE
+  ADVANCED
+}
+
+enum StudyLearningStyle {
+  EXPLANATION
+  SOCRATIC
+  QUIZ_FIRST
+  MIXED
+}
+
+enum StudyMode {
+  TEACH
+  SOCRATIC
+  QUIZ
+  FLASHCARDS
+  PRACTICE
+  REVIEW
+}
+
+enum StudySessionStatus {
+  ACTIVE
+  PAUSED
+  COMPLETED
+  ARCHIVED
+}
+
+enum StudyQuestionType {
+  MCQ
+  TRUE_FALSE
+  SHORT_ANSWER
+  SCENARIO
+  PRACTICE_CODE
+}
+
+model StudySession {
+  id                 String             @id @default(uuid())
+  userId             String             @map("user_id")
+  knowledgeBaseId    String?            @map("knowledge_base_id")
+  roadmapId          String?            @map("roadmap_id")
+  title              String
+  goal               StudyGoal          @default(DEEP_UNDERSTANDING)
+  difficulty         StudyDifficulty    @default(BEGINNER)
+  learningStyle      StudyLearningStyle @default(MIXED)
+  currentMode        StudyMode          @default(TEACH) @map("current_mode")
+  durationMinutes    Int                @default(30) @map("duration_minutes")
+  status             StudySessionStatus @default(ACTIVE)
+  currentTopicId     String?            @map("current_topic_id")
+  progressPercent    Float              @default(0) @map("progress_percent")
+  externalWebEnabled Boolean            @default(false) @map("external_web_enabled")
+  startedAt          DateTime           @default(now()) @map("started_at")
+  completedAt        DateTime?          @map("completed_at")
+  createdAt          DateTime           @default(now()) @map("created_at")
+  updatedAt          DateTime           @updatedAt @map("updated_at")
+
+  user          User                 @relation(fields: [userId], references: [id], onDelete: Cascade)
+  knowledgeBase KnowledgeBase?       @relation(fields: [knowledgeBaseId], references: [id], onDelete: SetNull)
+  roadmap       Roadmap?             @relation(fields: [roadmapId], references: [id], onDelete: SetNull)
+  sources       StudySessionSource[]
+  topics        StudyTopic[]
+  answers       StudyAnswer[]
+  progresses    StudyProgress[]
+  attempts      StudyAttempt[]
+
+  @@index([userId])
+  @@index([userId, status])
+  @@index([knowledgeBaseId])
+  @@index([roadmapId])
+  @@map("study_sessions")
+}
+
+model StudySessionSource {
+  id              String   @id @default(uuid())
+  sessionId       String   @map("session_id")
+  documentId      String?  @map("document_id")
+  knowledgeBaseId String?  @map("knowledge_base_id")
+  roadmapId       String?  @map("roadmap_id")
+  sourceType      String   @default("DOCUMENT") @map("source_type")
+  createdAt       DateTime @default(now()) @map("created_at")
+
+  session       StudySession   @relation(fields: [sessionId], references: [id], onDelete: Cascade)
+  document      Document?      @relation(fields: [documentId], references: [id], onDelete: SetNull)
+  knowledgeBase KnowledgeBase? @relation(fields: [knowledgeBaseId], references: [id], onDelete: SetNull)
+  roadmap       Roadmap?       @relation(fields: [roadmapId], references: [id], onDelete: SetNull)
+
+  @@index([sessionId])
+  @@index([documentId])
+  @@index([knowledgeBaseId])
+  @@index([roadmapId])
+  @@map("study_session_sources")
+}
+
+model StudyTopic {
+  id           String   @id @default(uuid())
+  sessionId    String   @map("session_id")
+  title        String
+  description  String   @db.Text
+  order        Int
+  status       String   @default("PENDING")
+  masteryScore Float    @default(0) @map("mastery_score")
+  createdAt    DateTime @default(now()) @map("created_at")
+  updatedAt    DateTime @updatedAt @map("updated_at")
+
+  session    StudySession    @relation(fields: [sessionId], references: [id], onDelete: Cascade)
+  questions  StudyQuestion[]
+  progresses StudyProgress[]
+
+  @@index([sessionId])
+  @@index([sessionId, order])
+  @@map("study_topics")
+}
+
+model StudyQuestion {
+  id                String            @id @default(uuid())
+  topicId           String            @map("topic_id")
+  questionType      StudyQuestionType @default(MCQ) @map("question_type")
+  question          String            @db.Text
+  options           Json?             @default("[]")
+  expectedAnswer    String            @db.Text @map("expected_answer")
+  explanation       String            @db.Text
+  difficulty        StudyDifficulty   @default(BEGINNER)
+  sourceFingerprint String?           @map("source_fingerprint")
+  createdAt         DateTime          @default(now()) @map("created_at")
+
+  topic    StudyTopic     @relation(fields: [topicId], references: [id], onDelete: Cascade)
+  answers  StudyAnswer[]
+  attempts StudyAttempt[]
+
+  @@index([topicId])
+  @@index([questionType])
+  @@map("study_questions")
+}
+
+model StudyAnswer {
+  id         String   @id @default(uuid())
+  questionId String   @map("question_id")
+  sessionId  String   @map("session_id")
+  userId     String   @map("user_id")
+  answer     String   @db.Text
+  isCorrect  Boolean  @map("is_correct")
+  score      Float    @default(0)
+  feedback   String   @db.Text
+  hintsUsed  Int      @default(0) @map("hints_used")
+  createdAt  DateTime @default(now()) @map("created_at")
+
+  question StudyQuestion @relation(fields: [questionId], references: [id], onDelete: Cascade)
+  session  StudySession  @relation(fields: [sessionId], references: [id], onDelete: Cascade)
+  user     User          @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([questionId])
+  @@index([sessionId])
+  @@index([userId])
+  @@map("study_answers")
+}
+
+model StudyProgress {
+  id                 String    @id @default(uuid())
+  sessionId          String    @map("session_id")
+  topicId            String    @map("topic_id")
+  attemptedQuestions Int       @default(0) @map("attempted_questions")
+  correctAnswers     Int       @default(0) @map("correct_answers")
+  masteryScore       Float     @default(0) @map("mastery_score")
+  lastReviewedAt     DateTime? @map("last_reviewed_at")
+  nextReviewAt       DateTime? @map("next_review_at")
+
+  session StudySession @relation(fields: [sessionId], references: [id], onDelete: Cascade)
+  topic   StudyTopic   @relation(fields: [topicId], references: [id], onDelete: Cascade)
+
+  @@unique([sessionId, topicId])
+  @@index([sessionId])
+  @@index([topicId])
+  @@index([nextReviewAt])
+  @@map("study_progresses")
+}
+
+model StudyAttempt {
+  id         String   @id @default(uuid())
+  sessionId  String   @map("session_id")
+  questionId String   @map("question_id")
+  userId     String   @map("user_id")
+  answer     String   @db.Text
+  score      Float    @default(0)
+  feedback   String   @db.Text
+  latencyMs  Int?     @map("latency_ms")
+  createdAt  DateTime @default(now()) @map("created_at")
+
+  session  StudySession  @relation(fields: [sessionId], references: [id], onDelete: Cascade)
+  question StudyQuestion @relation(fields: [questionId], references: [id], onDelete: Cascade)
+  user     User          @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([sessionId])
+  @@index([questionId])
+  @@index([userId])
+  @@map("study_attempts")
+}
+

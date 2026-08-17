@@ -20,6 +20,8 @@ import { studyTelemetryService } from '../src/features/study/observability/study
 import { LLMProvider } from '../src/features/rag/llm/llm.provider';
 import { prisma } from '../src/lib/prisma';
 
+let mockQuestionCount = 0;
+
 const mockLLMProvider: LLMProvider = {
   generateAnswer: async (input: any) => {
     if (input.question.includes('flashcards')) {
@@ -66,9 +68,19 @@ const mockLLMProvider: LLMProvider = {
         suggestions: []
       });
     }
+    const questions = [
+      'What indexing algorithm does pgvector use for similarity search?',
+      'How does BM25 hybrid ranking combine with vector embeddings in hybrid retrieval?',
+      'What is the primary architectural difference between HNSW graph construction and flat vector scanning?',
+      'How does cosine distance accurately measure spatial similarity between normalized vector embeddings?',
+      'What role does page number metadata play in grounded citation evidence verification?'
+    ];
+    const qText = questions[mockQuestionCount % questions.length] || `Grounded Question ${++mockQuestionCount}`;
+    mockQuestionCount++;
+
     return JSON.stringify({
       questionType: 'MCQ',
-      question: 'What indexing algorithm does pgvector use for similarity search?',
+      question: qText,
       options: ['HNSW indexing', 'Full scan', 'Linear search', 'BTree indexing'],
       expectedAnswer: 'HNSW indexing',
       explanation: 'pgvector supports HNSW indexing for fast similarity search.',
@@ -81,7 +93,10 @@ const mockLLMProvider: LLMProvider = {
   }
 };
 
+import { quizModeService, QuizModeService } from '../src/features/study/modes/quiz.service';
+
 const quizService = new QuizModeService(undefined, mockLLMProvider);
+(quizModeService as any).llmProvider = mockLLMProvider;
 const teachService = new TeachModeService(undefined, mockLLMProvider);
 const socraticService = new SocraticModeService(undefined, mockLLMProvider);
 const flashcardsService = new FlashcardsModeService(undefined, mockLLMProvider);
@@ -275,6 +290,36 @@ async function runPhase37Tests() {
       authFailed = true;
     }
     assert(authFailed, 'Cross-user access to study session is rejected');
+
+    // 14. Next Question Unique Generation & Fingerprint Change Test
+    const q1 = await studySessionService.nextQuestion(testUserId, testSessionId);
+    assert('question' in q1 && 'id' in q1, 'nextQuestion returns a valid question payload');
+
+    const q2 = await studySessionService.nextQuestion(testUserId, testSessionId);
+    assert('question' in q2 && q2.id !== q1.id, 'Next Question returns a new question with different Question ID');
+    assert((q2 as any).questionFingerprint !== (q1 as any).questionFingerprint, 'Next Question returns different question fingerprint');
+
+    // 15. Duplicate Rejection with Explicit Exclusions Test
+    const dupCheck = await studyUniquenessService.checkUniqueness(
+      testSessionId,
+      testTopicId,
+      q1.question,
+      testDocId,
+      [{ id: q1.id, question: q1.question, questionFingerprint: (q1 as any).questionFingerprint }]
+    );
+    assert(dupCheck.isUnique === false, 'Exact or semantic duplicate question is rejected when checked against previous questions');
+
+    // 16. Sparse Evidence NO_STUDY_EVIDENCE Test
+    const sparseRes = await quizService.generateGroundedUniqueQuestion('user-sparse', 'session-sparse', {
+      topicId: 'topic-sparse',
+      topicTitle: 'Quantum Graviton Mechanics',
+      topicDescription: 'Unrelated obscure topic with zero doc evidence',
+      questionType: 'MCQ',
+      difficulty: 'BEGINNER',
+      documentIds: [testDocId],
+      externalWebEnabled: false
+    });
+    assert('error' in sparseRes && sparseRes.error.includes('NO_STUDY_EVIDENCE'), 'Sparse or missing document evidence returns NO_STUDY_EVIDENCE error');
 
     console.log(`\n====================================================`);
     console.log(`🎉 ALL ${passed} / ${total} PHASE 37 TESTS PASSED CLEANLY!`);

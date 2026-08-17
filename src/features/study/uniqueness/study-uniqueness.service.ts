@@ -67,11 +67,29 @@ export class StudyUniquenessService {
     sessionId: string,
     topicId: string,
     candidateQuestionText: string,
-    sourceDocumentId?: string
+    sourceDocumentId?: string,
+    existingPreviousQuestions?: Array<{ id: string; question: string; questionFingerprint?: string | null }>
   ): Promise<QuestionUniquenessCheckResult> {
     const fingerprint = this.computeFingerprint(candidateQuestionText, topicId, sourceDocumentId);
+    const candidateNormalized = this.normalizeQuestionText(candidateQuestionText);
 
-    // 1. Check exact fingerprint match in database across session questions
+    // 1. Direct memory check against passed previous questions
+    const previousQuestions = existingPreviousQuestions || await prisma.studyQuestion.findMany({
+      where: { topic: { sessionId } },
+      select: { id: true, question: true, questionFingerprint: true }
+    });
+
+    for (const prev of previousQuestions) {
+      if (prev.questionFingerprint === fingerprint || this.normalizeQuestionText(prev.question) === candidateNormalized) {
+        return {
+          isUnique: false,
+          questionFingerprint: fingerprint,
+          reason: 'Exact question text or fingerprint duplicate detected.'
+        };
+      }
+    }
+
+    // 2. Check exact fingerprint match in database across session questions
     const exactMatch = await prisma.studyQuestion.findFirst({
       where: {
         topic: { sessionId },
@@ -83,15 +101,9 @@ export class StudyUniquenessService {
       return {
         isUnique: false,
         questionFingerprint: fingerprint,
-        reason: 'Exact question fingerprint duplicate detected.'
+        reason: 'Exact question fingerprint duplicate detected in database.'
       };
     }
-
-    // 2. Fetch all previous questions in this study session for semantic similarity check
-    const previousQuestions = await prisma.studyQuestion.findMany({
-      where: { topic: { sessionId } },
-      select: { id: true, question: true }
-    });
 
     if (previousQuestions.length === 0) {
       return {
@@ -100,7 +112,24 @@ export class StudyUniquenessService {
       };
     }
 
-    // 3. Compute embedding vectors for candidate & previous questions to check semantic overlap
+    // 3. String token overlap fallback (Jaccard similarity >= 0.85)
+    for (const prev of previousQuestions) {
+      const prevNorm = this.normalizeQuestionText(prev.question);
+      const setA = new Set(candidateNormalized.split(' '));
+      const setB = new Set(prevNorm.split(' '));
+      const intersection = new Set([...setA].filter((x) => setB.has(x)));
+      const union = new Set([...setA, ...setB]);
+      const jaccard = union.size > 0 ? intersection.size / union.size : 0;
+      if (jaccard >= 0.85) {
+        return {
+          isUnique: false,
+          questionFingerprint: fingerprint,
+          reason: `High lexical overlap duplicate detected (Jaccard similarity ${(jaccard * 100).toFixed(1)}% >= 85%).`
+        };
+      }
+    }
+
+    // 4. Compute embedding vectors for candidate & previous questions to check semantic overlap
     try {
       const allTexts = [candidateQuestionText, ...previousQuestions.map((q) => q.question)];
       const embeddings = await this.embeddingProvider.embedTexts(allTexts);

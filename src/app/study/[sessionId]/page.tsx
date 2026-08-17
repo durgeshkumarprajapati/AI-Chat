@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useRef } from 'react';
 import { TeachMode } from './TeachMode';
 import { SocraticMode } from './SocraticMode';
 import { QuizMode } from './QuizMode';
@@ -15,6 +15,8 @@ export default function StudySessionPage({ params }: { params: { sessionId: stri
 
   const [activeTopicIndex, setActiveTopicIndex] = useState<number>(0);
   const [activeQuestion, setActiveQuestion] = useState<any>(null);
+  const [isGeneratingNextQuestion, setIsGeneratingNextQuestion] = useState<boolean>(false);
+  const nextQuestionRequestId = useRef<number>(0);
 
   useEffect(() => {
     async function loadSession() {
@@ -41,16 +43,33 @@ export default function StudySessionPage({ params }: { params: { sessionId: stri
   }, [params.sessionId]);
 
   const handleNextQuestion = async () => {
+    const currentReqId = ++nextQuestionRequestId.current;
+    setIsGeneratingNextQuestion(true);
+
     try {
       const res = await fetch(`/api/study/sessions/${params.sessionId}/next`, {
-        method: 'POST'
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' }
       });
       const data = await res.json();
-      if (data.success) {
-        setActiveQuestion(data.data);
+
+      // Ignore stale response if a newer request was sent
+      if (currentReqId !== nextQuestionRequestId.current) return;
+
+      if (!res.ok) {
+        throw new Error(data.error || 'Failed to generate next question');
+      }
+
+      if (data.success && data.data) {
+        const nextQ = data.data.question || data.data;
+        setActiveQuestion(nextQ);
       }
     } catch (err) {
       console.error('Failed to fetch next question', err);
+    } finally {
+      if (currentReqId === nextQuestionRequestId.current) {
+        setIsGeneratingNextQuestion(false);
+      }
     }
   };
 
@@ -149,6 +168,7 @@ export default function StudySessionPage({ params }: { params: { sessionId: stri
           sessionId={params.sessionId}
           activeQuestion={activeQuestion}
           onNextQuestion={handleNextQuestion}
+          isGeneratingNextQuestion={isGeneratingNextQuestion}
         />
       )}
 

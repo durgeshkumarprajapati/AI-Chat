@@ -630,6 +630,7 @@ model StudyQuestion {
   answers  StudyAnswer[]
   attempts StudyAttempt[]
 
+  @@unique([topicId, questionFingerprint])
   @@index([topicId])
   @@index([questionType])
   @@index([questionFingerprint])

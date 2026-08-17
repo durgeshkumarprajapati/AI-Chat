@@ -6,11 +6,13 @@ import { ttsService } from '@/features/tts/tts.service';
 export function QuizMode({
   sessionId,
   activeQuestion,
-  onNextQuestion
+  onNextQuestion,
+  isGeneratingNextQuestion = false
 }: {
   sessionId: string;
   activeQuestion: any;
   onNextQuestion: () => void;
+  isGeneratingNextQuestion?: boolean;
 }) {
   const [userAnswer, setUserAnswer] = useState('');
   const [submitting, setSubmitting] = useState(false);
@@ -86,6 +88,11 @@ export function QuizMode({
   };
 
   const handleNext = () => {
+    if (isGeneratingNextQuestion) return;
+    if (isSpeaking) {
+      ttsService.stop();
+      setIsSpeaking(false);
+    }
     setUserAnswer('');
     setEvalResult(null);
     setCurrentHint(null);
@@ -96,12 +103,15 @@ export function QuizMode({
   if (!activeQuestion) {
     return (
       <div className="p-8 text-center space-y-3 bg-white dark:bg-slate-900 rounded-2xl border border-slate-200 dark:border-slate-800">
-        <p className="text-xs text-slate-500 font-mono">No active question available. Ready for next question.</p>
+        <p className="text-xs text-slate-500 font-mono">
+          {isGeneratingNextQuestion ? 'Generating next grounded unique question...' : 'No active question available. Ready for next question.'}
+        </p>
         <button
           onClick={handleNext}
-          className="px-4 py-2 rounded-xl bg-indigo-600 hover:bg-indigo-500 text-white text-xs font-semibold shadow transition"
+          disabled={isGeneratingNextQuestion}
+          className="px-4 py-2 rounded-xl bg-indigo-600 hover:bg-indigo-500 text-white text-xs font-semibold shadow transition disabled:opacity-50"
         >
-          Generate Next Question ➔
+          {isGeneratingNextQuestion ? 'Generating next question...' : 'Generate Next Question ➔'}
         </button>
       </div>
     );
@@ -223,9 +233,10 @@ export function QuizMode({
           <div className="pt-2 flex justify-end">
             <button
               onClick={handleNext}
-              className="px-4 py-2 rounded-xl bg-slate-900 dark:bg-white text-white dark:text-slate-950 font-bold text-xs hover:opacity-90 transition"
+              disabled={isGeneratingNextQuestion}
+              className="px-4 py-2 rounded-xl bg-slate-900 dark:bg-white text-white dark:text-slate-950 font-bold text-xs hover:opacity-90 transition disabled:opacity-50"
             >
-              Next Question ➔
+              {isGeneratingNextQuestion ? 'Generating next question...' : 'Next Question ➔'}
             </button>
           </div>
         </div>

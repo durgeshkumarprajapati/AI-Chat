@@ -88,6 +88,11 @@ model User {
   workflowRuns           WorkflowRun[]
   sharedWorkflowsOwned   WorkflowShare[] @relation("WorkflowShareOwner")
   sharedWorkflowsReceived WorkflowShare[] @relation("WorkflowShareRecipient")
+  projectsOwned          Project[]        @relation("ProjectOwner")
+  projectMemberships     ProjectMember[]
+  copilotSessions        CopilotSession[]
+  copilotGoals           CopilotGoal[]
+  copilotMemories        CopilotMemory[]
 
   @@map("users")
 }
@@ -124,6 +129,7 @@ model Document {
   studySessionSources StudySessionSource[]
   researchSources     ResearchSource[]
   researchEvidences   ResearchEvidence[]
+  projects            ProjectDocument[]
 
   @@index([userId])
   @@index([status])
@@ -146,6 +152,7 @@ model KnowledgeBase {
   studySessions       StudySession[]
   studySessionSources StudySessionSource[]
   researchSessions    ResearchSession[]
+  projects            ProjectKnowledgeBase[]
 
   @@index([userId])
   @@map("knowledge_bases")
@@ -198,6 +205,8 @@ model Conversation {
   messages      Message[]
   userFeedbacks UserFeedback[]
   ragEvaluations RagEvaluation[]
+  projects      ProjectConversation[]
+  copilotSessions CopilotSession[]
 
   @@index([userId])
   @@index([knowledgeBaseId])
@@ -395,6 +404,7 @@ model Roadmap {
   studySessions       StudySession[]
   studySessionSources StudySessionSource[]
   researchSessions    ResearchSession[]
+  projects            ProjectRoadmap[]
 
   @@index([userId])
   @@index([status])
@@ -542,6 +552,7 @@ model StudySession {
   answers       StudyAnswer[]
   progresses    StudyProgress[]
   attempts      StudyAttempt[]
+  projects      ProjectStudySession[]
 
   @@index([userId])
   @@index([userId, status])
@@ -810,6 +821,7 @@ model ResearchSession {
   conflicts     ResearchConflict[]
   reports       ResearchReport[]
   events        ResearchEvent[]
+  projects      ProjectResearchSession[]
 
   @@index([userId])
   @@index([status])
@@ -1032,6 +1044,7 @@ model Workflow {
   variables WorkflowVariable[]
   triggers  WorkflowTrigger[]
   shares    WorkflowShare[]
+  projects  ProjectWorkflow[]
 
   @@index([userId])
   @@index([status])
@@ -1200,6 +1213,384 @@ model WorkflowShare {
   @@index([sharedWithUserId])
   @@map("workflow_shares")
 }
+
+// ==========================================
+// PHASE 36: PROJECT WORKSPACE & COPILOT MODELS
+// ==========================================
+
+enum ProjectStatus {
+  ACTIVE
+  ARCHIVED
+}
+
+enum ProjectMemberRole {
+  OWNER
+  EDITOR
+  VIEWER
+}
+
+enum CopilotSessionStatus {
+  IDLE
+  ANALYZING
+  PLANNING
+  WAITING_FOR_CONFIRMATION
+  EXECUTING
+  COMPLETED
+  FAILED
+  CANCELLED
+}
+
+enum CopilotIntent {
+  QUESTION
+  DOCUMENT_ANALYSIS
+  WEB_RESEARCH
+  LEARNING
+  ROADMAP
+  WORKFLOW
+  PROJECT
+  MULTI_STEP
+  CLARIFICATION_REQUIRED
+}
+
+enum CopilotGoalCategory {
+  LEARNING
+  RESEARCH
+  PROJECT
+  CAREER
+  DOCUMENT_ANALYSIS
+  AUTOMATION
+  OTHER
+}
+
+enum CopilotGoalStatus {
+  NOT_STARTED
+  IN_PROGRESS
+  COMPLETED
+  PAUSED
+  CANCELLED
+}
+
+enum CopilotGoalPriority {
+  LOW
+  MEDIUM
+  HIGH
+  URGENT
+}
+
+enum CopilotMemoryCategory {
+  USER_PREFERENCE
+  LEARNING_PREFERENCE
+  PROJECT_CONTEXT
+  GOAL
+  TECHNICAL_CONTEXT
+  WORKFLOW_PREFERENCE
+}
+
+enum CopilotCapability {
+  DOCUMENT_RAG
+  KNOWLEDGE_BASE_SEARCH
+  WEB_SEARCH
+  AGENTIC_RESEARCH
+  MULTIMODAL_ANALYSIS
+  ROADMAP
+  STUDY
+  WORKFLOW
+  CHAT
+  PROJECT_CONTEXT
+  MEMORY
+}
+
+enum CopilotActionStatus {
+  PROPOSED
+  APPROVED
+  RUNNING
+  COMPLETED
+  FAILED
+  CANCELLED
+}
+
+enum CopilotEventType {
+  SESSION_CREATED
+  INTENT_DETECTED
+  PLAN_CREATED
+  PLAN_VALIDATED
+  CONFIRMATION_REQUIRED
+  ACTION_STARTED
+  ACTION_COMPLETED
+  ACTION_FAILED
+  EVIDENCE_COLLECTED
+  RESEARCH_STARTED
+  RESEARCH_COMPLETED
+  ROADMAP_CREATED
+  STUDY_CREATED
+  WORKFLOW_STARTED
+  WORKFLOW_COMPLETED
+  FINAL_RESPONSE_READY
+  SESSION_FAILED
+  SESSION_CANCELLED
+}
+
+model Project {
+  id          String        @id @default(uuid())
+  ownerId     String        @map("owner_id")
+  name        String
+  description String?       @db.Text
+  status      ProjectStatus @default(ACTIVE)
+  createdAt   DateTime      @default(now()) @map("created_at")
+  updatedAt   DateTime      @updatedAt @map("updated_at")
+
+  owner User @relation("ProjectOwner", fields: [ownerId], references: [id], onDelete: Cascade)
+
+  members           ProjectMember[]
+  documents         ProjectDocument[]
+  knowledgeBases    ProjectKnowledgeBase[]
+  roadmaps          ProjectRoadmap[]
+  studySessions     ProjectStudySession[]
+  researchSessions  ProjectResearchSession[]
+  workflows         ProjectWorkflow[]
+  conversations     ProjectConversation[]
+  copilotSessions   CopilotSession[]
+  copilotGoals      CopilotGoal[]
+  copilotMemories   CopilotMemory[]
+
+  @@index([ownerId])
+  @@index([status])
+  @@index([createdAt])
+  @@map("projects")
+}
+
+model ProjectMember {
+  id        String            @id @default(uuid())
+  projectId String            @map("project_id")
+  userId    String            @map("user_id")
+  role      ProjectMemberRole @default(VIEWER)
+  createdAt DateTime          @default(now()) @map("created_at")
+  updatedAt DateTime          @updatedAt @map("updated_at")
+
+  project Project @relation(fields: [projectId], references: [id], onDelete: Cascade)
+  user    User    @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@unique([projectId, userId])
+  @@index([projectId])
+  @@index([userId])
+  @@map("project_members")
+}
+
+model ProjectDocument {
+  id         String   @id @default(uuid())
+  projectId  String   @map("project_id")
+  documentId String   @map("document_id")
+  createdAt  DateTime @default(now()) @map("created_at")
+
+  project  Project  @relation(fields: [projectId], references: [id], onDelete: Cascade)
+  document Document @relation(fields: [documentId], references: [id], onDelete: Cascade)
+
+  @@unique([projectId, documentId])
+  @@index([projectId])
+  @@index([documentId])
+  @@map("project_documents")
+}
+
+model ProjectKnowledgeBase {
+  id              String   @id @default(uuid())
+  projectId       String   @map("project_id")
+  knowledgeBaseId String   @map("knowledge_base_id")
+  createdAt       DateTime @default(now()) @map("created_at")
+
+  project       Project       @relation(fields: [projectId], references: [id], onDelete: Cascade)
+  knowledgeBase KnowledgeBase @relation(fields: [knowledgeBaseId], references: [id], onDelete: Cascade)
+
+  @@unique([projectId, knowledgeBaseId])
+  @@index([projectId])
+  @@index([knowledgeBaseId])
+  @@map("project_knowledge_bases")
+}
+
+model ProjectRoadmap {
+  id        String   @id @default(uuid())
+  projectId String   @map("project_id")
+  roadmapId String   @map("roadmap_id")
+  createdAt DateTime @default(now()) @map("created_at")
+
+  project Project @relation(fields: [projectId], references: [id], onDelete: Cascade)
+  roadmap Roadmap @relation(fields: [roadmapId], references: [id], onDelete: Cascade)
+
+  @@unique([projectId, roadmapId])
+  @@index([projectId])
+  @@index([roadmapId])
+  @@map("project_roadmaps")
+}
+
+model ProjectStudySession {
+  id             String   @id @default(uuid())
+  projectId      String   @map("project_id")
+  studySessionId String   @map("study_session_id")
+  createdAt      DateTime @default(now()) @map("created_at")
+
+  project      Project      @relation(fields: [projectId], references: [id], onDelete: Cascade)
+  studySession StudySession @relation(fields: [studySessionId], references: [id], onDelete: Cascade)
+
+  @@unique([projectId, studySessionId])
+  @@index([projectId])
+  @@index([studySessionId])
+  @@map("project_study_sessions")
+}
+
+model ProjectResearchSession {
+  id                String   @id @default(uuid())
+  projectId         String   @map("project_id")
+  researchSessionId String   @map("research_session_id")
+  createdAt         DateTime @default(now()) @map("created_at")
+
+  project         Project         @relation(fields: [projectId], references: [id], onDelete: Cascade)
+  researchSession ResearchSession @relation(fields: [researchSessionId], references: [id], onDelete: Cascade)
+
+  @@unique([projectId, researchSessionId])
+  @@index([projectId])
+  @@index([researchSessionId])
+  @@map("project_research_sessions")
+}
+
+model ProjectWorkflow {
+  id         String   @id @default(uuid())
+  projectId  String   @map("project_id")
+  workflowId String   @map("workflow_id")
+  createdAt  DateTime @default(now()) @map("created_at")
+
+  project  Project  @relation(fields: [projectId], references: [id], onDelete: Cascade)
+  workflow Workflow @relation(fields: [workflowId], references: [id], onDelete: Cascade)
+
+  @@unique([projectId, workflowId])
+  @@index([projectId])
+  @@index([workflowId])
+  @@map("project_workflows")
+}
+
+model ProjectConversation {
+  id             String   @id @default(uuid())
+  projectId      String   @map("project_id")
+  conversationId String   @map("conversation_id")
+  createdAt      DateTime @default(now()) @map("created_at")
+
+  project      Project      @relation(fields: [projectId], references: [id], onDelete: Cascade)
+  conversation Conversation @relation(fields: [conversationId], references: [id], onDelete: Cascade)
+
+  @@unique([projectId, conversationId])
+  @@index([projectId])
+  @@index([conversationId])
+  @@map("project_conversations")
+}
+
+model CopilotSession {
+  id             String               @id @default(uuid())
+  userId         String               @map("user_id")
+  projectId      String?              @map("project_id")
+  conversationId String?              @map("conversation_id")
+  status         CopilotSessionStatus @default(IDLE)
+  intent         CopilotIntent        @default(QUESTION)
+  title          String
+  resultSummary  String?              @db.Text @map("result_summary")
+  createdAt      DateTime             @default(now()) @map("created_at")
+  updatedAt      DateTime             @updatedAt @map("updated_at")
+
+  user         User          @relation(fields: [userId], references: [id], onDelete: Cascade)
+  project      Project?      @relation(fields: [projectId], references: [id], onDelete: SetNull)
+  conversation Conversation? @relation(fields: [conversationId], references: [id], onDelete: SetNull)
+
+  actions CopilotAction[]
+  events  CopilotEvent[]
+
+  @@index([userId])
+  @@index([projectId])
+  @@index([conversationId])
+  @@index([status])
+  @@index([createdAt])
+  @@map("copilot_sessions")
+}
+
+model CopilotGoal {
+  id          String              @id @default(uuid())
+  userId      String              @map("user_id")
+  projectId   String?             @map("project_id")
+  title       String
+  description String?             @db.Text
+  category    CopilotGoalCategory @default(PROJECT)
+  status      CopilotGoalStatus   @default(IN_PROGRESS)
+  priority    CopilotGoalPriority @default(MEDIUM)
+  targetDate  DateTime?           @map("target_date")
+  createdAt   DateTime            @default(now()) @map("created_at")
+  updatedAt   DateTime            @updatedAt @map("updated_at")
+
+  user    User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  project Project? @relation(fields: [projectId], references: [id], onDelete: SetNull)
+
+  @@index([userId])
+  @@index([projectId])
+  @@index([category])
+  @@index([status])
+  @@map("copilot_goals")
+}
+
+model CopilotMemory {
+  id         String                @id @default(uuid())
+  userId     String                @map("user_id")
+  projectId  String?               @map("project_id")
+  category   CopilotMemoryCategory @default(PROJECT_CONTEXT)
+  key        String
+  value      String                @db.Text
+  confidence Float                 @default(1.0)
+  source     String                @default("user_explicit")
+  expiresAt  DateTime?             @map("expires_at")
+  createdAt  DateTime              @default(now()) @map("created_at")
+  updatedAt  DateTime              @updatedAt @map("updated_at")
+
+  user    User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  project Project? @relation(fields: [projectId], references: [id], onDelete: SetNull)
+
+  @@unique([userId, key, projectId])
+  @@index([userId])
+  @@index([projectId])
+  @@index([category])
+  @@map("copilot_memories")
+}
+
+model CopilotAction {
+  id                    String              @id @default(uuid())
+  sessionId             String              @map("session_id")
+  capability            CopilotCapability
+  status                CopilotActionStatus @default(PROPOSED)
+  input                 Json                @default("{}")
+  output                Json?
+  requiresConfirmation Boolean             @default(false) @map("requires_confirmation")
+  confirmedAt           DateTime?           @map("confirmed_at")
+  startedAt             DateTime?           @map("started_at")
+  completedAt           DateTime?           @map("completed_at")
+  error                 String?             @db.Text
+  createdAt             DateTime            @default(now()) @map("created_at")
+
+  session CopilotSession @relation(fields: [sessionId], references: [id], onDelete: Cascade)
+
+  @@index([sessionId])
+  @@index([capability])
+  @@index([status])
+  @@map("copilot_actions")
+}
+
+model CopilotEvent {
+  id        String           @id @default(uuid())
+  sessionId String           @map("session_id")
+  type      CopilotEventType
+  data      Json             @default("{}")
+  createdAt DateTime         @default(now()) @map("created_at")
+
+  session CopilotSession @relation(fields: [sessionId], references: [id], onDelete: Cascade)
+
+  @@index([sessionId])
+  @@index([type])
+  @@index([createdAt])
+  @@map("copilot_events")
+}
+
 
 
 

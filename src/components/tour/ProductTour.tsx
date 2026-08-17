@@ -206,6 +206,13 @@ const TOUR_STEPS: TourStep[] = [
     description: 'Visual drag-and-drop node graph canvas and AI-assisted workflow generator for orchestrating Document AI, RAG, Web Search, and Agentic Research pipelines.',
     technicalDetails: 'WorkflowEngineService • WorkflowNodeExecutor • GraphValidator • WorkflowValidatorService • AIWorkflowGeneratorService • WorkflowVariableService • WorkflowConditionEvaluator',
     icon: '🧩'
+  },
+  {
+    title: '29. AI Knowledge & Research Copilot + Project Workspace',
+    badge: 'Phase 36',
+    description: 'Unified AI workspace orchestrating Documents, Knowledge Bases, Agentic Research, Roadmaps, Study Mode, Workflows, and User Memory into single project workspaces.',
+    technicalDetails: 'CopilotExecutionEngine • CopilotRouterService • CopilotPlannerService • CopilotCapabilityRegistry • ProjectService • CopilotMemoryService',
+    icon: '🧠'
   }
 ];
 

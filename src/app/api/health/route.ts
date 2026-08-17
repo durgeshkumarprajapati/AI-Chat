@@ -52,6 +52,9 @@ export async function GET() {
       cityExplorer?: {
         enabled: boolean;
         status: string;
+        prefetch: string;
+        cache: string;
+        webSearch: string;
       };
       voiceInput?: {
         enabled: boolean;
@@ -131,7 +134,10 @@ export async function GET() {
       },
       cityExplorer: {
         enabled: process.env.CITY_EXPLORER_ENABLED !== 'false',
-        status: 'healthy'
+        status: 'healthy',
+        prefetch: 'healthy',
+        cache: 'healthy',
+        webSearch: 'healthy'
       },
       voiceInput: {
         enabled: process.env.VOICE_INPUT_ENABLED !== 'false',

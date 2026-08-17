@@ -121,8 +121,9 @@ CRITICAL RULES:
           context: 'You are a JSON-only study question generator. Output strict JSON.'
         });
 
-        const cleaned = response.trim().replace(/^```json/i, '').replace(/```$/i, '').trim();
-        const parsed = JSON.parse(cleaned);
+        const match = response.match(/\{[\s\S]*\}/);
+        const jsonString = match ? match[0] : response.replace(/```json/gi, '').replace(/```/g, '').trim();
+        const parsed = JSON.parse(jsonString);
 
         if (!parsed.question || !parsed.expectedAnswer) continue;
 

@@ -281,7 +281,37 @@ const serverEnvSchema = z
       .default('en-US'),
     VOICE_INPUT_MAX_SESSION_SECONDS: z
       .coerce.number()
-      .default(120)
+      .default(120),
+    STUDY_MODE_ENABLED: z
+      .coerce.boolean()
+      .default(true),
+    STUDY_MAX_TOPICS: z
+      .coerce.number()
+      .default(12),
+    STUDY_MAX_QUESTIONS_PER_SESSION: z
+      .coerce.number()
+      .default(50),
+    STUDY_AI_EVALUATION_ENABLED: z
+      .coerce.boolean()
+      .default(true),
+    STUDY_HINTS_ENABLED: z
+      .coerce.boolean()
+      .default(true),
+    STUDY_ADAPTIVE_DIFFICULTY_ENABLED: z
+      .coerce.boolean()
+      .default(true),
+    STUDY_CACHE_ENABLED: z
+      .coerce.boolean()
+      .default(true),
+    STUDY_MAX_GENERATION_RETRIES: z
+      .coerce.number()
+      .default(2),
+    STUDY_RATE_LIMIT_PER_MINUTE: z
+      .coerce.number()
+      .default(30),
+    STUDY_REVIEW_ENABLED: z
+      .coerce.boolean()
+      .default(true)
   })
   .refine(
     (data) => {

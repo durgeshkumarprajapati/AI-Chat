@@ -62,6 +62,10 @@ export async function GET() {
         enabled: boolean;
         status: string;
       };
+      studyMode?: {
+        enabled: boolean;
+        status: string;
+      };
     };
   } = {
     status: 'ok',
@@ -115,6 +119,10 @@ export async function GET() {
       },
       theme: {
         enabled: true,
+        status: 'healthy'
+      },
+      studyMode: {
+        enabled: process.env.STUDY_MODE_ENABLED !== 'false',
         status: 'healthy'
       }
     }

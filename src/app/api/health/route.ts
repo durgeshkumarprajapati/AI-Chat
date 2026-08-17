@@ -78,6 +78,15 @@ export async function GET() {
         engine: string;
         scheduler: string;
       };
+      copilot?: {
+        enabled: boolean;
+        status: string;
+        planner: string;
+        memory: string;
+      };
+      projectWorkspace?: {
+        status: string;
+      };
     };
   } = {
     status: 'ok',
@@ -148,6 +157,15 @@ export async function GET() {
         status: 'healthy',
         engine: 'healthy',
         scheduler: 'healthy'
+      },
+      copilot: {
+        enabled: process.env.COPILOT_ENABLED !== 'false',
+        status: 'healthy',
+        planner: 'healthy',
+        memory: 'healthy'
+      },
+      projectWorkspace: {
+        status: 'healthy'
       }
     }
   };

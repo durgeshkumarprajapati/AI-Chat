@@ -35,14 +35,17 @@ export function AppLayout({ children }: { children: React.ReactNode }) {
 
   const navItems = [
     { name: 'Dashboard', href: '/dashboard', icon: '📊' },
+    { name: 'AI Copilot', href: '/copilot', icon: '🧠', badge: 'NEW' },
+    { name: 'Project Workspaces', href: '/projects', icon: '📁', badge: 'NEW' },
     { name: 'RAG Chat', href: '/chat', icon: '💬' },
-    { name: 'AI Study Mode', href: '/study', icon: '🎓', badge: 'NEW' },
-    { name: 'Agentic Research', href: '/research', icon: '🤖', badge: 'NEW' },
-    { name: 'Workflows', href: '/workflows', icon: '🧩', badge: 'NEW' },
+    { name: 'AI Study Mode', href: '/study', icon: '🎓' },
+    { name: 'Agentic Research', href: '/research', icon: '🤖' },
+    { name: 'Workflows', href: '/workflows', icon: '🧩' },
     { name: 'AI Roadmaps', href: '/roadmaps', icon: '🚀' },
     { name: 'Documents', href: '/documents', icon: '📁' },
     { name: 'Knowledge Bases', href: '/knowledge-bases', icon: '📚' },
     { name: `Explore ${activeCity}`, href: `/explore?city=${encodeURIComponent(activeCity)}`, icon: '🌍' },
+    { name: 'Copilot Memory', href: '/settings/copilot-memory', icon: '💾' },
     { name: 'My Account', href: '/account', icon: '👤' },
     ...(isAdmin
       ? [

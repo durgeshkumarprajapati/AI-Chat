@@ -365,7 +365,20 @@ const serverEnvSchema = z
       .default(30),
     STUDY_REVIEW_ENABLED: z
       .coerce.boolean()
-      .default(true)
+      .default(true),
+    COPILOT_ENABLED: z.coerce.boolean().default(true),
+    COPILOT_MAX_CONTEXT_TOKENS: z.coerce.number().int().positive().default(12000),
+    COPILOT_MAX_MEMORY_ITEMS: z.coerce.number().int().positive().default(20),
+    COPILOT_MAX_DOCUMENTS: z.coerce.number().int().positive().default(10),
+    COPILOT_MAX_RESEARCH_RESULTS: z.coerce.number().int().positive().default(20),
+    COPILOT_MAX_PLAN_STEPS: z.coerce.number().int().positive().default(10),
+    COPILOT_MAX_CAPABILITY_CALLS: z.coerce.number().int().positive().default(20),
+    COPILOT_MAX_LLM_CALLS: z.coerce.number().int().positive().default(20),
+    COPILOT_MAX_WEB_SEARCHES: z.coerce.number().int().positive().default(10),
+    COPILOT_MAX_EXECUTION_TIME_MS: z.coerce.number().int().positive().default(300000),
+    COPILOT_CACHE_ENABLED: z.coerce.boolean().default(true),
+    COPILOT_MEMORY_ENABLED: z.coerce.boolean().default(true),
+    COPILOT_REQUIRE_CONFIRMATION: z.coerce.boolean().default(true)
   })
   .refine(
     (data) => {

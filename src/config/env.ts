@@ -273,6 +273,21 @@ const serverEnvSchema = z
     CITY_EXPLORER_ENABLED: z
       .coerce.boolean()
       .default(true),
+    CITY_EXPLORER_CACHE_TTL_SECONDS: z
+      .coerce.number()
+      .default(3600),
+    CITY_EXPLORER_STATIC_TTL_SECONDS: z
+      .coerce.number()
+      .default(86400),
+    CITY_EXPLORER_DYNAMIC_TTL_SECONDS: z
+      .coerce.number()
+      .default(1800),
+    CITY_EXPLORER_MAX_CONCURRENT_QUERIES: z
+      .coerce.number()
+      .default(3),
+    CITY_EXPLORER_RATE_LIMIT_PER_MINUTE: z
+      .coerce.number()
+      .default(60),
     VOICE_INPUT_ENABLED: z
       .coerce.boolean()
       .default(true),

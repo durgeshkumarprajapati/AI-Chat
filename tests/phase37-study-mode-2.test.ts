@@ -93,7 +93,7 @@ const mockLLMProvider: LLMProvider = {
   }
 };
 
-import { quizModeService, QuizModeService } from '../src/features/study/modes/quiz.service';
+import { quizModeService } from '../src/features/study/modes/quiz.service';
 
 const quizService = new QuizModeService(undefined, mockLLMProvider);
 (quizModeService as any).llmProvider = mockLLMProvider;

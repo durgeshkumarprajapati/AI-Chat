@@ -37,7 +37,8 @@ const PHASES: PhaseConfig[] = [
   { phase: 34, name: 'Agentic Research & Autonomous Evidence Investigation', command: 'npm run test:phase34' },
   { phase: 35, name: 'AI Workflow Builder & Automation Engine', command: 'npm run test:phase35' },
   { phase: 36, name: 'AI Knowledge & Research Copilot + Project Workspace', command: 'npm run test:phase36' },
-  { phase: 37, name: 'Production AI Study Mode 2.0 (Grounded Adaptive Learning)', command: 'npm run test:phase37' }
+  { phase: 37, name: 'Production AI Study Mode 2.0 (Grounded Adaptive Learning)', command: 'npm run test:phase37' },
+  { phase: 38, name: 'AI City Explorer 2.0 (Prefetched Grounded City Knowledge)', command: 'npm run test:phase38' }
 ];
 
 async function runAllPhases() {

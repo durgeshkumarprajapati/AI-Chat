@@ -552,6 +552,9 @@ model StudySession {
   answers       StudyAnswer[]
   progresses    StudyProgress[]
   attempts      StudyAttempt[]
+  socraticMessages  StudySocraticMessage[]
+  flashcards        StudyFlashcard[]
+  practiceExercises StudyPracticeExercise[]
   projects      ProjectStudySession[]
 
   @@index([userId])
@@ -593,9 +596,12 @@ model StudyTopic {
   createdAt    DateTime @default(now()) @map("created_at")
   updatedAt    DateTime @updatedAt @map("updated_at")
 
-  session    StudySession    @relation(fields: [sessionId], references: [id], onDelete: Cascade)
-  questions  StudyQuestion[]
-  progresses StudyProgress[]
+  session           StudySession            @relation(fields: [sessionId], references: [id], onDelete: Cascade)
+  questions         StudyQuestion[]
+  progresses        StudyProgress[]
+  socraticMessages  StudySocraticMessage[]
+  flashcards        StudyFlashcard[]
+  practiceExercises StudyPracticeExercise[]
 
   @@index([sessionId])
   @@index([sessionId, order])
@@ -603,16 +609,22 @@ model StudyTopic {
 }
 
 model StudyQuestion {
-  id                String            @id @default(uuid())
-  topicId           String            @map("topic_id")
-  questionType      StudyQuestionType @default(MCQ) @map("question_type")
-  question          String            @db.Text
-  options           Json?             @default("[]")
-  expectedAnswer    String            @db.Text @map("expected_answer")
-  explanation       String            @db.Text
-  difficulty        StudyDifficulty   @default(BEGINNER)
-  sourceFingerprint String?           @map("source_fingerprint")
-  createdAt         DateTime          @default(now()) @map("created_at")
+  id                  String            @id @default(uuid())
+  topicId             String            @map("topic_id")
+  questionType        StudyQuestionType @default(MCQ) @map("question_type")
+  question            String            @db.Text
+  options             Json?             @default("[]")
+  expectedAnswer      String            @db.Text @map("expected_answer")
+  explanation         String            @db.Text
+  difficulty          StudyDifficulty   @default(BEGINNER)
+  sourceFingerprint   String?           @map("source_fingerprint")
+  questionFingerprint String?           @map("question_fingerprint")
+  semanticFingerprint String?           @map("semantic_fingerprint")
+  sourceDocumentId    String?           @map("source_document_id")
+  sourceChunkIds      Json?             @default("[]") @map("source_chunk_ids")
+  citations           Json?             @default("[]")
+  generationMetadata  Json?             @map("generation_metadata")
+  createdAt           DateTime          @default(now()) @map("created_at")
 
   topic    StudyTopic     @relation(fields: [topicId], references: [id], onDelete: Cascade)
   answers  StudyAnswer[]
@@ -620,6 +632,7 @@ model StudyQuestion {
 
   @@index([topicId])
   @@index([questionType])
+  @@index([questionFingerprint])
   @@map("study_questions")
 }
 
@@ -684,6 +697,70 @@ model StudyAttempt {
   @@index([questionId])
   @@index([userId])
   @@map("study_attempts")
+}
+
+model StudySocraticMessage {
+  id        String   @id @default(uuid())
+  sessionId String   @map("session_id")
+  topicId   String   @map("topic_id")
+  role      String   @default("ASSISTANT")
+  content   String   @db.Text
+  level     String   @default("CLARIFICATION")
+  citations Json?    @default("[]")
+  createdAt DateTime @default(now()) @map("created_at")
+
+  session StudySession @relation(fields: [sessionId], references: [id], onDelete: Cascade)
+  topic   StudyTopic   @relation(fields: [topicId], references: [id], onDelete: Cascade)
+
+  @@index([sessionId])
+  @@index([topicId])
+  @@map("study_socratic_messages")
+}
+
+model StudyFlashcard {
+  id           String    @id @default(uuid())
+  sessionId    String    @map("session_id")
+  topicId      String    @map("topic_id")
+  front        String    @db.Text
+  back         String    @db.Text
+  rating       String?
+  interval     Int       @default(1)
+  repetitions  Int       @default(0)
+  easeFactor   Float     @default(2.5) @map("ease_factor")
+  nextReviewAt DateTime? @map("next_review_at")
+  citations    Json?     @default("[]")
+  createdAt    DateTime  @default(now()) @map("created_at")
+  updatedAt    DateTime  @updatedAt @map("updated_at")
+
+  session StudySession @relation(fields: [sessionId], references: [id], onDelete: Cascade)
+  topic   StudyTopic   @relation(fields: [topicId], references: [id], onDelete: Cascade)
+
+  @@index([sessionId])
+  @@index([topicId])
+  @@index([nextReviewAt])
+  @@map("study_flashcards")
+}
+
+model StudyPracticeExercise {
+  id               String   @id @default(uuid())
+  sessionId        String   @map("session_id")
+  topicId          String   @map("topic_id")
+  exerciseType     String   @default("SCENARIO") @map("exercise_type")
+  title            String
+  prompt           String   @db.Text
+  starterCode      String?  @db.Text @map("starter_code")
+  requirements     Json?    @default("[]")
+  expectedConcepts Json?    @default("[]") @map("expected_concepts")
+  solution         String?  @db.Text
+  citations        Json?    @default("[]")
+  createdAt        DateTime @default(now()) @map("created_at")
+
+  session StudySession @relation(fields: [sessionId], references: [id], onDelete: Cascade)
+  topic   StudyTopic   @relation(fields: [topicId], references: [id], onDelete: Cascade)
+
+  @@index([sessionId])
+  @@index([topicId])
+  @@map("study_practice_exercises")
 }
 
 // ==========================================

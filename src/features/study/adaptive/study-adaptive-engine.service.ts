@@ -9,6 +9,27 @@ export class StudyAdaptiveEngineService {
     return Math.min(100, Math.round((avgScorePct * 0.6 + accuracyPct * 0.4) * 10) / 10);
   }
 
+  /**
+   * Determine next difficulty level based on rolling performance of recent attempts (last 5).
+   */
+  public determineAdaptiveDifficultyFromHistory(recentScores: number[], currentDifficulty: StudyDifficulty): StudyDifficulty {
+    if (!recentScores || recentScores.length === 0) {
+      return currentDifficulty;
+    }
+
+    // Take up to last 5 attempts
+    const last5 = recentScores.slice(-5);
+    const avgPct = (last5.reduce((sum, s) => sum + s, 0) / (last5.length * 10)) * 100;
+
+    if (avgPct < 40) {
+      return StudyDifficulty.BEGINNER;
+    }
+    if (avgPct <= 70) {
+      return StudyDifficulty.INTERMEDIATE;
+    }
+    return StudyDifficulty.ADVANCED;
+  }
+
   public determineNextDifficulty(masteryScore: number, _currentDifficulty: StudyDifficulty): StudyDifficulty {
     if (masteryScore < STUDY_CONFIG.LOW_MASTERY_THRESHOLD) {
       return StudyDifficulty.BEGINNER;

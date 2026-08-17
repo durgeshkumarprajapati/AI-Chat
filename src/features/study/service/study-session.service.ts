@@ -4,6 +4,13 @@ import { studyAnswerEvaluatorService } from '../evaluation/study-answer-evaluato
 import { studyAdaptiveEngineService } from '../adaptive/study-adaptive-engine.service';
 import { studyHintService } from '../hint/study-hint.service';
 import { studyCacheService } from '../cache/study.cache';
+import { teachModeService } from '../modes/teach.service';
+import { socraticModeService } from '../modes/socratic.service';
+import { flashcardsModeService, FlashcardRating } from '../modes/flashcards.service';
+import { practiceModeService } from '../modes/practice.service';
+import { reviewModeService } from '../modes/review.service';
+import { quizModeService } from '../modes/quiz.service';
+import { studyTelemetryService } from '../observability/study-telemetry.service';
 import {
   CreateStudySessionInput,
   StudyGoal,
@@ -14,6 +21,7 @@ import {
   StudyQuestionType
 } from '../study.types';
 import { prisma } from '@/lib/prisma';
+import { redis } from '@/lib/redis';
 import { NotFoundError, AuthorizationError, ValidationError } from '@/errors';
 
 export class StudySessionService {
@@ -74,49 +82,67 @@ export class StudySessionService {
     const session = await studyRepository.getSessionById(sessionId, userId);
     if (!session) throw new NotFoundError('Study session not found.');
 
-    // Generate initial topics if none exist
-    let topics = session.topics;
-    if (topics.length === 0) {
-      const generatedTopics = await studyQuestionGeneratorService.generateTopicsForScope(userId, {
-        title: session.title,
-        knowledgeBaseId: session.knowledgeBaseId || undefined,
-        roadmapId: session.roadmapId || undefined,
-        documentIds: session.sources.map((s) => s.documentId).filter(Boolean) as string[],
-        goal: session.goal,
-        difficulty: session.difficulty
-      });
-
-      topics = await studyRepository.createTopics(sessionId, generatedTopics) as any;
+    // Concurrency Lock
+    const lockKey = `docai:lock:study:session:${sessionId}`;
+    const acquired = await redis.acquireLock(lockKey, 5);
+    if (!acquired) {
+      throw new ValidationError('A study session initialization operation is already in progress.');
     }
 
-    const firstTopic = topics[0];
-    if (firstTopic && (!firstTopic.questions || firstTopic.questions.length === 0)) {
-      const questionPayload = await studyQuestionGeneratorService.generateQuestion(userId, {
-        topicTitle: firstTopic.title,
-        topicDescription: firstTopic.description,
-        questionType: session.currentMode === StudyMode.SOCRATIC ? StudyQuestionType.SHORT_ANSWER : StudyQuestionType.MCQ,
-        difficulty: session.difficulty,
-        knowledgeBaseId: session.knowledgeBaseId || undefined,
-        documentIds: session.sources.map((s) => s.documentId).filter(Boolean) as string[],
-        externalWebEnabled: session.externalWebEnabled
-      });
+    try {
+      // Generate initial topics if none exist
+      let topics = session.topics;
+      if (topics.length === 0) {
+        const generatedTopics = await studyQuestionGeneratorService.generateTopicsForScope(userId, {
+          title: session.title,
+          knowledgeBaseId: session.knowledgeBaseId || undefined,
+          roadmapId: session.roadmapId || undefined,
+          documentIds: session.sources.map((s) => s.documentId).filter(Boolean) as string[],
+          goal: session.goal,
+          difficulty: session.difficulty
+        });
 
-      if ('error' in questionPayload) {
-        throw new ValidationError('NO_STUDY_EVIDENCE: Selected study materials do not contain sufficient evidence.');
+        topics = await studyRepository.createTopics(sessionId, generatedTopics) as any;
       }
 
-      await studyRepository.createQuestion({
-        topicId: firstTopic.id,
-        questionType: questionPayload.questionType,
-        question: questionPayload.question,
-        options: questionPayload.options,
-        expectedAnswer: questionPayload.expectedAnswer,
-        explanation: questionPayload.explanation,
-        difficulty: questionPayload.difficulty
-      });
-    }
+      const firstTopic = topics[0];
+      if (firstTopic && (!firstTopic.questions || firstTopic.questions.length === 0)) {
+        const questionPayload = await studyQuestionGeneratorService.generateQuestion(userId, sessionId, {
+          topicId: firstTopic.id,
+          topicTitle: firstTopic.title,
+          topicDescription: firstTopic.description,
+          questionType: session.currentMode === StudyMode.SOCRATIC ? StudyQuestionType.SHORT_ANSWER : StudyQuestionType.MCQ,
+          difficulty: session.difficulty,
+          knowledgeBaseId: session.knowledgeBaseId || undefined,
+          documentIds: session.sources.map((s) => s.documentId).filter(Boolean) as string[],
+          externalWebEnabled: session.externalWebEnabled
+        });
 
-    return this.getSessionDetails(userId, sessionId);
+        if ('error' in questionPayload) {
+          throw new ValidationError(`INSUFFICIENT_EVIDENCE: ${questionPayload.error}`);
+        }
+
+        await prisma.studyQuestion.create({
+          data: {
+            topicId: firstTopic.id,
+            questionType: questionPayload.questionType,
+            question: questionPayload.question,
+            options: questionPayload.options,
+            expectedAnswer: questionPayload.expectedAnswer,
+            explanation: questionPayload.explanation,
+            difficulty: questionPayload.difficulty,
+            questionFingerprint: questionPayload.questionFingerprint,
+            sourceDocumentId: questionPayload.sourceDocumentId,
+            sourceChunkIds: questionPayload.sourceChunkIds || [],
+            citations: questionPayload.citations || []
+          }
+        });
+      }
+
+      return this.getSessionDetails(userId, sessionId);
+    } finally {
+      await redis.releaseLock(lockKey);
+    }
   }
 
   public async getSessionDetails(userId: string, sessionId: string) {
@@ -188,6 +214,26 @@ export class StudySessionService {
       hintsUsed: params.hintsUsed || 0
     });
 
+    // Fetch recent attempts in this session for rolling adaptive difficulty calculation
+    const recentAnswers = await prisma.studyAnswer.findMany({
+      where: { sessionId: session.id, userId },
+      orderBy: { createdAt: 'desc' },
+      take: 5
+    });
+
+    const recentScores = recentAnswers.map((a) => a.score);
+    const newAdaptiveDifficulty = studyAdaptiveEngineService.determineAdaptiveDifficultyFromHistory(
+      recentScores,
+      session.difficulty
+    );
+
+    if (newAdaptiveDifficulty !== session.difficulty) {
+      await prisma.studySession.update({
+        where: { id: session.id },
+        data: { difficulty: newAdaptiveDifficulty }
+      });
+    }
+
     // Update topic mastery
     const topicAnswers = await prisma.studyAnswer.findMany({
       where: {
@@ -221,6 +267,11 @@ export class StudySessionService {
     await studyRepository.updateSessionProgress(session.id, sessionProgressPercent);
     await studyCacheService.invalidate(userId, `session:${sessionId}`);
 
+    studyTelemetryService.logEvent('study.answer.evaluated', userId, sessionId, {
+      questionId: question.id,
+      metrics: { score: evaluation.score, isCorrect: evaluation.isCorrect, newDifficulty: newAdaptiveDifficulty }
+    });
+
     return {
       answerId: savedAnswer.id,
       isCorrect: evaluation.isCorrect,
@@ -228,7 +279,9 @@ export class StudySessionService {
       feedback: evaluation.feedback,
       explanation: question.explanation,
       expectedAnswer: question.expectedAnswer,
+      citations: (question.citations as any) || [],
       masteryScore,
+      newDifficulty: newAdaptiveDifficulty,
       sessionProgressPercent
     };
   }
@@ -254,38 +307,64 @@ export class StudySessionService {
     const session = await studyRepository.getSessionById(sessionId, userId);
     if (!session) throw new NotFoundError('Study session not found.');
 
-    // Find first topic that needs questions or is in progress
-    let currentTopic = session.topics.find((t) => t.masteryScore < 80) || session.topics[0];
-    if (!currentTopic) throw new ValidationError('All topics in this study session are completed!');
-
-    const questionPayload = await studyQuestionGeneratorService.generateQuestion(userId, {
-      topicTitle: currentTopic.title,
-      topicDescription: currentTopic.description,
-      questionType: session.currentMode === StudyMode.SOCRATIC ? StudyQuestionType.SHORT_ANSWER : StudyQuestionType.MCQ,
-      difficulty: session.difficulty,
-      knowledgeBaseId: session.knowledgeBaseId || undefined,
-      documentIds: session.sources.map((s) => s.documentId).filter(Boolean) as string[],
-      externalWebEnabled: session.externalWebEnabled
-    });
-
-    if ('error' in questionPayload) {
-      throw new ValidationError('NO_STUDY_EVIDENCE: Selected study materials do not contain sufficient evidence.');
+    // Concurrency Lock
+    const lockKey = `docai:lock:study:session:${sessionId}`;
+    const acquired = await redis.acquireLock(lockKey, 5);
+    if (!acquired) {
+      throw new ValidationError('A question generation operation is already in progress for this session.');
     }
 
-    const newQuestion = await studyRepository.createQuestion({
-      topicId: currentTopic.id,
-      questionType: questionPayload.questionType,
-      question: questionPayload.question,
-      options: questionPayload.options,
-      expectedAnswer: questionPayload.expectedAnswer,
-      explanation: questionPayload.explanation,
-      difficulty: questionPayload.difficulty
-    });
+    try {
+      // Find topic that needs questions or has mastery < 80
+      let currentTopic = session.topics.find((t) => t.masteryScore < 80) || session.topics[0];
+      if (!currentTopic) throw new ValidationError('All topics in this study session are completed!');
 
-    await studyCacheService.invalidate(userId, `session:${sessionId}`);
+      // Determine rotated question type
+      const lastQuestion = await prisma.studyQuestion.findFirst({
+        where: { topic: { sessionId } },
+        orderBy: { createdAt: 'desc' }
+      });
 
-    const { expectedAnswer: _exp, ...sanitized } = newQuestion;
-    return sanitized;
+      const nextType = quizModeService.rotateQuestionType(lastQuestion?.questionType);
+
+      const questionPayload = await studyQuestionGeneratorService.generateQuestion(userId, sessionId, {
+        topicId: currentTopic.id,
+        topicTitle: currentTopic.title,
+        topicDescription: currentTopic.description,
+        questionType: nextType,
+        difficulty: session.difficulty,
+        knowledgeBaseId: session.knowledgeBaseId || undefined,
+        documentIds: session.sources.map((s) => s.documentId).filter(Boolean) as string[],
+        externalWebEnabled: session.externalWebEnabled
+      });
+
+      if ('error' in questionPayload) {
+        throw new ValidationError(`STUDY_EVIDENCE_ERROR: ${questionPayload.error}`);
+      }
+
+      const newQuestion = await prisma.studyQuestion.create({
+        data: {
+          topicId: currentTopic.id,
+          questionType: questionPayload.questionType,
+          question: questionPayload.question,
+          options: questionPayload.options,
+          expectedAnswer: questionPayload.expectedAnswer,
+          explanation: questionPayload.explanation,
+          difficulty: questionPayload.difficulty,
+          questionFingerprint: questionPayload.questionFingerprint,
+          sourceDocumentId: questionPayload.sourceDocumentId,
+          sourceChunkIds: questionPayload.sourceChunkIds || [],
+          citations: questionPayload.citations || []
+        }
+      });
+
+      await studyCacheService.invalidate(userId, `session:${sessionId}`);
+
+      const { expectedAnswer: _exp, ...sanitized } = newQuestion;
+      return sanitized;
+    } finally {
+      await redis.releaseLock(lockKey);
+    }
   }
 
   public async setSessionMode(userId: string, sessionId: string, mode: StudyMode) {
@@ -294,7 +373,70 @@ export class StudySessionService {
 
     await studyRepository.updateSessionMode(sessionId, mode);
     await studyCacheService.invalidate(userId, `session:${sessionId}`);
+
+    studyTelemetryService.logEvent('study.mode.changed', userId, sessionId, { mode });
     return { sessionId, mode };
+  }
+
+  // -----------------------------------------------------------------
+  // NEW MODE SERVICE HANDLERS FOR TEACH, SOCRATIC, FLASHCARDS, PRACTICE, REVIEW
+  // -----------------------------------------------------------------
+
+  public async generateTeachLesson(userId: string, sessionId: string) {
+    const session = await studyRepository.getSessionById(sessionId, userId);
+    if (!session) throw new NotFoundError('Study session not found.');
+
+    const currentTopic = session.topics[0];
+    if (!currentTopic) throw new ValidationError('No topic available for teach lesson.');
+
+    return teachModeService.generateLesson(userId, {
+      topicTitle: currentTopic.title,
+      topicDescription: currentTopic.description,
+      knowledgeBaseId: session.knowledgeBaseId || undefined,
+      documentIds: session.sources.map((s) => s.documentId).filter(Boolean) as string[]
+    });
+  }
+
+  public async socraticStep(userId: string, sessionId: string, topicId: string, userResponse: string) {
+    const session = await studyRepository.getSessionById(sessionId, userId);
+    if (!session) throw new NotFoundError('Study session not found.');
+
+    return socraticModeService.evaluateSocraticStep(userId, sessionId, topicId, userResponse);
+  }
+
+  public async getFlashcards(userId: string, sessionId: string, topicId: string) {
+    const session = await studyRepository.getSessionById(sessionId, userId);
+    if (!session) throw new NotFoundError('Study session not found.');
+
+    return flashcardsModeService.generateFlashcards(userId, sessionId, topicId);
+  }
+
+  public async rateFlashcard(userId: string, sessionId: string, cardId: string, rating: FlashcardRating) {
+    const session = await studyRepository.getSessionById(sessionId, userId);
+    if (!session) throw new NotFoundError('Study session not found.');
+
+    return flashcardsModeService.rateFlashcard(cardId, rating);
+  }
+
+  public async getPracticeExercise(userId: string, sessionId: string, topicId: string) {
+    const session = await studyRepository.getSessionById(sessionId, userId);
+    if (!session) throw new NotFoundError('Study session not found.');
+
+    return practiceModeService.generateExercise(userId, sessionId, topicId);
+  }
+
+  public async evaluatePractice(userId: string, sessionId: string, exerciseId: string, solution: string) {
+    const session = await studyRepository.getSessionById(sessionId, userId);
+    if (!session) throw new NotFoundError('Study session not found.');
+
+    return practiceModeService.evaluateAttempt(exerciseId, solution);
+  }
+
+  public async getReviewTopics(userId: string, sessionId: string) {
+    const session = await studyRepository.getSessionById(sessionId, userId);
+    if (!session) throw new NotFoundError('Study session not found.');
+
+    return reviewModeService.getReviewTopics(sessionId);
   }
 
   public async getWeakAreas(userId: string) {

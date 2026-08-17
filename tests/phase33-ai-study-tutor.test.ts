@@ -27,7 +27,8 @@ async function runPhase33Tests() {
     // ----------------------------------------------------
     console.log('\nTest 11-18: Question Generation & Schema Validation');
 
-    const mcqQuestion = await questionGenerator.generateQuestion('test-user-123', {
+    const mcqQuestion = await questionGenerator.generateQuestion('test-user-123', 'session-123', {
+      topicId: 'topic-123',
       topicTitle: 'React Server Components',
       topicDescription: 'Architecture and streaming benefits',
       questionType: StudyQuestionType.MCQ,
@@ -44,7 +45,8 @@ async function runPhase33Tests() {
     }
     console.log('  ✅ PASSED: MCQ question generated with valid options and explanation.');
 
-    const tfQuestion = await questionGenerator.generateQuestion('test-user-123', {
+    const tfQuestion = await questionGenerator.generateQuestion('test-user-123', 'session-123', {
+      topicId: 'topic-123',
       topicTitle: 'Next.js App Router',
       topicDescription: 'Routing mechanics',
       questionType: StudyQuestionType.TRUE_FALSE,
@@ -62,7 +64,8 @@ async function runPhase33Tests() {
     // ----------------------------------------------------
     console.log('\nTest 19-24: Grounding & Zero-Evidence Protection');
 
-    const noEvResult = await questionGenerator.generateQuestion('test-user-123', {
+    const noEvResult = await questionGenerator.generateQuestion('test-user-123', 'session-123', {
+      topicId: 'topic-123',
       topicTitle: 'Nonexistent Document Subject 999',
       topicDescription: 'Empty topic',
       questionType: StudyQuestionType.MCQ,
@@ -71,7 +74,7 @@ async function runPhase33Tests() {
       externalWebEnabled: false
     });
 
-    if (!('error' in noEvResult) || noEvResult.error !== 'NO_STUDY_EVIDENCE') {
+    if (!('error' in noEvResult) || !noEvResult.error.includes('NO_STUDY_EVIDENCE')) {
       throw new Error('Test 20 failed: Expected NO_STUDY_EVIDENCE for missing evidence.');
     }
     console.log('  ✅ PASSED: NO_STUDY_EVIDENCE protection active for document-grounded mode.');

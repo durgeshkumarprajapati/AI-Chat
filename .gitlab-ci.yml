@@ -1,0 +1,613 @@
+# ============================================================
+# Document AI / RAG Platform
+# Production GitLab CI/CD Pipeline
+#
+# Flow:
+#
+# feature/* → main → master → CI/CD → Production
+#
+# Production deployment is intentionally MANUAL.
+# ============================================================
+
+stages:
+  - validate
+  - quality
+  - security
+  - test
+  - build
+  - docker
+  - deploy
+  - verify
+
+
+# ============================================================
+# GLOBAL VARIABLES
+# ============================================================
+
+variables:
+  NODE_ENV: "production"
+  NEXT_TELEMETRY_DISABLED: "1"
+  CI: "true"
+
+  # npm cache
+  npm_config_cache: "$CI_PROJECT_DIR/.npm"
+
+  # Docker
+  DOCKER_DRIVER: overlay2
+  DOCKER_TLS_CERTDIR: ""
+
+  # Application image
+  IMAGE_NAME: "$DOCKER_USERNAME/document-ai"
+
+
+# ============================================================
+# CACHE
+# ============================================================
+
+cache:
+  key:
+    files:
+      - package-lock.json
+
+  paths:
+    - .npm/
+
+
+# ============================================================
+# DEFAULT NODE CONFIGURATION
+# ============================================================
+
+default:
+  image: node:22-bookworm
+
+  before_script:
+    - node --version
+    - npm --version
+    - npm ci --prefer-offline --no-audit
+
+
+# ============================================================
+# 1. TYPECHECK
+# ============================================================
+
+typecheck:
+  stage: validate
+
+  script:
+    - echo "Running TypeScript typecheck..."
+    - npm run typecheck
+
+  rules:
+    - if: '$CI_COMMIT_BRANCH == "master"'
+
+
+# ============================================================
+# 2. ESLINT
+# ============================================================
+
+lint:
+  stage: quality
+
+  script:
+    - echo "Running ESLint..."
+    - npm run lint
+
+  rules:
+    - if: '$CI_COMMIT_BRANCH == "master"'
+
+
+# ============================================================
+# 3. PRISMA SCHEMA VALIDATION
+# ============================================================
+
+prisma_validate:
+  stage: quality
+
+  script:
+    - echo "Validating Prisma schema..."
+    - npx prisma validate
+
+    - echo "Checking Prisma formatting..."
+    - npx prisma format --check
+
+  rules:
+    - if: '$CI_COMMIT_BRANCH == "master"'
+
+
+# ============================================================
+# 4. PRISMA MIGRATION STATUS
+#
+# This checks migration state only.
+#
+# Actual production migration happens later using:
+#
+#     npx prisma migrate deploy
+#
+# ============================================================
+
+prisma_migration_check:
+  stage: quality
+
+  script:
+    - echo "Checking Prisma migration status..."
+    - npx prisma migrate status
+
+  rules:
+    - if: '$CI_COMMIT_BRANCH == "master"'
+
+
+# ============================================================
+# 5. DEPENDENCY SECURITY
+# ============================================================
+
+dependency_security:
+  stage: security
+
+  script:
+    - echo "Running npm dependency security audit..."
+    - npm audit --audit-level=high
+
+  allow_failure: false
+
+  rules:
+    - if: '$CI_COMMIT_BRANCH == "master"'
+
+
+# ============================================================
+# 6. SECRET SCANNING
+#
+# Uses official Gitleaks container.
+# ============================================================
+
+secret_scan:
+  stage: security
+
+  image:
+    name: zricethezav/gitleaks:latest
+    entrypoint: [""]
+
+  before_script: []
+
+  script:
+    - echo "Running Gitleaks secret scan..."
+    - gitleaks detect
+        --source .
+        --redact
+        --verbose
+        --exit-code 1
+
+  allow_failure: false
+
+  rules:
+    - if: '$CI_COMMIT_BRANCH == "master"'
+
+
+# ============================================================
+# 7. UNIVERSAL REGRESSION TEST
+#
+# Runs:
+#
+# Phase 7
+# Phase 8
+# ...
+# Phase 32
+#
+# through:
+#
+# npm run test:all-phases
+# ============================================================
+
+all_phase_tests:
+  stage: test
+
+  script:
+    - echo "Running complete Phase 7–32 regression suite..."
+    - npm run test:all-phases
+
+  artifacts:
+    when: always
+
+    paths:
+      - test-results/
+      - coverage/
+
+    expire_in: 7 days
+
+  rules:
+    - if: '$CI_COMMIT_BRANCH == "master"'
+
+
+# ============================================================
+# 8. WORKER BUILD
+#
+# Root npm dependencies are not installed here because the
+# worker has its own package.json/package-lock.json.
+# ============================================================
+
+worker_build:
+  stage: build
+
+  before_script:
+    - node --version
+    - npm --version
+
+  script:
+    - echo "Installing worker dependencies..."
+    - npm --prefix worker ci --prefer-offline --no-audit
+
+    - echo "Building worker..."
+    - npm --prefix worker run build
+
+  artifacts:
+    paths:
+      - worker/dist/
+
+    expire_in: 1 day
+
+  rules:
+    - if: '$CI_COMMIT_BRANCH == "master"'
+
+
+# ============================================================
+# 9. NEXT.JS PRODUCTION BUILD
+# ============================================================
+
+production_build:
+  stage: build
+
+  script:
+    - echo "Building Next.js application..."
+    - npm run build
+
+  artifacts:
+    paths:
+      - .next/
+      - public/
+      - package.json
+      - package-lock.json
+      - prisma/
+
+    expire_in: 1 day
+
+  rules:
+    - if: '$CI_COMMIT_BRANCH == "master"'
+
+
+# ============================================================
+# 10. DOCKER BUILD + PUSH
+#
+# Produces:
+#
+# document-ai:<commit-sha>
+#
+# and optionally:
+#
+# document-ai:latest
+#
+# Production ALWAYS deploys the immutable SHA tag.
+# ============================================================
+
+docker_build:
+  stage: docker
+
+  image: docker:27
+
+  services:
+    - name: docker:27-dind
+      command:
+        - "--tls=false"
+
+  variables:
+    DOCKER_HOST: "tcp://docker:2375"
+    DOCKER_TLS_CERTDIR: ""
+
+  before_script:
+    - docker info
+
+    - echo "$DOCKER_PASSWORD" |
+        docker login
+        --username "$DOCKER_USERNAME"
+        --password-stdin
+
+  script:
+    - export IMAGE="$IMAGE_NAME"
+
+    - echo "Building image:"
+    - echo "$IMAGE:$CI_COMMIT_SHA"
+
+    - docker build
+        --pull
+        --platform linux/amd64
+        --label "org.opencontainers.image.revision=$CI_COMMIT_SHA"
+        --label "org.opencontainers.image.source=$CI_PROJECT_URL"
+        --label "org.opencontainers.image.version=$CI_COMMIT_SHA"
+        -t "$IMAGE:$CI_COMMIT_SHA"
+        -t "$IMAGE:latest"
+        .
+
+    - echo "Pushing immutable image..."
+    - docker push "$IMAGE:$CI_COMMIT_SHA"
+
+    - echo "Updating latest tag..."
+    - docker push "$IMAGE:latest"
+
+  rules:
+    - if: '$CI_COMMIT_BRANCH == "master"'
+
+
+# ============================================================
+# 11. DOCKER IMAGE SECURITY SCAN
+#
+# Trivy scans the exact image that will be deployed.
+# ============================================================
+
+docker_security_scan:
+  stage: security
+
+  image:
+    name: aquasec/trivy:latest
+    entrypoint: [""]
+
+  services:
+    - name: docker:27-dind
+      command:
+        - "--tls=false"
+
+  variables:
+    DOCKER_HOST: "tcp://docker:2375"
+    DOCKER_TLS_CERTDIR: ""
+
+  before_script:
+    - trivy --version
+
+  script:
+    - echo "Scanning Docker image for HIGH/CRITICAL vulnerabilities..."
+
+    - trivy image
+        --exit-code 1
+        --severity HIGH,CRITICAL
+        --ignore-unfixed
+        "$IMAGE_NAME:$CI_COMMIT_SHA"
+
+  allow_failure: false
+
+  rules:
+    - if: '$CI_COMMIT_BRANCH == "master"'
+
+
+# ============================================================
+# 12. PRODUCTION DATABASE MIGRATION
+#
+# IMPORTANT:
+#
+# This is manual.
+#
+# It runs:
+#
+#     npx prisma migrate deploy
+#
+# against the production DATABASE_URL.
+#
+# DATABASE_URL must be configured as a protected GitLab
+# environment variable.
+# ============================================================
+
+production_migration:
+  stage: deploy
+
+  script:
+    - echo "Starting production Prisma migration..."
+
+    - npx prisma migrate deploy
+
+    - echo "Production database migration completed."
+
+  environment:
+    name: production
+
+  rules:
+    - if: '$CI_COMMIT_BRANCH == "master"'
+
+  when: manual
+
+
+# ============================================================
+# 13. PRODUCTION DEPLOYMENT
+#
+# Manual approval required.
+#
+# Uses immutable:
+#
+#     document-ai:<CI_COMMIT_SHA>
+#
+# Never deploys "latest".
+# ============================================================
+
+deploy_production:
+  stage: deploy
+
+  image: alpine:3.20
+
+  before_script:
+    - apk add --no-cache openssh-client
+
+    - mkdir -p ~/.ssh
+
+    - echo "$PROD_SSH_PRIVATE_KEY" |
+        tr -d '\r' >
+        ~/.ssh/id_rsa
+
+    - chmod 600 ~/.ssh/id_rsa
+
+    - ssh-keyscan -H "$PROD_HOST" >>
+        ~/.ssh/known_hosts
+
+  script:
+    - |
+      set -e
+
+      echo "Starting production deployment..."
+
+      IMAGE="$IMAGE_NAME:$CI_COMMIT_SHA"
+
+      echo "Deploying image:"
+      echo "$IMAGE"
+
+      ssh "$PROD_USER@$PROD_HOST" <<EOF
+
+      set -e
+
+      echo "Logging into Docker registry..."
+
+      echo "$DOCKER_PASSWORD" |
+        docker login \
+          --username "$DOCKER_USERNAME" \
+          --password-stdin
+
+      echo "Pulling immutable application image..."
+
+      docker pull "$IMAGE"
+
+      echo "Creating deployment directory..."
+
+      mkdir -p /opt/document-ai
+
+      echo "Saving current container image for rollback..."
+
+      if docker inspect document-ai >/dev/null 2>&1; then
+        docker inspect document-ai \
+          --format='{{.Config.Image}}' \
+          > /opt/document-ai/previous-image.txt
+      fi
+
+      echo "Stopping old application..."
+
+      docker stop document-ai || true
+
+      docker rm document-ai || true
+
+      echo "Starting new application..."
+
+      docker run -d \
+        --name document-ai \
+        --restart unless-stopped \
+        --env-file /opt/document-ai/.env \
+        -p 3000:3000 \
+        "$IMAGE"
+
+      echo "Waiting for application startup..."
+
+      sleep 10
+
+      echo "Checking container status..."
+
+      if ! docker ps \
+        --filter "name=document-ai" \
+        --filter "status=running" |
+        grep document-ai >/dev/null; then
+
+        echo "New container failed to start."
+
+        echo "Attempting rollback..."
+
+        if [ -f /opt/document-ai/previous-image.txt ]; then
+
+          PREVIOUS_IMAGE=\$(cat /opt/document-ai/previous-image.txt)
+
+          echo "Rolling back to:"
+          echo "\$PREVIOUS_IMAGE"
+
+          docker rm -f document-ai || true
+
+          docker pull "\$PREVIOUS_IMAGE"
+
+          docker run -d \
+            --name document-ai \
+            --restart unless-stopped \
+            --env-file /opt/document-ai/.env \
+            -p 3000:3000 \
+            "\$PREVIOUS_IMAGE"
+
+        fi
+
+        exit 1
+
+      fi
+
+      echo "New application container started successfully."
+
+      EOF
+
+      echo "Production deployment completed."
+
+  environment:
+    name: production
+
+  rules:
+    - if: '$CI_COMMIT_BRANCH == "master"'
+
+  when: manual
+
+
+# ============================================================
+# 14. PRODUCTION HEALTH CHECK
+#
+# Runs after deployment.
+# ============================================================
+
+production_health_check:
+  stage: verify
+
+  image:
+    name: curlimages/curl:8.10.1
+    entrypoint: [""]
+
+  script:
+    - |
+      set -e
+
+      echo "Starting production health check..."
+
+      MAX_ATTEMPTS=30
+      ATTEMPT=1
+
+      while [ "$ATTEMPT" -le "$MAX_ATTEMPTS" ]; do
+
+        echo "Health check attempt $ATTEMPT/$MAX_ATTEMPTS"
+
+        if curl \
+          --fail \
+          --silent \
+          --show-error \
+          --max-time 10 \
+          "$PRODUCTION_URL/api/health"; then
+
+          echo ""
+          echo "=========================================="
+          echo "Production health check PASSED"
+          echo "=========================================="
+
+          exit 0
+
+        fi
+
+        echo "Application is not healthy yet."
+
+        ATTEMPT=$((ATTEMPT + 1))
+
+        sleep 10
+
+      done
+
+      echo ""
+      echo "=========================================="
+      echo "Production health check FAILED"
+      echo "=========================================="
+
+      exit 1
+
+  environment:
+    name: production
+
+  rules:
+    - if: '$CI_COMMIT_BRANCH == "master"'

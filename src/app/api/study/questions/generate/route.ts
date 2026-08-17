@@ -12,15 +12,20 @@ export async function POST(req: NextRequest) {
       return NextResponse.json({ success: false, error: 'Missing topicTitle' }, { status: 400 });
     }
 
-    const payload = await studyQuestionGeneratorService.generateQuestion(user.id, {
-      topicTitle: body.topicTitle,
-      topicDescription: body.topicDescription || body.topicTitle,
-      questionType: body.questionType || 'MCQ',
-      difficulty: body.difficulty || 'BEGINNER',
-      knowledgeBaseId: body.knowledgeBaseId,
-      documentIds: body.documentIds,
-      externalWebEnabled: !!body.externalWebEnabled
-    });
+    const payload = await studyQuestionGeneratorService.generateQuestion(
+      user.id,
+      body.sessionId || 'session-gen',
+      {
+        topicId: body.topicId || 'topic-gen',
+        topicTitle: body.topicTitle,
+        topicDescription: body.topicDescription || body.topicTitle,
+        questionType: body.questionType || 'MCQ',
+        difficulty: body.difficulty || 'BEGINNER',
+        knowledgeBaseId: body.knowledgeBaseId,
+        documentIds: body.documentIds,
+        externalWebEnabled: !!body.externalWebEnabled
+      }
+    );
 
     if ('error' in payload) {
       return NextResponse.json({ success: false, error: payload.error }, { status: 422 });

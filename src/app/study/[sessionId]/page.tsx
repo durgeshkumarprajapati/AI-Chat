@@ -1,31 +1,20 @@
 'use client';
 
 import { useState, useEffect } from 'react';
-import { speechToTextService, VoiceState } from '@/features/voice';
-import { ttsService } from '@/features/tts/tts.service';
+import { TeachMode } from './TeachMode';
+import { SocraticMode } from './SocraticMode';
+import { QuizMode } from './QuizMode';
+import { FlashcardMode } from './FlashcardMode';
+import { PracticeMode } from './PracticeMode';
+import { ReviewMode } from './ReviewMode';
 
 export default function StudySessionPage({ params }: { params: { sessionId: string } }) {
   const [session, setSession] = useState<any>(null);
   const [loading, setLoading] = useState(true);
   const [currentMode, setCurrentMode] = useState<string>('TEACH');
 
-  const [activeTopicIndex] = useState<number>(0);
+  const [activeTopicIndex, setActiveTopicIndex] = useState<number>(0);
   const [activeQuestion, setActiveQuestion] = useState<any>(null);
-  const [userAnswer, setUserAnswer] = useState<string>('');
-
-  const [submitting, setSubmitting] = useState(false);
-  const [evalResult, setEvalResult] = useState<any>(null);
-
-  // Voice Input (Phase 32)
-  const [voiceState, setVoiceState] = useState<VoiceState>('IDLE');
-
-  // TTS (Phase 29)
-  const [isSpeaking, setIsSpeaking] = useState(false);
-
-  // Hints (Phase 33)
-  const [hintCount, setHintCount] = useState(0);
-  const [currentHint, setCurrentHint] = useState<string | null>(null);
-  const [fetchingHint, setFetchingHint] = useState(false);
 
   useEffect(() => {
     async function loadSession() {
@@ -49,97 +38,9 @@ export default function StudySessionPage({ params }: { params: { sessionId: stri
     }
 
     loadSession();
-
-    const unsubVoiceState = speechToTextService.onStateChange((st) => setVoiceState(st));
-    const unsubVoiceTranscript = speechToTextService.onTranscript((text, isFinal) => {
-      if (isFinal) {
-        setUserAnswer((prev) => (prev ? `${prev} ${text}`.trim() : text));
-      }
-    });
-
-    return () => {
-      unsubVoiceState();
-      unsubVoiceTranscript();
-    };
   }, [params.sessionId]);
 
-  const handleToggleVoice = () => {
-    if (voiceState === 'LISTENING' || voiceState === 'STARTING') {
-      speechToTextService.stopListening();
-    } else {
-      speechToTextService.startListening();
-    }
-  };
-
-  const handleSpeakText = (text: string) => {
-    if (isSpeaking) {
-      ttsService.stop();
-      setIsSpeaking(false);
-    } else {
-      ttsService.speak(text, {
-        onStart: () => setIsSpeaking(true),
-        onEnd: () => setIsSpeaking(false),
-        onError: () => setIsSpeaking(false)
-      });
-    }
-  };
-
-  const handleFetchHint = async () => {
-    if (!activeQuestion) return;
-    setFetchingHint(true);
-    try {
-      const nextHintNum = hintCount + 1;
-      const res = await fetch(`/api/study/sessions/${params.sessionId}/hint`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          questionId: activeQuestion.id,
-          hintNumber: nextHintNum
-        })
-      });
-      const data = await res.json();
-      if (data.success) {
-        setHintCount(nextHintNum);
-        setCurrentHint(data.data.hint);
-      }
-    } catch (err) {
-      console.error('Failed to fetch hint', err);
-    } finally {
-      setFetchingHint(false);
-    }
-  };
-
-  const handleSubmitAnswer = async () => {
-    if (!activeQuestion || !userAnswer.trim()) return;
-    setSubmitting(true);
-    try {
-      const res = await fetch(`/api/study/sessions/${params.sessionId}/answer`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          questionId: activeQuestion.id,
-          answer: userAnswer,
-          hintsUsed: hintCount
-        })
-      });
-
-      const data = await res.json();
-      if (data.success) {
-        setEvalResult(data.data);
-      }
-    } catch (err) {
-      console.error('Failed to submit answer', err);
-    } finally {
-      setSubmitting(false);
-    }
-  };
-
   const handleNextQuestion = async () => {
-    setUserAnswer('');
-    setEvalResult(null);
-    setCurrentHint(null);
-    setHintCount(0);
-
     try {
       const res = await fetch(`/api/study/sessions/${params.sessionId}/next`, {
         method: 'POST'
@@ -153,17 +54,27 @@ export default function StudySessionPage({ params }: { params: { sessionId: stri
     }
   };
 
+  const handleSelectReviewTopic = (topicId: string) => {
+    if (!session || !session.topics) return;
+    const idx = session.topics.findIndex((t: any) => t.id === topicId);
+    if (idx !== -1) {
+      setActiveTopicIndex(idx);
+      setCurrentMode('QUIZ');
+      handleNextQuestion();
+    }
+  };
+
   if (loading) {
     return (
-      <div className="max-w-4xl mx-auto p-12 text-center text-xs text-slate-400">
-        Loading interactive study session...
+      <div className="max-w-4xl mx-auto p-12 text-center text-xs text-slate-400 font-mono">
+        Loading grounded study session...
       </div>
     );
   }
 
   if (!session) {
     return (
-      <div className="max-w-4xl mx-auto p-12 text-center text-xs text-rose-400">
+      <div className="max-w-4xl mx-auto p-12 text-center text-xs text-rose-400 font-mono">
         Study session not found.
       </div>
     );
@@ -173,210 +84,87 @@ export default function StudySessionPage({ params }: { params: { sessionId: stri
 
   return (
     <div className="max-w-4xl mx-auto p-6 space-y-6">
-      {/* Top Session Bar */}
-      <div className="flex flex-col md:flex-row md:items-center justify-between gap-4 p-5 rounded-2xl bg-slate-900 border border-slate-800">
+      {/* Header Bar */}
+      <div className="flex flex-col md:flex-row md:items-center justify-between gap-4 p-5 rounded-2xl bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 shadow-sm">
         <div>
           <div className="flex items-center space-x-2">
-            <span className="text-xs font-semibold px-2.5 py-0.5 rounded bg-indigo-950 text-indigo-300 border border-indigo-800">
+            <span className="text-xs font-bold px-2.5 py-0.5 rounded bg-indigo-100 dark:bg-indigo-950 text-indigo-800 dark:text-indigo-300 border border-indigo-300 dark:border-indigo-800 font-mono">
               {session.difficulty}
             </span>
-            <h1 className="text-lg font-bold text-white tracking-tight">{session.title}</h1>
+            <h1 className="text-lg font-bold text-slate-900 dark:text-white tracking-tight">{session.title}</h1>
           </div>
-          <p className="text-xs text-slate-400 mt-1 line-clamp-1">
+          <p className="text-xs text-slate-500 dark:text-slate-400 mt-1 line-clamp-1">
             Topic {activeTopicIndex + 1} of {session.topics?.length}: {currentTopic?.title}
           </p>
         </div>
 
-        {/* Progress Bar */}
+        {/* Mastery Progress */}
         <div className="w-full md:w-48 space-y-1">
-          <div className="flex justify-between text-[11px] font-mono text-slate-400">
-            <span>Mastery Progress</span>
-            <span className="text-indigo-400 font-bold">{session.progressPercent}%</span>
+          <div className="flex justify-between text-[11px] font-mono text-slate-500 dark:text-slate-400">
+            <span>Overall Mastery</span>
+            <span className="text-indigo-600 dark:text-indigo-400 font-bold">{session.progressPercent}%</span>
           </div>
-          <div className="w-full bg-slate-800 rounded-full h-2 overflow-hidden">
+          <div className="w-full bg-slate-200 dark:bg-slate-800 rounded-full h-2 overflow-hidden">
             <div
-              className="bg-indigo-500 h-2 rounded-full transition-all duration-300"
+              className="bg-indigo-600 dark:bg-indigo-500 h-2 rounded-full transition-all duration-300"
               style={{ width: `${session.progressPercent}%` }}
             />
           </div>
         </div>
       </div>
 
-      {/* Mode Selector Bar */}
+      {/* Mode Selector Tabs */}
       <div className="flex overflow-x-auto space-x-2 pb-2 scrollbar-none">
-        {['TEACH', 'SOCRATIC', 'QUIZ', 'FLASHCARDS', 'PRACTICE', 'REVIEW'].map((m) => (
+        {[
+          { id: 'TEACH', label: '📖 Teach' },
+          { id: 'SOCRATIC', label: '🤔 Socratic' },
+          { id: 'QUIZ', label: '📝 Quiz' },
+          { id: 'FLASHCARDS', label: '🎴 Flashcards' },
+          { id: 'PRACTICE', label: '🛠️ Practice' },
+          { id: 'REVIEW', label: '🔄 Review' }
+        ].map((m) => (
           <button
-            key={m}
-            onClick={() => setCurrentMode(m)}
+            key={m.id}
+            onClick={() => setCurrentMode(m.id)}
             className={`px-4 py-2 rounded-xl text-xs font-semibold whitespace-nowrap transition border ${
-              currentMode === m
-                ? 'bg-indigo-600 border-indigo-500 text-white shadow-lg shadow-indigo-600/20'
-                : 'bg-slate-900 border-slate-800 text-slate-400 hover:text-white'
+              currentMode === m.id
+                ? 'bg-indigo-600 border-indigo-500 text-white shadow-md'
+                : 'bg-white dark:bg-slate-900 border-slate-200 dark:border-slate-800 text-slate-600 dark:text-slate-400 hover:text-slate-900 dark:hover:text-white'
             }`}
           >
-            {m === 'TEACH' && '📖 Teach'}
-            {m === 'SOCRATIC' && '🤔 Socratic'}
-            {m === 'QUIZ' && '📝 Quiz'}
-            {m === 'FLASHCARDS' && '🎴 Flashcards'}
-            {m === 'PRACTICE' && '🛠️ Practice'}
-            {m === 'REVIEW' && '🔄 Review'}
+            {m.label}
           </button>
         ))}
       </div>
 
-      {/* Question Card */}
-      {activeQuestion ? (
-        <div className="p-6 rounded-2xl bg-slate-900 border border-slate-800 space-y-6">
-          <div className="flex items-start justify-between gap-4">
-            <div className="space-y-1">
-              <span className="text-[11px] font-mono text-indigo-400 uppercase tracking-wider">
-                {activeQuestion.questionType} Question
-              </span>
-              <h2 className="text-base font-semibold text-white leading-relaxed">
-                {activeQuestion.question}
-              </h2>
-            </div>
+      {/* Mode Content Views */}
+      {currentMode === 'TEACH' && <TeachMode sessionId={params.sessionId} />}
 
-            {/* TTS Playback */}
-            <button
-              onClick={() => handleSpeakText(activeQuestion.question)}
-              className={`p-2.5 rounded-xl border text-xs transition flex-shrink-0 ${
-                isSpeaking
-                  ? 'bg-indigo-950 border-indigo-700 text-indigo-300 animate-pulse'
-                  : 'bg-slate-950 border-slate-800 text-slate-400 hover:text-white'
-              }`}
-              title="Listen to question"
-            >
-              <span>{isSpeaking ? '🔊 Playing...' : '🔈 Listen'}</span>
-            </button>
-          </div>
+      {currentMode === 'SOCRATIC' && (
+        <SocraticMode sessionId={params.sessionId} topicId={currentTopic?.id} />
+      )}
 
-          {/* Options for MCQ */}
-          {activeQuestion.questionType === 'MCQ' && Array.isArray(activeQuestion.options) && (
-            <div className="grid grid-cols-1 gap-2.5">
-              {activeQuestion.options.map((opt: string, idx: number) => (
-                <button
-                  key={idx}
-                  onClick={() => setUserAnswer(opt)}
-                  className={`p-3.5 rounded-xl text-xs text-left border transition ${
-                    userAnswer === opt
-                      ? 'bg-indigo-950 border-indigo-500 text-white font-semibold'
-                      : 'bg-slate-950 border-slate-800 text-slate-300 hover:border-slate-700'
-                  }`}
-                >
-                  <span className="font-mono text-indigo-400 mr-2">{String.fromCharCode(65 + idx)}.</span>
-                  <span>{opt}</span>
-                </button>
-              ))}
-            </div>
-          )}
+      {currentMode === 'QUIZ' && (
+        <QuizMode
+          sessionId={params.sessionId}
+          activeQuestion={activeQuestion}
+          onNextQuestion={handleNextQuestion}
+        />
+      )}
 
-          {/* Short Answer / Socratic Input */}
-          {activeQuestion.questionType !== 'MCQ' && (
-            <div className="space-y-2">
-              <textarea
-                value={userAnswer}
-                onChange={(e) => setUserAnswer(e.target.value)}
-                placeholder="Type your explanation or response..."
-                rows={3}
-                className="w-full bg-slate-950 border border-slate-800 rounded-xl p-3 text-xs text-white placeholder-slate-500 focus:outline-none focus:border-indigo-500 resize-none"
-              />
-            </div>
-          )}
+      {currentMode === 'FLASHCARDS' && (
+        <FlashcardMode sessionId={params.sessionId} topicId={currentTopic?.id} />
+      )}
 
-          {/* Action Bar: Voice, Hint, Submit */}
-          <div className="flex flex-wrap items-center justify-between gap-3 pt-2">
-            <div className="flex items-center space-x-2">
-              {/* Voice Button */}
-              <button
-                type="button"
-                onClick={handleToggleVoice}
-                className={`px-3 py-2 rounded-xl text-xs font-semibold border flex items-center space-x-1.5 transition ${
-                  voiceState === 'LISTENING'
-                    ? 'bg-rose-950 border-rose-700 text-rose-300 animate-pulse'
-                    : 'bg-slate-950 border-slate-800 text-slate-300 hover:text-white'
-                }`}
-              >
-                <span>{voiceState === 'LISTENING' ? '🔴' : '🎤'}</span>
-                <span>{voiceState === 'LISTENING' ? 'Listening...' : 'Voice'}</span>
-              </button>
+      {currentMode === 'PRACTICE' && (
+        <PracticeMode sessionId={params.sessionId} topicId={currentTopic?.id} />
+      )}
 
-              {/* Hint Button */}
-              <button
-                type="button"
-                onClick={handleFetchHint}
-                disabled={fetchingHint || hintCount >= 3}
-                className="px-3 py-2 rounded-xl bg-slate-950 border border-slate-800 text-slate-300 hover:text-amber-300 text-xs font-semibold transition disabled:opacity-50"
-              >
-                <span>💡 Hint ({3 - hintCount} left)</span>
-              </button>
-            </div>
-
-            <button
-              onClick={handleSubmitAnswer}
-              disabled={submitting || !userAnswer.trim()}
-              className="px-5 py-2.5 rounded-xl bg-indigo-600 hover:bg-indigo-500 text-white text-xs font-semibold shadow-lg shadow-indigo-600/20 transition-all disabled:opacity-50"
-            >
-              {submitting ? 'Evaluating...' : 'Submit Answer ✨'}
-            </button>
-          </div>
-
-          {/* Display Hint */}
-          {currentHint && (
-            <div className="p-4 rounded-xl bg-amber-950/40 border border-amber-800/60 text-amber-200 text-xs space-y-1">
-              <span className="font-bold">💡 Hint {hintCount}:</span>
-              <p>{currentHint}</p>
-            </div>
-          )}
-
-          {/* Evaluation Result Toast */}
-          {evalResult && (
-            <div
-              className={`p-5 rounded-2xl border space-y-3 ${
-                evalResult.isCorrect
-                  ? 'bg-emerald-950/60 border-emerald-800/60 text-emerald-200'
-                  : 'bg-rose-950/60 border-rose-800/60 text-rose-200'
-              }`}
-            >
-              <div className="flex items-center justify-between">
-                <span className="font-bold text-sm">
-                  {evalResult.isCorrect ? '✅ Correct Answer!' : '❌ Needs Improvement'}
-                </span>
-                <span className="font-mono text-xs font-bold px-2.5 py-1 rounded bg-black/40">
-                  Score: {evalResult.score} / 10
-                </span>
-              </div>
-
-              <p className="text-xs leading-relaxed">{evalResult.feedback}</p>
-
-              {evalResult.explanation && (
-                <div className="text-xs pt-2 border-t border-white/10 space-y-1">
-                  <span className="font-semibold text-white">Explanation:</span>
-                  <p className="opacity-90">{evalResult.explanation}</p>
-                </div>
-              )}
-
-              <div className="pt-2 flex justify-end">
-                <button
-                  onClick={handleNextQuestion}
-                  className="px-4 py-2 rounded-xl bg-white text-slate-950 font-bold text-xs hover:bg-slate-200 transition"
-                >
-                  Next Question ➔
-                </button>
-              </div>
-            </div>
-          )}
-        </div>
-      ) : (
-        <div className="p-8 text-center space-y-3 bg-slate-900 rounded-2xl border border-slate-800">
-          <p className="text-xs text-slate-400">All questions for this topic completed!</p>
-          <button
-            onClick={handleNextQuestion}
-            className="px-4 py-2 rounded-xl bg-indigo-600 hover:bg-indigo-500 text-white text-xs font-semibold transition"
-          >
-            Generate Next Topic Questions ➔
-          </button>
-        </div>
+      {currentMode === 'REVIEW' && (
+        <ReviewMode
+          sessionId={params.sessionId}
+          onSelectReviewTopic={handleSelectReviewTopic}
+        />
       )}
     </div>
   );

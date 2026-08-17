@@ -24,7 +24,8 @@ async function benchmarkStudyPerformance() {
 
   // 2. Benchmark Question Generation Latency
   const startQ = Date.now();
-  await questionGenerator.generateQuestion('bench-user', {
+  await questionGenerator.generateQuestion('bench-user', 'bench-session', {
+    topicId: 'bench-topic',
     topicTitle: 'WAL Logging in Postgres',
     topicDescription: 'Write-ahead logging durability mechanism',
     questionType: 'MCQ',

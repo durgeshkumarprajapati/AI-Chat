@@ -154,6 +154,9 @@ export class StudyRepository {
           description: t.description,
           order: t.order,
           status: t.order === 1 ? 'IN_PROGRESS' : 'PENDING'
+        },
+        include: {
+          questions: true
         }
       });
       created.push(topic);

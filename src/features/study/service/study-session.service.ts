@@ -90,7 +90,7 @@ export class StudySessionService {
     }
 
     const firstTopic = topics[0];
-    if (firstTopic && firstTopic.questions.length === 0) {
+    if (firstTopic && (!firstTopic.questions || firstTopic.questions.length === 0)) {
       const questionPayload = await studyQuestionGeneratorService.generateQuestion(userId, {
         topicTitle: firstTopic.title,
         topicDescription: firstTopic.description,
@@ -127,9 +127,9 @@ export class StudySessionService {
     if (!session) throw new NotFoundError('Study session not found.');
 
     // Anti-cheating: strip expectedAnswer from question payloads returned to client
-    const sanitizedTopics = session.topics.map((topic) => ({
+    const sanitizedTopics = (session.topics || []).map((topic) => ({
       ...topic,
-      questions: topic.questions.map((q) => {
+      questions: (topic.questions || []).map((q) => {
         const { expectedAnswer: _exp, ...rest } = q;
         return rest;
       })

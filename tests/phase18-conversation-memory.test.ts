@@ -35,6 +35,13 @@ async function setupTestUsers() {
   await prisma.document.deleteMany({
     where: { userId: { in: [USER_A, USER_B] } }
   });
+
+  await (await import('../src/features/llm/llm-cache.service')).llmCacheService.clearUserCache(USER_A);
+  await (await import('../src/features/llm/llm-cache.service')).llmCacheService.clearUserCache(USER_B);
+
+  const ragCache = (await import('../src/features/rag/cache/rag-cache.factory')).getRAGCacheProvider();
+  await ragCache.invalidateUser?.(USER_A).catch(() => {});
+  await ragCache.invalidateUser?.(USER_B).catch(() => {});
 }
 
 async function runPhase18Tests() {
@@ -175,6 +182,9 @@ async function runPhase18Tests() {
     const embeddingProvider = (await import('../src/features/documents/embeddings/embedding.provider.factory')).getEmbeddingProvider();
     const vectors = await embeddingProvider.embedTexts([chunkContent]);
     const vectorStr = `[${vectors[0]!.join(',')}]`;
+
+    const ragCache = (await import('../src/features/rag/cache/rag-cache.factory')).getRAGCacheProvider();
+    await ragCache.invalidateUser?.(USER_A).catch(() => {});
 
     await prisma.$executeRawUnsafe(`
       UPDATE document_chunks SET embedding = '${vectorStr}'::vector WHERE document_id = '${docA1.id}'

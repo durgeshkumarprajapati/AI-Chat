@@ -31,6 +31,8 @@ async function setupTestUsers() {
   const cacheProvider = getRAGCacheProvider();
   await cacheProvider.invalidateUser(USER_A);
   await cacheProvider.invalidateUser(USER_B);
+  await (await import('../src/features/llm/llm-cache.service')).llmCacheService.clearUserCache(USER_A);
+  await (await import('../src/features/llm/llm-cache.service')).llmCacheService.clearUserCache(USER_B);
   await prisma.userFeedback.deleteMany({ where: { userId: { in: [USER_A, USER_B] } } });
   await prisma.ragEvaluation.deleteMany({ where: { userId: { in: [USER_A, USER_B] } } });
   await prisma.conversation.deleteMany({ where: { userId: { in: [USER_A, USER_B] } } });

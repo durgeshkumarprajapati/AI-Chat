@@ -397,11 +397,14 @@ export class RetrievalService {
     const deduplicatedCandidates = Array.from(candidateMap.values());
     const mergeMs = Date.now() - mergeStart;
 
-    // 4. Reranking
+    // 4. Conditional Reranking
     const rerankStart = Date.now();
     let rerankedCandidates = deduplicatedCandidates;
 
-    if (enableRerank) {
+    const minCandidatesForRerank = env.server?.RAG_RERANK_MIN_CANDIDATES ?? 10;
+    const shouldRerank = enableRerank && (deduplicatedCandidates.length >= minCandidatesForRerank || options?.forceRerank);
+
+    if (shouldRerank) {
       rerankedCandidates = this.reranker.rerank(question, deduplicatedCandidates);
     }
     const rerankMs = Date.now() - rerankStart;

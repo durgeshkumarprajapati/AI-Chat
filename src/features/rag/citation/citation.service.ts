@@ -197,14 +197,19 @@ export class CitationService {
 
       // 2. Fetch document from database & verify tenant ownership & Knowledge Base membership
       const doc = await prisma.document.findFirst({
-        where: { id: citation.documentId, userId },
+        where: { id: citation.documentId },
         include: {
           knowledgeBases: true
         }
       });
 
       if (!doc) {
-        console.warn(`[CitationValidation] Security Violation / Rejected citation for documentId ${citation.documentId}: Document not found or unauthorized for user ${userId}.`);
+        console.warn(`[CitationValidation] Rejected citation for documentId ${citation.documentId}: Document not found.`);
+        continue;
+      }
+
+      if (doc.userId !== userId) {
+        console.warn(`[CitationValidation] Security Violation / Rejected citation for documentId ${citation.documentId}: Document belongs to user ${doc.userId}, unauthorized for user ${userId}.`);
         throw new SecurityError('Unauthorized citation document reference');
       }
 
@@ -217,13 +222,15 @@ export class CitationService {
       }
 
       // 3. Verify chunkId exists in document_chunks
-      const chunkCount = await prisma.documentChunk.count({
-        where: { id: citation.chunkId, documentId: doc.id }
-      });
+      if (!matchingRetrievedChunk) {
+        const chunkCount = await prisma.documentChunk.count({
+          where: { id: citation.chunkId, documentId: doc.id }
+        });
 
-      if (chunkCount === 0) {
-        console.warn(`[CitationValidation] Rejected citation for chunkId ${citation.chunkId}: Chunk does not belong to document ${doc.id}.`);
-        continue;
+        if (chunkCount === 0) {
+          console.warn(`[CitationValidation] Rejected citation for chunkId ${citation.chunkId}: Chunk does not belong to document ${doc.id}.`);
+          continue;
+        }
       }
 
       if (matchingRetrievedChunk?.metadata?.isVisual) {

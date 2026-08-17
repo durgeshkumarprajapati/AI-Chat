@@ -90,6 +90,16 @@ export async function GET() {
       projectWorkspace?: {
         status: string;
       };
+      llmGateway?: {
+        status: string;
+        routing: string;
+        cache: string;
+        streaming: string;
+        providers: {
+          ollama: string;
+          kimi: string;
+        };
+      };
     };
   } = {
     status: 'ok',
@@ -172,6 +182,16 @@ export async function GET() {
       },
       projectWorkspace: {
         status: 'healthy'
+      },
+      llmGateway: {
+        status: 'healthy',
+        routing: process.env.LLM_ROUTING_ENABLED !== 'false' ? 'enabled' : 'disabled',
+        cache: process.env.LLM_GATEWAY_CACHE_ENABLED !== 'false' ? 'enabled' : 'disabled',
+        streaming: 'enabled',
+        providers: {
+          ollama: 'healthy',
+          kimi: process.env.LLM_KIMI_ENABLED === 'true' ? 'configured' : 'disabled'
+        }
       }
     }
   };

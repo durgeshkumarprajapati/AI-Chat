@@ -29,6 +29,7 @@ export interface RetrievalOptions {
   vectorWeight?: number;
   keywordWeight?: number;
   enableRerank?: boolean;
+  forceRerank?: boolean;
   /** An already cached query embedding, used to avoid a second model invocation. */
   queryVector?: number[];
 }

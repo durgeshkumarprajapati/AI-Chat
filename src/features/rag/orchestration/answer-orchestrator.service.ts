@@ -53,7 +53,14 @@ export class AnswerOrchestratorService {
       query: input.question.trim()
     };
     const exact = await this.cacheProvider.getExact(options);
-    if (exact) return this.cachedAnswer(input, exact, 'exact', latencyTrace);
+    if (exact) {
+      const validCitations = await citationService.validateCitations(exact.citations, options.userId, options.knowledgeBaseId || undefined, [], options.sourceMode).catch(() => []);
+      if (options.answerMode === 'GROUNDED' && validCitations.length === 0) {
+        // Cached citations invalid or missing for grounded mode; treat as cache miss
+      } else {
+        return this.cachedAnswer(input, { ...exact, citations: validCitations }, 'exact', latencyTrace);
+      }
+    }
     const semanticStart = Date.now();
     const embedding = await this.retrievalService.getQueryEmbedding(options.query);
     latencyTrace.embeddingCacheHit = embedding.cacheHit ? 1 : 0;
@@ -65,8 +72,13 @@ export class AnswerOrchestratorService {
     if (semanticLookup.similarity !== null) latencyTrace.semanticSimilarity = semanticLookup.similarity;
     latencyTrace.semanticThreshold = env.server?.RAG_SEMANTIC_CACHE_THRESHOLD ?? 0.90;
     if (!semantic) return null;
+    const validSemanticCitations = await citationService.validateCitations(semantic.citations, options.userId, options.knowledgeBaseId || undefined, [], options.sourceMode).catch(() => []);
+    if (options.answerMode === 'GROUNDED' && validSemanticCitations.length === 0) {
+      // Cached citations invalid or missing for grounded mode; treat as cache miss
+      return null;
+    }
     latencyTrace.totalMs = Date.now() - start;
-    return this.cachedAnswer(input, semantic, 'semantic', latencyTrace, !embedding.cacheHit);
+    return this.cachedAnswer(input, { ...semantic, citations: validSemanticCitations }, 'semantic', latencyTrace, !embedding.cacheHit);
   }
 
   private cachedAnswer(input: OrchestrationInput, item: { answer: string; citations: Citation[]; answerMode: string; topSimilarity: number; retrievalQuery?: string; contextMessagesCount?: number; sourceFingerprint?: string }, cacheType: 'exact' | 'semantic', latencyTrace: Record<string, number>, embeddingCalled = false): OrchestratedAnswer {

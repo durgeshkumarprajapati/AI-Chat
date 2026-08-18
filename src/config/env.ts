@@ -249,7 +249,13 @@ const serverEnvSchema = z
       .default(1),
     RAG_AUTO_BROADEN_KNOWLEDGE_BASE: z
       .coerce.boolean()
-      .default(false),
+      .default(true),
+    KNOWLEDGE_GRAPH_ENABLED: z.coerce.boolean().default(true),
+    KNOWLEDGE_GRAPH_MAX_ENTITIES_PER_CHUNK: z.coerce.number().int().positive().default(50),
+    KNOWLEDGE_GRAPH_MAX_RELATIONSHIPS_PER_CHUNK: z.coerce.number().int().positive().default(100),
+    KNOWLEDGE_GRAPH_MAX_CLAIMS_PER_CHUNK: z.coerce.number().int().positive().default(50),
+    KNOWLEDGE_GRAPH_MAX_EXPANSION_DEPTH: z.coerce.number().int().min(1).max(3).default(3),
+    KNOWLEDGE_GRAPH_CACHE_TTL_SECONDS: z.coerce.number().int().positive().default(300),
     RAG_GENERAL_KNOWLEDGE_ENABLED: z
       .coerce.boolean()
       .default(true),

@@ -326,6 +326,48 @@ export class WorkflowNodeRegistry {
         inputSchema: { output: 'any' },
         outputSchema: { finalOutput: 'any' },
         configSchema: {}
+      },
+
+      // KNOWLEDGE GRAPH NODES
+      {
+        type: 'KNOWLEDGE_GRAPH_EXTRACT',
+        version: 1,
+        label: 'Extract Knowledge Graph',
+        description: 'Extracts entities, relationships, and claims from text chunk or document.',
+        category: 'AI',
+        inputSchema: { documentId: 'string' },
+        outputSchema: { entitiesCount: 'number', relationshipsCount: 'number' },
+        configSchema: {}
+      },
+      {
+        type: 'KNOWLEDGE_GRAPH_SEARCH',
+        version: 1,
+        label: 'Search Knowledge Graph',
+        description: 'Performs multi-hop graph search and entity neighborhood retrieval.',
+        category: 'AI',
+        inputSchema: { query: 'string' },
+        outputSchema: { nodesCount: 'number', edgesCount: 'number' },
+        configSchema: { depth: 'number' }
+      },
+      {
+        type: 'KNOWLEDGE_GRAPH_UPDATE',
+        version: 1,
+        label: 'Update Knowledge Graph',
+        description: 'Updates entity canonical attributes or status.',
+        category: 'AI',
+        inputSchema: { entityId: 'string', status: 'string' },
+        outputSchema: { updated: 'boolean' },
+        configSchema: {}
+      },
+      {
+        type: 'KNOWLEDGE_CONFLICT_CHECK',
+        version: 1,
+        label: 'Check Knowledge Conflicts',
+        description: 'Identifies conflicting claims across document evidence.',
+        category: 'AI',
+        inputSchema: {},
+        outputSchema: { conflictsCount: 'number' },
+        configSchema: {}
       }
     ];
 

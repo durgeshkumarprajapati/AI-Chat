@@ -256,6 +256,15 @@ const serverEnvSchema = z
     KNOWLEDGE_GRAPH_MAX_CLAIMS_PER_CHUNK: z.coerce.number().int().positive().default(50),
     KNOWLEDGE_GRAPH_MAX_EXPANSION_DEPTH: z.coerce.number().int().min(1).max(3).default(3),
     KNOWLEDGE_GRAPH_CACHE_TTL_SECONDS: z.coerce.number().int().positive().default(300),
+    GEMINI_ENABLED: z.coerce.boolean().default(true),
+    GEMINI_API_KEY: z.string().optional(),
+    GEMINI_FAST_MODEL: z.string().default('gemini-2.5-flash'),
+    GEMINI_REASONING_MODEL: z.string().default('gemini-2.5-pro'),
+    GEMINI_TIMEOUT_MS: z.coerce.number().int().positive().default(30000),
+    GEMINI_MAX_OUTPUT_TOKENS: z.coerce.number().int().positive().default(4096),
+    GEMINI_THINKING_LEVEL: z.string().default('low'),
+    GEMINI_MAX_RETRIES: z.coerce.number().int().nonnegative().default(2),
+    GEMINI_RATE_LIMIT_PER_MINUTE: z.coerce.number().int().positive().default(120),
     RAG_GENERAL_KNOWLEDGE_ENABLED: z
       .coerce.boolean()
       .default(true),

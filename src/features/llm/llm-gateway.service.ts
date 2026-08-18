@@ -12,6 +12,7 @@ import { llmFallbackService, LLMFallbackService } from './llm-fallback.service';
 import { tokenBudgetManager, TokenBudgetManager } from './utils/token-budget';
 import { llmTelemetryService, LLMTelemetryService } from './llm-telemetry.service';
 import { llmModelRegistry, LLMModelRegistry } from './llm-model-registry';
+import { llmRateLimiterService, LLMRateLimiterService } from './llm-rate-limiter.service';
 
 export class LLMGateway {
   private router: LLMRouterService;
@@ -20,6 +21,7 @@ export class LLMGateway {
   private tokenBudget: TokenBudgetManager;
   private telemetry: LLMTelemetryService;
   private registry: LLMModelRegistry;
+  private rateLimiter: LLMRateLimiterService;
 
   constructor(
     router?: LLMRouterService,
@@ -27,7 +29,8 @@ export class LLMGateway {
     fallback?: LLMFallbackService,
     tokenBudget?: TokenBudgetManager,
     telemetry?: LLMTelemetryService,
-    registry?: LLMModelRegistry
+    registry?: LLMModelRegistry,
+    rateLimiter?: LLMRateLimiterService
   ) {
     this.router = router || llmRouterService;
     this.cache = cache || llmCacheService;
@@ -35,10 +38,11 @@ export class LLMGateway {
     this.tokenBudget = tokenBudget || tokenBudgetManager;
     this.telemetry = telemetry || llmTelemetryService;
     this.registry = registry || llmModelRegistry;
+    this.rateLimiter = rateLimiter || llmRateLimiterService;
   }
 
   /**
-   * Main text generation facade. Handles token budgeting, response caching, intelligent routing, fallback, and telemetry.
+   * Main text generation facade. Handles token budgeting, response caching, intelligent routing, rate limiting, fallback, and telemetry.
    */
   public async generate(request: LLMRequest): Promise<LLMResponse> {
     const startTime = Date.now();
@@ -78,7 +82,13 @@ export class LLMGateway {
       };
     }
 
-    // 4. Execution with Fallback
+    // 4. Provider Rate Limit Check
+    const rl = await this.rateLimiter.checkRateLimit(decision.providerName, req.userId);
+    if (!rl.allowed) {
+      throw new Error(`Provider "${decision.providerName}" rate limit exceeded. Please retry in ${Math.ceil(rl.resetMs / 1000)}s.`);
+    }
+
+    // 5. Execution with Fallback
     try {
       const { response } = await this.fallback.executeWithFallback(provider, req, decision.modelName);
 
@@ -89,7 +99,7 @@ export class LLMGateway {
         totalMs: Date.now() - startTime
       };
 
-      // 5. Store in Response Cache
+      // 6. Store in Response Cache
       await this.cache.setCachedResponse(req, decision.providerName, decision.modelName, finalRes);
 
       this.telemetry.recordEvent({
@@ -138,6 +148,12 @@ export class LLMGateway {
     };
 
     const { provider, decision } = this.router.resolveRoute(req);
+
+    const rl = await this.rateLimiter.checkRateLimit(decision.providerName, req.userId);
+    if (!rl.allowed) {
+      throw new Error(`Provider "${decision.providerName}" rate limit exceeded.`);
+    }
+
     let firstTokenMs: number | undefined = undefined;
 
     try {
@@ -189,7 +205,12 @@ export class LLMGateway {
       prompt: budgeted.prompt
     };
 
-    const { provider } = this.router.resolveRoute(req);
+    const { provider, decision } = this.router.resolveRoute(req);
+    const rl = await this.rateLimiter.checkRateLimit(decision.providerName, req.userId);
+    if (!rl.allowed) {
+      throw new Error(`Provider "${decision.providerName}" rate limit exceeded.`);
+    }
+
     const { data } = await this.fallback.generateStructuredWithFallback(provider, req);
     return data;
   }

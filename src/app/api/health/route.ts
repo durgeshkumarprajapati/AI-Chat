@@ -97,6 +97,7 @@ export async function GET() {
         streaming: string;
         providers: {
           ollama: string;
+          gemini: string;
           kimi: string;
         };
       };
@@ -197,6 +198,7 @@ export async function GET() {
         streaming: 'enabled',
         providers: {
           ollama: 'healthy',
+          gemini: process.env.GEMINI_ENABLED !== 'false' && process.env.GEMINI_API_KEY ? 'configured' : 'disabled',
           kimi: process.env.LLM_KIMI_ENABLED === 'true' ? 'configured' : 'disabled'
         }
       },

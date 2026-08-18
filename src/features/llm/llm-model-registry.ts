@@ -2,6 +2,7 @@ import { LLMProvider } from './llm-provider.interface';
 import { LLMCapability } from './llm.types';
 import { ollamaProvider } from './providers/ollama.provider';
 import { kimiProvider } from './providers/kimi.provider';
+import { geminiProvider } from './providers/gemini.provider';
 
 export interface ProviderRegistration {
   provider: LLMProvider;
@@ -23,10 +24,18 @@ export class LLMModelRegistry {
     });
 
     this.registerProvider({
+      provider: geminiProvider,
+      defaultModel: process.env.GEMINI_FAST_MODEL || 'gemini-2.5-flash',
+      fastModel: process.env.GEMINI_FAST_MODEL || 'gemini-2.5-flash',
+      reasoningModel: process.env.GEMINI_REASONING_MODEL || 'gemini-2.5-pro',
+      priority: 2
+    });
+
+    this.registerProvider({
       provider: kimiProvider,
       defaultModel: process.env.LLM_KIMI_DEFAULT_MODEL || 'kimi-k3',
       reasoningModel: 'kimi-k3',
-      priority: 2
+      priority: 3
     });
   }
 

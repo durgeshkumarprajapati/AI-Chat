@@ -11,7 +11,7 @@ export class LLMFallbackService {
   }
 
   /**
-   * Executes LLM generate call with circuit breaker reporting and fallback to Ollama if primary provider fails.
+   * Executes LLM generate call with circuit breaker reporting and fallback if primary provider fails.
    */
   public async executeWithFallback(
     primaryProvider: LLMProvider,
@@ -28,23 +28,33 @@ export class LLMFallbackService {
       console.warn(`[LLMFallbackService] Primary provider "${primaryProvider.name}" failed:`, err);
       llmCircuitBreakerService.recordFailure(primaryProvider.name);
 
-      if (primaryProvider.name === 'ollama') {
-        throw err; // Cannot fall back further if primary was already Ollama
+      if (primaryProvider.name === 'ollama' || request.localOnly) {
+        throw err; // Cannot fall back to cloud if localOnly or if primary was already Ollama
       }
 
-      const fallbackProvider = this.registry.getProvider('ollama');
+      let fallbackProvider = this.registry.getProvider('ollama');
+
+      // If Gemini Reasoning failed, try Kimi if available and configured before Ollama
+      if (primaryProvider.name === 'gemini') {
+        const kimi = this.registry.getProvider('kimi');
+        const isKimiConfigured = !!(process.env.LLM_KIMI_API_KEY);
+        if (kimi && isKimiConfigured && llmCircuitBreakerService.isAvailable('kimi')) {
+          fallbackProvider = kimi;
+        }
+      }
+
       if (!fallbackProvider) {
         throw err;
       }
 
-      console.warn('[LLMFallbackService] Falling back to Ollama provider...');
-      const fallbackRes = await fallbackProvider.generate({ ...req, providerOverride: 'ollama' });
+      console.warn(`[LLMFallbackService] Falling back to "${fallbackProvider.name}" provider...`);
+      const fallbackRes = await fallbackProvider.generate({ ...req, providerOverride: fallbackProvider.name });
       llmCircuitBreakerService.recordSuccess(fallbackProvider.name);
 
       return {
         response: {
           ...fallbackRes,
-          provider: 'ollama'
+          provider: fallbackProvider.name
         },
         usedFallback: true
       };
@@ -67,17 +77,24 @@ export class LLMFallbackService {
       console.warn(`[LLMFallbackService] Primary stream provider "${primaryProvider.name}" failed:`, err);
       llmCircuitBreakerService.recordFailure(primaryProvider.name);
 
-      if (primaryProvider.name === 'ollama') {
+      if (primaryProvider.name === 'ollama' || request.localOnly) {
         throw err;
       }
 
-      const fallbackProvider = this.registry.getProvider('ollama');
+      let fallbackProvider = this.registry.getProvider('ollama');
+      if (primaryProvider.name === 'gemini') {
+        const kimi = this.registry.getProvider('kimi');
+        if (kimi && llmCircuitBreakerService.isAvailable('kimi')) {
+          fallbackProvider = kimi;
+        }
+      }
+
       if (!fallbackProvider) {
         throw err;
       }
 
-      console.warn('[LLMFallbackService] Streaming falling back to Ollama provider...');
-      for await (const chunk of fallbackProvider.stream({ ...request, providerOverride: 'ollama' })) {
+      console.warn(`[LLMFallbackService] Streaming falling back to "${fallbackProvider.name}" provider...`);
+      for await (const chunk of fallbackProvider.stream({ ...request, providerOverride: fallbackProvider.name })) {
         yield chunk;
       }
       llmCircuitBreakerService.recordSuccess(fallbackProvider.name);
@@ -99,7 +116,7 @@ export class LLMFallbackService {
       console.warn(`[LLMFallbackService] Structured primary provider "${primaryProvider.name}" failed:`, err);
       llmCircuitBreakerService.recordFailure(primaryProvider.name);
 
-      if (primaryProvider.name === 'ollama') {
+      if (primaryProvider.name === 'ollama' || request.localOnly) {
         throw err;
       }
 

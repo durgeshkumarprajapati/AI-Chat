@@ -93,6 +93,12 @@ model User {
   copilotSessions        CopilotSession[]
   copilotGoals           CopilotGoal[]
   copilotMemories        CopilotMemory[]
+  knowledgeEntities      KnowledgeEntity[]
+  knowledgeRelationships KnowledgeRelationship[]
+  knowledgeClaims        KnowledgeClaim[]
+  knowledgeConflicts     KnowledgeConflict[]
+  knowledgeGraphJobs     KnowledgeGraphJob[]
+  knowledgeGraphVersions KnowledgeGraphVersion[]
 
   @@map("users")
 }
@@ -130,6 +136,8 @@ model Document {
   researchSources     ResearchSource[]
   researchEvidences   ResearchEvidence[]
   projects            ProjectDocument[]
+  knowledgeEvidences  KnowledgeEvidence[]
+  knowledgeGraphJobs  KnowledgeGraphJob[]
 
   @@index([userId])
   @@index([status])
@@ -153,6 +161,8 @@ model KnowledgeBase {
   studySessionSources StudySessionSource[]
   researchSessions    ResearchSession[]
   projects            ProjectKnowledgeBase[]
+  knowledgeEntities   KnowledgeEntity[]
+  knowledgeGraphJobs  KnowledgeGraphJob[]
 
   @@index([userId])
   @@map("knowledge_bases")
@@ -184,6 +194,7 @@ model DocumentChunk {
   embedding Unsupported("vector")?
 
   document Document @relation(fields: [documentId], references: [id], onDelete: Cascade)
+  knowledgeEvidences KnowledgeEvidence[]
 
   @@index([documentId])
   @@index([documentId, chunkIndex])
@@ -1430,6 +1441,12 @@ model Project {
   copilotSessions   CopilotSession[]
   copilotGoals      CopilotGoal[]
   copilotMemories   CopilotMemory[]
+  knowledgeEntities      KnowledgeEntity[]
+  knowledgeRelationships KnowledgeRelationship[]
+  knowledgeClaims        KnowledgeClaim[]
+  knowledgeConflicts     KnowledgeConflict[]
+  knowledgeGraphJobs     KnowledgeGraphJob[]
+  knowledgeGraphVersions KnowledgeGraphVersion[]
 
   @@index([ownerId])
   @@index([status])
@@ -1668,6 +1685,276 @@ model CopilotEvent {
   @@index([createdAt])
   @@map("copilot_events")
 }
+
+// ==========================================
+// PHASE 41 — AI KNOWLEDGE GRAPH MODELS & ENUMS
+// ==========================================
+
+enum KnowledgeEntityType {
+  PERSON
+  ORGANIZATION
+  TECHNOLOGY
+  PRODUCT
+  PROJECT
+  CONCEPT
+  TOPIC
+  DOCUMENT
+  LOCATION
+  EVENT
+  DATE
+  METRIC
+  API
+  DATABASE
+  FRAMEWORK
+  LIBRARY
+  TOOL
+  PROCESS
+  SKILL
+  CLAIM
+  OTHER
+}
+
+enum KnowledgeRelationshipType {
+  RELATED_TO
+  DEPENDS_ON
+  USES
+  IMPLEMENTS
+  PART_OF
+  CONTAINS
+  MENTIONS
+  SUPPORTS
+  CONTRADICTS
+  REQUIRES
+  PRODUCES
+  CAUSED_BY
+  DERIVED_FROM
+  ALTERNATIVE_TO
+  PRECEDES
+  FOLLOWS
+  SIMILAR_TO
+  BELONGS_TO
+  LOCATED_IN
+  CREATED_BY
+}
+
+enum KnowledgeGraphStatus {
+  ACTIVE
+  INACTIVE
+  REVIEW_REQUIRED
+  MERGED
+  ARCHIVED
+}
+
+enum ConflictStatus {
+  UNRESOLVED
+  RESOLVED_A
+  RESOLVED_B
+  DISMISSED
+}
+
+enum GraphJobStatus {
+  PENDING
+  PROCESSING
+  COMPLETED
+  FAILED
+  CANCELLED
+}
+
+model KnowledgeEntity {
+  id              String              @id @default(uuid())
+  userId          String              @map("user_id")
+  projectId       String?             @map("project_id")
+  knowledgeBaseId String?             @map("knowledge_base_id")
+  canonicalName   String              @map("canonical_name")
+  normalizedName  String              @map("normalized_name")
+  entityType      KnowledgeEntityType @default(OTHER) @map("entity_type")
+  description     String?             @db.Text
+  aliases         Json?               @default("[]")
+  confidence      Float               @default(1.0)
+  status          KnowledgeGraphStatus @default(ACTIVE)
+  metadata        Json?               @default("{}")
+  createdAt       DateTime            @default(now()) @map("created_at")
+  updatedAt       DateTime            @updatedAt @map("updated_at")
+
+  user          User           @relation(fields: [userId], references: [id], onDelete: Cascade)
+  project       Project?       @relation(fields: [projectId], references: [id], onDelete: Cascade)
+  knowledgeBase KnowledgeBase? @relation(fields: [knowledgeBaseId], references: [id], onDelete: SetNull)
+
+  sourceRelationships KnowledgeRelationship[] @relation("SourceEntity")
+  targetRelationships KnowledgeRelationship[] @relation("TargetEntity")
+  subjectClaims       KnowledgeClaim[]        @relation("SubjectEntity")
+  objectClaims        KnowledgeClaim[]        @relation("ObjectEntity")
+  evidences           KnowledgeEvidence[]
+
+  @@index([userId])
+  @@index([projectId])
+  @@index([knowledgeBaseId])
+  @@index([normalizedName])
+  @@index([entityType])
+  @@index([status])
+  @@map("knowledge_entities")
+}
+
+model KnowledgeRelationship {
+  id               String                    @id @default(uuid())
+  userId           String                    @map("user_id")
+  projectId        String?                   @map("project_id")
+  sourceEntityId   String                    @map("source_entity_id")
+  targetEntityId   String                    @map("target_entity_id")
+  relationshipType KnowledgeRelationshipType @default(RELATED_TO) @map("relationship_type")
+  description      String?                   @db.Text
+  confidence       Float                     @default(1.0)
+  status           KnowledgeGraphStatus      @default(ACTIVE)
+  fingerprint      String?                   @map("fingerprint")
+  metadata         Json?                     @default("{}")
+  createdAt        DateTime                  @default(now()) @map("created_at")
+  updatedAt        DateTime                  @updatedAt @map("updated_at")
+
+  user         User            @relation(fields: [userId], references: [id], onDelete: Cascade)
+  project      Project?        @relation(fields: [projectId], references: [id], onDelete: Cascade)
+  sourceEntity KnowledgeEntity @relation("SourceEntity", fields: [sourceEntityId], references: [id], onDelete: Cascade)
+  targetEntity KnowledgeEntity @relation("TargetEntity", fields: [targetEntityId], references: [id], onDelete: Cascade)
+
+  evidences KnowledgeEvidence[]
+
+  @@index([userId])
+  @@index([projectId])
+  @@index([sourceEntityId])
+  @@index([targetEntityId])
+  @@index([relationshipType])
+  @@index([fingerprint])
+  @@map("knowledge_relationships")
+}
+
+model KnowledgeEvidence {
+  id             String   @id @default(uuid())
+  entityId       String?  @map("entity_id")
+  relationshipId String?  @map("relationship_id")
+  claimId        String?  @map("claim_id")
+  documentId     String   @map("document_id")
+  chunkId        String   @map("chunk_id")
+  pageNumber     Int?     @map("page_number")
+  sourceTextHash String   @map("source_text_hash")
+  snippet        String?  @db.Text
+  confidence     Float    @default(1.0)
+  createdAt      DateTime @default(now()) @map("created_at")
+
+  entity       KnowledgeEntity?       @relation(fields: [entityId], references: [id], onDelete: Cascade)
+  relationship KnowledgeRelationship? @relation(fields: [relationshipId], references: [id], onDelete: Cascade)
+  claim        KnowledgeClaim?        @relation(fields: [claimId], references: [id], onDelete: Cascade)
+  document     Document               @relation(fields: [documentId], references: [id], onDelete: Cascade)
+  chunk        DocumentChunk          @relation(fields: [chunkId], references: [id], onDelete: Cascade)
+
+  @@index([entityId])
+  @@index([relationshipId])
+  @@index([claimId])
+  @@index([documentId])
+  @@index([chunkId])
+  @@index([sourceTextHash])
+  @@map("knowledge_evidences")
+}
+
+model KnowledgeClaim {
+  id              String               @id @default(uuid())
+  userId          String               @map("user_id")
+  projectId       String?              @map("project_id")
+  subjectEntityId String               @map("subject_entity_id")
+  predicate       String
+  objectEntityId  String?              @map("object_entity_id")
+  value           String?              @db.Text
+  normalizedClaim String               @map("normalized_claim")
+  confidence      Float                @default(1.0)
+  status          KnowledgeGraphStatus @default(ACTIVE)
+  createdAt       DateTime             @default(now()) @map("created_at")
+  updatedAt       DateTime             @updatedAt @map("updated_at")
+
+  user          User            @relation(fields: [userId], references: [id], onDelete: Cascade)
+  project       Project?        @relation(fields: [projectId], references: [id], onDelete: Cascade)
+  subjectEntity KnowledgeEntity @relation("SubjectEntity", fields: [subjectEntityId], references: [id], onDelete: Cascade)
+  objectEntity  KnowledgeEntity? @relation("ObjectEntity", fields: [objectEntityId], references: [id], onDelete: SetNull)
+
+  evidences KnowledgeEvidence[]
+  conflictsA KnowledgeConflict[] @relation("ClaimA")
+  conflictsB KnowledgeConflict[] @relation("ClaimB")
+
+  @@index([userId])
+  @@index([projectId])
+  @@index([subjectEntityId])
+  @@index([objectEntityId])
+  @@index([normalizedClaim])
+  @@map("knowledge_claims")
+}
+
+model KnowledgeConflict {
+  id          String         @id @default(uuid())
+  userId      String         @map("user_id")
+  projectId   String?        @map("project_id")
+  claimAId    String         @map("claim_a_id")
+  claimBId    String         @map("claim_b_id")
+  conflictType String        @map("conflict_type")
+  confidence  Float          @default(1.0)
+  status      ConflictStatus @default(UNRESOLVED)
+  resolution  String?        @db.Text
+  createdAt   DateTime       @default(now()) @map("created_at")
+  updatedAt   DateTime       @updatedAt @map("updated_at")
+
+  user    User           @relation(fields: [userId], references: [id], onDelete: Cascade)
+  project Project?       @relation(fields: [projectId], references: [id], onDelete: Cascade)
+  claimA  KnowledgeClaim @relation("ClaimA", fields: [claimAId], references: [id], onDelete: Cascade)
+  claimB  KnowledgeClaim @relation("ClaimB", fields: [claimBId], references: [id], onDelete: Cascade)
+
+  @@index([userId])
+  @@index([projectId])
+  @@index([claimAId])
+  @@index([claimBId])
+  @@index([status])
+  @@map("knowledge_conflicts")
+}
+
+model KnowledgeGraphJob {
+  id              String         @id @default(uuid())
+  userId          String         @map("user_id")
+  projectId       String?        @map("project_id")
+  documentId      String?        @map("document_id")
+  knowledgeBaseId String?        @map("knowledge_base_id")
+  status          GraphJobStatus @default(PENDING)
+  attempts        Int            @default(0)
+  startedAt       DateTime?      @map("started_at")
+  completedAt     DateTime?      @map("completed_at")
+  errorCode       String?        @map("error_code")
+  errorMessage    String?        @db.Text @map("error_message")
+  metadata        Json?          @default("{}")
+  createdAt       DateTime       @default(now()) @map("created_at")
+
+  user          User           @relation(fields: [userId], references: [id], onDelete: Cascade)
+  project       Project?       @relation(fields: [projectId], references: [id], onDelete: Cascade)
+  document      Document?      @relation(fields: [documentId], references: [id], onDelete: Cascade)
+  knowledgeBase KnowledgeBase? @relation(fields: [knowledgeBaseId], references: [id], onDelete: Cascade)
+
+  @@index([userId])
+  @@index([projectId])
+  @@index([documentId])
+  @@index([status])
+  @@map("knowledge_graph_jobs")
+}
+
+model KnowledgeGraphVersion {
+  id                      String   @id @default(uuid())
+  userId                  String   @map("user_id")
+  projectId               String?  @map("project_id")
+  version                 Int      @default(1)
+  extractionModel         String   @map("extraction_model")
+  extractionPromptVersion String   @map("extraction_prompt_version")
+  createdAt               DateTime @default(now()) @map("created_at")
+
+  user    User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  project Project? @relation(fields: [projectId], references: [id], onDelete: Cascade)
+
+  @@index([userId])
+  @@index([projectId])
+  @@map("knowledge_graph_versions")
+}
+
 
 
 

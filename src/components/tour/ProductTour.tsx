@@ -213,6 +213,13 @@ const TOUR_STEPS: TourStep[] = [
     description: 'Unified AI workspace orchestrating Documents, Knowledge Bases, Agentic Research, Roadmaps, Study Mode, Workflows, and User Memory into single project workspaces.',
     technicalDetails: 'CopilotExecutionEngine • CopilotRouterService • CopilotPlannerService • CopilotCapabilityRegistry • ProjectService • CopilotMemoryService',
     icon: '🧠'
+  },
+  {
+    title: '30. AI Knowledge Graph & Personal Knowledge Engine',
+    badge: 'Phase 41',
+    description: 'Structured entity-relationship-claim graph layer automatically constructed from chunk evidence, supporting multi-hop graph expansion, Graph + RAG fusion, contradiction detection, and knowledge gap identification.',
+    technicalDetails: 'KnowledgeGraphService • GraphRAGService • EntityExtractorService • ContradictionService • KnowledgeGapService • KnowledgeReasoningService • KnowledgeGraphCacheService',
+    icon: '🌐'
   }
 ];
 

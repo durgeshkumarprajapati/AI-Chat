@@ -100,6 +100,13 @@ export async function GET() {
           kimi: string;
         };
       };
+      knowledgeGraph?: {
+        enabled: boolean;
+        status: string;
+        queue: string;
+        database: string;
+        cache: string;
+      };
     };
   } = {
     status: 'ok',
@@ -192,6 +199,13 @@ export async function GET() {
           ollama: 'healthy',
           kimi: process.env.LLM_KIMI_ENABLED === 'true' ? 'configured' : 'disabled'
         }
+      },
+      knowledgeGraph: {
+        enabled: process.env.KNOWLEDGE_GRAPH_ENABLED !== 'false',
+        status: 'healthy',
+        queue: 'healthy',
+        database: 'healthy',
+        cache: 'healthy'
       }
     }
   };

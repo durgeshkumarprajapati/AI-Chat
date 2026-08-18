@@ -35,6 +35,7 @@ export function AppLayout({ children }: { children: React.ReactNode }) {
 
   const navItems = [
     { name: 'Dashboard', href: '/dashboard', icon: '📊' },
+    { name: 'Knowledge Graph', href: '/knowledge-graph', icon: '🌐', badge: 'NEW' },
     { name: 'AI Copilot', href: '/copilot', icon: '🧠', badge: 'NEW' },
     { name: 'Project Workspaces', href: '/projects', icon: '📁', badge: 'NEW' },
     { name: 'RAG Chat', href: '/chat', icon: '💬' },

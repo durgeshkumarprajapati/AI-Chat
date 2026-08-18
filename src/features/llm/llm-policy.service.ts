@@ -7,15 +7,27 @@ export class LLMPolicyService {
    * Resolves provider and model routing decision according to feature policy, request complexity, and circuit state.
    */
   public selectRoute(request: LLMRequest, complexity: ComplexityLevel): RoutingDecision {
-    const isKimiEnabled = env.server?.LLM_KIMI_ENABLED ?? (process.env.LLM_KIMI_ENABLED === 'true');
+    const isGeminiEnabled =
+      (env.server?.GEMINI_ENABLED ?? (process.env.GEMINI_ENABLED !== 'false')) &&
+      !!(env.server?.GEMINI_API_KEY || process.env.GEMINI_API_KEY || process.env.NODE_ENV === 'test');
+    const isKimiEnabled = (env.server?.LLM_KIMI_ENABLED ?? (process.env.LLM_KIMI_ENABLED === 'true')) &&
+      !!(env.server?.LLM_KIMI_API_KEY || process.env.LLM_KIMI_API_KEY);
+
+    const isGeminiAvailable = isGeminiEnabled && llmCircuitBreakerService.isAvailable('gemini');
     const isKimiAvailable = isKimiEnabled && llmCircuitBreakerService.isAvailable('kimi');
     const isOllamaAvailable = llmCircuitBreakerService.isAvailable('ollama');
 
-    // 1. Explicit Overrides & Local-Only Constraints
-    if (request.localOnly || (!isKimiAvailable && isOllamaAvailable)) {
+    const geminiFastModel = env.server?.GEMINI_FAST_MODEL || process.env.GEMINI_FAST_MODEL || 'gemini-2.5-flash';
+    const geminiReasoningModel = env.server?.GEMINI_REASONING_MODEL || process.env.GEMINI_REASONING_MODEL || 'gemini-2.5-pro';
+    const ollamaFastModel = env.server?.LLM_OLLAMA_FAST_MODEL || 'llama3.2';
+    const ollamaChatModel = env.server?.OLLAMA_CHAT_MODEL || 'llama3.2';
+    const kimiModel = env.server?.LLM_KIMI_DEFAULT_MODEL || 'kimi-k3';
+
+    // 1. Explicit Overrides & Local-Only Constraints (ZERO CLOUD LEAKAGE)
+    if (request.localOnly || (!isGeminiAvailable && !isKimiAvailable && isOllamaAvailable)) {
       return {
         providerName: 'ollama',
-        modelName: request.modelOverride || (complexity === 'LOW' ? (env.server?.LLM_OLLAMA_FAST_MODEL || 'llama3.2') : (env.server?.OLLAMA_CHAT_MODEL || 'llama3.2')),
+        modelName: request.modelOverride || (complexity === 'LOW' ? ollamaFastModel : ollamaChatModel),
         complexity,
         reason: request.localOnly ? 'Enforced LOCAL_ONLY policy' : 'Local Ollama model selected'
       };
@@ -23,17 +35,25 @@ export class LLMPolicyService {
 
     if (request.providerOverride) {
       const pName = request.providerOverride.toLowerCase();
+      if (pName === 'gemini' && isGeminiAvailable) {
+        return {
+          providerName: 'gemini',
+          modelName: request.modelOverride || (complexity === 'HIGH' ? geminiReasoningModel : geminiFastModel),
+          complexity,
+          reason: 'Explicit provider override to Gemini'
+        };
+      }
       if (pName === 'kimi' && isKimiAvailable) {
         return {
           providerName: 'kimi',
-          modelName: request.modelOverride || (env.server?.LLM_KIMI_DEFAULT_MODEL || 'kimi-k3'),
+          modelName: request.modelOverride || kimiModel,
           complexity,
           reason: 'Explicit provider override to Kimi'
         };
       }
       return {
         providerName: 'ollama',
-        modelName: request.modelOverride || (env.server?.OLLAMA_CHAT_MODEL || 'llama3.2'),
+        modelName: request.modelOverride || ollamaChatModel,
         complexity,
         reason: 'Explicit provider override to Ollama'
       };
@@ -41,29 +61,50 @@ export class LLMPolicyService {
 
     const feature: FeatureScope = request.feature || 'GENERAL';
 
-    // 2. Feature-based High Complexity Routing
-    if (isKimiAvailable && (complexity === 'HIGH' || feature === 'AGENTIC_RESEARCH' || feature === 'WORKFLOW_GENERATION')) {
-      return {
-        providerName: 'kimi',
-        modelName: env.server?.LLM_KIMI_DEFAULT_MODEL || 'kimi-k3',
-        complexity,
-        reason: `High complexity request for ${feature} routed to Kimi K3`
-      };
+    // 2. High Reasoning & Complex Workloads (Gemini Reasoning or Kimi)
+    if (complexity === 'HIGH' || feature === 'WORKFLOW_GENERATION' || feature === 'AGENTIC_RESEARCH') {
+      if (isGeminiAvailable) {
+        return {
+          providerName: 'gemini',
+          modelName: geminiReasoningModel,
+          complexity,
+          reason: `High complexity request for ${feature} routed to Gemini Reasoning`
+        };
+      }
+      if (isKimiAvailable) {
+        return {
+          providerName: 'kimi',
+          modelName: kimiModel,
+          complexity,
+          reason: `High complexity request for ${feature} routed to Kimi K3`
+        };
+      }
     }
 
-    if (isKimiAvailable && feature === 'COPILOT' && complexity !== 'LOW') {
-      return {
-        providerName: 'kimi',
-        modelName: env.server?.LLM_KIMI_DEFAULT_MODEL || 'kimi-k3',
-        complexity,
-        reason: 'Copilot medium/high complexity request routed to Kimi'
-      };
+    // 3. Medium Complexity & Specific Features (Gemini Fast)
+    if (isGeminiAvailable && complexity !== 'LOW') {
+      if (
+        feature === 'CITY_EXPLORER' ||
+        feature === 'ROADMAP' ||
+        feature === 'STUDY' ||
+        feature === 'COPILOT' ||
+        feature === 'MULTIMODAL' ||
+        feature === 'RAG_CHAT' ||
+        complexity === 'MEDIUM'
+      ) {
+        return {
+          providerName: 'gemini',
+          modelName: geminiFastModel,
+          complexity,
+          reason: `Request for ${feature} routed to Gemini Fast`
+        };
+      }
     }
 
-    // 3. Fast Path Default (Ollama)
+    // 4. Fallback Default (Ollama)
     return {
       providerName: 'ollama',
-      modelName: complexity === 'LOW' ? (env.server?.LLM_OLLAMA_FAST_MODEL || 'llama3.2') : (env.server?.OLLAMA_CHAT_MODEL || 'llama3.2'),
+      modelName: complexity === 'LOW' ? ollamaFastModel : ollamaChatModel,
       complexity,
       reason: `Standard request for ${feature} routed to fast Ollama provider`
     };

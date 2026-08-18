@@ -21,13 +21,30 @@ export class OllamaLLMProvider implements LLMProvider {
     const rawUrl = options?.baseUrl || env.server?.OLLAMA_BASE_URL || process.env.OLLAMA_BASE_URL || 'http://localhost:11434';
     this.baseUrl = rawUrl.replace(/\/+$/, '');
     this.model = options?.model || env.server?.OLLAMA_CHAT_MODEL || process.env.OLLAMA_CHAT_MODEL || 'llama3.2';
-    this.maxRetries = options?.maxRetries ?? 2;
-    this.initialDelayMs = options?.initialDelayMs ?? 1000;
+    this.maxRetries = options?.maxRetries ?? (process.env.NODE_ENV === 'test' ? 0 : 2);
+    this.initialDelayMs = options?.initialDelayMs ?? (process.env.NODE_ENV === 'test' ? 50 : 1000);
     this.maxOutputTokens = env.server?.RAG_LLM_MAX_OUTPUT_TOKENS ?? 512;
     this.temperature = env.server?.RAG_LLM_TEMPERATURE ?? 0.1;
   }
 
   public async generateAnswer(input: LLMGenerateInput): Promise<string> {
+    const isRoutingEnabled = env.server?.LLM_ROUTING_ENABLED !== false;
+    if (isRoutingEnabled) {
+      try {
+        const { llmGateway } = await import('@/features/llm/llm-gateway.service');
+        const res = await llmGateway.generate({
+          prompt: input.question,
+          context: input.context,
+          systemPrompt: `You are a document question-answering assistant. Answer the user's question using ONLY the provided document context. Cite sources using [1], [2] tags.`,
+          feature: 'RAG_CHAT',
+          localOnly: true
+        });
+        return res.text;
+      } catch (err) {
+        if (err instanceof DocumentProcessingError || err instanceof InfrastructureError) throw err;
+      }
+    }
+
     const systemPrompt = `You are a document question-answering assistant.
 
 Answer the user's question using ONLY the provided document context.

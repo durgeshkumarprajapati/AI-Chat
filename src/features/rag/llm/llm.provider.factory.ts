@@ -15,5 +15,9 @@ export function getLLMProvider(): LLMProvider {
     return openAILLMProvider;
   }
 
-  throw new ConfigurationError(`Unsupported LLM_PROVIDER: "${providerType}". Must be "ollama" or "openai".`);
+  if (providerType === 'kimi') {
+    return ollamaLLMProvider;
+  }
+
+  throw new ConfigurationError(`Unsupported LLM_PROVIDER: "${providerType}". Must be "ollama", "openai", or "kimi".`);
 }

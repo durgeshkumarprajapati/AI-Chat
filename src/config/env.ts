@@ -61,14 +61,26 @@ const serverEnvSchema = z
       .positive({ message: 'EMBEDDING_BATCH_SIZE must be greater than 0' })
       .default(100),
     LLM_PROVIDER: z
-      .enum(['ollama', 'openai'])
+      .enum(['ollama', 'openai', 'kimi'])
       .default('ollama'),
     OLLAMA_CHAT_MODEL: z
+      .string()
+      .default('llama3.2'),
+    LLM_OLLAMA_FAST_MODEL: z
       .string()
       .default('llama3.2'),
     OPENAI_CHAT_MODEL: z
       .string()
       .default('gpt-4o-mini'),
+    LLM_ROUTING_ENABLED: z.coerce.boolean().default(true),
+    LLM_KIMI_ENABLED: z.coerce.boolean().default(false),
+    LLM_KIMI_BASE_URL: z.string().optional(),
+    LLM_KIMI_API_KEY: z.string().optional(),
+    LLM_KIMI_DEFAULT_MODEL: z.string().default('kimi-k3'),
+    LLM_GATEWAY_CACHE_ENABLED: z.coerce.boolean().default(true),
+    LLM_CONNECT_TIMEOUT_MS: z.coerce.number().int().positive().default(3000),
+    LLM_REQUEST_TIMEOUT_MS: z.coerce.number().int().positive().default(30000),
+    RAG_RERANK_MIN_CANDIDATES: z.coerce.number().int().nonnegative().default(10),
     RAG_LLM_MAX_OUTPUT_TOKENS: z.coerce.number().int().positive().max(4096).default(512),
     RAG_LLM_TEMPERATURE: z.coerce.number().min(0).max(2).default(0.1),
     RAG_LLM_CONTEXT_CHUNKS: z.coerce.number().int().positive().max(20).default(5),

@@ -51,6 +51,7 @@ function InnerAppLayout({ children }: { children: React.ReactNode }) {
     { name: 'AI Copilot', href: '/copilot', icon: '🧠', badge: 'Phase 36' },
     { name: 'Project Workspaces', href: '/projects', icon: '📁', badge: 'Phase 36' },
     { name: 'RAG Chat', href: '/chat', icon: '💬' },
+    { name: 'Collab Chat', href: '/collab-chat', icon: '💬', badge: 'Phase 46' },
     { name: 'AI Study Mode', href: '/study', icon: '🎓', badge: 'Phase 33' },
     { name: 'Agentic Research', href: '/research', icon: '🔬', badge: 'Phase 34' },
     { name: 'Workflows', href: '/workflows', icon: '🧩', badge: 'Phase 35' },

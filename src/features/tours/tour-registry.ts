@@ -12,6 +12,7 @@ import { copilotTour } from './tours/copilot.tour';
 import { projectWorkspacesTour } from './tours/project-workspaces.tour';
 import { cityExplorerTour } from './tours/city-explorer.tour';
 import { copilotMemoryTour } from './tours/copilot-memory.tour';
+import { collabChatTour } from './tours/collab-chat.tour';
 
 export class TourRegistry {
   private tours: Map<string, TourDefinition> = new Map();
@@ -22,6 +23,7 @@ export class TourRegistry {
 
   private registerAllDefaultTours(): void {
     const all = [
+      collabChatTour,
       knowledgeGraphTour,
       knowledgeGraphWorkflowTour,
       dashboardTour,

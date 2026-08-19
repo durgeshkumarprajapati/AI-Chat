@@ -1,6 +1,6 @@
 import { PredefinedQuestionItem, QuestionPriority } from './city-explorer.types';
 
-export const PROMPT_VERSION = 'v3.0';
+export const PROMPT_VERSION = 'v4.0';
 
 export interface CategoryDefinition {
   category: string;

@@ -13,19 +13,19 @@ export class CityExplorerCacheService {
   public computeFingerprint(city: string, questionId: string, sourceMode: string = 'WEB_PUBLIC'): string {
     const normCity = city.toLowerCase().trim();
     const normQ = questionId.toLowerCase().trim();
-    const cacheVer = env.server?.CITY_EXPLORER_CACHE_VERSION || 'v3';
-    const promptVer = env.server?.CITY_EXPLORER_PROMPT_VERSION || PROMPT_VERSION;
+    const cacheVer = process.env.CITY_EXPLORER_CACHE_VERSION || env.server?.CITY_EXPLORER_CACHE_VERSION || 'v4';
+    const promptVer = process.env.CITY_EXPLORER_PROMPT_VERSION || env.server?.CITY_EXPLORER_PROMPT_VERSION || PROMPT_VERSION;
     const raw = `${normCity}:${normQ}:${sourceMode}:${cacheVer}:${promptVer}`;
     return createHash('sha256').update(raw).digest('hex');
   }
 
   /**
-   * Constructs shared public Redis cache key format docai:city:public:v3:<city>:<questionId>:<hash>
+   * Constructs shared public Redis cache key format docai:city:public:v4:<city>:<questionId>:<hash>
    */
   public getPublicCacheKey(city: string, questionId: string, fingerprint: string): string {
     const normCity = city.toLowerCase().trim();
     const normQ = questionId.toLowerCase().trim();
-    const cacheVer = env.server?.CITY_EXPLORER_CACHE_VERSION || 'v3';
+    const cacheVer = process.env.CITY_EXPLORER_CACHE_VERSION || env.server?.CITY_EXPLORER_CACHE_VERSION || 'v4';
     return `docai:city:public:${cacheVer}:${normCity}:${normQ}:${fingerprint}`;
   }
 

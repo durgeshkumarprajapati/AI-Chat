@@ -61,7 +61,32 @@ export class LLMPolicyService {
 
     const feature: FeatureScope = request.feature || 'GENERAL';
 
-    // 2. High Reasoning & Complex Workloads (Gemini Reasoning or Kimi)
+    // 2. Explicit Feature Policy: CITY_EXPLORER (Gemini Fast Model Precedence)
+    if (feature === 'CITY_EXPLORER') {
+      if (isGeminiAvailable) {
+        return {
+          providerName: 'gemini',
+          modelName: request.modelOverride || geminiFastModel,
+          complexity,
+          reason: 'Explicit feature policy for CITY_EXPLORER routed to Gemini Fast'
+        };
+      }
+
+      const allowOllama = env.server?.CITY_EXPLORER_ALLOW_OLLAMA_FALLBACK ?? false;
+      if (!allowOllama && !request.localOnly) {
+        // Disallow silent fallback to Ollama for City Explorer queries when disallowed
+        if (isKimiAvailable) {
+          return {
+            providerName: 'kimi',
+            modelName: kimiModel,
+            complexity,
+            reason: 'CITY_EXPLORER fallback to Kimi (Ollama fallback disabled)'
+          };
+        }
+      }
+    }
+
+    // 3. High Reasoning & Complex Workloads (Gemini Reasoning or Kimi)
     if (complexity === 'HIGH' || feature === 'WORKFLOW_GENERATION' || feature === 'AGENTIC_RESEARCH') {
       if (isGeminiAvailable) {
         return {
@@ -81,10 +106,9 @@ export class LLMPolicyService {
       }
     }
 
-    // 3. Medium Complexity & Specific Features (Gemini Fast)
+    // 4. Medium Complexity & Specific Features (Gemini Fast)
     if (isGeminiAvailable && complexity !== 'LOW') {
       if (
-        feature === 'CITY_EXPLORER' ||
         feature === 'ROADMAP' ||
         feature === 'STUDY' ||
         feature === 'COPILOT' ||
@@ -101,7 +125,7 @@ export class LLMPolicyService {
       }
     }
 
-    // 4. Fallback Default (Ollama)
+    // 5. Fallback Default (Ollama)
     return {
       providerName: 'ollama',
       modelName: complexity === 'LOW' ? ollamaFastModel : ollamaChatModel,

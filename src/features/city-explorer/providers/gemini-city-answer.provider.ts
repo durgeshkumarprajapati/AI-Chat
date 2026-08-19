@@ -24,7 +24,8 @@ export class GeminiCityAnswerProvider implements CityExplorerAnswerProvider {
   ): Promise<CityExplorerAnswerResult> {
     const startTime = Date.now();
     const cityStr = city.name.trim();
-    const isEnabled = (env.server?.GEMINI_ENABLED ?? (process.env.GEMINI_ENABLED !== 'false')) &&
+    const isEnabled =
+      (env.server?.GEMINI_ENABLED ?? (process.env.GEMINI_ENABLED !== 'false')) &&
       !!(env.server?.GEMINI_API_KEY || process.env.GEMINI_API_KEY || process.env.NODE_ENV === 'test');
 
     if (!isEnabled) {
@@ -34,6 +35,15 @@ export class GeminiCityAnswerProvider implements CityExplorerAnswerProvider {
     const systemPrompt = `You are a public city information assistant. Answer using verified web-grounded information for ${cityStr}. Do not invent facts. Prefer official and authoritative sources. Return concise structured information (2-4 sentences).`;
 
     const prompt = `City: ${cityStr}${city.region ? `, Region: ${city.region}` : ''}, Country: ${city.country || 'India'}\nQuestion: ${questionItem.question}`;
+    const timeoutMs = env.server?.CITY_EXPLORER_GEMINI_TIMEOUT_MS || 8000;
+
+    cityExplorerTelemetryService.logEvent('city_explorer.provider.selected', cityStr, questionItem.id, userId, {
+      feature: 'CITY_EXPLORER',
+      providerRequested: 'gemini',
+      providerSelected: 'gemini',
+      model: env.server?.GEMINI_FAST_MODEL || 'gemini-2.5-flash',
+      sourceMode: 'WEB_PUBLIC'
+    });
 
     try {
       const response = await this.gateway.generate({
@@ -43,7 +53,7 @@ export class GeminiCityAnswerProvider implements CityExplorerAnswerProvider {
         providerOverride: 'gemini',
         userId,
         signal,
-        timeoutMs: env.server?.CITY_EXPLORER_SOURCE_TIMEOUT_MS || 3000
+        timeoutMs
       });
 
       const text = response.text ? response.text.trim() : '';
@@ -51,6 +61,7 @@ export class GeminiCityAnswerProvider implements CityExplorerAnswerProvider {
         throw new Error('Gemini web grounding returned empty output.');
       }
 
+      const durationMs = Date.now() - startTime;
       const citations: CitationItem[] = [
         {
           title: `${cityStr} Verified Web Knowledge`,
@@ -59,10 +70,15 @@ export class GeminiCityAnswerProvider implements CityExplorerAnswerProvider {
         }
       ];
 
-      cityExplorerTelemetryService.logEvent('city_explorer.answer.generated', cityStr, questionItem.id, userId, {
-        provider: this.name,
-        model: response.model,
-        durationMs: Date.now() - startTime
+      cityExplorerTelemetryService.logEvent('city_explorer.provider.success', cityStr, questionItem.id, userId, {
+        feature: 'CITY_EXPLORER',
+        providerRequested: 'gemini',
+        providerSelected: 'gemini',
+        model: response.model || 'gemini-2.5-flash',
+        sourceMode: 'WEB_PUBLIC',
+        cacheHit: false,
+        latencyMs: durationMs,
+        fallbackUsed: false
       });
 
       return {
@@ -77,8 +93,27 @@ export class GeminiCityAnswerProvider implements CityExplorerAnswerProvider {
         generatedAt: new Date().toISOString()
       };
     } catch (err: any) {
+      const durationMs = Date.now() - startTime;
+      const isTimeout = err?.message?.includes('timed out') || err?.name === 'TimeoutError';
+
+      cityExplorerTelemetryService.logEvent(
+        isTimeout ? 'city_explorer.provider.timeout' : 'city_explorer.provider.failure',
+        cityStr,
+        questionItem.id,
+        userId,
+        {
+          feature: 'CITY_EXPLORER',
+          providerRequested: 'gemini',
+          providerSelected: 'gemini',
+          model: env.server?.GEMINI_FAST_MODEL || 'gemini-2.5-flash',
+          sourceMode: 'WEB_PUBLIC',
+          latencyMs: durationMs,
+          error: err?.message || String(err)
+        }
+      );
+
       console.warn(`[GeminiCityAnswerProvider] Failed for ${questionItem.id}:`, err?.message || String(err));
-      throw err; // Allow CityExplorerAnswerService to fall back to WebSearchProvider
+      throw err;
     }
   }
 }

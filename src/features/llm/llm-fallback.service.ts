@@ -26,10 +26,17 @@ export class LLMFallbackService {
       return { response: res, usedFallback: false };
     } catch (err) {
       console.warn(`[LLMFallbackService] Primary provider "${primaryProvider.name}" failed:`, err);
-      llmCircuitBreakerService.recordFailure(primaryProvider.name);
+      llmCircuitBreakerService.recordFailure(primaryProvider.name, err);
 
       if (primaryProvider.name === 'ollama' || request.localOnly) {
         throw err; // Cannot fall back to cloud if localOnly or if primary was already Ollama
+      }
+
+      // Check if Ollama fallback is disallowed for CITY_EXPLORER
+      const isCityExplorer = request.feature === 'CITY_EXPLORER';
+      const allowOllama = process.env.CITY_EXPLORER_ALLOW_OLLAMA_FALLBACK === 'true';
+      if (isCityExplorer && !allowOllama) {
+        throw err; // Do not silently route Gemini city explorer requests to Ollama
       }
 
       let fallbackProvider = this.registry.getProvider('ollama');

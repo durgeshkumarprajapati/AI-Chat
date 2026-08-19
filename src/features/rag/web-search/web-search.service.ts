@@ -10,6 +10,7 @@ import { robotsPolicyService } from '../web-discovery/robots-policy';
 import { webContentExtractor } from '../web/web-content-extractor';
 import { RetrievedChunk } from '../retrieval/retrieval.types';
 import { createHash } from 'crypto';
+import { cityExplorerTelemetryService } from '@/features/city-explorer/city-explorer.telemetry.service';
 
 export class WebSearchService {
   private searchProvider: SearchEngineWebProvider;
@@ -26,7 +27,7 @@ export class WebSearchService {
    * Executes multi-query parallel web search, safe page fetching, passage extraction, deduplication, and quality reranking.
    */
   public async executeWebSearch(
-    _userId: string,
+    userId: string,
     question: string,
     options?: WebSearchOptions
   ): Promise<{ chunks: RetrievedChunk[]; metrics: WebSearchMetrics; searchQueries: string[] }> {
@@ -114,8 +115,16 @@ export class WebSearchService {
               domain: page.domain || UrlNormalizer.getHostname(page.url),
               qualityScore: page.qualityScore || 0.5
             };
-          } catch (err) {
-            console.warn(`[WebSearchService] Safe fetch failed for ${page.url}:`, err);
+          } catch (err: any) {
+            const durationMs = Date.now() - fetchStart;
+            const statusCode = err?.statusCode || (typeof err?.message === 'string' && err.message.match(/\b(\d{3})\b/)?.[1] ? parseInt(err.message.match(/\b(\d{3})\b/)?.[1], 10) : 500);
+            cityExplorerTelemetryService.logEvent('city_explorer.source.failed', page.domain || page.url, undefined, userId, {
+              url: page.url,
+              statusCode,
+              reason: err?.message || 'Source fetch failed',
+              durationMs
+            });
+            console.warn(`[WebSearchService] Safe fetch failed for ${page.url} (status ${statusCode}):`, err?.message || String(err));
             return null;
           }
         })

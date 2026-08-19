@@ -2,6 +2,7 @@ export interface CityExplorerTelemetryEvent {
   event:
     | 'city_explorer.prefetch.started'
     | 'city_explorer.prefetch.completed'
+    | 'city_explorer.answer.started'
     | 'city_explorer.answer.cache_hit'
     | 'city_explorer.answer.cache_miss'
     | 'city_explorer.answer.generated'
@@ -9,6 +10,16 @@ export interface CityExplorerTelemetryEvent {
     | 'city_explorer.answer.no_evidence'
     | 'city_explorer.answer.refreshed'
     | 'city_explorer.answer.fallback_used'
+    | 'city_explorer.provider.selected'
+    | 'city_explorer.provider.success'
+    | 'city_explorer.provider.timeout'
+    | 'city_explorer.provider.failure'
+    | 'city_explorer.source.failed'
+    | 'city_explorer.stream.started'
+    | 'city_explorer.stream.answer_sent'
+    | 'city_explorer.stream.partial'
+    | 'city_explorer.stream.completed'
+    | 'city_explorer.stream.timeout'
     | 'city_explorer.prefetch.cancelled';
   userId?: string;
   city: string;

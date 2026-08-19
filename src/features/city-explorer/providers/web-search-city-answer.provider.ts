@@ -28,18 +28,22 @@ export class WebSearchCityAnswerProvider implements CityExplorerAnswerProvider {
     const maxFetches = env.server?.CITY_EXPLORER_MAX_SOURCE_FETCHES ?? 3;
 
     try {
-      // Execute WebSearch with strict limit on maxFetches
       const searchRes = await this.webSearch.executeWebSearch(userId, questionItem.question);
       const allChunks = searchRes.chunks || [];
       const chunks = allChunks.slice(0, maxFetches);
 
       if (chunks.length === 0) {
+        cityExplorerTelemetryService.logEvent('city_explorer.answer.no_evidence', cityStr, questionItem.id, userId, {
+          provider: this.name,
+          reason: 'All web sources failed or returned empty results'
+        });
+
         return {
           questionId: questionItem.id,
           category: questionItem.category,
           question: questionItem.question,
           status: 'NO_EVIDENCE',
-          answer: 'Reliable web evidence could not be found for this question.',
+          answer: 'NO_GROUNDED_CITY_ANSWER',
           citations: [],
           provider: this.name,
           cached: false,
@@ -95,7 +99,7 @@ Instruction: Synthesize a concise, well-structured, grounded answer (2-4 sentenc
         context: 'You are an authoritative City Knowledge Explorer assistant.'
       });
 
-      const answer = answerRaw ? answerRaw.trim() : 'Information unavailable.';
+      const answer = answerRaw ? answerRaw.trim() : 'NO_GROUNDED_CITY_ANSWER';
 
       cityExplorerTelemetryService.logEvent('city_explorer.answer.generated', cityStr, questionItem.id, userId, {
         provider: this.name,
@@ -107,7 +111,7 @@ Instruction: Synthesize a concise, well-structured, grounded answer (2-4 sentenc
         questionId: questionItem.id,
         category: questionItem.category,
         question: questionItem.question,
-        status: 'READY',
+        status: answer === 'NO_GROUNDED_CITY_ANSWER' ? 'NO_EVIDENCE' : 'READY',
         answer,
         citations,
         provider: this.name,
@@ -115,13 +119,19 @@ Instruction: Synthesize a concise, well-structured, grounded answer (2-4 sentenc
         generatedAt: new Date().toISOString()
       };
     } catch (err: any) {
-      console.warn(`[WebSearchCityAnswerProvider] Search fallback failed for ${questionItem.id}:`, err);
+      console.warn(`[WebSearchCityAnswerProvider] Search fallback failed for ${questionItem.id}:`, err?.message || String(err));
+
+      cityExplorerTelemetryService.logEvent('city_explorer.answer.failed', cityStr, questionItem.id, userId, {
+        provider: this.name,
+        error: err?.message || String(err)
+      });
+
       return {
         questionId: questionItem.id,
         category: questionItem.category,
         question: questionItem.question,
         status: 'FAILED',
-        error: 'Web search fallback service is currently unavailable.',
+        error: 'Unable to load this answer right now.',
         provider: this.name,
         cached: false,
         generatedAt: new Date().toISOString()

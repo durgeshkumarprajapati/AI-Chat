@@ -70,6 +70,7 @@ function CityExplorerContent() {
 
   // Map storing questionId -> CityExplorerAnswerResult
   const [answersMap, setAnswersMap] = useState<Record<string, CityExplorerAnswerResult>>({});
+  const [streamStatus, setStreamStatus] = useState<'LOADING' | 'PARTIAL' | 'COMPLETE' | 'FAILED'>('COMPLETE');
   const [isPrefetching, setIsPrefetching] = useState<boolean>(false);
   const [refreshingQuestionId, setRefreshingQuestionId] = useState<string | null>(null);
   const [speakingQuestionId, setSpeakingQuestionId] = useState<string | null>(null);
@@ -90,6 +91,7 @@ function CityExplorerContent() {
 
     if (!forceQuestionId) {
       setIsPrefetching(true);
+      setStreamStatus('LOADING');
       setAnswersMap({}); // Clear previous city state immediately for instant skeleton rendering
     } else {
       setRefreshingQuestionId(forceQuestionId);
@@ -148,7 +150,12 @@ function CityExplorerContent() {
               nextMap[item.questionId] = item;
             }
             setAnswersMap(nextMap);
+            setStreamStatus('COMPLETE');
+          } else {
+            setStreamStatus('FAILED');
           }
+        } else {
+          setStreamStatus('FAILED');
         }
         return;
       }
@@ -181,12 +188,19 @@ function CityExplorerContent() {
                 ...prev,
                 [event.questionId]: event.answer
               }));
+            } else if (event.type === 'complete') {
+              if (event.status === 'complete') setStreamStatus('COMPLETE');
+              else if (event.status === 'partial') setStreamStatus('PARTIAL');
+              else setStreamStatus('FAILED');
+            } else if (event.type === 'done') {
+              setStreamStatus((prev) => (prev === 'LOADING' ? 'COMPLETE' : prev));
             }
           } catch {}
         }
       }
     } catch (err) {
       console.error('[CityExplorer] Error streaming city answers:', err);
+      setStreamStatus('FAILED');
     } finally {
       if (reqId === requestSeqRef.current) {
         setIsPrefetching(false);
@@ -265,9 +279,21 @@ function CityExplorerContent() {
               <h1 className="text-3xl font-bold bg-gradient-to-r from-white via-indigo-200 to-indigo-400 bg-clip-text text-transparent">
                 Explore {currentCity}
               </h1>
-              {isPrefetching && (
+              {isPrefetching || streamStatus === 'LOADING' ? (
                 <span className="inline-flex items-center px-2.5 py-0.5 rounded-full text-[10px] font-medium bg-indigo-900/60 text-indigo-300 border border-indigo-700/50 animate-pulse">
-                  Prefetching grounded knowledge...
+                  Fetching grounded knowledge...
+                </span>
+              ) : streamStatus === 'PARTIAL' ? (
+                <span className="inline-flex items-center px-2.5 py-0.5 rounded-full text-[10px] font-medium bg-amber-900/60 text-amber-300 border border-amber-700/50">
+                  Some answers are still loading
+                </span>
+              ) : streamStatus === 'FAILED' ? (
+                <span className="inline-flex items-center px-2.5 py-0.5 rounded-full text-[10px] font-medium bg-rose-900/60 text-rose-300 border border-rose-700/50">
+                  Some information could not be loaded
+                </span>
+              ) : (
+                <span className="inline-flex items-center px-2.5 py-0.5 rounded-full text-[10px] font-medium bg-emerald-900/60 text-emerald-300 border border-emerald-700/50">
+                  Grounded knowledge ready
                 </span>
               )}
             </div>

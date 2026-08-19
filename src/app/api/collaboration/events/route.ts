@@ -31,7 +31,13 @@ export async function GET(req: NextRequest) {
         );
 
         const eventHandler = (event: CollabEventPayload) => {
-          if (event.channelId === 'global' || userChannelIds.has(event.channelId)) {
+          const isTargetUser = event.targetUserId ? event.targetUserId === user.id : true;
+          const isNotification = event.type.startsWith('notification:');
+
+          if (
+            (isNotification && isTargetUser) ||
+            (isTargetUser && (event.channelId === 'global' || userChannelIds.has(event.channelId)))
+          ) {
             try {
               controller.enqueue(encoder.encode(`data: ${JSON.stringify(event)}\n\n`));
             } catch {}

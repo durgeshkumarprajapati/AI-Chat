@@ -104,6 +104,9 @@ model User {
   collabMemberships      CollabChannelMember[]
   collabMessagesSent     CollabMessage[]
   collabReceipts         CollabMessageReceipt[]
+  notifications          Notification[]         @relation("UserNotifications")
+  triggeredNotifications Notification[]         @relation("TriggeredNotifications")
+  notificationPreference NotificationPreference?
 
   @@map("users")
 }
@@ -2089,6 +2092,58 @@ model CollabMessageReceipt {
   @@index([userId])
   @@map("collab_message_receipts")
 }
+
+enum NotificationType {
+  MESSAGE_RECEIVED
+  MENTION
+  GROUP_MEMBER_ADDED
+  GROUP_MEMBER_REMOVED
+  GROUP_MEMBER_LEFT
+  GROUP_OWNER_CHANGED
+  ROADMAP_SHARED
+  AI_REPLY
+}
+
+model Notification {
+  id          String           @id @default(uuid())
+  userId      String           @map("user_id")
+  type        NotificationType
+  title       String
+  body        String
+  channelId   String?          @map("channel_id")
+  messageId   String?          @map("message_id")
+  actorUserId String?          @map("actor_user_id")
+  isRead      Boolean          @default(false) @map("is_read")
+  readAt      DateTime?        @map("read_at")
+  metadata    Json?
+  createdAt   DateTime         @default(now()) @map("created_at")
+  updatedAt   DateTime         @updatedAt @map("updated_at")
+
+  user  User  @relation("UserNotifications", fields: [userId], references: [id], onDelete: Cascade)
+  actor User? @relation("TriggeredNotifications", fields: [actorUserId], references: [id], onDelete: SetNull)
+
+  @@index([userId, isRead, createdAt])
+  @@index([userId, createdAt])
+  @@map("notifications")
+}
+
+model NotificationPreference {
+  id              String   @id @default(uuid())
+  userId          String   @unique @map("user_id")
+  directMessages  Boolean  @default(true) @map("direct_messages")
+  groupMessages   Boolean  @default(true) @map("group_messages")
+  mentions        Boolean  @default(true)
+  groupMembership Boolean  @default(true) @map("group_membership")
+  aiReplies       Boolean  @default(true) @map("ai_replies")
+  roadmapShares   Boolean  @default(true) @map("roadmap_shares")
+  createdAt       DateTime @default(now()) @map("created_at")
+  updatedAt       DateTime @updatedAt @map("updated_at")
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@map("notification_preferences")
+}
+
 
 
 

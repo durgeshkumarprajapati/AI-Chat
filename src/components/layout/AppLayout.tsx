@@ -5,6 +5,7 @@ import Link from 'next/link';
 import { usePathname } from 'next/navigation';
 import { ProductTour } from '../tour/ProductTour';
 import { ThemeToggle } from '../theme/ThemeToggle';
+import NotificationCenter from '../notifications/NotificationCenter';
 import { useWorkspace } from '@/context/WorkspaceContext';
 import { TourProvider, useTour } from '@/features/tours/components/TourProvider';
 import { TourHelpButton } from '@/features/tours/components/TourHelpButton';
@@ -119,6 +120,9 @@ function InnerAppLayout({ children }: { children: React.ReactNode }) {
               {healthStatus === 'ok' ? 'Services Healthy' : healthStatus === 'degraded' ? 'Degraded Status' : 'Checking Health...'}
             </span>
           </Link>
+
+          {/* Notification Center Bell */}
+          <NotificationCenter />
 
           {/* Theme Selector */}
           <ThemeToggle />

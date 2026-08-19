@@ -42,6 +42,13 @@ export const collabChatTour: TourDefinition = {
       description: 'Type @ai or click the @ai shortcut to ask Gemini AI questions right inside group discussions.',
       target: 'data-tour="collab-input-box"',
       placement: 'top'
+    },
+    {
+      id: 'collab-notifications',
+      title: 'Realtime Notification Center',
+      description: 'View instant bell alerts for new messages, mentions, role updates, and shared roadmaps with custom preferences.',
+      target: 'data-tour="notification-center"',
+      placement: 'left'
     }
   ]
 };

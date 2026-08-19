@@ -1,17 +1,27 @@
 import { EventEmitter } from 'events';
 
 export interface CollabEventPayload {
+  eventId?: string;
   type:
     | 'message:new'
     | 'message:edit'
     | 'message:delete'
+    | 'message:delivered'
+    | 'message:read'
     | 'typing:start'
     | 'typing:stop'
     | 'presence:change'
     | 'receipt:update'
-    | 'ai:generating';
+    | 'ai:generating'
+    | 'member:removed'
+    | 'member:left'
+    | 'member:owner_changed'
+    | 'notification:new'
+    | 'notification:read'
+    | 'notification:count';
   channelId: string;
   senderId?: string;
+  targetUserId?: string;
   data: unknown;
   timestamp: string;
 }

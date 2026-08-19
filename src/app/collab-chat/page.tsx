@@ -46,6 +46,7 @@ interface MessageItem extends CollabMessageItem {
   createdAt: string;
   sender: UserSummary;
   replyTo?: { id: string; content: string; sender: { name: string | null; email: string } } | null;
+  status?: 'SENDING' | 'SENT' | 'FAILED' | 'DELIVERED' | 'READ';
   receipts?: Array<{ id: string; userId: string; status: string; deliveredAt?: string | Date | null; readAt?: string | Date | null }>;
 }
 
@@ -114,10 +115,37 @@ export default function CollabChatPage() {
   const [isAiGenerating, setIsAiGenerating] = useState(false);
 
   const messagesEndRef = useRef<HTMLDivElement>(null);
+  const activeChannelIdRef = useRef<string | null>(activeChannelId);
+  const requestIdRef = useRef<number>(0);
+  const reconnectTimeoutRef = useRef<NodeJS.Timeout | null>(null);
+
+  // Sync activeChannelIdRef
+  useEffect(() => {
+    activeChannelIdRef.current = activeChannelId;
+  }, [activeChannelId]);
 
   const scrollToBottom = useCallback(() => {
     messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
   }, []);
+
+  // Format channel display name for DMs and Groups safely
+  const getChannelDisplayName = useCallback(
+    (ch: ChannelItem): string => {
+      if (ch.type === 'GROUP') {
+        return ch.name || 'Group Discussion';
+      }
+      const otherMember = ch.members?.find((m) => m.userId !== currentUser?.id);
+      if (otherMember?.user) {
+        return otherMember.user.name || otherMember.user.email || 'Direct Chat';
+      }
+      const selfMember = ch.members?.find((m) => m.userId === currentUser?.id);
+      if (selfMember?.user) {
+        return `${selfMember.user.name || selfMember.user.email} (You)`;
+      }
+      return 'Direct Chat';
+    },
+    [currentUser?.id]
+  );
 
   // Fetch channels list
   const fetchChannels = useCallback(async () => {
@@ -126,7 +154,7 @@ export default function CollabChatPage() {
       const data = await res.json();
       if (data.success && data.data) {
         setChannels(data.data);
-        if (!activeChannelId && data.data.length > 0) {
+        if (!activeChannelIdRef.current && data.data.length > 0) {
           setActiveChannelId(data.data[0].id);
         }
       }
@@ -135,23 +163,30 @@ export default function CollabChatPage() {
     } finally {
       setLoadingChannels(false);
     }
-  }, [activeChannelId]);
+  }, []);
 
-  // Fetch active channel messages
+  // Fetch active channel messages with race-condition guard
   const fetchMessages = useCallback(async (chId: string) => {
+    const requestId = ++requestIdRef.current;
     setLoadingMessages(true);
     try {
       const res = await fetch(`/api/collaboration/channels/${chId}/messages?limit=100`);
       const data = await res.json();
-      if (data.success && data.data) {
+      if (requestId === requestIdRef.current && data.success && data.data) {
         setMessages(data.data);
-        // Mark channel read & send read ACK
-        await fetch(`/api/collaboration/channels/${chId}/read`, { method: 'POST' });
+        // Mark channel read
+        await fetch(`/api/collaboration/channels/${chId}/read`, { method: 'POST' }).catch(() => {});
+        // Reset unread count locally
+        setChannels((prev) =>
+          prev.map((c) => (c.id === chId ? { ...c, unreadCount: 0 } : c))
+        );
       }
     } catch (err) {
       console.error('Failed to fetch messages:', err);
     } finally {
-      setLoadingMessages(false);
+      if (requestId === requestIdRef.current) {
+        setLoadingMessages(false);
+      }
     }
   }, []);
 
@@ -168,6 +203,167 @@ export default function CollabChatPage() {
   useEffect(() => {
     scrollToBottom();
   }, [messages, scrollToBottom]);
+
+  // Real-time SSE Connection bound ONLY to currentUser?.id with exponential backoff
+  useEffect(() => {
+    if (!currentUser?.id) return;
+
+    let eventSource: EventSource | null = null;
+    let isUnmounted = false;
+    let reconnectAttempt = 0;
+    const backoffDelays = [1000, 2000, 4000, 8000, 16000, 30000];
+
+    const connect = () => {
+      if (isUnmounted) return;
+
+      const isDebug = process.env.NEXT_PUBLIC_COLLAB_REALTIME_DEBUG === 'true';
+      if (isDebug) {
+        console.log(`[CollabRealtime] Connecting SSE for user ${currentUser.id}... (Attempt ${reconnectAttempt + 1})`);
+      }
+
+      eventSource = new EventSource('/api/collaboration/events');
+
+      eventSource.onopen = () => {
+        if (isDebug) console.log('[CollabRealtime] SSE connection established');
+        reconnectAttempt = 0;
+      };
+
+      eventSource.onmessage = (e) => {
+        if (isUnmounted) return;
+        try {
+          const event = JSON.parse(e.data);
+          const activeChId = activeChannelIdRef.current;
+
+          if (event.type === 'message:new') {
+            const newMsg = event.data as MessageItem;
+
+            // Targeted channel preview & unread count update
+            setChannels((prev) =>
+              prev.map((c) => {
+                if (c.id === newMsg.channelId) {
+                  const isCurrent = c.id === activeChId;
+                  return {
+                    ...c,
+                    latestMessage: newMsg,
+                    unreadCount: isCurrent ? 0 : (c.unreadCount || 0) + 1,
+                    updatedAt: newMsg.createdAt
+                  };
+                }
+                return c;
+              })
+            );
+
+            // Reconcile message into active feed without full fetch
+            if (newMsg.channelId === activeChId) {
+              setMessages((prev) => mergeMessages(prev, newMsg));
+
+              // Auto delivery ACK
+              if (newMsg.senderId !== currentUser.id) {
+                fetch(`/api/collaboration/channels/${activeChId}/messages/delivery`, {
+                  method: 'POST',
+                  headers: { 'Content-Type': 'application/json' },
+                  body: JSON.stringify({ messageIds: [newMsg.id] })
+                }).catch(() => {});
+              }
+            }
+          } else if (event.type === 'message:edit') {
+            const updated = event.data as MessageItem;
+            if (updated.channelId === activeChId) {
+              setMessages((prev) => prev.map((m) => (m.id === updated.id ? updated : m)));
+            }
+            setChannels((prev) =>
+              prev.map((c) =>
+                c.id === updated.channelId && c.latestMessage?.id === updated.id
+                  ? { ...c, latestMessage: updated }
+                  : c
+              )
+            );
+          } else if (event.type === 'message:delete') {
+            const { messageId, channelId: chId } = event.data;
+            if (chId === activeChId) {
+              setMessages((prev) =>
+                prev.map((m) =>
+                  m.id === messageId ? { ...m, isDeleted: true, content: 'This message was deleted.' } : m
+                )
+              );
+            }
+          } else if (event.type === 'member:removed') {
+            if (event.data?.userId === currentUser.id) {
+              setRemovedBanner('You were removed from this group.');
+              if (event.channelId === activeChId) {
+                setActiveChannelId(null);
+                setMessages([]);
+              }
+              fetchChannels();
+            } else {
+              setChannels((prev) =>
+                prev.map((c) =>
+                  c.id === event.channelId
+                    ? { ...c, members: c.members.filter((m) => m.userId !== event.data?.userId) }
+                    : c
+                )
+              );
+            }
+          } else if (event.type === 'member:left' || event.type === 'member:owner_changed') {
+            fetchChannels();
+          } else if (event.type === 'message:delivered' || event.type === 'message:read') {
+            if (event.channelId === activeChId) {
+              setMessages((prev) =>
+                prev.map((m) => {
+                  const isMatch = event.data?.messageIds?.includes(m.id) || m.id === event.data?.lastReadMessageId;
+                  if (isMatch) {
+                    const existingReceipts = m.receipts || [];
+                    const newReceiptStatus = event.type === 'message:read' ? 'READ' : 'DELIVERED';
+                    return {
+                      ...m,
+                      status: newReceiptStatus,
+                      receipts: [
+                        ...existingReceipts.filter((r) => r.userId !== event.senderId),
+                        {
+                          id: `rcpt_${Date.now()}_${Math.random()}`,
+                          userId: event.senderId,
+                          status: newReceiptStatus,
+                          deliveredAt: event.data?.deliveredAt || new Date().toISOString(),
+                          readAt: event.type === 'message:read' ? (event.data?.readAt || new Date().toISOString()) : null
+                        }
+                      ]
+                    };
+                  }
+                  return m;
+                })
+              );
+            }
+          } else if (event.type === 'ai:generating') {
+            if (event.channelId === activeChId) {
+              setIsAiGenerating(event.data.isGenerating);
+            }
+          }
+        } catch {}
+      };
+
+      eventSource.onerror = () => {
+        if (isUnmounted) return;
+        if (eventSource) {
+          eventSource.close();
+          eventSource = null;
+        }
+        const delay = backoffDelays[Math.min(reconnectAttempt, backoffDelays.length - 1)];
+        reconnectAttempt++;
+        if (isDebug) {
+          console.warn(`[CollabRealtime] SSE Connection interrupted. Reconnecting in ${delay}ms...`);
+        }
+        reconnectTimeoutRef.current = setTimeout(connect, delay);
+      };
+    };
+
+    connect();
+
+    return () => {
+      isUnmounted = true;
+      if (reconnectTimeoutRef.current) clearTimeout(reconnectTimeoutRef.current);
+      if (eventSource) eventSource.close();
+    };
+  }, [currentUser?.id, fetchChannels]);
 
   // Debounced User Search for DM Modal
   useEffect(() => {
@@ -215,71 +411,6 @@ export default function CollabChatPage() {
 
     return () => clearTimeout(timer);
   }, [addMembersQuery, showAddMembersModal]);
-
-  // Real-time SSE event listener with deduplication & delivery receipts
-  useEffect(() => {
-    const eventSource = new EventSource('/api/collaboration/events');
-
-    eventSource.onmessage = (e) => {
-      try {
-        const event = JSON.parse(e.data);
-
-        if (event.type === 'message:new') {
-          const newMsg = event.data as MessageItem;
-          if (newMsg.channelId === activeChannelId) {
-            setMessages((prev) => mergeMessages(prev, newMsg));
-            // Automatically send delivery ACK for message sent by another user
-            if (newMsg.senderId !== currentUser?.id) {
-              fetch(`/api/collaboration/channels/${activeChannelId}/messages/delivery`, {
-                method: 'POST',
-                headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({ messageIds: [newMsg.id] })
-              }).catch(() => {});
-            }
-          }
-          fetchChannels();
-        } else if (event.type === 'message:edit') {
-          const updated = event.data as MessageItem;
-          if (updated.channelId === activeChannelId) {
-            setMessages((prev) => prev.map((m) => (m.id === updated.id ? updated : m)));
-          }
-        } else if (event.type === 'message:delete') {
-          const { messageId } = event.data;
-          setMessages((prev) =>
-            prev.map((m) =>
-              m.id === messageId ? { ...m, isDeleted: true, content: 'This message was deleted.' } : m
-            )
-          );
-        } else if (event.type === 'member:removed') {
-          if (event.data?.userId === currentUser?.id) {
-            setRemovedBanner('You were removed from this group.');
-            if (event.channelId === activeChannelId) {
-              setActiveChannelId(null);
-              setMessages([]);
-            }
-          }
-          fetchChannels();
-        } else if (event.type === 'member:left' || event.type === 'member:owner_changed') {
-          fetchChannels();
-          if (activeChannelId && event.channelId === activeChannelId) {
-            fetchMessages(activeChannelId);
-          }
-        } else if (event.type === 'message:delivered' || event.type === 'message:read') {
-          if (activeChannelId && event.channelId === activeChannelId) {
-            fetchMessages(activeChannelId);
-          }
-        } else if (event.type === 'ai:generating') {
-          if (event.channelId === activeChannelId) {
-            setIsAiGenerating(event.data.isGenerating);
-          }
-        }
-      } catch {}
-    };
-
-    return () => {
-      eventSource.close();
-    };
-  }, [activeChannelId, currentUser?.id, fetchChannels, fetchMessages]);
 
   // Select User from Search & Start/Reuse DM
   const handleStartDM = async (targetUser: UserSummary) => {
@@ -619,9 +750,9 @@ export default function CollabChatPage() {
       });
       const data = await res.json();
       if (data.success && data.data) {
-        setMessages((prev) => [...prev, data.data]);
         setShowShareModal(false);
         setShareTargetId('');
+        setMessages((prev) => mergeMessages(prev, data.data));
       }
     } catch (err) {
       console.error('Failed to share asset:', err);
@@ -629,80 +760,68 @@ export default function CollabChatPage() {
   };
 
   const activeChannel = channels.find((c) => c.id === activeChannelId);
+  const activeChannelTitle = activeChannel ? getChannelDisplayName(activeChannel) : '';
 
   return (
-    <div className="w-full max-w-[1600px] mx-auto space-y-6 pb-12 p-4 sm:p-6 lg:p-8" data-tour="collab-chat-container">
-      {/* Header Banner */}
-      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 border-b border-slate-200 dark:border-slate-800 pb-5" data-tour="collab-header">
+    <div className="w-full max-w-[1600px] mx-auto h-[calc(100vh-80px)] flex flex-col p-4 sm:p-6 lg:p-8 overflow-hidden" data-tour="collab-chat-container">
+      {/* Header Bar */}
+      <div className="flex items-center justify-between pb-3 shrink-0" data-tour="collab-header">
         <div>
-          <div className="flex items-center space-x-3">
-            <span className="text-3xl">💬</span>
-            <h1 className="text-3xl font-bold bg-gradient-to-r from-slate-900 via-indigo-800 to-indigo-600 dark:from-white dark:via-indigo-200 dark:to-indigo-400 bg-clip-text text-transparent">
-              Real-Time Collaboration & AI Discussion
-            </h1>
-            <span className="text-xs px-2.5 py-0.5 rounded-full bg-indigo-100 dark:bg-indigo-950 text-indigo-700 dark:text-indigo-300 font-mono font-semibold border border-indigo-200 dark:border-indigo-800">
-              Phase 46
-            </span>
-          </div>
-          <p className="text-xs text-slate-600 dark:text-slate-400 mt-1">
-            Instant 1-to-1 DMs, group discussions, entity & roadmap sharing, live typing indicators, and @ai assistant.
+          <h1 className="text-xl font-bold text-slate-900 dark:text-white tracking-tight flex items-center space-x-2">
+            <span>💬</span>
+            <span>Real-Time Collaboration Platform</span>
+          </h1>
+          <p className="text-xs text-slate-500 dark:text-slate-400 mt-0.5">
+            1-to-1 DMs, Group Discussions, Asset Sharing & AI Discussion Mode
           </p>
         </div>
 
-        <div className="flex items-center space-x-2 self-start sm:self-auto">
+        <div className="flex items-center space-x-3">
           <button
             onClick={() => {
               setShowUserSearchModal(true);
               setUserSearchQuery('');
               setUserSearchResults([]);
             }}
-            className="px-4 py-2 bg-slate-900 dark:bg-slate-800 hover:bg-slate-800 dark:hover:bg-slate-700 text-white font-semibold text-xs rounded-xl shadow-md transition flex items-center space-x-2 whitespace-nowrap"
-            aria-label="New Chat"
-            data-tour="collab-new-chat-btn"
+            className="px-3.5 py-2 bg-gradient-to-r from-indigo-600 to-purple-600 hover:from-indigo-500 hover:to-purple-500 text-white font-semibold text-xs rounded-xl shadow-md transition flex items-center space-x-1.5"
+            data-tour="collab-new-dm-btn"
           >
             <span>💬</span>
-            <span>New Chat</span>
+            <span>New Chat / DM</span>
           </button>
+
           <button
             onClick={() => setShowCreateModal(true)}
-            className="px-4 py-2 bg-indigo-600 hover:bg-indigo-500 text-white font-semibold text-xs rounded-xl shadow-md transition flex items-center space-x-2 whitespace-nowrap"
-            aria-label="New Group Discussion"
-            data-tour="collab-new-group-btn"
+            className="px-3.5 py-2 bg-slate-800 dark:bg-slate-800 hover:bg-slate-700 text-white font-semibold text-xs rounded-xl shadow-md transition flex items-center space-x-1.5"
+            data-tour="collab-create-group-btn"
           >
-            <span>👥</span>
+            <span>➕</span>
             <span>New Group</span>
           </button>
         </div>
       </div>
 
-      {/* Main App Grid */}
-      <div className="grid grid-cols-1 lg:grid-cols-12 gap-6 h-[calc(100vh-14rem)] min-h-[600px]">
-        {/* Left Sidebar: Channels & Search (4 Cols) */}
-        <div className="lg:col-span-4 bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-2xl p-4 flex flex-col space-y-4 shadow-sm" data-tour="collab-channels-list">
-          {/* Search Box */}
-          <div className="relative">
+      {/* Main Grid: Left Channel Sidebar (4 Cols) + Right Chat Panel (8 Cols) */}
+      <div className="grid grid-cols-1 lg:grid-cols-12 gap-6 flex-1 min-h-0 overflow-hidden">
+        {/* Left Sidebar (4 Cols) */}
+        <div className="lg:col-span-4 bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-2xl p-4 flex flex-col h-full overflow-hidden shadow-sm" data-tour="collab-channels-list">
+          {/* Search Bar */}
+          <div className="mb-3 shrink-0">
             <input
               type="text"
-              placeholder="Search conversations or messages..."
+              placeholder="Search messages across chats..."
               value={searchQuery}
               onChange={(e) => handleSearch(e.target.value)}
               className="w-full bg-slate-100 dark:bg-slate-950 border border-slate-200 dark:border-slate-800 rounded-xl px-3.5 py-2 text-xs text-slate-900 dark:text-white placeholder-slate-400 focus:outline-none focus:border-indigo-500"
             />
-            {searchQuery && (
-              <button
-                onClick={() => handleSearch('')}
-                className="absolute right-3 top-2.5 text-xs text-slate-400 hover:text-slate-200"
-              >
-                ✕
-              </button>
-            )}
           </div>
 
           {/* Search Results / Channels List */}
           {isSearching ? (
-            <div className="flex-1 overflow-y-auto space-y-2 pr-1">
-              <div className="text-[11px] font-mono font-bold uppercase text-slate-400 px-2">
-                Search Results ({searchResults.length})
+            <div className="flex-1 overflow-y-auto space-y-2 pr-1 min-h-0">
+              <div className="text-[11px] font-mono font-bold uppercase text-slate-400 px-2 flex justify-between items-center">
+                <span>Search Results</span>
+                <span className="text-indigo-400 font-bold">{searchResults.length}</span>
               </div>
               {searchResults.length === 0 ? (
                 <div className="text-center py-8 text-xs text-slate-400">No matching messages found</div>
@@ -713,10 +832,11 @@ export default function CollabChatPage() {
                     onClick={() => {
                       setActiveChannelId(m.channelId);
                       setIsSearching(false);
+                      setSearchQuery('');
                     }}
-                    className="p-3 rounded-xl border border-slate-200 dark:border-slate-800/80 bg-slate-50 dark:bg-slate-950 hover:border-indigo-500 transition cursor-pointer space-y-1"
+                    className="p-3 rounded-xl bg-slate-50 dark:bg-slate-950 border border-slate-200 dark:border-slate-800 hover:border-indigo-500 transition cursor-pointer space-y-1"
                   >
-                    <div className="flex items-center justify-between text-[11px] text-slate-400">
+                    <div className="flex items-center justify-between text-[10px] text-slate-400">
                       <span className="font-semibold text-indigo-400">{m.sender.name || m.sender.email}</span>
                       <span>{new Date(m.createdAt).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}</span>
                     </div>
@@ -726,9 +846,9 @@ export default function CollabChatPage() {
               )}
             </div>
           ) : (
-            <div className="flex-1 overflow-y-auto space-y-2 pr-1">
-              <div className="text-[11px] font-mono font-bold uppercase text-slate-400 px-2 flex justify-between items-center">
-                <span>Active Channels</span>
+            <div className="flex-1 overflow-y-auto space-y-2 pr-1 min-h-0">
+              <div className="text-[11px] font-mono font-bold uppercase text-slate-400 px-2 flex justify-between items-center mb-1">
+                <span>Active Conversations</span>
                 <span className="text-indigo-400 font-bold">{channels.length}</span>
               </div>
 
@@ -737,19 +857,13 @@ export default function CollabChatPage() {
               ) : channels.length === 0 ? (
                 <div className="text-center py-12 text-xs text-slate-400 space-y-2">
                   <p>No conversations started yet.</p>
-                  <p className="text-[11px] text-indigo-400">Click &quot;New Chat&quot; to search users!</p>
+                  <p className="text-[11px] text-indigo-400 font-medium">Click &quot;New Chat&quot; to search users!</p>
                 </div>
               ) : (
                 channels.map((ch) => {
                   const isActive = ch.id === activeChannelId;
-                  const displayName =
-                    ch.type === 'GROUP'
-                      ? ch.name
-                      : ch.members.find((m) => m.userId !== currentUser?.id)?.user.name ||
-                        ch.members.find((m) => m.userId !== currentUser?.id)?.user.email ||
-                        'Direct Chat';
-
-                  const otherMember = ch.members.find((m) => m.userId !== currentUser?.id);
+                  const displayName = getChannelDisplayName(ch);
+                  const otherMember = ch.members?.find((m) => m.userId !== currentUser?.id);
                   const isOnline = otherMember?.presence?.status === 'ONLINE';
 
                   return (
@@ -758,12 +872,12 @@ export default function CollabChatPage() {
                       onClick={() => setActiveChannelId(ch.id)}
                       className={`p-3 rounded-xl border transition cursor-pointer flex items-center justify-between ${
                         isActive
-                          ? 'bg-indigo-50 dark:bg-indigo-950/60 border-indigo-500 text-slate-900 dark:text-white font-semibold'
+                          ? 'bg-indigo-50 dark:bg-indigo-950/60 border-indigo-500 text-slate-900 dark:text-white font-semibold shadow-sm'
                           : 'bg-slate-50 dark:bg-slate-950/40 border-slate-200 dark:border-slate-800 hover:border-slate-300 dark:hover:border-slate-700 text-slate-700 dark:text-slate-300'
                       }`}
                     >
                       <div className="flex items-center space-x-3 truncate">
-                        <div className="relative">
+                        <div className="relative shrink-0">
                           <div className="w-9 h-9 rounded-xl bg-gradient-to-tr from-indigo-600 to-purple-600 text-white font-bold flex items-center justify-center text-xs shadow-sm">
                             {ch.type === 'GROUP' ? '👥' : (displayName ? displayName[0]?.toUpperCase() : '💬')}
                           </div>
@@ -776,23 +890,25 @@ export default function CollabChatPage() {
                           )}
                         </div>
 
-                        <div className="flex flex-col truncate">
+                        <div className="flex flex-col truncate min-w-0">
                           <div className="flex items-center space-x-2">
-                            <span className="text-xs font-bold truncate max-w-[130px]">{displayName}</span>
+                            <span className="text-xs font-bold truncate max-w-[140px] text-slate-900 dark:text-white">
+                              {displayName}
+                            </span>
                             {ch.type === 'GROUP' && (
                               <span className="text-[9px] px-1.5 py-0.2 rounded bg-indigo-100 dark:bg-indigo-950 text-indigo-700 dark:text-indigo-400 font-mono">
                                 GROUP
                               </span>
                             )}
                           </div>
-                          <span className="text-[11px] text-slate-400 truncate">
+                          <span className="text-[11px] text-slate-400 truncate mt-0.5">
                             {ch.latestMessage ? ch.latestMessage.content : 'No messages yet'}
                           </span>
                         </div>
                       </div>
 
                       {ch.unreadCount > 0 && (
-                        <span className="w-5 h-5 rounded-full bg-indigo-600 text-white text-[10px] font-bold flex items-center justify-center">
+                        <span className="w-5 h-5 rounded-full bg-indigo-600 text-white text-[10px] font-bold flex items-center justify-center shrink-0 ml-2">
                           {ch.unreadCount}
                         </span>
                       )}
@@ -804,26 +920,24 @@ export default function CollabChatPage() {
           )}
         </div>
 
-        {/* Center / Main Feed Panel (8 Cols) */}
-        <div className="lg:col-span-8 bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-2xl p-4 flex flex-col shadow-sm">
+        {/* Right Chat Panel (8 Cols) */}
+        <div className="lg:col-span-8 bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-2xl p-4 flex flex-col h-full overflow-hidden shadow-sm">
           {activeChannel ? (
             <>
               {/* Active Channel Header */}
-              <div className="flex items-center justify-between border-b border-slate-200 dark:border-slate-800 pb-3 mb-4">
+              <div className="flex items-center justify-between border-b border-slate-200 dark:border-slate-800 pb-3 shrink-0">
                 <div className="flex items-center space-x-3">
-                  <div className="w-9 h-9 rounded-xl bg-indigo-600 text-white font-bold flex items-center justify-center text-sm shadow-sm">
+                  <div className="w-9 h-9 rounded-xl bg-indigo-600 text-white font-bold flex items-center justify-center text-sm shadow-sm shrink-0">
                     {activeChannel.type === 'GROUP' ? '👥' : '💬'}
                   </div>
                   <div>
                     <h2 className="text-sm font-bold text-slate-900 dark:text-white">
-                      {activeChannel.type === 'GROUP'
-                        ? activeChannel.name
-                        : activeChannel.members.find((m) => m.userId !== currentUser?.id)?.user.name || 'Direct Chat'}
+                      {activeChannelTitle}
                     </h2>
                     <p className="text-[11px] text-slate-400">
                       {activeChannel.type === 'GROUP'
                         ? `${activeChannel.members.length} Members • Group Discussion`
-                        : `1-to-1 Discussion`}
+                        : `1-to-1 Direct Discussion`}
                     </p>
                   </div>
                 </div>
@@ -870,7 +984,7 @@ export default function CollabChatPage() {
 
               {/* Removed from Group Banner Alert */}
               {removedBanner && (
-                <div className="p-3 bg-rose-50 dark:bg-rose-950/60 border border-rose-200 dark:border-rose-800 rounded-xl flex items-center justify-between text-xs text-rose-700 dark:text-rose-300 mb-3">
+                <div className="p-3 bg-rose-50 dark:bg-rose-950/60 border border-rose-200 dark:border-rose-800 rounded-xl flex items-center justify-between text-xs text-rose-700 dark:text-rose-300 my-2 shrink-0">
                   <div className="flex items-center space-x-2">
                     <span>🚫</span>
                     <span className="font-semibold">{removedBanner}</span>
@@ -882,217 +996,207 @@ export default function CollabChatPage() {
               )}
 
               {/* Message History Feed */}
-              <div className="flex-1 overflow-y-auto space-y-4 pr-2" data-tour="collab-message-feed">
+              <div className="flex-1 overflow-y-auto space-y-4 pr-2 my-3 min-h-0" data-tour="collab-message-feed">
                 {loadingMessages ? (
                   <div className="text-center py-20 text-xs text-slate-400 animate-pulse">Loading Messages...</div>
                 ) : messages.length === 0 ? (
                   <div className="text-center py-20 text-xs text-slate-400 space-y-2">
                     <p className="text-base">🚀</p>
                     <p>Start the conversation! Type a message below.</p>
-                    <p className="text-[11px] text-indigo-400">Tip: Type @ai to invoke Gemini Assistant!</p>
                   </div>
                 ) : (
                   messages.map((m) => {
                     const isSelf = m.senderId === currentUser?.id;
+                    const msgKey = m.id || m.clientMessageId || `msg_${Math.random()}`;
 
                     return (
                       <div
-                        key={m.id}
-                        className={`flex flex-col space-y-1 ${isSelf ? 'items-end' : 'items-start'}`}
+                        key={msgKey}
+                        className={`flex items-start space-x-3 group ${isSelf ? 'flex-row-reverse space-x-reverse' : ''}`}
                       >
-                        {/* Sender info header */}
-                        <div className="flex items-center space-x-2 text-[10px] text-slate-400">
-                          <span className="font-bold text-slate-700 dark:text-slate-300">
-                            {m.isAi ? '🤖 Gemini AI' : m.sender.name || m.sender.email}
-                          </span>
-                          {m.isAi && (
-                            <span className="px-1.5 py-0.2 rounded bg-purple-100 dark:bg-purple-950 text-purple-700 dark:text-purple-300 font-mono">
-                              AI BOT
+                        {/* Sender Avatar */}
+                        {(() => {
+                          const sName = m.sender?.name;
+                          const sEmail = m.sender?.email || '';
+                          const avatarChar = (sName && sName.charAt(0)) ? sName.charAt(0).toUpperCase() : (sEmail.charAt(0) ? sEmail.charAt(0).toUpperCase() : 'U');
+                          return (
+                            <div className="w-8 h-8 rounded-full bg-gradient-to-tr from-indigo-600 to-purple-600 text-white font-bold flex items-center justify-center text-xs shrink-0 shadow-sm">
+                              {m.isAi ? '🤖' : avatarChar}
+                            </div>
+                          );
+                        })()}
+
+                        <div className="flex flex-col space-y-1 max-w-lg">
+                          {/* Sender Info & Header */}
+                          <div className={`flex items-center space-x-2 text-[11px] text-slate-400 ${isSelf ? 'justify-end' : ''}`}>
+                            <span className="font-semibold text-slate-700 dark:text-slate-300">
+                              {m.isAi ? 'Gemini AI Assistant' : isSelf ? 'You' : m.sender.name || m.sender.email.split('@')[0]}
                             </span>
-                          )}
-                          <span>•</span>
-                          <span>{new Date(m.createdAt).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}</span>
-                        </div>
-
-                        {/* Quoted Thread Reply */}
-                        {m.replyTo && (
-                          <div className="p-2 rounded-lg bg-slate-100 dark:bg-slate-950 border-l-2 border-indigo-500 text-[11px] text-slate-600 dark:text-slate-400 max-w-md">
-                            <span className="font-semibold text-indigo-400">
-                              Replying to {m.replyTo.sender.name || m.replyTo.sender.email}:
-                            </span>{' '}
-                            <span className="truncate">{m.replyTo.content}</span>
+                            <span>•</span>
+                            <span>{new Date(m.createdAt).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}</span>
                           </div>
-                        )}
 
-                        {/* Message Content Bubble */}
-                        <div
-                          className={`p-3.5 rounded-2xl max-w-lg text-xs space-y-2 shadow-sm ${
-                            m.isAi
-                              ? 'bg-purple-50 dark:bg-purple-950/40 border border-purple-200 dark:border-purple-800 text-slate-900 dark:text-slate-100'
-                              : isSelf
-                              ? 'bg-indigo-600 text-white rounded-br-none'
-                              : 'bg-slate-100 dark:bg-slate-950 border border-slate-200 dark:border-slate-800 text-slate-900 dark:text-slate-100 rounded-bl-none'
-                          }`}
-                        >
-                          {editingMessageId === m.id ? (
-                            <div className="space-y-2">
-                              <input
-                                type="text"
-                                value={editContent}
-                                onChange={(e) => setEditContent(e.target.value)}
-                                className="w-full p-2 bg-white dark:bg-slate-900 border border-slate-300 dark:border-slate-700 rounded-lg text-xs text-slate-900 dark:text-white"
-                              />
-                              <div className="flex space-x-2 justify-end">
-                                <button
-                                  onClick={() => setEditingMessageId(null)}
-                                  className="px-2 py-1 text-[10px] text-slate-400 hover:text-white"
+                          {/* Quoted Parent Reply Card */}
+                          {m.replyTo && (
+                            <div className="p-2 rounded-xl bg-slate-100 dark:bg-slate-950 border-l-4 border-indigo-500 text-[11px] text-slate-600 dark:text-slate-400 mb-1">
+                              <span className="font-bold text-indigo-400">{m.replyTo.sender.name || m.replyTo.sender.email}:</span>{' '}
+                              <span className="line-clamp-1">{m.replyTo.content}</span>
+                            </div>
+                          )}
+
+                          {/* Message Content Bubble */}
+                          <div
+                            className={`p-3.5 rounded-2xl max-w-lg text-xs space-y-2 shadow-sm ${
+                              m.isAi
+                                ? 'bg-purple-50 dark:bg-purple-950/40 border border-purple-200 dark:border-purple-800 text-slate-900 dark:text-slate-100'
+                                : isSelf
+                                ? 'bg-indigo-600 text-white rounded-br-none'
+                                : 'bg-slate-100 dark:bg-slate-950 border border-slate-200 dark:border-slate-800 text-slate-900 dark:text-slate-100 rounded-bl-none'
+                            }`}
+                          >
+                            {editingMessageId === m.id ? (
+                              <div className="space-y-2">
+                                <input
+                                  type="text"
+                                  value={editContent}
+                                  onChange={(e) => setEditContent(e.target.value)}
+                                  className="w-full p-2 bg-white dark:bg-slate-900 border border-slate-300 dark:border-slate-700 rounded-lg text-xs text-slate-900 dark:text-white"
+                                />
+                                <div className="flex space-x-2 justify-end">
+                                  <button
+                                    onClick={() => setEditingMessageId(null)}
+                                    className="px-2 py-1 text-[10px] text-slate-400 hover:text-white"
+                                  >
+                                    Cancel
+                                  </button>
+                                  <button
+                                    onClick={() => handleSaveEdit(m.id)}
+                                    className="px-3 py-1 text-[10px] bg-indigo-600 text-white rounded-lg font-semibold"
+                                  >
+                                    Save
+                                  </button>
+                                </div>
+                              </div>
+                            ) : (
+                              <p className="whitespace-pre-wrap leading-relaxed">{m.content}</p>
+                            )}
+
+                            {/* Shared Asset Cards */}
+                            {m.sharedRoadmapId && (
+                              <div className="p-3 rounded-xl bg-indigo-950/80 border border-indigo-800/80 text-white space-y-1">
+                                <div className="flex items-center space-x-1.5 text-xs font-bold">
+                                  <span>🚀</span>
+                                  <span>Shared AI Roadmap</span>
+                                </div>
+                                <p className="text-[11px] text-indigo-300">ID: {m.sharedRoadmapId}</p>
+                                <Link
+                                  href={`/roadmaps/${m.sharedRoadmapId}`}
+                                  className="inline-block px-3 py-1 bg-indigo-600 hover:bg-indigo-500 text-white text-[10px] font-semibold rounded-lg transition"
                                 >
-                                  Cancel
-                                </button>
-                                <button
-                                  onClick={() => handleSaveEdit(m.id)}
-                                  className="px-3 py-1 text-[10px] bg-indigo-600 text-white rounded-lg font-semibold"
-                                >
-                                  Save
-                                </button>
+                                  View Roadmap →
+                                </Link>
                               </div>
-                            </div>
-                          ) : (
-                            <p className="whitespace-pre-wrap leading-relaxed">{m.content}</p>
-                          )}
+                            )}
 
-                          {/* Shared Roadmap Card */}
-                          {m.sharedRoadmapId && (
-                            <div className="p-3 rounded-xl bg-indigo-950/80 border border-indigo-800/80 text-white space-y-1">
-                              <div className="flex items-center space-x-1.5 text-xs font-bold">
-                                <span>🚀</span>
-                                <span>Shared AI Roadmap</span>
-                              </div>
-                              <p className="text-[11px] text-indigo-300">ID: {m.sharedRoadmapId}</p>
-                              <Link
-                                href={`/roadmaps/${m.sharedRoadmapId}`}
-                                className="inline-block px-3 py-1 bg-indigo-600 hover:bg-indigo-500 text-white text-[10px] font-semibold rounded-lg transition"
-                              >
-                                View Roadmap →
-                              </Link>
-                            </div>
-                          )}
-
-                          {/* Shared Entity Card */}
-                          {m.sharedEntityId && (
-                            <div className="p-3 rounded-xl bg-slate-950 border border-slate-800 text-white space-y-1">
-                              <div className="flex items-center space-x-1.5 text-xs font-bold text-emerald-400">
-                                <span>🕸️</span>
-                                <span>Shared Knowledge Entity</span>
-                              </div>
-                              <p className="text-[11px] text-slate-400">Entity: {m.sharedEntityId}</p>
-                              <Link
-                                href={`/knowledge-graph?entity=${m.sharedEntityId}`}
-                                className="inline-block px-3 py-1 bg-emerald-600 hover:bg-emerald-500 text-white text-[10px] font-semibold rounded-lg transition"
-                              >
-                                Inspect Entity in Graph →
-                              </Link>
-                            </div>
-                          )}
-
-                          {/* Footer Actions, Receipt Icons & Metadata */}
-                          <div className="flex items-center justify-between text-[10px] opacity-90 pt-1 border-t border-white/10 dark:border-slate-800/40 mt-1">
-                            <div className="flex items-center space-x-2">
-                              {m.isEdited && <span className="font-mono text-amber-400">(edited)</span>}
-                              
-                              {/* Status Indicators & Receipts */}
-                              {isSelf && !m.isDeleted && !m.isAi && (
-                                <div className="flex items-center space-x-1.5 font-mono">
-                                  {m.status === 'SENDING' ? (
-                                    <span className="text-amber-300 animate-pulse" aria-label="Sending...">
-                                      Sending... ◌
-                                    </span>
-                                  ) : m.status === 'FAILED' ? (
-                                    <div className="flex items-center space-x-1">
-                                      <span className="text-rose-400 font-bold" aria-label="Failed">
-                                        ⚠ Failed
+                            {/* Footer Actions, Receipt Icons & Metadata */}
+                            <div className="flex items-center justify-between text-[10px] opacity-90 pt-1 border-t border-white/10 dark:border-slate-800/40 mt-1">
+                              <div className="flex items-center space-x-2">
+                                {m.isEdited && <span className="font-mono text-amber-400">(edited)</span>}
+                                
+                                {/* Status Indicators & Receipts */}
+                                {isSelf && !m.isDeleted && !m.isAi && (
+                                  <div className="flex items-center space-x-1.5 font-mono">
+                                    {m.status === 'SENDING' ? (
+                                      <span className="text-amber-300 animate-pulse" aria-label="Sending...">
+                                        Sending... ◌
                                       </span>
-                                      <button
-                                        type="button"
-                                        onClick={() => handleRetryMessage(m)}
-                                        className="underline text-amber-300 hover:text-white font-bold"
-                                        aria-label="Retry sending message"
-                                      >
-                                        Retry
-                                      </button>
-                                    </div>
-                                  ) : (
-                                    (() => {
-                                      const receipts = m.receipts || [];
-                                      const hasRead = receipts.some((r) => r.status === 'READ');
-                                      const hasDelivered = receipts.some((r) => r.status === 'DELIVERED');
-
-                                      if (hasRead) {
-                                        return (
-                                          <span className="text-emerald-300 font-bold" aria-label="Seen" title="Seen">
-                                            ✓✓ Seen
-                                          </span>
-                                        );
-                                      }
-                                      if (hasDelivered) {
-                                        return (
-                                          <span className="text-slate-300 font-bold" aria-label="Delivered" title="Delivered">
-                                            ✓✓ Delivered
-                                          </span>
-                                        );
-                                      }
-                                      return (
-                                        <span className="text-slate-300 font-bold" aria-label="Sent" title="Sent">
-                                          ✓ Sent
+                                    ) : m.status === 'FAILED' ? (
+                                      <div className="flex items-center space-x-1">
+                                        <span className="text-rose-400 font-bold" aria-label="Failed">
+                                          ⚠ Failed
                                         </span>
-                                      );
-                                    })()
+                                        <button
+                                          type="button"
+                                          onClick={() => handleRetryMessage(m)}
+                                          className="underline text-amber-300 hover:text-white font-bold"
+                                          aria-label="Retry sending message"
+                                        >
+                                          Retry
+                                        </button>
+                                      </div>
+                                    ) : (
+                                      (() => {
+                                        const receipts = m.receipts || [];
+                                        const hasRead = receipts.some((r) => r.status === 'READ');
+                                        const hasDelivered = receipts.some((r) => r.status === 'DELIVERED');
+
+                                        if (hasRead) {
+                                          return (
+                                            <span className="text-emerald-300 font-bold" aria-label="Seen" title="Seen">
+                                              ✓✓ Seen
+                                            </span>
+                                          );
+                                        }
+                                        if (hasDelivered) {
+                                          return (
+                                            <span className="text-slate-300 font-bold" aria-label="Delivered" title="Delivered">
+                                              ✓✓ Delivered
+                                            </span>
+                                          );
+                                        }
+                                        return (
+                                          <span className="text-slate-300 font-bold" aria-label="Sent" title="Sent">
+                                            ✓ Sent
+                                          </span>
+                                        );
+                                      })()
+                                    )}
+                                  </div>
+                                )}
+
+                                {/* Group Receipts Popover Trigger */}
+                                {activeChannel?.type === 'GROUP' && !m.isDeleted && !m.isAi && (
+                                  <button
+                                    type="button"
+                                    onClick={() => handleFetchReceiptSummary(m.id)}
+                                    className="text-[10px] text-indigo-200 hover:text-white underline font-medium"
+                                    title="View message receipts"
+                                  >
+                                    Seen info
+                                  </button>
+                                )}
+                              </div>
+
+                              {!m.isDeleted && !m.isAi && (
+                                <div className="flex items-center space-x-2 opacity-0 group-hover:opacity-100 transition">
+                                  <button
+                                    onClick={() => setReplyToMessage(m)}
+                                    className="hover:underline text-indigo-300"
+                                  >
+                                    Reply
+                                  </button>
+                                  {isSelf && (
+                                    <>
+                                      <button
+                                        onClick={() => {
+                                          setEditingMessageId(m.id);
+                                          setEditContent(m.content);
+                                        }}
+                                        className="hover:underline text-slate-300"
+                                      >
+                                        Edit
+                                      </button>
+                                      <button
+                                        onClick={() => handleDeleteMessage(m.id)}
+                                        className="hover:underline text-rose-400"
+                                      >
+                                        Delete
+                                      </button>
+                                    </>
                                   )}
                                 </div>
                               )}
-
-                              {/* Group Receipts Popover Trigger */}
-                              {activeChannel?.type === 'GROUP' && !m.isDeleted && !m.isAi && (
-                                <button
-                                  type="button"
-                                  onClick={() => handleFetchReceiptSummary(m.id)}
-                                  className="text-[10px] text-indigo-200 hover:text-white underline font-medium"
-                                  title="View message receipts"
-                                >
-                                  Seen info
-                                </button>
-                              )}
                             </div>
-
-                            {!m.isDeleted && !m.isAi && (
-                              <div className="flex items-center space-x-2 opacity-0 group-hover:opacity-100 transition">
-                                <button
-                                  onClick={() => setReplyToMessage(m)}
-                                  className="hover:underline text-indigo-300"
-                                >
-                                  Reply
-                                </button>
-                                {isSelf && (
-                                  <>
-                                    <button
-                                      onClick={() => {
-                                        setEditingMessageId(m.id);
-                                        setEditContent(m.content);
-                                      }}
-                                      className="hover:underline text-slate-300"
-                                    >
-                                      Edit
-                                    </button>
-                                    <button
-                                      onClick={() => handleDeleteMessage(m.id)}
-                                      className="hover:underline text-rose-400"
-                                    >
-                                      Delete
-                                    </button>
-                                  </>
-                                )}
-                              </div>
-                            )}
                           </div>
                         </div>
                       </div>
@@ -1113,7 +1217,7 @@ export default function CollabChatPage() {
 
               {/* Quoted Reply Banner */}
               {replyToMessage && (
-                <div className="p-2.5 bg-slate-100 dark:bg-slate-950 border border-slate-200 dark:border-slate-800 rounded-xl flex items-center justify-between text-xs text-slate-700 dark:text-slate-300 mb-2">
+                <div className="p-2.5 bg-slate-100 dark:bg-slate-950 border border-slate-200 dark:border-slate-800 rounded-xl flex items-center justify-between text-xs text-slate-700 dark:text-slate-300 mb-2 shrink-0">
                   <div className="flex items-center space-x-2 truncate">
                     <span className="font-bold text-indigo-400">Replying to {replyToMessage.sender.name || replyToMessage.sender.email}:</span>
                     <span className="truncate">{replyToMessage.content}</span>
@@ -1125,7 +1229,7 @@ export default function CollabChatPage() {
               )}
 
               {/* Multiline Message Input Composer */}
-              <form onSubmit={handleSendMessage} className="mt-3 flex items-start space-x-2" data-tour="collab-input-box">
+              <form onSubmit={handleSendMessage} className="mt-3 flex items-start space-x-2 shrink-0" data-tour="collab-input-box">
                 <textarea
                   rows={2}
                   placeholder="Type a message... (Press Enter to send, Shift+Enter for newline, use @ai for Gemini)"
@@ -1153,7 +1257,7 @@ export default function CollabChatPage() {
                 <button
                   type="submit"
                   disabled={!inputContent.trim()}
-                  className="px-5 py-2.5 bg-indigo-600 hover:bg-indigo-500 disabled:opacity-50 text-white font-semibold text-xs rounded-xl shadow-md transition"
+                  className="px-5 py-3 bg-indigo-600 hover:bg-indigo-500 disabled:opacity-50 text-white font-semibold text-xs rounded-xl shadow-md transition"
                 >
                   Send 🚀
                 </button>
@@ -1161,7 +1265,7 @@ export default function CollabChatPage() {
             </>
           ) : (
             <div className="flex-1 flex items-center justify-center text-center p-8 text-slate-400 text-xs">
-              Select a channel from the left sidebar to start chatting
+              Select a conversation from the left sidebar to start chatting
             </div>
           )}
         </div>
@@ -1179,26 +1283,26 @@ export default function CollabChatPage() {
             </div>
 
             <form onSubmit={handleCreateGroup} className="space-y-4">
-              <div className="space-y-1">
-                <label className="text-xs font-semibold text-slate-700 dark:text-slate-300">Group Name</label>
+              <div>
+                <label className="block text-xs font-semibold text-slate-700 dark:text-slate-300 mb-1">Group Title</label>
                 <input
                   type="text"
                   required
-                  placeholder="e.g. AI Roadmap Research Team"
+                  placeholder="e.g. Project Architecture Sync"
                   value={newGroupTitle}
                   onChange={(e) => setNewGroupTitle(e.target.value)}
-                  className="w-full p-2.5 bg-slate-100 dark:bg-slate-950 border border-slate-200 dark:border-slate-800 rounded-xl text-xs text-slate-900 dark:text-white"
+                  className="w-full bg-slate-100 dark:bg-slate-950 border border-slate-200 dark:border-slate-800 rounded-xl px-3.5 py-2 text-xs text-slate-900 dark:text-white focus:outline-none focus:border-indigo-500"
                 />
               </div>
 
-              <div className="space-y-1">
-                <label className="text-xs font-semibold text-slate-700 dark:text-slate-300">Description (Optional)</label>
-                <textarea
-                  rows={3}
-                  placeholder="Topic or objective of this group..."
+              <div>
+                <label className="block text-xs font-semibold text-slate-700 dark:text-slate-300 mb-1">Description (Optional)</label>
+                <input
+                  type="text"
+                  placeholder="e.g. Channel for architecture discussions"
                   value={newGroupDescription}
                   onChange={(e) => setNewGroupDescription(e.target.value)}
-                  className="w-full p-2.5 bg-slate-100 dark:bg-slate-950 border border-slate-200 dark:border-slate-800 rounded-xl text-xs text-slate-900 dark:text-white"
+                  className="w-full bg-slate-100 dark:bg-slate-950 border border-slate-200 dark:border-slate-800 rounded-xl px-3.5 py-2 text-xs text-slate-900 dark:text-white focus:outline-none focus:border-indigo-500"
                 />
               </div>
 
@@ -1212,7 +1316,8 @@ export default function CollabChatPage() {
                 </button>
                 <button
                   type="submit"
-                  className="px-5 py-2 bg-indigo-600 hover:bg-indigo-500 text-white font-semibold text-xs rounded-xl shadow-md transition"
+                  disabled={!newGroupTitle.trim()}
+                  className="px-5 py-2 bg-indigo-600 hover:bg-indigo-500 disabled:opacity-50 text-white font-semibold text-xs rounded-xl shadow-md transition"
                 >
                   Create Group
                 </button>
@@ -1222,10 +1327,58 @@ export default function CollabChatPage() {
         </div>
       )}
 
+      {/* User Search & 1-to-1 DM Modal */}
+      {showUserSearchModal && (
+        <div className="fixed inset-0 z-50 bg-slate-950/80 backdrop-blur-sm flex items-center justify-center p-4">
+          <div className="bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-2xl p-6 max-w-md w-full space-y-4 shadow-2xl">
+            <div className="flex items-center justify-between border-b border-slate-200 dark:border-slate-800 pb-3">
+              <h3 className="text-sm font-bold text-slate-900 dark:text-white">Start 1-to-1 Direct Chat</h3>
+              <button onClick={() => setShowUserSearchModal(false)} className="text-slate-400 hover:text-white text-xs">
+                ✕
+              </button>
+            </div>
+
+            <div>
+              <input
+                type="text"
+                placeholder="Search user by name or email..."
+                value={userSearchQuery}
+                onChange={(e) => setUserSearchQuery(e.target.value)}
+                className="w-full bg-slate-100 dark:bg-slate-950 border border-slate-200 dark:border-slate-800 rounded-xl px-3.5 py-2 text-xs text-slate-900 dark:text-white focus:outline-none focus:border-indigo-500"
+              />
+            </div>
+
+            <div className="max-h-60 overflow-y-auto space-y-1.5 pr-1">
+              {isSearchingUsers ? (
+                <div className="text-center py-6 text-xs text-slate-400 animate-pulse">Searching users...</div>
+              ) : userSearchQuery.trim().length < 2 ? (
+                <div className="text-center py-6 text-xs text-slate-400">Type at least 2 characters to search...</div>
+              ) : userSearchResults.length === 0 ? (
+                <div className="text-center py-6 text-xs text-slate-400">No users found</div>
+              ) : (
+                userSearchResults.map((u) => (
+                  <div
+                    key={u.id}
+                    onClick={() => handleStartDM(u)}
+                    className="p-3 rounded-xl bg-slate-50 dark:bg-slate-950 border border-slate-200 dark:border-slate-800 hover:border-indigo-500 transition cursor-pointer flex items-center justify-between"
+                  >
+                    <div>
+                      <p className="text-xs font-bold text-slate-900 dark:text-white">{u.name || u.email.split('@')[0]}</p>
+                      <p className="text-[11px] text-slate-400">{u.email}</p>
+                    </div>
+                    <span className="text-xs text-indigo-400 font-semibold">Start Chat →</span>
+                  </div>
+                ))
+              )}
+            </div>
+          </div>
+        </div>
+      )}
+
       {/* Share Asset Modal */}
       {showShareModal && (
         <div className="fixed inset-0 z-50 bg-slate-950/80 backdrop-blur-sm flex items-center justify-center p-4">
-          <div className="bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-2xl p-6 max-w-md w-full space-y-5 shadow-2xl">
+          <div className="bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-2xl p-6 max-w-md w-full space-y-4 shadow-2xl">
             <div className="flex items-center justify-between border-b border-slate-200 dark:border-slate-800 pb-3">
               <h3 className="text-sm font-bold text-slate-900 dark:text-white">Share Workspace Asset</h3>
               <button onClick={() => setShowShareModal(false)} className="text-slate-400 hover:text-white text-xs">
@@ -1234,29 +1387,29 @@ export default function CollabChatPage() {
             </div>
 
             <form onSubmit={handleShareAsset} className="space-y-4">
-              <div className="space-y-1">
-                <label className="text-xs font-semibold text-slate-700 dark:text-slate-300">Asset Type</label>
+              <div>
+                <label className="block text-xs font-semibold text-slate-700 dark:text-slate-300 mb-1">Asset Type</label>
                 <select
                   value={shareType}
-                  onChange={(e) => setShareType(e.target.value as any)}
-                  className="w-full p-2.5 bg-slate-100 dark:bg-slate-950 border border-slate-200 dark:border-slate-800 rounded-xl text-xs text-slate-900 dark:text-white"
+                  onChange={(e: any) => setShareType(e.target.value)}
+                  className="w-full bg-slate-100 dark:bg-slate-950 border border-slate-200 dark:border-slate-800 rounded-xl px-3.5 py-2 text-xs text-slate-900 dark:text-white focus:outline-none focus:border-indigo-500"
                 >
                   <option value="roadmap">🚀 AI Roadmap</option>
                   <option value="entity">🕸️ Knowledge Graph Entity</option>
-                  <option value="document">📄 Uploaded Document</option>
-                  <option value="question">🎓 Study Mode Question</option>
+                  <option value="document">📄 Document</option>
+                  <option value="question">❓ Study Question</option>
                 </select>
               </div>
 
-              <div className="space-y-1">
-                <label className="text-xs font-semibold text-slate-700 dark:text-slate-300">Asset ID / Reference</label>
+              <div>
+                <label className="block text-xs font-semibold text-slate-700 dark:text-slate-300 mb-1">Target Asset ID</label>
                 <input
                   type="text"
                   required
-                  placeholder="Enter ID or title reference..."
+                  placeholder="Enter Asset UUID..."
                   value={shareTargetId}
                   onChange={(e) => setShareTargetId(e.target.value)}
-                  className="w-full p-2.5 bg-slate-100 dark:bg-slate-950 border border-slate-200 dark:border-slate-800 rounded-xl text-xs text-slate-900 dark:text-white"
+                  className="w-full bg-slate-100 dark:bg-slate-950 border border-slate-200 dark:border-slate-800 rounded-xl px-3.5 py-2 text-xs text-slate-900 dark:text-white focus:outline-none focus:border-indigo-500"
                 />
               </div>
 
@@ -1270,9 +1423,10 @@ export default function CollabChatPage() {
                 </button>
                 <button
                   type="submit"
-                  className="px-5 py-2 bg-indigo-600 hover:bg-indigo-500 text-white font-semibold text-xs rounded-xl shadow-md transition"
+                  disabled={!shareTargetId.trim()}
+                  className="px-5 py-2 bg-indigo-600 hover:bg-indigo-500 disabled:opacity-50 text-white font-semibold text-xs rounded-xl shadow-md transition"
                 >
-                  Share Asset
+                  Share to Chat
                 </button>
               </div>
             </form>
@@ -1280,84 +1434,24 @@ export default function CollabChatPage() {
         </div>
       )}
 
-      {/* User Search / New Chat DM Modal */}
-      {showUserSearchModal && (
-        <div className="fixed inset-0 z-50 bg-slate-950/80 backdrop-blur-sm flex items-center justify-center p-4">
-          <div className="bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-2xl p-6 max-w-md w-full space-y-4 shadow-2xl">
-            <div className="flex items-center justify-between border-b border-slate-200 dark:border-slate-800 pb-3">
-              <h3 className="text-sm font-bold text-slate-900 dark:text-white">Start New Conversation</h3>
-              <button onClick={() => setShowUserSearchModal(false)} className="text-slate-400 hover:text-white text-xs">
-                ✕
-              </button>
-            </div>
-
-            <div className="space-y-3">
-              <input
-                type="text"
-                autoFocus
-                placeholder="Search users by name or email..."
-                value={userSearchQuery}
-                onChange={(e) => setUserSearchQuery(e.target.value)}
-                className="w-full p-2.5 bg-slate-100 dark:bg-slate-950 border border-slate-200 dark:border-slate-800 rounded-xl text-xs text-slate-900 dark:text-white focus:outline-none focus:border-indigo-500"
-                aria-label="Search users"
-              />
-
-              <div className="max-h-60 overflow-y-auto space-y-1.5 pr-1">
-                {isSearchingUsers ? (
-                  <div className="text-center py-6 text-xs text-slate-400 animate-pulse">Searching users...</div>
-                ) : userSearchQuery.trim().length < 2 ? (
-                  <div className="text-center py-6 text-xs text-slate-400">Type at least 2 characters to search...</div>
-                ) : userSearchResults.length === 0 ? (
-                  <div className="text-center py-6 text-xs text-slate-400">No users found matching &quot;{userSearchQuery}&quot;</div>
-                ) : (
-                  userSearchResults.map((u) => (
-                    <div
-                      key={u.id}
-                      onClick={() => handleStartDM(u)}
-                      className="p-2.5 rounded-xl border border-slate-200 dark:border-slate-800 bg-slate-50 dark:bg-slate-950 hover:border-indigo-500 transition cursor-pointer flex items-center justify-between"
-                    >
-                      <div className="flex items-center space-x-3">
-                        <div className="w-8 h-8 rounded-lg bg-indigo-600 text-white text-xs font-bold flex items-center justify-center">
-                          {u.name ? u.name[0]?.toUpperCase() : u.email[0]?.toUpperCase()}
-                        </div>
-                        <div>
-                          <p className="text-xs font-bold text-slate-900 dark:text-white">{u.name || u.email.split('@')[0]}</p>
-                          <p className="text-[11px] text-slate-400">{u.email}</p>
-                        </div>
-                      </div>
-                      <span className="text-xs text-indigo-500 font-semibold">Start DM →</span>
-                    </div>
-                  ))
-                )}
-              </div>
-            </div>
-          </div>
-        </div>
-      )}
-
-      {/* Add Members to Group Modal */}
+      {/* Add Members Modal */}
       {showAddMembersModal && (
         <div className="fixed inset-0 z-50 bg-slate-950/80 backdrop-blur-sm flex items-center justify-center p-4">
           <div className="bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-2xl p-6 max-w-md w-full space-y-4 shadow-2xl">
             <div className="flex items-center justify-between border-b border-slate-200 dark:border-slate-800 pb-3">
-              <div>
-                <h3 className="text-sm font-bold text-slate-900 dark:text-white">Add Members to Group</h3>
-                <p className="text-[11px] text-slate-400">Selected: {selectedMemberIds.length}</p>
-              </div>
+              <h3 className="text-sm font-bold text-slate-900 dark:text-white">Add Members to Group</h3>
               <button onClick={() => setShowAddMembersModal(false)} className="text-slate-400 hover:text-white text-xs">
                 ✕
               </button>
             </div>
 
-            <form onSubmit={handleAddMembersSubmit} className="space-y-4">
+            <form onSubmit={handleAddMembersSubmit} className="space-y-3">
               <input
                 type="text"
-                autoFocus
-                placeholder="Search users to add..."
+                placeholder="Search user to add..."
                 value={addMembersQuery}
                 onChange={(e) => setAddMembersQuery(e.target.value)}
-                className="w-full p-2.5 bg-slate-100 dark:bg-slate-950 border border-slate-200 dark:border-slate-800 rounded-xl text-xs text-slate-900 dark:text-white focus:outline-none focus:border-indigo-500"
-                aria-label="Search users to add to group"
+                className="w-full bg-slate-100 dark:bg-slate-950 border border-slate-200 dark:border-slate-800 rounded-xl px-3.5 py-2 text-xs text-slate-900 dark:text-white focus:outline-none focus:border-indigo-500"
               />
 
               <div className="max-h-60 overflow-y-auto space-y-1.5 pr-1">
@@ -1368,7 +1462,7 @@ export default function CollabChatPage() {
                 ) : (
                   addMembersSearchResults.map((u) => {
                     const isSelected = selectedMemberIds.includes(u.id);
-                    const isAlreadyInGroup = activeChannel?.members.some((m) => m.userId === u.id);
+                    const isAlreadyInGroup = activeChannel?.members?.some((m) => m.userId === u.id);
 
                     return (
                       <div
@@ -1390,8 +1484,8 @@ export default function CollabChatPage() {
                         <div className="flex items-center space-x-3">
                           <input
                             type="checkbox"
-                            checked={isSelected || isAlreadyInGroup}
-                            disabled={isAlreadyInGroup}
+                            checked={isSelected || Boolean(isAlreadyInGroup)}
+                            disabled={Boolean(isAlreadyInGroup)}
                             onChange={() => {}}
                             className="rounded border-slate-300 text-indigo-600 focus:ring-indigo-500"
                           />
@@ -1483,7 +1577,7 @@ export default function CollabChatPage() {
                             </span>
                           )}
                         </div>
-                        <p className="text-[11px] text-slate-400">{m.user.email}</p>
+                        <p className="text-[11px] text-slate-400">{uEmail}</p>
                       </div>
                     </div>
 
@@ -1607,4 +1701,3 @@ export default function CollabChatPage() {
     </div>
   );
 }
-

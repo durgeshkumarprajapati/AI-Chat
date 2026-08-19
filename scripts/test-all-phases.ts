@@ -45,7 +45,8 @@ const PHASES: PhaseConfig[] = [
   { phase: 42, name: 'Production Gemini Integration & Multi-Provider LLM Gateway 2.0', command: 'npm run test:phase42' },
   { phase: 43, name: 'Ultra-Low-Latency AI City Explorer (Gemini Web Grounding + Parallel Processing)', command: 'npm run test:phase43' },
   { phase: 44, name: 'Production City Explorer Provider Isolation & Zero-Stall Reliability', command: 'npm run test:phase44' },
-  { phase: 45, name: 'Production Contextual Product Tour Engine & AI Knowledge Graph Guided Tour', command: 'npm run test:phase45' }
+  { phase: 45, name: 'Production Contextual Product Tour Engine & AI Knowledge Graph Guided Tour', command: 'npm run test:phase45' },
+  { phase: 46, name: 'Production Real-Time Collaboration & AI Discussion Platform', command: 'npm run test:phase46' }
 ];
 
 async function runAllPhases() {

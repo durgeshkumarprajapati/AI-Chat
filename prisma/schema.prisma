@@ -100,6 +100,10 @@ model User {
   knowledgeGraphJobs     KnowledgeGraphJob[]
   knowledgeGraphVersions KnowledgeGraphVersion[]
   tourProgress           UserTourProgress[]
+  createdCollabChannels  CollabChannel[]        @relation("CreatedCollabChannels")
+  collabMemberships      CollabChannelMember[]
+  collabMessagesSent     CollabMessage[]
+  collabReceipts         CollabMessageReceipt[]
 
   @@map("users")
 }
@@ -1983,6 +1987,107 @@ model UserTourProgress {
   @@index([userId])
   @@map("user_tour_progress")
 }
+
+enum CollabChannelType {
+  DIRECT
+  GROUP
+}
+
+enum CollabMemberRole {
+  OWNER
+  ADMIN
+  MEMBER
+}
+
+enum CollabReceiptStatus {
+  DELIVERED
+  READ
+}
+
+model CollabChannel {
+  id          String            @id @default(uuid())
+  name        String?
+  description String?
+  type        CollabChannelType @default(DIRECT)
+  avatarUrl   String?           @map("avatar_url")
+  createdById String            @map("created_by_id")
+  createdAt   DateTime          @default(now()) @map("created_at")
+  updatedAt   DateTime          @updatedAt @map("updated_at")
+
+  createdBy User                  @relation("CreatedCollabChannels", fields: [createdById], references: [id], onDelete: Cascade)
+  members   CollabChannelMember[]
+  messages  CollabMessage[]
+
+  @@index([createdById])
+  @@map("collab_channels")
+}
+
+model CollabChannelMember {
+  id                String           @id @default(uuid())
+  channelId         String           @map("channel_id")
+  userId            String           @map("user_id")
+  role              CollabMemberRole @default(MEMBER)
+  lastReadAt        DateTime?        @map("last_read_at")
+  lastReadMessageId String?          @map("last_read_message_id")
+  joinedAt          DateTime         @default(now()) @map("joined_at")
+
+  channel CollabChannel @relation(fields: [channelId], references: [id], onDelete: Cascade)
+  user    User          @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@unique([channelId, userId])
+  @@index([channelId])
+  @@index([userId])
+  @@map("collab_channel_members")
+}
+
+model CollabMessage {
+  id                    String   @id @default(uuid())
+  channelId             String   @map("channel_id")
+  senderId              String   @map("sender_id")
+  content               String
+  replyToId             String?  @map("reply_to_id")
+  isEdited              Boolean  @default(false) @map("is_edited")
+  isDeleted             Boolean  @default(false) @map("is_deleted")
+  isAi                  Boolean  @default(false) @map("is_ai")
+  aiModel               String?  @map("ai_model")
+  sharedRoadmapId       String?  @map("shared_roadmap_id")
+  sharedRoadmapStepId   String?  @map("shared_roadmap_step_id")
+  sharedEntityId        String?  @map("shared_entity_id")
+  sharedDocumentId      String?  @map("shared_document_id")
+  sharedStudyQuestionId String?  @map("shared_study_question_id")
+  metadata              Json?
+  createdAt             DateTime @default(now()) @map("created_at")
+  updatedAt             DateTime @updatedAt @map("updated_at")
+
+  channel  CollabChannel          @relation(fields: [channelId], references: [id], onDelete: Cascade)
+  sender   User                   @relation(fields: [senderId], references: [id], onDelete: Cascade)
+  replyTo  CollabMessage?         @relation("ThreadReplies", fields: [replyToId], references: [id], onDelete: SetNull)
+  replies  CollabMessage[]        @relation("ThreadReplies")
+  receipts CollabMessageReceipt[]
+
+  @@index([channelId])
+  @@index([senderId])
+  @@index([replyToId])
+  @@map("collab_messages")
+}
+
+model CollabMessageReceipt {
+  id          String              @id @default(uuid())
+  messageId   String              @map("message_id")
+  userId      String              @map("user_id")
+  status      CollabReceiptStatus @default(DELIVERED)
+  deliveredAt DateTime?           @map("delivered_at")
+  readAt      DateTime?           @map("read_at")
+
+  message CollabMessage @relation(fields: [messageId], references: [id], onDelete: Cascade)
+  user    User          @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@unique([messageId, userId])
+  @@index([messageId])
+  @@index([userId])
+  @@map("collab_message_receipts")
+}
+
 
 
 

@@ -178,7 +178,7 @@ export async function GET(req: NextRequest) {
                   });
                 }
               },
-              { signal: req.signal, timeoutMs: env.server?.CITY_EXPLORER_SOURCE_TIMEOUT_MS || 2500 }
+              { signal: req.signal, timeoutMs: env.server?.CITY_EXPLORER_GEMINI_TIMEOUT_MS || 8000 }
             );
           }
         }
@@ -210,6 +210,16 @@ export async function GET(req: NextRequest) {
           completedCount,
           totalCount
         });
+      } finally {
+        clearTimeout(globalTimer);
+        if (!isClosed) {
+          closeStream({
+            type: 'complete',
+            status: completedCount === totalCount ? 'complete' : completedCount > 0 ? 'partial' : 'failed',
+            completedCount,
+            totalCount
+          });
+        }
       }
     }
   });

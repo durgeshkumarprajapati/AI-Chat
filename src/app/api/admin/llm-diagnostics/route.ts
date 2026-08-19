@@ -46,10 +46,16 @@ export async function GET(req: NextRequest) {
       },
       cityExplorer: {
         primaryProvider: env.server?.CITY_EXPLORER_PRIMARY_PROVIDER || 'gemini',
+        cityExplorerPrimaryProvider: env.server?.CITY_EXPLORER_PRIMARY_PROVIDER || 'gemini',
         fallbackProvider: env.server?.CITY_EXPLORER_FALLBACK_PROVIDER || 'web_search',
+        cityExplorerFallbackProvider: env.server?.CITY_EXPLORER_FALLBACK_PROVIDER || 'web_search',
         allowOllamaFallback: env.server?.CITY_EXPLORER_ALLOW_OLLAMA_FALLBACK ?? false,
-        cacheVersion: env.server?.CITY_EXPLORER_CACHE_VERSION || 'v4',
-        promptVersion: env.server?.CITY_EXPLORER_PROMPT_VERSION || 'v4'
+        ollamaAllowed: env.server?.CITY_EXPLORER_ALLOW_OLLAMA_FALLBACK ?? false,
+        ollamaAllowedForCityExplorer: env.server?.CITY_EXPLORER_ALLOW_OLLAMA_FALLBACK ?? false,
+        geminiHealth: health.providers.gemini?.status === 'healthy',
+        webSearchHealth: { status: 'healthy', available: true },
+        cacheVersion: process.env.CITY_EXPLORER_CACHE_VERSION || env.server?.CITY_EXPLORER_CACHE_VERSION || 'v4',
+        promptVersion: process.env.CITY_EXPLORER_PROMPT_VERSION || env.server?.CITY_EXPLORER_PROMPT_VERSION || 'v4'
       },
       modelsConfigured: {
         geminiFast: env.server?.GEMINI_FAST_MODEL || 'gemini-2.5-flash',

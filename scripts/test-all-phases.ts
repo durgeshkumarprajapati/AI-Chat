@@ -43,7 +43,8 @@ const PHASES: PhaseConfig[] = [
   { phase: 40, name: 'Production Jest Testing Infrastructure & Enterprise Test Architecture', command: 'npm run test:phase40' },
   { phase: 41, name: 'AI Knowledge Graph & Personal Knowledge Engine', command: 'npm run test:phase41' },
   { phase: 42, name: 'Production Gemini Integration & Multi-Provider LLM Gateway 2.0', command: 'npm run test:phase42' },
-  { phase: 43, name: 'Ultra-Low-Latency AI City Explorer (Gemini Web Grounding + Parallel Processing)', command: 'npm run test:phase43' }
+  { phase: 43, name: 'Ultra-Low-Latency AI City Explorer (Gemini Web Grounding + Parallel Processing)', command: 'npm run test:phase43' },
+  { phase: 44, name: 'Production City Explorer Provider Isolation & Zero-Stall Reliability', command: 'npm run test:phase44' }
 ];
 
 async function runAllPhases() {

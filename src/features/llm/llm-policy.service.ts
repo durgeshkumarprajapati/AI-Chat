@@ -4,13 +4,29 @@ import { llmCircuitBreakerService } from './llm-circuit-breaker.service';
 
 export class LLMPolicyService {
   /**
+   * Hard runtime guard ensuring Ollama is never used for CITY_EXPLORER when disallowed.
+   */
+  public assertCityExplorerProviderAllowed(providerName: string, request: LLMRequest): void {
+    if (request.feature === 'CITY_EXPLORER') {
+      const allowOllamaEnv = process.env.CITY_EXPLORER_ALLOW_OLLAMA_FALLBACK;
+      const allowOllama = allowOllamaEnv !== undefined ? allowOllamaEnv === 'true' : (env.server?.CITY_EXPLORER_ALLOW_OLLAMA_FALLBACK ?? false);
+      if (providerName.toLowerCase() === 'ollama' && !allowOllama && !request.localOnly) {
+        throw new Error(
+          `[LLMPolicyService] Architecture Violation: Ollama provider is forbidden for CITY_EXPLORER when CITY_EXPLORER_ALLOW_OLLAMA_FALLBACK=false.`
+        );
+      }
+    }
+  }
+
+  /**
    * Resolves provider and model routing decision according to feature policy, request complexity, and circuit state.
    */
   public selectRoute(request: LLMRequest, complexity: ComplexityLevel): RoutingDecision {
     const isGeminiEnabled =
       (env.server?.GEMINI_ENABLED ?? (process.env.GEMINI_ENABLED !== 'false')) &&
       !!(env.server?.GEMINI_API_KEY || process.env.GEMINI_API_KEY || process.env.NODE_ENV === 'test');
-    const isKimiEnabled = (env.server?.LLM_KIMI_ENABLED ?? (process.env.LLM_KIMI_ENABLED === 'true')) &&
+    const isKimiEnabled =
+      (env.server?.LLM_KIMI_ENABLED ?? (process.env.LLM_KIMI_ENABLED === 'true')) &&
       !!(env.server?.LLM_KIMI_API_KEY || process.env.LLM_KIMI_API_KEY);
 
     const isGeminiAvailable = isGeminiEnabled && llmCircuitBreakerService.isAvailable('gemini');
@@ -23,8 +39,42 @@ export class LLMPolicyService {
     const ollamaChatModel = env.server?.OLLAMA_CHAT_MODEL || 'llama3.2';
     const kimiModel = env.server?.LLM_KIMI_DEFAULT_MODEL || 'kimi-k3';
 
-    // 1. Explicit Overrides & Local-Only Constraints (ZERO CLOUD LEAKAGE)
+    const feature: FeatureScope = request.feature || 'GENERAL';
+
+    // 1. Explicit Feature Policy for CITY_EXPLORER (Highest Precedence)
+    if (feature === 'CITY_EXPLORER') {
+      if (isGeminiAvailable) {
+        return {
+          providerName: 'gemini',
+          modelName: request.modelOverride || geminiFastModel,
+          complexity,
+          reason: 'Explicit feature policy for CITY_EXPLORER routed to Gemini Fast'
+        };
+      }
+
+      const allowOllama = env.server?.CITY_EXPLORER_ALLOW_OLLAMA_FALLBACK ?? (process.env.CITY_EXPLORER_ALLOW_OLLAMA_FALLBACK === 'true');
+      if (!allowOllama && !request.localOnly) {
+        if (isKimiAvailable) {
+          return {
+            providerName: 'kimi',
+            modelName: kimiModel,
+            complexity,
+            reason: 'CITY_EXPLORER fallback to Kimi (Ollama fallback disabled)'
+          };
+        }
+        // If Gemini and Kimi are unavailable, return Gemini decision so gateway falls back to WebSearch, NOT Ollama
+        return {
+          providerName: 'gemini',
+          modelName: request.modelOverride || geminiFastModel,
+          complexity,
+          reason: 'Explicit feature policy for CITY_EXPLORER requiring Gemini'
+        };
+      }
+    }
+
+    // 2. Explicit Overrides & Local-Only Constraints (ZERO CLOUD LEAKAGE)
     if (request.localOnly || (!isGeminiAvailable && !isKimiAvailable && isOllamaAvailable)) {
+      this.assertCityExplorerProviderAllowed('ollama', request);
       return {
         providerName: 'ollama',
         modelName: request.modelOverride || (complexity === 'LOW' ? ollamaFastModel : ollamaChatModel),
@@ -35,6 +85,7 @@ export class LLMPolicyService {
 
     if (request.providerOverride) {
       const pName = request.providerOverride.toLowerCase();
+      this.assertCityExplorerProviderAllowed(pName, request);
       if (pName === 'gemini' && isGeminiAvailable) {
         return {
           providerName: 'gemini',
@@ -57,33 +108,6 @@ export class LLMPolicyService {
         complexity,
         reason: 'Explicit provider override to Ollama'
       };
-    }
-
-    const feature: FeatureScope = request.feature || 'GENERAL';
-
-    // 2. Explicit Feature Policy: CITY_EXPLORER (Gemini Fast Model Precedence)
-    if (feature === 'CITY_EXPLORER') {
-      if (isGeminiAvailable) {
-        return {
-          providerName: 'gemini',
-          modelName: request.modelOverride || geminiFastModel,
-          complexity,
-          reason: 'Explicit feature policy for CITY_EXPLORER routed to Gemini Fast'
-        };
-      }
-
-      const allowOllama = env.server?.CITY_EXPLORER_ALLOW_OLLAMA_FALLBACK ?? false;
-      if (!allowOllama && !request.localOnly) {
-        // Disallow silent fallback to Ollama for City Explorer queries when disallowed
-        if (isKimiAvailable) {
-          return {
-            providerName: 'kimi',
-            modelName: kimiModel,
-            complexity,
-            reason: 'CITY_EXPLORER fallback to Kimi (Ollama fallback disabled)'
-          };
-        }
-      }
     }
 
     // 3. High Reasoning & Complex Workloads (Gemini Reasoning or Kimi)
@@ -126,6 +150,7 @@ export class LLMPolicyService {
     }
 
     // 5. Fallback Default (Ollama)
+    this.assertCityExplorerProviderAllowed('ollama', request);
     return {
       providerName: 'ollama',
       modelName: complexity === 'LOW' ? ollamaFastModel : ollamaChatModel,

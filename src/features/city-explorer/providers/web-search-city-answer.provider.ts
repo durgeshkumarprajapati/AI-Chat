@@ -1,16 +1,18 @@
 import { CityExplorerAnswerProvider } from './city-explorer-answer-provider.interface';
 import { PredefinedQuestionItem, CityInfo, CityExplorerAnswerResult, CitationItem } from '../city-explorer.types';
 import { webSearchService, WebSearchService } from '@/features/rag/web-search/web-search.service';
-import { getLLMProvider } from '@/features/rag/llm/llm.provider.factory';
+import { llmGateway, LLMGateway } from '@/features/llm/llm-gateway.service';
 import { cityExplorerTelemetryService } from '../city-explorer.telemetry.service';
 import { env } from '@/config/env';
 
 export class WebSearchCityAnswerProvider implements CityExplorerAnswerProvider {
   public readonly name = 'WEB_SEARCH';
   private webSearch: WebSearchService;
+  private gateway: LLMGateway;
 
-  constructor(webSearch?: WebSearchService) {
+  constructor(webSearch?: WebSearchService, gateway?: LLMGateway) {
     this.webSearch = webSearch || webSearchService;
+    this.gateway = gateway || llmGateway;
   }
 
   public supports(questionItem: PredefinedQuestionItem): boolean {
@@ -21,7 +23,7 @@ export class WebSearchCityAnswerProvider implements CityExplorerAnswerProvider {
     userId: string,
     city: CityInfo,
     questionItem: PredefinedQuestionItem,
-    _signal?: AbortSignal
+    signal?: AbortSignal
   ): Promise<CityExplorerAnswerResult> {
     const startTime = Date.now();
     const cityStr = city.name.trim();
@@ -93,13 +95,23 @@ ${contextLines.join('\n\n')}
 
 Instruction: Synthesize a concise, well-structured, grounded answer (2-4 sentences) answering the user question specifically for ${cityStr} using ONLY the provided web evidence. Do not include unverified claims.`;
 
-      const llm = getLLMProvider();
-      const answerRaw = await llm.generateAnswer({
-        question: prompt,
-        context: 'You are an authoritative City Knowledge Explorer assistant.'
-      });
-
-      const answer = answerRaw ? answerRaw.trim() : 'NO_GROUNDED_CITY_ANSWER';
+      let answer = 'NO_GROUNDED_CITY_ANSWER';
+      try {
+        const response = await this.gateway.generate({
+          prompt,
+          systemPrompt: 'You are an authoritative City Knowledge Explorer assistant. Synthesize grounded web answers concisely (2-4 sentences). Do not invent facts.',
+          feature: 'CITY_EXPLORER',
+          providerOverride: 'gemini',
+          userId,
+          signal,
+          timeoutMs: env.server?.CITY_EXPLORER_WEBSEARCH_TIMEOUT_MS || 5000
+        });
+        if (response.text && response.text.trim()) {
+          answer = response.text.trim();
+        }
+      } catch (synthErr: any) {
+        console.warn(`[WebSearchCityAnswerProvider] Gemini evidence synthesis failed:`, synthErr?.message || String(synthErr));
+      }
 
       cityExplorerTelemetryService.logEvent('city_explorer.answer.generated', cityStr, questionItem.id, userId, {
         provider: this.name,

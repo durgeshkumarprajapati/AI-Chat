@@ -20,6 +20,7 @@ export interface CityExplorerTelemetryEvent {
     | 'city_explorer.stream.partial'
     | 'city_explorer.stream.completed'
     | 'city_explorer.stream.timeout'
+    | 'city_explorer.architecture_violation'
     | 'city_explorer.prefetch.cancelled';
   userId?: string;
   city: string;

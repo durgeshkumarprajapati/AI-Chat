@@ -10,6 +10,17 @@ export class LLMFallbackService {
     this.registry = registry || llmModelRegistry;
   }
 
+  private checkCityExplorerOllamaForbidden(request: LLMRequest, candidateProviderName: string): void {
+    if (request.feature === 'CITY_EXPLORER') {
+      const allowOllama = process.env.CITY_EXPLORER_ALLOW_OLLAMA_FALLBACK === 'true';
+      if (candidateProviderName.toLowerCase() === 'ollama' && !allowOllama && !request.localOnly) {
+        throw new Error(
+          `[LLMFallbackService] Architecture Violation Guard: Ollama fallback is forbidden for CITY_EXPLORER when CITY_EXPLORER_ALLOW_OLLAMA_FALLBACK=false.`
+        );
+      }
+    }
+  }
+
   /**
    * Executes LLM generate call with circuit breaker reporting and fallback if primary provider fails.
    */
@@ -29,22 +40,18 @@ export class LLMFallbackService {
       llmCircuitBreakerService.recordFailure(primaryProvider.name, err);
 
       if (primaryProvider.name === 'ollama' || request.localOnly) {
-        throw err; // Cannot fall back to cloud if localOnly or if primary was already Ollama
+        throw err;
       }
 
       // Check if Ollama fallback is disallowed for CITY_EXPLORER
-      const isCityExplorer = request.feature === 'CITY_EXPLORER';
-      const allowOllama = process.env.CITY_EXPLORER_ALLOW_OLLAMA_FALLBACK === 'true';
-      if (isCityExplorer && !allowOllama) {
-        throw err; // Do not silently route Gemini city explorer requests to Ollama
-      }
+      this.checkCityExplorerOllamaForbidden(request, 'ollama');
 
       let fallbackProvider = this.registry.getProvider('ollama');
 
       // If Gemini Reasoning failed, try Kimi if available and configured before Ollama
       if (primaryProvider.name === 'gemini') {
         const kimi = this.registry.getProvider('kimi');
-        const isKimiConfigured = !!(process.env.LLM_KIMI_API_KEY);
+        const isKimiConfigured = !!process.env.LLM_KIMI_API_KEY;
         if (kimi && isKimiConfigured && llmCircuitBreakerService.isAvailable('kimi')) {
           fallbackProvider = kimi;
         }
@@ -82,11 +89,13 @@ export class LLMFallbackService {
       llmCircuitBreakerService.recordSuccess(primaryProvider.name);
     } catch (err) {
       console.warn(`[LLMFallbackService] Primary stream provider "${primaryProvider.name}" failed:`, err);
-      llmCircuitBreakerService.recordFailure(primaryProvider.name);
+      llmCircuitBreakerService.recordFailure(primaryProvider.name, err);
 
       if (primaryProvider.name === 'ollama' || request.localOnly) {
         throw err;
       }
+
+      this.checkCityExplorerOllamaForbidden(request, 'ollama');
 
       let fallbackProvider = this.registry.getProvider('ollama');
       if (primaryProvider.name === 'gemini') {
@@ -121,11 +130,13 @@ export class LLMFallbackService {
       return { data, usedFallback: false };
     } catch (err) {
       console.warn(`[LLMFallbackService] Structured primary provider "${primaryProvider.name}" failed:`, err);
-      llmCircuitBreakerService.recordFailure(primaryProvider.name);
+      llmCircuitBreakerService.recordFailure(primaryProvider.name, err);
 
       if (primaryProvider.name === 'ollama' || request.localOnly) {
         throw err;
       }
+
+      this.checkCityExplorerOllamaForbidden(request, 'ollama');
 
       const fallbackProvider = this.registry.getProvider('ollama');
       if (!fallbackProvider) {

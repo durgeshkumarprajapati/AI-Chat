@@ -53,6 +53,8 @@
     "test:phase41": "jest tests/phase41-knowledge-graph.test.ts --forceExit",
     "test:phase42": "jest tests/phase42-gemini-integration.test.ts --forceExit",
     "test:phase43": "jest tests/phase43-city-explorer-performance.test.ts --forceExit",
+    "test:phase44": "jest tests/phase44-city-explorer-provider-isolation.test.ts --forceExit",
+    "benchmark:city-explorer-provider-routing": "tsx scripts/benchmark-city-explorer-provider-routing.ts",
     "test": "jest --forceExit",
     "test:watch": "jest --watch",
     "test:unit": "jest tests/unit --forceExit",

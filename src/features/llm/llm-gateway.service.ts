@@ -60,6 +60,15 @@ export class LLMGateway {
     // 2. Intelligent Model Routing
     const { provider, decision } = this.router.resolveRoute(req);
 
+    if (req.feature === 'CITY_EXPLORER' && decision.providerName === 'ollama') {
+      const allowOllama = process.env.CITY_EXPLORER_ALLOW_OLLAMA_FALLBACK === 'true';
+      if (!allowOllama && !req.localOnly) {
+        throw new Error(
+          `[LLMGateway] Architecture Violation: Ollama provider is forbidden for CITY_EXPLORER when CITY_EXPLORER_ALLOW_OLLAMA_FALLBACK=false.`
+        );
+      }
+    }
+
     // 3. Cache Lookup
     const cachedRes = await this.cache.getCachedResponse(req, decision.providerName, decision.modelName);
     if (cachedRes) {

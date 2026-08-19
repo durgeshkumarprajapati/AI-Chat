@@ -14,7 +14,8 @@ export default function UserDashboardPage() {
     weather,
     locationStatus,
     updateCity,
-    requestGeolocation
+    requestGeolocation,
+    logout
   } = useWorkspace();
 
   const [stats, setStats] = useState<{ docCount: number; convCount: number; kbCount: number } | null>(null);
@@ -62,13 +63,64 @@ export default function UserDashboardPage() {
     <div className="min-h-screen bg-slate-50 dark:bg-slate-950 text-slate-900 dark:text-slate-100 p-4 sm:p-6 lg:p-8 transition-colors">
       <div className="w-full max-w-[1600px] mx-auto space-y-8">
         {/* Welcome Header */}
-        <div>
-          <h1 className="text-2xl font-bold bg-gradient-to-r from-white to-indigo-300 bg-clip-text text-transparent">
-            User Workspace Dashboard
-          </h1>
-          <p className="text-xs text-slate-400 mt-1">
-            Overview of your active documents, intelligent chats, and custom knowledge collections.
-          </p>
+        <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 border-b border-slate-200 dark:border-slate-800 pb-6">
+          <div>
+            <h1 className="text-2xl font-bold bg-gradient-to-r from-slate-900 via-indigo-800 to-indigo-600 dark:from-white dark:to-indigo-300 bg-clip-text text-transparent">
+              User Workspace Dashboard
+            </h1>
+            <p className="text-xs text-slate-600 dark:text-slate-400 mt-1">
+              Overview of your active documents, intelligent chats, and custom knowledge collections.
+            </p>
+          </div>
+
+          {/* User Auth Profile / Login & Logout Bar */}
+          <div className="flex items-center space-x-3">
+            {currentUser ? (
+              <div className="flex items-center space-x-3 bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 p-2 px-3 rounded-2xl shadow-sm">
+                <div className="w-8 h-8 rounded-xl bg-gradient-to-tr from-indigo-600 to-purple-600 text-white font-bold flex items-center justify-center text-xs shadow-md">
+                  {currentUser.name ? currentUser.name.slice(0, 2).toUpperCase() : 'U'}
+                </div>
+                <div className="flex flex-col">
+                  <div className="flex items-center space-x-1.5">
+                    <span className="text-xs font-bold text-slate-900 dark:text-white max-w-[120px] truncate">{currentUser.name}</span>
+                    <span className="text-[9px] px-1.5 py-0.2 rounded bg-indigo-100 dark:bg-indigo-950 text-indigo-700 dark:text-indigo-300 font-mono font-bold border border-indigo-200 dark:border-indigo-800 uppercase">
+                      {currentUser.role}
+                    </span>
+                  </div>
+                  <span className="text-[10px] text-slate-500 dark:text-slate-400 max-w-[140px] truncate">{currentUser.email}</span>
+                </div>
+                <div className="h-6 w-px bg-slate-200 dark:bg-slate-800 mx-1" />
+                <Link
+                  href="/account"
+                  className="px-2.5 py-1.5 rounded-xl text-xs font-medium text-slate-700 dark:text-slate-300 hover:bg-slate-100 dark:hover:bg-slate-800 transition"
+                  title="Account Settings"
+                >
+                  👤 Profile
+                </Link>
+                <button
+                  onClick={() => logout()}
+                  className="px-3 py-1.5 rounded-xl text-xs font-semibold text-rose-600 dark:text-rose-400 bg-rose-50 dark:bg-rose-950/40 hover:bg-rose-100 dark:hover:bg-rose-900/60 border border-rose-200 dark:border-rose-800/60 transition"
+                >
+                  🚪 Log Out
+                </button>
+              </div>
+            ) : (
+              <div className="flex items-center space-x-3">
+                <Link
+                  href="/login"
+                  className="px-4 py-2 rounded-xl text-xs font-semibold text-slate-800 dark:text-slate-200 bg-white dark:bg-slate-900 hover:bg-slate-100 dark:hover:bg-slate-800 border border-slate-300 dark:border-slate-700 transition shadow-sm"
+                >
+                  🔑 Log In
+                </Link>
+                <Link
+                  href="/register"
+                  className="px-4 py-2 rounded-xl text-xs font-semibold text-white bg-indigo-600 hover:bg-indigo-500 transition shadow-md shadow-indigo-600/20"
+                >
+                  Sign Up ✨
+                </Link>
+              </div>
+            )}
+          </div>
         </div>
 
         {/* Phase 29 Personalized Welcome & Weather Card */}

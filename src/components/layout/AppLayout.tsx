@@ -9,6 +9,7 @@ import { useWorkspace } from '@/context/WorkspaceContext';
 import { TourProvider, useTour } from '@/features/tours/components/TourProvider';
 import { TourHelpButton } from '@/features/tours/components/TourHelpButton';
 import { useContextualTour } from '@/features/tours/hooks/useContextualTour';
+import { UserProfileMenu } from '../auth/UserProfileMenu';
 
 function HeaderTourControls() {
   const { startTour } = useTour();
@@ -131,6 +132,9 @@ function InnerAppLayout({ children }: { children: React.ReactNode }) {
 
           {/* Contextual Product Tour Header Controls */}
           <HeaderTourControls />
+
+          {/* User Auth Profile & Logout / Login Buttons */}
+          <UserProfileMenu />
         </div>
       </header>
 

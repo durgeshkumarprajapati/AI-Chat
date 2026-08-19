@@ -3,6 +3,7 @@
 import React, { useEffect, useState, useRef, useCallback } from 'react';
 import Link from 'next/link';
 import { useWorkspace } from '@/context/WorkspaceContext';
+import { mergeMessages, CollabMessageItem } from '@/features/collaboration/message-deduplication';
 
 interface UserSummary {
   id: string;
@@ -25,7 +26,7 @@ interface MemberItem {
   presence?: PresenceState;
 }
 
-interface MessageItem {
+interface MessageItem extends CollabMessageItem {
   id: string;
   channelId: string;
   senderId: string;
@@ -40,6 +41,7 @@ interface MessageItem {
   sharedEntityId?: string | null;
   sharedDocumentId?: string | null;
   sharedStudyQuestionId?: string | null;
+  clientMessageId?: string | null;
   metadata?: Record<string, unknown> | null;
   createdAt: string;
   sender: UserSummary;
@@ -76,10 +78,23 @@ export default function CollabChatPage() {
   const [loadingChannels, setLoadingChannels] = useState(true);
   const [loadingMessages, setLoadingMessages] = useState(false);
 
-  // Modals state
+  // User Search & DM Modal
+  const [showUserSearchModal, setShowUserSearchModal] = useState(false);
+  const [userSearchQuery, setUserSearchQuery] = useState('');
+  const [userSearchResults, setUserSearchResults] = useState<UserSummary[]>([]);
+  const [isSearchingUsers, setIsSearchingUsers] = useState(false);
+
+  // Group Creation Modal
   const [showCreateModal, setShowCreateModal] = useState(false);
   const [newGroupTitle, setNewGroupTitle] = useState('');
   const [newGroupDescription, setNewGroupDescription] = useState('');
+
+  // Add Group Members Modal
+  const [showAddMembersModal, setShowAddMembersModal] = useState(false);
+  const [addMembersQuery, setAddMembersQuery] = useState('');
+  const [addMembersSearchResults, setAddMembersSearchResults] = useState<UserSummary[]>([]);
+  const [selectedMemberIds, setSelectedMemberIds] = useState<string[]>([]);
+  const [isAddingMembers, setIsAddingMembers] = useState(false);
 
   const [showShareModal, setShowShareModal] = useState(false);
   const [shareType, setShareType] = useState<'roadmap' | 'entity' | 'document' | 'question'>('roadmap');
@@ -145,7 +160,54 @@ export default function CollabChatPage() {
     scrollToBottom();
   }, [messages, scrollToBottom]);
 
-  // Real-time SSE event listener
+  // Debounced User Search for DM Modal
+  useEffect(() => {
+    if (!showUserSearchModal || userSearchQuery.trim().length < 2) {
+      setUserSearchResults([]);
+      return;
+    }
+
+    const timer = setTimeout(async () => {
+      setIsSearchingUsers(true);
+      try {
+        const res = await fetch(`/api/collaboration/users/search?q=${encodeURIComponent(userSearchQuery)}`);
+        const data = await res.json();
+        if (data.success && data.data) {
+          setUserSearchResults(data.data);
+        }
+      } catch (err) {
+        console.error('User search failed:', err);
+      } finally {
+        setIsSearchingUsers(false);
+      }
+    }, 350);
+
+    return () => clearTimeout(timer);
+  }, [userSearchQuery, showUserSearchModal]);
+
+  // Debounced User Search for Add Members Modal
+  useEffect(() => {
+    if (!showAddMembersModal || addMembersQuery.trim().length < 2) {
+      setAddMembersSearchResults([]);
+      return;
+    }
+
+    const timer = setTimeout(async () => {
+      try {
+        const res = await fetch(`/api/collaboration/users/search?q=${encodeURIComponent(addMembersQuery)}`);
+        const data = await res.json();
+        if (data.success && data.data) {
+          setAddMembersSearchResults(data.data);
+        }
+      } catch (err) {
+        console.error('Add members search failed:', err);
+      }
+    }, 350);
+
+    return () => clearTimeout(timer);
+  }, [addMembersQuery, showAddMembersModal]);
+
+  // Real-time SSE event listener with deduplication
   useEffect(() => {
     const eventSource = new EventSource('/api/collaboration/events');
 
@@ -156,10 +218,7 @@ export default function CollabChatPage() {
         if (event.type === 'message:new') {
           const newMsg = event.data as MessageItem;
           if (newMsg.channelId === activeChannelId) {
-            setMessages((prev) => {
-              if (prev.some((m) => m.id === newMsg.id)) return prev;
-              return [...prev, newMsg];
-            });
+            setMessages((prev) => mergeMessages(prev, newMsg));
           }
           fetchChannels();
         } else if (event.type === 'message:edit') {
@@ -187,15 +246,93 @@ export default function CollabChatPage() {
     };
   }, [activeChannelId, fetchChannels]);
 
-  // Send message
+  // Select User from Search & Start/Reuse DM
+  const handleStartDM = async (targetUser: UserSummary) => {
+    try {
+      const res = await fetch('/api/collaboration/channels', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          type: 'DIRECT',
+          targetUserId: targetUser.id
+        })
+      });
+      const data = await res.json();
+      if (data.success && data.data) {
+        setShowUserSearchModal(false);
+        setUserSearchQuery('');
+        setUserSearchResults([]);
+        await fetchChannels();
+        setActiveChannelId(data.data.id);
+      }
+    } catch (err) {
+      console.error('Failed to start DM:', err);
+    }
+  };
+
+  // Add Selected Members to Active Group
+  const handleAddMembersSubmit = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!activeChannelId || selectedMemberIds.length === 0) return;
+
+    setIsAddingMembers(true);
+    try {
+      const res = await fetch(`/api/collaboration/channels/${activeChannelId}/members`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ userIds: selectedMemberIds })
+      });
+      const data = await res.json();
+      if (data.success) {
+        setShowAddMembersModal(false);
+        setSelectedMemberIds([]);
+        setAddMembersQuery('');
+        setAddMembersSearchResults([]);
+        await fetchChannels();
+        await fetchMessages(activeChannelId);
+      }
+    } catch (err) {
+      console.error('Failed to add group members:', err);
+    } finally {
+      setIsAddingMembers(false);
+    }
+  };
+
+  // Send message with clientMessageId & deduplication
   const handleSendMessage = async (e?: React.FormEvent) => {
     if (e) e.preventDefault();
-    if (!inputContent.trim() || !activeChannelId) return;
+    if (!inputContent.trim() || !activeChannelId || !currentUser) return;
 
     const contentToSend = inputContent.trim();
     setInputContent('');
     const replyId = replyToMessage?.id;
     setReplyToMessage(null);
+
+    const clientMessageId = `client_${Date.now()}_${Math.random().toString(36).substring(2, 9)}`;
+
+    // Optimistic UI insertion
+    const optimisticMsg: MessageItem = {
+      id: clientMessageId,
+      clientMessageId,
+      channelId: activeChannelId,
+      senderId: currentUser.id,
+      content: contentToSend,
+      replyToId: replyId,
+      isEdited: false,
+      isDeleted: false,
+      isAi: false,
+      createdAt: new Date().toISOString(),
+      sender: {
+        id: currentUser.id,
+        name: currentUser.name || null,
+        email: currentUser.email,
+        role: currentUser.role || 'USER',
+        avatarUrl: currentUser.avatarUrl || null
+      },
+      status: 'SENDING'
+    };
+
+    setMessages((prev) => mergeMessages(prev, optimisticMsg));
 
     try {
       const res = await fetch(`/api/collaboration/channels/${activeChannelId}/messages`, {
@@ -203,12 +340,13 @@ export default function CollabChatPage() {
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           content: contentToSend,
-          replyToId: replyId
+          replyToId: replyId,
+          clientMessageId
         })
       });
       const data = await res.json();
       if (data.success && data.data) {
-        setMessages((prev) => [...prev, data.data]);
+        setMessages((prev) => mergeMessages(prev, data.data));
       }
     } catch (err) {
       console.error('Failed to send message:', err);
@@ -354,14 +492,30 @@ export default function CollabChatPage() {
           </p>
         </div>
 
-        <button
-          onClick={() => setShowCreateModal(true)}
-          className="px-4 py-2 bg-indigo-600 hover:bg-indigo-500 text-white font-semibold text-xs rounded-xl shadow-md transition flex items-center space-x-2 whitespace-nowrap self-start sm:self-auto"
-          data-tour="collab-new-group-btn"
-        >
-          <span>➕</span>
-          <span>New Group Discussion</span>
-        </button>
+        <div className="flex items-center space-x-2 self-start sm:self-auto">
+          <button
+            onClick={() => {
+              setShowUserSearchModal(true);
+              setUserSearchQuery('');
+              setUserSearchResults([]);
+            }}
+            className="px-4 py-2 bg-slate-900 dark:bg-slate-800 hover:bg-slate-800 dark:hover:bg-slate-700 text-white font-semibold text-xs rounded-xl shadow-md transition flex items-center space-x-2 whitespace-nowrap"
+            aria-label="New Chat"
+            data-tour="collab-new-chat-btn"
+          >
+            <span>💬</span>
+            <span>New Chat</span>
+          </button>
+          <button
+            onClick={() => setShowCreateModal(true)}
+            className="px-4 py-2 bg-indigo-600 hover:bg-indigo-500 text-white font-semibold text-xs rounded-xl shadow-md transition flex items-center space-x-2 whitespace-nowrap"
+            aria-label="New Group Discussion"
+            data-tour="collab-new-group-btn"
+          >
+            <span>👥</span>
+            <span>New Group</span>
+          </button>
+        </div>
       </div>
 
       {/* Main App Grid */}
@@ -426,7 +580,7 @@ export default function CollabChatPage() {
               ) : channels.length === 0 ? (
                 <div className="text-center py-12 text-xs text-slate-400 space-y-2">
                   <p>No conversations started yet.</p>
-                  <p className="text-[11px] text-indigo-400">Create a group or start chatting!</p>
+                  <p className="text-[11px] text-indigo-400">Click &quot;New Chat&quot; to search users!</p>
                 </div>
               ) : (
                 channels.map((ch) => {
@@ -518,6 +672,23 @@ export default function CollabChatPage() {
                 </div>
 
                 <div className="flex items-center space-x-2">
+                  {activeChannel.type === 'GROUP' && (activeChannel.role === 'OWNER' || activeChannel.role === 'ADMIN') && (
+                    <button
+                      onClick={() => {
+                        setShowAddMembersModal(true);
+                        setSelectedMemberIds([]);
+                        setAddMembersQuery('');
+                        setAddMembersSearchResults([]);
+                      }}
+                      className="px-3 py-1.5 bg-indigo-600 hover:bg-indigo-500 text-white text-xs font-semibold rounded-xl transition flex items-center space-x-1"
+                      aria-label="Add group members"
+                      data-tour="collab-add-members-btn"
+                    >
+                      <span>➕</span>
+                      <span>Add Members</span>
+                    </button>
+                  )}
+
                   <button
                     onClick={() => setShowShareModal(true)}
                     className="px-3 py-1.5 bg-slate-100 dark:bg-slate-800 hover:bg-slate-200 dark:hover:bg-slate-700 text-slate-700 dark:text-slate-300 text-xs font-semibold rounded-xl transition"
@@ -856,6 +1027,155 @@ export default function CollabChatPage() {
           </div>
         </div>
       )}
+
+      {/* User Search / New Chat DM Modal */}
+      {showUserSearchModal && (
+        <div className="fixed inset-0 z-50 bg-slate-950/80 backdrop-blur-sm flex items-center justify-center p-4">
+          <div className="bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-2xl p-6 max-w-md w-full space-y-4 shadow-2xl">
+            <div className="flex items-center justify-between border-b border-slate-200 dark:border-slate-800 pb-3">
+              <h3 className="text-sm font-bold text-slate-900 dark:text-white">Start New Conversation</h3>
+              <button onClick={() => setShowUserSearchModal(false)} className="text-slate-400 hover:text-white text-xs">
+                ✕
+              </button>
+            </div>
+
+            <div className="space-y-3">
+              <input
+                type="text"
+                autoFocus
+                placeholder="Search users by name or email..."
+                value={userSearchQuery}
+                onChange={(e) => setUserSearchQuery(e.target.value)}
+                className="w-full p-2.5 bg-slate-100 dark:bg-slate-950 border border-slate-200 dark:border-slate-800 rounded-xl text-xs text-slate-900 dark:text-white focus:outline-none focus:border-indigo-500"
+                aria-label="Search users"
+              />
+
+              <div className="max-h-60 overflow-y-auto space-y-1.5 pr-1">
+                {isSearchingUsers ? (
+                  <div className="text-center py-6 text-xs text-slate-400 animate-pulse">Searching users...</div>
+                ) : userSearchQuery.trim().length < 2 ? (
+                  <div className="text-center py-6 text-xs text-slate-400">Type at least 2 characters to search...</div>
+                ) : userSearchResults.length === 0 ? (
+                  <div className="text-center py-6 text-xs text-slate-400">No users found matching &quot;{userSearchQuery}&quot;</div>
+                ) : (
+                  userSearchResults.map((u) => (
+                    <div
+                      key={u.id}
+                      onClick={() => handleStartDM(u)}
+                      className="p-2.5 rounded-xl border border-slate-200 dark:border-slate-800 bg-slate-50 dark:bg-slate-950 hover:border-indigo-500 transition cursor-pointer flex items-center justify-between"
+                    >
+                      <div className="flex items-center space-x-3">
+                        <div className="w-8 h-8 rounded-lg bg-indigo-600 text-white text-xs font-bold flex items-center justify-center">
+                          {u.name ? u.name[0]?.toUpperCase() : u.email[0]?.toUpperCase()}
+                        </div>
+                        <div>
+                          <p className="text-xs font-bold text-slate-900 dark:text-white">{u.name || u.email.split('@')[0]}</p>
+                          <p className="text-[11px] text-slate-400">{u.email}</p>
+                        </div>
+                      </div>
+                      <span className="text-xs text-indigo-500 font-semibold">Start DM →</span>
+                    </div>
+                  ))
+                )}
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Add Members to Group Modal */}
+      {showAddMembersModal && (
+        <div className="fixed inset-0 z-50 bg-slate-950/80 backdrop-blur-sm flex items-center justify-center p-4">
+          <div className="bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-2xl p-6 max-w-md w-full space-y-4 shadow-2xl">
+            <div className="flex items-center justify-between border-b border-slate-200 dark:border-slate-800 pb-3">
+              <div>
+                <h3 className="text-sm font-bold text-slate-900 dark:text-white">Add Members to Group</h3>
+                <p className="text-[11px] text-slate-400">Selected: {selectedMemberIds.length}</p>
+              </div>
+              <button onClick={() => setShowAddMembersModal(false)} className="text-slate-400 hover:text-white text-xs">
+                ✕
+              </button>
+            </div>
+
+            <form onSubmit={handleAddMembersSubmit} className="space-y-4">
+              <input
+                type="text"
+                autoFocus
+                placeholder="Search users to add..."
+                value={addMembersQuery}
+                onChange={(e) => setAddMembersQuery(e.target.value)}
+                className="w-full p-2.5 bg-slate-100 dark:bg-slate-950 border border-slate-200 dark:border-slate-800 rounded-xl text-xs text-slate-900 dark:text-white focus:outline-none focus:border-indigo-500"
+                aria-label="Search users to add to group"
+              />
+
+              <div className="max-h-60 overflow-y-auto space-y-1.5 pr-1">
+                {addMembersQuery.trim().length < 2 ? (
+                  <div className="text-center py-6 text-xs text-slate-400">Type at least 2 characters to search users...</div>
+                ) : addMembersSearchResults.length === 0 ? (
+                  <div className="text-center py-6 text-xs text-slate-400">No users found</div>
+                ) : (
+                  addMembersSearchResults.map((u) => {
+                    const isSelected = selectedMemberIds.includes(u.id);
+                    const isAlreadyInGroup = activeChannel?.members.some((m) => m.userId === u.id);
+
+                    return (
+                      <div
+                        key={u.id}
+                        onClick={() => {
+                          if (isAlreadyInGroup) return;
+                          setSelectedMemberIds((prev) =>
+                            isSelected ? prev.filter((id) => id !== u.id) : [...prev, u.id]
+                          );
+                        }}
+                        className={`p-2.5 rounded-xl border transition flex items-center justify-between ${
+                          isAlreadyInGroup
+                            ? 'opacity-50 cursor-not-allowed bg-slate-100 dark:bg-slate-950 border-slate-200 dark:border-slate-800'
+                            : isSelected
+                            ? 'bg-indigo-50 dark:bg-indigo-950 border-indigo-500 cursor-pointer'
+                            : 'bg-slate-50 dark:bg-slate-950 border-slate-200 dark:border-slate-800 hover:border-slate-300 dark:hover:border-slate-700 cursor-pointer'
+                        }`}
+                      >
+                        <div className="flex items-center space-x-3">
+                          <input
+                            type="checkbox"
+                            checked={isSelected || isAlreadyInGroup}
+                            disabled={isAlreadyInGroup}
+                            onChange={() => {}}
+                            className="rounded border-slate-300 text-indigo-600 focus:ring-indigo-500"
+                          />
+                          <div>
+                            <p className="text-xs font-bold text-slate-900 dark:text-white">{u.name || u.email.split('@')[0]}</p>
+                            <p className="text-[11px] text-slate-400">{u.email}</p>
+                          </div>
+                        </div>
+                        {isAlreadyInGroup && <span className="text-[10px] text-slate-400 font-mono">Already Member</span>}
+                      </div>
+                    );
+                  })
+                )}
+              </div>
+
+              <div className="flex space-x-3 justify-end pt-2">
+                <button
+                  type="button"
+                  onClick={() => setShowAddMembersModal(false)}
+                  className="px-4 py-2 text-xs font-semibold text-slate-400 hover:text-white"
+                >
+                  Cancel
+                </button>
+                <button
+                  type="submit"
+                  disabled={selectedMemberIds.length === 0 || isAddingMembers}
+                  className="px-5 py-2 bg-indigo-600 hover:bg-indigo-500 disabled:opacity-50 text-white font-semibold text-xs rounded-xl shadow-md transition"
+                >
+                  {isAddingMembers ? 'Adding Members...' : `Add Selected (${selectedMemberIds.length})`}
+                </button>
+              </div>
+            </form>
+          </div>
+        </div>
+      )}
     </div>
   );
 }
+

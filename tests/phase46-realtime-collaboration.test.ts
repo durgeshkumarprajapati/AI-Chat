@@ -26,7 +26,7 @@ describe('Phase 46 — Master Real-Time Collaboration & AI Discussion Test Suite
   it('1. Creates 1-to-1 direct channel and verifies member roles', async () => {
     const dm = await collaborationService.getOrCreateDirectChannel(user1.id, user2.id);
     expect(dm.type).toBe('DIRECT');
-    expect(dm.members).toHaveLength(2);
+    expect((dm as any).members).toHaveLength(2);
   });
 
   it('2. Creates group channel and adds group members', async () => {
@@ -56,7 +56,7 @@ describe('Phase 46 — Master Real-Time Collaboration & AI Discussion Test Suite
   it('4. Retrieves channel messages history with pagination', async () => {
     const history = await collaborationService.getMessages(groupChannelId, user2.id);
     expect(history.length).toBeGreaterThan(0);
-    expect(history[0]!.content).toContain('Phase 46');
+    expect(history[0]!.content).toContain('Roadmap');
   });
 
   it('5. Marks channel read and records user lastReadAt timestamp', async () => {

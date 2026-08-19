@@ -25,7 +25,7 @@ describe('Phase 46 — Collaboration Domain & Unit Tests', () => {
   it('1. Creates and retrieves a 1-to-1 Direct Channel idempotently', async () => {
     const dm1 = await collaborationService.getOrCreateDirectChannel(user1.id, user2.id);
     expect(dm1.type).toBe('DIRECT');
-    expect(dm1.members).toHaveLength(2);
+    expect((dm1 as any).members).toHaveLength(2);
 
     const dm2 = await collaborationService.getOrCreateDirectChannel(user2.id, user1.id);
     expect(dm2.id).toBe(dm1.id);

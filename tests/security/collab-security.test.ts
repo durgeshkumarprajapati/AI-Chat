@@ -65,7 +65,7 @@ describe('Phase 46 — Collaboration Security & Tenant Isolation Tests', () => {
       userC.id,
       CollabMemberRole.MEMBER
     );
-    expect(newMem.userId).toBe(userC.id);
+    expect(newMem?.userId).toBe(userC.id);
   });
 
   it('6. Enforces message edit security: User B cannot edit User A\'s message', async () => {
@@ -73,5 +73,16 @@ describe('Phase 46 — Collaboration Security & Tenant Isolation Tests', () => {
     await expect(collaborationService.editMessage(msg.id, userB.id, 'Hacked text')).rejects.toThrow(
       'Forbidden: You can only edit your own messages'
     );
+  });
+
+  it('7. User Search Security: Search results never expose sensitive password hashes or secrets', async () => {
+    const { userSearchService } = await import('@/features/collaboration/user-search.service');
+    const results = await userSearchService.searchUsers('User', userA.id);
+    for (const u of results) {
+      expect((u as any).passwordHash).toBeUndefined();
+      expect((u as any).passwordResetToken).toBeUndefined();
+      expect(u.id).toBeDefined();
+      expect(u.email).toBeDefined();
+    }
   });
 });

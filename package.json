@@ -56,6 +56,7 @@
     "test:phase44": "jest tests/phase44-city-explorer-provider-isolation.test.ts --forceExit",
     "test:phase45": "jest tests/phase45-contextual-product-tours.test.ts --forceExit",
     "test:phase46": "jest tests/phase46-realtime-collaboration.test.ts --forceExit",
+    "test:phase46.1": "jest tests/phase46-1-collaboration-enhancements.test.ts --forceExit",
     "benchmark:city-explorer-provider-routing": "tsx scripts/benchmark-city-explorer-provider-routing.ts",
     "benchmark:tours": "tsx scripts/benchmark-tours.ts",
     "benchmark:collaboration": "tsx scripts/benchmark-collaboration.ts",

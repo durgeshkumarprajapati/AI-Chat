@@ -12,25 +12,29 @@ export interface SendMessageInput {
   sharedEntityId?: string;
   sharedDocumentId?: string;
   sharedStudyQuestionId?: string;
+  clientMessageId?: string;
   metadata?: Record<string, unknown>;
 }
 
 class CollaborationService {
   /**
-   * Get existing DM channel or create new one
+   * Get existing DM channel or create new one with canonical user ordering
    */
   public async getOrCreateDirectChannel(userAId: string, userBId: string) {
     if (userAId === userBId) {
       throw new Error('Cannot create direct channel with yourself');
     }
 
+    // Sort user IDs to ensure canonical ordering
+    const [firstId, secondId] = [userAId, userBId].sort();
+
     // Check if DM exists
     const existing = await prisma.collabChannel.findFirst({
       where: {
         type: CollabChannelType.DIRECT,
         AND: [
-          { members: { some: { userId: userAId } } },
-          { members: { some: { userId: userBId } } }
+          { members: { some: { userId: firstId } } },
+          { members: { some: { userId: secondId } } }
         ]
       },
       include: {
@@ -45,25 +49,47 @@ class CollaborationService {
     if (existing) return existing;
 
     // Create DM channel
-    return prisma.collabChannel.create({
-      data: {
-        type: CollabChannelType.DIRECT,
-        createdById: userAId,
-        members: {
-          create: [
-            { userId: userAId, role: CollabMemberRole.OWNER },
-            { userId: userBId, role: CollabMemberRole.MEMBER }
-          ]
-        }
-      },
-      include: {
-        members: {
-          include: {
-            user: { select: { id: true, name: true, email: true, role: true, avatarUrl: true } }
+    try {
+      return await prisma.collabChannel.create({
+        data: {
+          type: CollabChannelType.DIRECT,
+          createdById: userAId,
+          members: {
+            create: [
+              { userId: firstId!, role: CollabMemberRole.OWNER },
+              { userId: secondId!, role: CollabMemberRole.MEMBER }
+            ]
+          }
+        },
+        include: {
+          members: {
+            include: {
+              user: { select: { id: true, name: true, email: true, role: true, avatarUrl: true } }
+            }
           }
         }
-      }
-    });
+      });
+    } catch {
+      // In case of concurrent creation race, re-query existing
+      const reChecked = await prisma.collabChannel.findFirst({
+        where: {
+          type: CollabChannelType.DIRECT,
+          AND: [
+            { members: { some: { userId: firstId } } },
+            { members: { some: { userId: secondId } } }
+          ]
+        },
+        include: {
+          members: {
+            include: {
+              user: { select: { id: true, name: true, email: true, role: true, avatarUrl: true } }
+            }
+          }
+        }
+      });
+      if (reChecked) return reChecked;
+      throw new Error('Failed to create direct channel');
+    }
   }
 
   /**
@@ -100,6 +126,80 @@ class CollaborationService {
     });
 
     return channel;
+  }
+
+  /**
+   * Add group members (supports single userId or array of userIds idempotently)
+   */
+  public async addMembers(
+    channelId: string,
+    requestorId: string,
+    targetUserIds: string | string[],
+    role: CollabMemberRole = CollabMemberRole.MEMBER
+  ) {
+    const userIdsToAdd = Array.isArray(targetUserIds) ? targetUserIds : [targetUserIds];
+    const uniqueUserIds = Array.from(new Set(userIdsToAdd.filter(Boolean)));
+
+    if (uniqueUserIds.length === 0) {
+      throw new Error('No user IDs provided');
+    }
+
+    const requestorMem = await prisma.collabChannelMember.findUnique({
+      where: { channelId_userId: { channelId, userId: requestorId } },
+      include: { channel: true }
+    });
+
+    if (!requestorMem || requestorMem.channel.type !== CollabChannelType.GROUP) {
+      throw new Error('Unauthorized or invalid group channel');
+    }
+
+    if (requestorMem.role !== CollabMemberRole.OWNER && requestorMem.role !== CollabMemberRole.ADMIN) {
+      throw new Error('Forbidden: Only Owners or Admins can add members');
+    }
+
+    const existingMembers = await prisma.collabChannelMember.findMany({
+      where: { channelId, userId: { in: uniqueUserIds } },
+      select: { userId: true }
+    });
+    const existingUserIds = new Set(existingMembers.map((m) => m.userId));
+
+    const newUsersToInsert = uniqueUserIds.filter((uid) => !existingUserIds.has(uid));
+
+    if (newUsersToInsert.length > 0) {
+      await prisma.collabChannelMember.createMany({
+        data: newUsersToInsert.map((uid) => ({
+          channelId,
+          userId: uid,
+          role
+        })),
+        skipDuplicates: true
+      });
+    }
+
+    const updatedMembers = await prisma.collabChannelMember.findMany({
+      where: { channelId, userId: { in: uniqueUserIds } },
+      include: { user: { select: { id: true, name: true, email: true, role: true, avatarUrl: true } } }
+    });
+
+    collabPubSubService.publish(channelId, {
+      type: 'presence:change',
+      channelId,
+      senderId: requestorId,
+      data: { action: 'members_added', members: updatedMembers },
+      timestamp: new Date().toISOString()
+    });
+
+    return updatedMembers;
+  }
+
+  public async addMember(
+    channelId: string,
+    requestorId: string,
+    newUserId: string,
+    role: CollabMemberRole = CollabMemberRole.MEMBER
+  ) {
+    const res = await this.addMembers(channelId, requestorId, [newUserId], role);
+    return res[0];
   }
 
   /**
@@ -214,45 +314,6 @@ class CollaborationService {
   }
 
   /**
-   * Add group member
-   */
-  public async addMember(
-    channelId: string,
-    requestorId: string,
-    newUserId: string,
-    role: CollabMemberRole = CollabMemberRole.MEMBER
-  ) {
-    const requestorMem = await prisma.collabChannelMember.findUnique({
-      where: { channelId_userId: { channelId, userId: requestorId } },
-      include: { channel: true }
-    });
-
-    if (!requestorMem || requestorMem.channel.type !== CollabChannelType.GROUP) {
-      throw new Error('Unauthorized or invalid group channel');
-    }
-
-    if (requestorMem.role !== CollabMemberRole.OWNER && requestorMem.role !== CollabMemberRole.ADMIN) {
-      throw new Error('Forbidden: Only Owners or Admins can add members');
-    }
-
-    const newMember = await prisma.collabChannelMember.create({
-      data: { channelId, userId: newUserId, role },
-      include: { user: { select: { id: true, name: true, email: true, role: true, avatarUrl: true } } }
-    });
-
-    // Notify Pub/Sub
-    collabPubSubService.publish(channelId, {
-      type: 'presence:change',
-      channelId,
-      senderId: requestorId,
-      data: { action: 'member_added', member: newMember },
-      timestamp: new Date().toISOString()
-    });
-
-    return newMember;
-  }
-
-  /**
    * Remove group member
    */
   public async removeMember(channelId: string, requestorId: string, targetUserId: string) {
@@ -295,6 +356,24 @@ class CollaborationService {
 
     if (!membership) throw new Error('Access Denied: Not a member of this channel');
 
+    // Idempotency check: Return existing message if clientMessageId already processed
+    if (input.clientMessageId) {
+      const existing = await prisma.collabMessage.findUnique({
+        where: { channelId_clientMessageId: { channelId, clientMessageId: input.clientMessageId } },
+        include: {
+          sender: {
+            select: { id: true, name: true, email: true, role: true, avatarUrl: true }
+          },
+          replyTo: {
+            include: {
+              sender: { select: { name: true, email: true } }
+            }
+          }
+        }
+      });
+      if (existing) return existing;
+    }
+
     // Create Message
     const message = await prisma.collabMessage.create({
       data: {
@@ -307,6 +386,7 @@ class CollaborationService {
         sharedEntityId: input.sharedEntityId || null,
         sharedDocumentId: input.sharedDocumentId || null,
         sharedStudyQuestionId: input.sharedStudyQuestionId || null,
+        clientMessageId: input.clientMessageId || null,
         metadata: input.metadata ? (input.metadata as any) : undefined
       },
       include: {

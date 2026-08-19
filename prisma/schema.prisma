@@ -2056,6 +2056,7 @@ model CollabMessage {
   sharedDocumentId      String?  @map("shared_document_id")
   sharedStudyQuestionId String?  @map("shared_study_question_id")
   metadata              Json?
+  clientMessageId       String?  @map("client_message_id")
   createdAt             DateTime @default(now()) @map("created_at")
   updatedAt             DateTime @updatedAt @map("updated_at")
 
@@ -2065,6 +2066,7 @@ model CollabMessage {
   replies  CollabMessage[]        @relation("ThreadReplies")
   receipts CollabMessageReceipt[]
 
+  @@unique([channelId, clientMessageId])
   @@index([channelId])
   @@index([senderId])
   @@index([replyToId])

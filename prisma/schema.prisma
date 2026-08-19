@@ -99,6 +99,7 @@ model User {
   knowledgeConflicts     KnowledgeConflict[]
   knowledgeGraphJobs     KnowledgeGraphJob[]
   knowledgeGraphVersions KnowledgeGraphVersion[]
+  tourProgress           UserTourProgress[]
 
   @@map("users")
 }
@@ -1953,6 +1954,34 @@ model KnowledgeGraphVersion {
   @@index([userId])
   @@index([projectId])
   @@map("knowledge_graph_versions")
+}
+
+enum TourStatus {
+  NOT_STARTED
+  IN_PROGRESS
+  COMPLETED
+  SKIPPED
+}
+
+model UserTourProgress {
+  id          String     @id @default(uuid())
+  userId      String     @map("user_id")
+  tourId      String     @map("tour_id")
+  tourVersion Int        @default(1) @map("tour_version")
+  status      TourStatus @default(NOT_STARTED)
+  currentStep Int        @default(0) @map("current_step")
+  startedAt   DateTime?  @map("started_at")
+  completedAt DateTime?  @map("completed_at")
+  skippedAt   DateTime?  @map("skipped_at")
+  lastSeenAt  DateTime?  @map("last_seen_at")
+  createdAt   DateTime   @default(now()) @map("created_at")
+  updatedAt   DateTime   @updatedAt @map("updated_at")
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@unique([userId, tourId])
+  @@index([userId])
+  @@map("user_tour_progress")
 }
 
 

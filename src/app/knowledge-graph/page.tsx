@@ -59,7 +59,7 @@ export default function KnowledgeGraphDashboard() {
     <AppLayout>
       <div className="p-6 space-y-6 max-w-7xl mx-auto w-full">
         {/* Header */}
-        <div className="flex flex-col md:flex-row md:items-center md:justify-between gap-4 border-b border-slate-800 pb-5">
+        <div data-tour="knowledge-graph-header" className="flex flex-col md:flex-row md:items-center md:justify-between gap-4 border-b border-slate-800 pb-5">
           <div>
             <div className="flex items-center space-x-2">
               <span className="text-2xl">🌐</span>
@@ -73,35 +73,38 @@ export default function KnowledgeGraphDashboard() {
             </p>
           </div>
 
-          <div className="flex items-center space-x-3">
-            <input
-              type="text"
-              placeholder="Search concepts or entities..."
-              value={searchQuery}
-              onChange={(e) => setSearchQuery(e.target.value)}
-              onKeyDown={(e) => e.key === 'Enter' && fetchGraph()}
-              className="bg-slate-900 border border-slate-800 rounded-xl px-3 py-1.5 text-sm text-slate-200 focus:outline-none focus:border-indigo-500"
-            />
-            <button
-              onClick={fetchGraph}
-              className="px-4 py-1.5 bg-indigo-600 hover:bg-indigo-500 text-white rounded-xl text-sm font-medium transition shadow-md shadow-indigo-600/20"
-            >
-              Search
-            </button>
+          <div data-tour="knowledge-graph-actions" className="flex items-center space-x-3">
+            <div data-tour="knowledge-graph-search" className="flex items-center space-x-2">
+              <input
+                type="text"
+                placeholder="Search concepts or entities..."
+                value={searchQuery}
+                onChange={(e) => setSearchQuery(e.target.value)}
+                onKeyDown={(e) => e.key === 'Enter' && fetchGraph()}
+                className="bg-slate-900 border border-slate-800 rounded-xl px-3 py-1.5 text-sm text-slate-200 focus:outline-none focus:border-indigo-500"
+              />
+              <button
+                onClick={fetchGraph}
+                className="px-4 py-1.5 bg-indigo-600 hover:bg-indigo-500 text-white rounded-xl text-sm font-medium transition shadow-md shadow-indigo-600/20"
+              >
+                Search
+              </button>
+            </div>
           </div>
         </div>
 
         {/* Tab Navigation */}
         <div className="flex space-x-2 border-b border-slate-800 pb-2">
           {[
-            { id: 'graph', label: 'Graph Explorer', icon: '🕸️' },
-            { id: 'entities', label: `Entities (${nodes.length})`, icon: '🏷️' },
-            { id: 'relationships', label: `Relationships (${edges.length})`, icon: '🔗' },
-            { id: 'conflicts', label: `Conflicts (${conflicts.length})`, icon: '⚠️' },
-            { id: 'gaps', label: `Knowledge Gaps (${gaps.length})`, icon: '🧩' }
+            { id: 'graph', label: 'Graph Explorer', icon: '🕸️', tour: 'knowledge-graph-explorer' },
+            { id: 'entities', label: `Entities (${nodes.length})`, icon: '🏷️', tour: 'knowledge-graph-entities' },
+            { id: 'relationships', label: `Relationships (${edges.length})`, icon: '🔗', tour: 'knowledge-graph-relationships' },
+            { id: 'conflicts', label: `Conflicts (${conflicts.length})`, icon: '⚠️', tour: 'knowledge-graph-conflicts' },
+            { id: 'gaps', label: `Knowledge Gaps (${gaps.length})`, icon: '🧩', tour: 'knowledge-graph-gaps' }
           ].map((tab) => (
             <button
               key={tab.id}
+              data-tour={tab.tour}
               onClick={() => setActiveTab(tab.id as any)}
               className={`flex items-center space-x-2 px-4 py-2 rounded-xl text-sm font-medium transition ${
                 activeTab === tab.id
@@ -122,30 +125,38 @@ export default function KnowledgeGraphDashboard() {
           </div>
         ) : activeTab === 'graph' ? (
           <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
-            <div className="md:col-span-2 bg-slate-900/60 border border-slate-800 rounded-2xl p-6 min-h-[450px] relative overflow-hidden flex flex-col justify-between">
+            <div data-tour="knowledge-graph-explorer" className="md:col-span-2 bg-slate-900/60 border border-slate-800 rounded-2xl p-6 min-h-[450px] relative overflow-hidden flex flex-col justify-between">
               <div className="flex justify-between items-center text-xs text-slate-400">
                 <span>Interactive Graph View (Bounded to 200 nodes)</span>
                 <span>Nodes: {nodes.length} | Edges: {edges.length}</span>
               </div>
 
               {/* Bounded Interactive Canvas Visualization Stub */}
-              <div className="my-auto flex flex-wrap gap-4 justify-center items-center p-6">
-                {nodes.slice(0, 15).map((node) => (
-                  <button
-                    key={node.id}
-                    onClick={() => setSelectedNode(node)}
-                    className={`p-3 rounded-xl border text-left transition transform hover:scale-105 ${
-                      selectedNode?.id === node.id
-                        ? 'bg-indigo-600 text-white border-indigo-400 shadow-lg shadow-indigo-600/30'
-                        : 'bg-slate-950/80 text-slate-200 border-slate-800 hover:border-indigo-500/50'
-                    }`}
-                  >
-                    <div className="text-xs font-semibold text-indigo-400 uppercase tracking-wider">{node.entityType}</div>
-                    <div className="font-bold text-sm">{node.canonicalName}</div>
-                    <div className="text-[10px] text-slate-400 mt-1">Conf: {(node.confidence * 100).toFixed(0)}%</div>
-                  </button>
-                ))}
-              </div>
+              {nodes.length === 0 ? (
+                <div className="my-auto text-center space-y-2 p-8">
+                  <span className="text-3xl">📭</span>
+                  <p className="text-slate-400 text-sm font-medium">Your Knowledge Graph is currently empty.</p>
+                  <p className="text-slate-500 text-xs">Upload or process a document to extract entities and relationships.</p>
+                </div>
+              ) : (
+                <div className="my-auto flex flex-wrap gap-4 justify-center items-center p-6">
+                  {nodes.slice(0, 15).map((node) => (
+                    <button
+                      key={node.id}
+                      onClick={() => setSelectedNode(node)}
+                      className={`p-3 rounded-xl border text-left transition transform hover:scale-105 ${
+                        selectedNode?.id === node.id
+                          ? 'bg-indigo-600 text-white border-indigo-400 shadow-lg shadow-indigo-600/30'
+                          : 'bg-slate-950/80 text-slate-200 border-slate-800 hover:border-indigo-500/50'
+                      }`}
+                    >
+                      <div className="text-xs font-semibold text-indigo-400 uppercase tracking-wider">{node.entityType}</div>
+                      <div className="font-bold text-sm">{node.canonicalName}</div>
+                      <div className="text-[10px] text-slate-400 mt-1">Conf: {(node.confidence * 100).toFixed(0)}%</div>
+                    </button>
+                  ))}
+                </div>
+              )}
 
               <div className="text-center text-xs text-slate-500">
                 Click any concept node to view entity details and evidence citations.
@@ -153,7 +164,7 @@ export default function KnowledgeGraphDashboard() {
             </div>
 
             {/* Selected Node Sidebar */}
-            <div className="bg-slate-900/60 border border-slate-800 rounded-2xl p-6 space-y-4">
+            <div data-tour="knowledge-graph-entity-details" className="bg-slate-900/60 border border-slate-800 rounded-2xl p-6 space-y-4">
               <h2 className="font-bold text-lg text-white">Entity Details</h2>
               {selectedNode ? (
                 <div className="space-y-3 text-sm">
@@ -171,7 +182,7 @@ export default function KnowledgeGraphDashboard() {
                       <p className="text-slate-300 text-xs mt-0.5">{selectedNode.description}</p>
                     </div>
                   )}
-                  <div>
+                  <div data-tour="knowledge-graph-evidence">
                     <span className="text-xs text-slate-400 uppercase font-semibold">Extraction Confidence</span>
                     <p className="text-emerald-400 font-mono">{(selectedNode.confidence * 100).toFixed(1)}%</p>
                   </div>
@@ -185,14 +196,16 @@ export default function KnowledgeGraphDashboard() {
                   </div>
                 </div>
               ) : (
-                <p className="text-slate-500 text-sm">Select an entity node from the graph to inspect evidence and relationships.</p>
+                <div data-tour="knowledge-graph-evidence" className="text-slate-500 text-sm">
+                  Select an entity node from the graph to inspect evidence and relationships.
+                </div>
               )}
             </div>
           </div>
         ) : activeTab === 'conflicts' ? (
-          <div className="space-y-4">
+          <div data-tour="knowledge-graph-conflicts" className="space-y-4">
             {conflicts.length === 0 ? (
-              <p className="text-slate-400 text-sm">No knowledge conflicts detected.</p>
+              <p className="text-slate-400 text-sm">No knowledge conflicts detected across uploaded document evidence.</p>
             ) : (
               conflicts.map((c) => (
                 <div key={c.id} className="p-4 bg-slate-900 border border-amber-500/30 rounded-xl space-y-2">
@@ -206,7 +219,7 @@ export default function KnowledgeGraphDashboard() {
             )}
           </div>
         ) : activeTab === 'gaps' ? (
-          <div className="space-y-4">
+          <div data-tour="knowledge-graph-gaps" className="space-y-4">
             {gaps.length === 0 ? (
               <p className="text-slate-400 text-sm">No knowledge gaps detected.</p>
             ) : (
@@ -222,7 +235,7 @@ export default function KnowledgeGraphDashboard() {
             )}
           </div>
         ) : (
-          <div className="bg-slate-900 border border-slate-800 rounded-2xl p-6">
+          <div data-tour="knowledge-graph-entities" className="bg-slate-900 border border-slate-800 rounded-2xl p-6">
             <p className="text-slate-400 text-sm">Showing {nodes.length} entities and {edges.length} relationships.</p>
           </div>
         )}

@@ -583,7 +583,7 @@ function ChatPageContent() {
   ];
 
   return (
-    <div className="max-w-7xl mx-auto h-[calc(100vh-7rem)] flex flex-col md:flex-row gap-6">
+    <div className="w-full max-w-[1600px] mx-auto h-[calc(100vh-7rem)] flex flex-col md:flex-row gap-6">
       {/* Rename Modal */}
       {renameConvId && (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/70 backdrop-blur-sm p-4">

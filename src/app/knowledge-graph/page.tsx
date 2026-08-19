@@ -57,7 +57,7 @@ export default function KnowledgeGraphDashboard() {
 
   return (
     <AppLayout>
-      <div className="p-6 space-y-6 max-w-7xl mx-auto w-full">
+      <div className="p-4 sm:p-6 lg:p-8 space-y-6 max-w-[1600px] mx-auto w-full">
         {/* Header */}
         <div data-tour="knowledge-graph-header" className="flex flex-col md:flex-row md:items-center md:justify-between gap-4 border-b border-slate-800 pb-5">
           <div>

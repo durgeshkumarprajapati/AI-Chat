@@ -53,7 +53,7 @@ export default function WorkflowsDashboardPage() {
   };
 
   return (
-    <div className="container mx-auto p-6 space-y-8">
+    <div className="w-full max-w-[1600px] mx-auto p-4 sm:p-6 lg:p-8 space-y-8">
       <div className="flex flex-col md:flex-row justify-between items-start md:items-center gap-4 border-b border-gray-200 dark:border-gray-800 pb-6">
         <div>
           <h1 className="text-3xl font-bold tracking-tight text-gray-900 dark:text-white flex items-center gap-2">

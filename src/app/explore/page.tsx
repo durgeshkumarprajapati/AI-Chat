@@ -35,10 +35,10 @@ class CityExplorerErrorBoundary extends Component<ErrorBoundaryProps, ErrorBound
   render() {
     if (this.state.hasError) {
       return (
-        <div className="min-h-screen bg-slate-950 text-slate-100 p-8 flex flex-col items-center justify-center space-y-4">
+        <div className="min-h-screen bg-slate-50 dark:bg-slate-950 text-slate-900 dark:text-slate-100 p-8 flex flex-col items-center justify-center space-y-4">
           <div className="text-4xl">📍</div>
-          <h2 className="text-xl font-bold text-white">City Explorer Unavailable</h2>
-          <p className="text-xs text-slate-400 max-w-md text-center">
+          <h2 className="text-xl font-bold text-slate-900 dark:text-white">City Explorer Unavailable</h2>
+          <p className="text-xs text-slate-600 dark:text-slate-400 max-w-md text-center">
             Something went wrong while rendering city exploration data. Please select a city or return to your workspace dashboard.
           </p>
           <div className="flex items-center space-x-3 pt-2">
@@ -268,36 +268,36 @@ function CityExplorerContent() {
   });
 
   return (
-    <div className="min-h-screen bg-slate-950 text-slate-100 p-6 sm:p-10 transition-colors">
-      <div className="max-w-6xl mx-auto space-y-8">
+    <div className="min-h-screen bg-slate-50 dark:bg-slate-950 text-slate-900 dark:text-slate-100 p-4 sm:p-6 lg:p-8 transition-colors">
+      <div className="w-full max-w-[1600px] mx-auto space-y-8">
         
         {/* Page Header */}
-        <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 border-b border-slate-800/80 pb-6">
+        <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 border-b border-slate-200 dark:border-slate-800/80 pb-6">
           <div>
             <div className="flex items-center space-x-3">
               <span className="text-3xl">🌍</span>
-              <h1 className="text-3xl font-bold bg-gradient-to-r from-white via-indigo-200 to-indigo-400 bg-clip-text text-transparent">
+              <h1 className="text-3xl font-bold bg-gradient-to-r from-slate-900 via-indigo-800 to-indigo-600 dark:from-white dark:via-indigo-200 dark:to-indigo-400 bg-clip-text text-transparent">
                 Explore {currentCity}
               </h1>
               {isPrefetching || streamStatus === 'LOADING' ? (
-                <span className="inline-flex items-center px-2.5 py-0.5 rounded-full text-[10px] font-medium bg-indigo-900/60 text-indigo-300 border border-indigo-700/50 animate-pulse">
+                <span className="inline-flex items-center px-2.5 py-0.5 rounded-full text-[10px] font-semibold bg-indigo-100 dark:bg-indigo-900/60 text-indigo-800 dark:text-indigo-300 border border-indigo-300 dark:border-indigo-700/50 animate-pulse">
                   Fetching grounded knowledge...
                 </span>
               ) : streamStatus === 'PARTIAL' ? (
-                <span className="inline-flex items-center px-2.5 py-0.5 rounded-full text-[10px] font-medium bg-amber-900/60 text-amber-300 border border-amber-700/50">
+                <span className="inline-flex items-center px-2.5 py-0.5 rounded-full text-[10px] font-semibold bg-amber-100 dark:bg-amber-900/60 text-amber-800 dark:text-amber-300 border border-amber-300 dark:border-amber-700/50">
                   Some answers are still loading
                 </span>
               ) : streamStatus === 'FAILED' ? (
-                <span className="inline-flex items-center px-2.5 py-0.5 rounded-full text-[10px] font-medium bg-rose-900/60 text-rose-300 border border-rose-700/50">
+                <span className="inline-flex items-center px-2.5 py-0.5 rounded-full text-[10px] font-semibold bg-rose-100 dark:bg-rose-900/60 text-rose-800 dark:text-rose-300 border border-rose-300 dark:border-rose-700/50">
                   Some information could not be loaded
                 </span>
               ) : (
-                <span className="inline-flex items-center px-2.5 py-0.5 rounded-full text-[10px] font-medium bg-emerald-900/60 text-emerald-300 border border-emerald-700/50">
+                <span className="inline-flex items-center px-2.5 py-0.5 rounded-full text-[10px] font-semibold bg-emerald-100 dark:bg-emerald-900/60 text-emerald-800 dark:text-emerald-300 border border-emerald-300 dark:border-emerald-700/50">
                   Grounded knowledge ready
                 </span>
               )}
             </div>
-            <p className="text-xs text-slate-400 mt-2">
+            <p className="text-xs text-slate-600 dark:text-slate-400 mt-2">
               Discover real-time, prefetched grounded insights, attractions, cuisine, and travel facts for {currentCity}.
             </p>
           </div>
@@ -310,11 +310,11 @@ function CityExplorerContent() {
                 value={cityInput}
                 onChange={(e) => setCityInput(e.target.value)}
                 placeholder="Switch city..."
-                className="w-36 sm:w-44 bg-slate-900 border border-slate-800 rounded-xl px-3 py-1.5 text-xs text-white placeholder-slate-500 focus:outline-none focus:border-indigo-500"
+                className="w-36 sm:w-44 bg-white dark:bg-slate-900 border border-slate-300 dark:border-slate-800 rounded-xl px-3 py-1.5 text-xs text-slate-900 dark:text-white placeholder-slate-400 dark:placeholder-slate-500 focus:outline-none focus:border-indigo-500 transition shadow-sm"
               />
               <button
                 type="submit"
-                className="px-3 py-1.5 bg-slate-800 hover:bg-slate-700 text-xs font-medium text-slate-200 rounded-xl border border-slate-700 transition"
+                className="px-3 py-1.5 bg-slate-100 dark:bg-slate-800 hover:bg-slate-200 dark:hover:bg-slate-700 text-xs font-medium text-slate-800 dark:text-slate-200 rounded-xl border border-slate-300 dark:border-slate-700 transition"
               >
                 Go 📍
               </button>
@@ -322,13 +322,13 @@ function CityExplorerContent() {
 
             <Link
               href="/dashboard"
-              className="px-3.5 py-2 bg-slate-900 hover:bg-slate-800 border border-slate-800 rounded-xl text-xs text-slate-300 transition"
+              className="px-3.5 py-2 bg-white dark:bg-slate-900 hover:bg-slate-100 dark:hover:bg-slate-800 border border-slate-300 dark:border-slate-800 rounded-xl text-xs font-medium text-slate-700 dark:text-slate-300 transition shadow-sm"
             >
               ← Dashboard
             </Link>
             <Link
               href={`/chat?q=Tell me about ${encodeURIComponent(currentCity)}&sourceMode=web_search`}
-              className="px-4 py-2 bg-indigo-600 hover:bg-indigo-500 text-white font-medium text-xs rounded-xl shadow-lg shadow-indigo-600/20 transition flex items-center space-x-1"
+              className="px-4 py-2 bg-indigo-600 hover:bg-indigo-500 text-white font-semibold text-xs rounded-xl shadow-md shadow-indigo-600/20 transition flex items-center space-x-1"
             >
               <span>Ask AI Assistant</span>
               <span>✨</span>
@@ -345,9 +345,9 @@ function CityExplorerContent() {
                 placeholder={`Search queries about ${currentCity}...`}
                 value={searchTerm}
                 onChange={(e) => setSearchTerm(e.target.value)}
-                className="w-full bg-slate-900 border border-slate-800 rounded-xl pl-10 pr-4 py-2.5 text-xs text-white placeholder-slate-500 focus:outline-none focus:border-indigo-500"
+                className="w-full bg-white dark:bg-slate-900 border border-slate-300 dark:border-slate-800 rounded-xl pl-10 pr-4 py-2.5 text-xs text-slate-900 dark:text-white placeholder-slate-400 dark:placeholder-slate-500 focus:outline-none focus:border-indigo-500 transition shadow-sm"
               />
-              <span className="absolute left-3.5 top-2.5 text-slate-500 text-xs">🔍</span>
+              <span className="absolute left-3.5 top-2.5 text-slate-400 dark:text-slate-500 text-xs">🔍</span>
             </div>
 
             <div className="flex items-center space-x-2 overflow-x-auto pb-2 sm:pb-0 scrollbar-none">
@@ -356,7 +356,7 @@ function CityExplorerContent() {
                 className={`px-3 py-1.5 rounded-lg text-xs font-medium transition whitespace-nowrap ${
                   activeCategory === 'All'
                     ? 'bg-indigo-600 text-white shadow-md shadow-indigo-600/20'
-                    : 'bg-slate-900 text-slate-400 hover:text-white border border-slate-800'
+                    : 'bg-white dark:bg-slate-900 text-slate-700 dark:text-slate-400 hover:text-slate-900 dark:hover:text-white border border-slate-300 dark:border-slate-800'
                 }`}
               >
                 All Categories
@@ -368,7 +368,7 @@ function CityExplorerContent() {
                   className={`px-3 py-1.5 rounded-lg text-xs font-medium transition whitespace-nowrap flex items-center space-x-1.5 ${
                     activeCategory === cat.category
                       ? 'bg-indigo-600 text-white shadow-md shadow-indigo-600/20'
-                      : 'bg-slate-900 text-slate-400 hover:text-white border border-slate-800'
+                      : 'bg-white dark:bg-slate-900 text-slate-700 dark:text-slate-400 hover:text-slate-900 dark:hover:text-white border border-slate-300 dark:border-slate-800'
                   }`}
                 >
                   <span>{cat.icon || '📍'}</span>
@@ -380,18 +380,18 @@ function CityExplorerContent() {
         </div>
 
         {/* Categories Grid with Expandable Prefetched Knowledge Cards */}
-        <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+        <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
           {filteredCategories.map((cat) => (
             <div
               key={cat.category}
-              className="bg-slate-900/80 border border-slate-800 hover:border-slate-700/80 rounded-2xl p-6 shadow-xl space-y-5 transition"
+              className="bg-white dark:bg-slate-900/80 border border-slate-200 dark:border-slate-800 hover:border-slate-300 dark:hover:border-slate-700/80 rounded-2xl p-6 shadow-md dark:shadow-xl space-y-5 transition"
             >
               {/* Category Header */}
-              <div className="flex items-center space-x-3 border-b border-slate-800/80 pb-3">
-                <span className="text-2xl p-2 rounded-xl bg-slate-950 border border-slate-800">{cat.icon}</span>
+              <div className="flex items-center space-x-3 border-b border-slate-200 dark:border-slate-800/80 pb-3">
+                <span className="text-2xl p-2 rounded-xl bg-slate-50 dark:bg-slate-950 border border-slate-200 dark:border-slate-800">{cat.icon}</span>
                 <div>
-                  <h3 className="text-sm font-semibold text-white">{cat.category}</h3>
-                  <p className="text-[11px] text-slate-400 mt-0.5">{cat.description}</p>
+                  <h3 className="text-sm font-semibold text-slate-900 dark:text-white">{cat.category}</h3>
+                  <p className="text-[11px] text-slate-600 dark:text-slate-400 mt-0.5">{cat.description}</p>
                 </div>
               </div>
 
@@ -404,16 +404,16 @@ function CityExplorerContent() {
                   return (
                     <div
                       key={qItem.id}
-                      className="bg-slate-950/70 border border-slate-800/90 rounded-xl p-4 space-y-3 shadow-inner hover:border-slate-700 transition"
+                      className="bg-slate-50/80 dark:bg-slate-950/70 border border-slate-200/90 dark:border-slate-800/90 rounded-xl p-4 space-y-3 shadow-sm dark:shadow-inner hover:border-slate-300 dark:hover:border-slate-700 transition"
                     >
                       {/* Question Label */}
                       <div className="flex items-start justify-between gap-2">
-                        <h4 className="text-xs font-semibold text-slate-200 flex items-center space-x-1.5">
-                          <span className="text-indigo-400 text-sm">📍</span>
+                        <h4 className="text-xs font-semibold text-slate-800 dark:text-slate-200 flex items-center space-x-1.5">
+                          <span className="text-indigo-600 dark:text-indigo-400 text-sm">📍</span>
                           <span>{qItem.question}</span>
                         </h4>
                         {ansResult?.cached && (
-                          <span className="text-[9px] font-mono px-1.5 py-0.5 rounded bg-slate-900 text-slate-400 border border-slate-800 whitespace-nowrap">
+                          <span className="text-[9px] font-mono px-1.5 py-0.5 rounded bg-slate-200 dark:bg-slate-900 text-slate-600 dark:text-slate-400 border border-slate-300 dark:border-slate-800 whitespace-nowrap">
                             ⚡ Cached
                           </span>
                         )}
@@ -422,25 +422,25 @@ function CityExplorerContent() {
                       {/* Answer Body / Skeleton Loader / Error State */}
                       {isLoading ? (
                         <div className="space-y-2 py-1 animate-pulse" aria-busy="true">
-                          <div className="h-3.5 bg-slate-800/80 rounded w-full"></div>
-                          <div className="h-3.5 bg-slate-800/80 rounded w-5/6"></div>
-                          <div className="h-3.5 bg-slate-800/60 rounded w-4/6"></div>
+                          <div className="h-3.5 bg-slate-200 dark:bg-slate-800/80 rounded w-full"></div>
+                          <div className="h-3.5 bg-slate-200 dark:bg-slate-800/80 rounded w-5/6"></div>
+                          <div className="h-3.5 bg-slate-200/80 dark:bg-slate-800/60 rounded w-4/6"></div>
                           <div className="flex items-center space-x-2 pt-1">
-                            <div className="h-2.5 bg-slate-800/50 rounded w-16"></div>
-                            <div className="h-2.5 bg-slate-800/50 rounded w-20"></div>
+                            <div className="h-2.5 bg-slate-200/60 dark:bg-slate-800/50 rounded w-16"></div>
+                            <div className="h-2.5 bg-slate-200/60 dark:bg-slate-800/50 rounded w-20"></div>
                           </div>
                         </div>
                       ) : ansResult?.status === 'READY' ? (
                         <div className="space-y-3">
                           {/* Answer Text */}
-                          <div className="text-xs text-slate-300 leading-relaxed space-y-1.5 whitespace-pre-line border-l-2 border-indigo-500/80 pl-3 py-0.5">
+                          <div className="text-xs text-slate-700 dark:text-slate-300 leading-relaxed space-y-1.5 whitespace-pre-line border-l-2 border-indigo-600 dark:border-indigo-500/80 pl-3 py-0.5 font-normal">
                             {ansResult.answer}
                           </div>
 
                           {/* Sources & Citations */}
                           {ansResult.citations && ansResult.citations.length > 0 && (
-                            <div className="pt-1 border-t border-slate-900/90 space-y-1">
-                              <span className="text-[10px] uppercase font-semibold tracking-wider text-slate-500">
+                            <div className="pt-1 border-t border-slate-200 dark:border-slate-900/90 space-y-1">
+                              <span className="text-[10px] uppercase font-semibold tracking-wider text-slate-500 dark:text-slate-400">
                                 Sources
                               </span>
                               <div className="flex flex-wrap gap-1.5 pt-0.5">
@@ -450,7 +450,7 @@ function CityExplorerContent() {
                                     href={cite.url || '#'}
                                     target="_blank"
                                     rel="noreferrer"
-                                    className="inline-flex items-center space-x-1 px-2 py-0.5 rounded bg-slate-900 hover:bg-slate-850 text-[10px] text-indigo-300 hover:text-indigo-200 border border-slate-800/80 transition"
+                                    className="inline-flex items-center space-x-1 px-2 py-0.5 rounded bg-indigo-50 dark:bg-slate-900 hover:bg-indigo-100 dark:hover:bg-slate-850 text-[10px] font-medium text-indigo-700 dark:text-indigo-300 hover:text-indigo-800 dark:hover:text-indigo-200 border border-indigo-200 dark:border-slate-800/80 transition"
                                   >
                                     <span>🌐</span>
                                     <span className="max-w-[140px] truncate">{cite.title || cite.domain}</span>
@@ -461,18 +461,18 @@ function CityExplorerContent() {
                           )}
 
                           {/* Action Toolbar */}
-                          <div className="flex items-center justify-between pt-2 border-t border-slate-900">
+                          <div className="flex items-center justify-between pt-2 border-t border-slate-200 dark:border-slate-900">
                             <div className="flex items-center space-x-2">
                               <button
                                 onClick={() => handleToggleSpeak(qItem.id, ansResult.answer || '')}
-                                className="px-2.5 py-1 rounded-lg bg-slate-900 hover:bg-slate-850 border border-slate-800 text-[10px] text-slate-300 hover:text-white transition flex items-center space-x-1"
+                                className="px-2.5 py-1 rounded-lg bg-white dark:bg-slate-900 hover:bg-slate-100 dark:hover:bg-slate-850 border border-slate-300 dark:border-slate-800 text-[10px] font-medium text-slate-700 dark:text-slate-300 hover:text-slate-900 dark:hover:text-white transition flex items-center space-x-1 shadow-sm"
                               >
                                 <span>{speakingQuestionId === qItem.id ? '⏸ Stop' : '🔊 Listen'}</span>
                               </button>
                               <button
                                 onClick={() => handleRefreshQuestion(qItem.id)}
                                 disabled={refreshingQuestionId === qItem.id}
-                                className="px-2.5 py-1 rounded-lg bg-slate-900 hover:bg-slate-850 border border-slate-800 text-[10px] text-slate-300 hover:text-white transition flex items-center space-x-1 disabled:opacity-50"
+                                className="px-2.5 py-1 rounded-lg bg-white dark:bg-slate-900 hover:bg-slate-100 dark:hover:bg-slate-850 border border-slate-300 dark:border-slate-800 text-[10px] font-medium text-slate-700 dark:text-slate-300 hover:text-slate-900 dark:hover:text-white transition flex items-center space-x-1 disabled:opacity-50 shadow-sm"
                               >
                                 <span>↻ Refresh</span>
                               </button>
@@ -480,7 +480,7 @@ function CityExplorerContent() {
 
                             <Link
                               href={`/chat?q=${encodeURIComponent(qItem.question)}&sourceMode=web_search`}
-                              className="text-[11px] font-medium text-indigo-400 hover:text-indigo-300 transition flex items-center space-x-1"
+                              className="text-[11px] font-semibold text-indigo-600 hover:text-indigo-700 dark:text-indigo-400 dark:hover:text-indigo-300 transition flex items-center space-x-1"
                             >
                               <span>Ask AI</span>
                               <span>→</span>
@@ -488,35 +488,35 @@ function CityExplorerContent() {
                           </div>
                         </div>
                       ) : ansResult?.status === 'NO_EVIDENCE' ? (
-                        <div className="p-3 bg-amber-950/20 border border-amber-800/40 rounded-lg space-y-2">
-                          <p className="text-[11px] text-amber-300">
+                        <div className="p-3 bg-amber-50 dark:bg-amber-950/20 border border-amber-200 dark:border-amber-800/40 rounded-lg space-y-2">
+                          <p className="text-[11px] font-medium text-amber-900 dark:text-amber-300 leading-normal">
                             Reliable information could not be found for this question.
                           </p>
                           <button
                             onClick={() => handleRefreshQuestion(qItem.id)}
-                            className="px-2.5 py-1 bg-amber-900/40 hover:bg-amber-800/60 text-amber-200 border border-amber-700/50 rounded-lg text-[10px] font-medium transition"
+                            className="px-2.5 py-1 bg-amber-600 hover:bg-amber-700 dark:bg-amber-900/40 dark:hover:bg-amber-800/60 text-white dark:text-amber-200 border border-amber-600 dark:border-amber-700/50 rounded-lg text-[10px] font-semibold transition"
                           >
                             Retry
                           </button>
                         </div>
                       ) : ansResult?.status === 'FAILED' ? (
-                        <div className="p-3 bg-rose-950/20 border border-rose-800/40 rounded-lg space-y-2">
-                          <p className="text-[11px] text-rose-300">
+                        <div className="p-3 bg-rose-50 dark:bg-rose-950/20 border border-rose-200 dark:border-rose-800/40 rounded-lg space-y-2">
+                          <p className="text-[11px] font-medium text-rose-900 dark:text-rose-300 leading-normal">
                             {ansResult.error || 'Unable to load this answer right now.'}
                           </p>
                           <button
                             onClick={() => handleRefreshQuestion(qItem.id)}
-                            className="px-2.5 py-1 bg-rose-900/40 hover:bg-rose-800/60 text-rose-200 border border-rose-700/50 rounded-lg text-[10px] font-medium transition"
+                            className="px-2.5 py-1 bg-rose-600 hover:bg-rose-700 dark:bg-rose-900/40 dark:hover:bg-rose-800/60 text-white dark:text-rose-200 border border-rose-600 dark:border-rose-700/50 rounded-lg text-[10px] font-semibold transition"
                           >
                             Retry
                           </button>
                         </div>
                       ) : (
-                        <div className="flex items-center justify-between text-xs text-slate-400 pt-1">
+                        <div className="flex items-center justify-between text-xs text-slate-500 dark:text-slate-400 pt-1">
                           <span>Click to generate grounded answer</span>
                           <button
                             onClick={() => handleRefreshQuestion(qItem.id)}
-                            className="px-2.5 py-1 bg-indigo-600 hover:bg-indigo-500 text-white rounded-lg text-[10px] font-medium transition"
+                            className="px-2.5 py-1 bg-indigo-600 hover:bg-indigo-500 text-white rounded-lg text-[10px] font-medium transition shadow-sm"
                           >
                             Fetch Answer ✨
                           </button>
@@ -537,7 +537,7 @@ function CityExplorerContent() {
 export default function CityExplorerPage() {
   return (
     <CityExplorerErrorBoundary>
-      <Suspense fallback={<div className="min-h-screen bg-slate-950 text-indigo-400 font-mono text-xs flex items-center justify-center">Loading City Explorer...</div>}>
+      <Suspense fallback={<div className="min-h-screen bg-slate-50 dark:bg-slate-950 text-indigo-600 dark:text-indigo-400 font-mono text-xs flex items-center justify-center">Loading City Explorer...</div>}>
         <CityExplorerContent />
       </Suspense>
     </CityExplorerErrorBoundary>

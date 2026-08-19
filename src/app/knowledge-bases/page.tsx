@@ -159,7 +159,7 @@ export default function KnowledgeBasesPage() {
   };
 
   return (
-    <div className="max-w-7xl mx-auto space-y-8">
+    <div className="w-full max-w-[1600px] mx-auto space-y-8">
       {/* Header Banner */}
       <div className="flex flex-col md:flex-row md:items-center justify-between gap-4 border-b border-slate-800 pb-6">
         <div>
@@ -271,7 +271,7 @@ export default function KnowledgeBasesPage() {
           )}
         </div>
       ) : (
-        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
+        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-6">
           {items.map((kb) => (
             <div
               key={kb.id}

@@ -8,13 +8,25 @@ export class CityExplorerCacheService {
   private inMemoryCache: Map<string, { data: CityExplorerAnswerResult; expiresAt: number }> = new Map();
 
   /**
-   * Compute stable SHA-256 cache fingerprint for a city + question pair.
+   * Compute stable SHA-256 fingerprint for a city + question pair.
    */
-  public computeFingerprint(city: string, questionId: string, sourceMode: string = 'web_search'): string {
+  public computeFingerprint(city: string, questionId: string, sourceMode: string = 'WEB_PUBLIC'): string {
     const normCity = city.toLowerCase().trim();
     const normQ = questionId.toLowerCase().trim();
-    const raw = `${normCity}:${normQ}:${sourceMode}:${PROMPT_VERSION}`;
+    const cacheVer = env.server?.CITY_EXPLORER_CACHE_VERSION || 'v3';
+    const promptVer = env.server?.CITY_EXPLORER_PROMPT_VERSION || PROMPT_VERSION;
+    const raw = `${normCity}:${normQ}:${sourceMode}:${cacheVer}:${promptVer}`;
     return createHash('sha256').update(raw).digest('hex');
+  }
+
+  /**
+   * Constructs shared public Redis cache key format docai:city:public:v3:<city>:<questionId>:<hash>
+   */
+  public getPublicCacheKey(city: string, questionId: string, fingerprint: string): string {
+    const normCity = city.toLowerCase().trim();
+    const normQ = questionId.toLowerCase().trim();
+    const cacheVer = env.server?.CITY_EXPLORER_CACHE_VERSION || 'v3';
+    return `docai:city:public:${cacheVer}:${normCity}:${normQ}:${fingerprint}`;
   }
 
   /**
@@ -24,21 +36,21 @@ export class CityExplorerCacheService {
     if (kind === 'STATIC') {
       return env.server?.CITY_EXPLORER_STATIC_TTL_SECONDS ?? 86400;
     }
-    return env.server?.CITY_EXPLORER_DYNAMIC_TTL_SECONDS ?? 1800;
+    return env.server?.CITY_EXPLORER_DYNAMIC_TTL_SECONDS ?? 600;
   }
 
   /**
-   * Get cached answer result by city & question ID.
+   * Get cached public answer result by city & question ID.
    */
   public async getCachedAnswer(
     city: string,
     questionId: string,
-    sourceMode: string = 'web_search'
+    sourceMode: string = 'WEB_PUBLIC'
   ): Promise<{ result: CityExplorerAnswerResult; isStale: boolean } | null> {
     const fingerprint = this.computeFingerprint(city, questionId, sourceMode);
-    const key = `city-explorer:${city.toLowerCase().trim()}:question:${fingerprint}`;
+    const key = this.getPublicCacheKey(city, questionId, fingerprint);
 
-    // 1. Try Redis cache first
+    // 1. Try shared public Redis cache first
     try {
       const parsed = await redis.getJson<CityExplorerAnswerResult>(key);
       if (parsed) {
@@ -59,17 +71,17 @@ export class CityExplorerCacheService {
   }
 
   /**
-   * Store answer result in cache with appropriate TTL.
+   * Store public city answer result in shared cache with appropriate TTL.
    */
   public async setCachedAnswer(
     city: string,
     questionId: string,
     result: CityExplorerAnswerResult,
     kind: QuestionKind = 'STATIC',
-    sourceMode: string = 'web_search'
+    sourceMode: string = 'WEB_PUBLIC'
   ): Promise<void> {
     const fingerprint = this.computeFingerprint(city, questionId, sourceMode);
-    const key = `city-explorer:${city.toLowerCase().trim()}:question:${fingerprint}`;
+    const key = this.getPublicCacheKey(city, questionId, fingerprint);
     const ttlSeconds = this.getTTLSeconds(kind);
 
     const payload: CityExplorerAnswerResult = {
@@ -84,7 +96,7 @@ export class CityExplorerCacheService {
       expiresAt: Date.now() + ttlSeconds * 1000
     });
 
-    // Store in Redis
+    // Store in shared Redis public cache
     try {
       await redis.setJson(key, payload, ttlSeconds);
     } catch (err) {
@@ -93,17 +105,27 @@ export class CityExplorerCacheService {
   }
 
   /**
-   * Acquire a generation lock for a specific question fingerprint to avoid duplicate concurrent LLM/Web calls.
+   * Acquire a generation lock for a specific question fingerprint to avoid duplicate concurrent LLM calls.
    */
-  public async acquireGenerationLock(fingerprint: string, ttlSeconds: number = 10): Promise<string | null> {
-    const lockKey = `city-explorer:lock:${fingerprint}`;
+  public async acquireGenerationLock(_fingerprint: string, _ttlSeconds?: number): Promise<string | null>;
+  public async acquireGenerationLock(_city: string, _questionId: string, _ttlSeconds?: number): Promise<string | null>;
+  public async acquireGenerationLock(cityOrFingerprint: string, questionIdOrTtl?: string | number, ttlSecondsParam: number = 10): Promise<string | null> {
+    let lockKey = `city-explorer:lock:${cityOrFingerprint}`;
+    let ttlSeconds = ttlSecondsParam;
+
+    if (typeof questionIdOrTtl === 'string') {
+      const normCity = cityOrFingerprint.toLowerCase().trim();
+      lockKey = `docai:lock:city:${normCity}:${questionIdOrTtl.toLowerCase().trim()}`;
+    } else if (typeof questionIdOrTtl === 'number') {
+      ttlSeconds = questionIdOrTtl;
+    }
+
     const ownerToken = randomBytes(16).toString('hex');
 
     try {
       const acquired = await redis.acquireLock(lockKey, ttlSeconds);
       if (acquired) return ownerToken;
     } catch {
-      // In-memory lock fallback
       const memLockKey = `lock:${lockKey}`;
       if (!this.inMemoryCache.has(memLockKey)) {
         this.inMemoryCache.set(memLockKey, { data: {} as any, expiresAt: Date.now() + ttlSeconds * 1000 });
@@ -117,8 +139,14 @@ export class CityExplorerCacheService {
   /**
    * Release generation lock only if token matches.
    */
-  public async releaseGenerationLock(fingerprint: string, _ownerToken: string): Promise<void> {
-    const lockKey = `city-explorer:lock:${fingerprint}`;
+  public async releaseGenerationLock(_fingerprint: string, _ownerToken?: string): Promise<void>;
+  public async releaseGenerationLock(_city: string, _questionId: string, _ownerToken?: string): Promise<void>;
+  public async releaseGenerationLock(cityOrFingerprint: string, questionIdOrOwner?: string, _ownerToken?: string): Promise<void> {
+    let lockKey = `city-explorer:lock:${cityOrFingerprint}`;
+    if (_ownerToken !== undefined && typeof questionIdOrOwner === 'string') {
+      const normCity = cityOrFingerprint.toLowerCase().trim();
+      lockKey = `docai:lock:city:${normCity}:${questionIdOrOwner.toLowerCase().trim()}`;
+    }
     try {
       await redis.releaseLock(lockKey);
     } catch {
@@ -127,10 +155,13 @@ export class CityExplorerCacheService {
   }
 
   /**
-   * Clear cache for a specific city.
+   * Clear shared cache for a specific city.
    */
   public async invalidateCityCache(city: string): Promise<void> {
-    const prefix = `city-explorer:${city.toLowerCase().trim()}:question:`;
+    const normCity = city.toLowerCase().trim();
+    const cacheVer = env.server?.CITY_EXPLORER_CACHE_VERSION || 'v3';
+    const prefix = `docai:city:public:${cacheVer}:${normCity}:`;
+
     try {
       const client = await redis.getClient();
       const keys = await client.keys(`${prefix}*`);

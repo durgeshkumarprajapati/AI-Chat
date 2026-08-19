@@ -8,6 +8,7 @@ export interface CityExplorerTelemetryEvent {
     | 'city_explorer.answer.failed'
     | 'city_explorer.answer.no_evidence'
     | 'city_explorer.answer.refreshed'
+    | 'city_explorer.answer.fallback_used'
     | 'city_explorer.prefetch.cancelled';
   userId?: string;
   city: string;

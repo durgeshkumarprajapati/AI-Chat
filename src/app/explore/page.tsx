@@ -84,52 +84,109 @@ function CityExplorerContent() {
     }
   }, [urlCity, activeCity, activeRegion, updateCity]);
 
-  // Main prefetch function with race condition sequencing protection
+  // Main prefetch/stream function with progressive card updates & race condition sequencing protection
   const fetchCityAnswers = useCallback(async (targetCity: string, forceQuestionId?: string) => {
     const reqId = ++requestSeqRef.current;
-    
+
     if (!forceQuestionId) {
       setIsPrefetching(true);
-      setAnswersMap({}); // Clear previous city answer state immediately
+      setAnswersMap({}); // Clear previous city state immediately for instant skeleton rendering
     } else {
       setRefreshingQuestionId(forceQuestionId);
     }
 
     try {
-      const predefined = getPredefinedQuestionsForCity(targetCity);
-      
-      const res = await fetch('/api/explore/prefetch', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          city: targetCity,
-          region: activeRegion,
-          questionIds: predefined.map((q) => q.id),
-          forceRefreshQuestionId: forceQuestionId
-        })
-      });
+      if (forceQuestionId) {
+        // Single question force refresh path
+        const res = await fetch('/api/explore/prefetch', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            city: targetCity,
+            region: activeRegion,
+            questionIds: [forceQuestionId],
+            forceRefreshQuestionId: forceQuestionId
+          })
+        });
 
-      // Discard stale out-of-order responses if city changed mid-request
-      if (reqId !== requestSeqRef.current) {
+        if (reqId !== requestSeqRef.current) return;
+
+        if (res.ok) {
+          const data = await res.json();
+          if (data.success && Array.isArray(data.answers)) {
+            setAnswersMap((prev) => {
+              const nextMap = { ...prev };
+              for (const item of data.answers) {
+                nextMap[item.questionId] = item;
+              }
+              return nextMap;
+            });
+          }
+        }
         return;
       }
 
-      if (res.ok) {
-        const data = await res.json();
-        if (data.success && Array.isArray(data.answers)) {
-          setAnswersMap((prev) => {
-            const nextMap = forceQuestionId ? { ...prev } : {};
+      // Progressive SSE stream path for full city exploration
+      const streamUrl = `/api/explore/stream?city=${encodeURIComponent(targetCity)}${activeRegion ? `&region=${encodeURIComponent(activeRegion)}` : ''}`;
+      const response = await fetch(streamUrl);
+
+      if (reqId !== requestSeqRef.current) return;
+
+      if (!response.ok || !response.body) {
+        // Fallback to bulk prefetch API if SSE stream fails
+        const res = await fetch('/api/explore/prefetch', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ city: targetCity, region: activeRegion })
+        });
+        if (reqId !== requestSeqRef.current) return;
+        if (res.ok) {
+          const data = await res.json();
+          if (data.success && Array.isArray(data.answers)) {
+            const nextMap: Record<string, CityExplorerAnswerResult> = {};
             for (const item of data.answers) {
               nextMap[item.questionId] = item;
             }
-            return nextMap;
-          });
+            setAnswersMap(nextMap);
+          }
         }
-      } else {
-        console.warn('[CityExplorer] Prefetch request returned error status:', res.status);
+        return;
+      }
+
+      const reader = response.body.getReader();
+      const decoder = new TextDecoder('utf-8');
+      let buffer = '';
+
+      while (true) {
+        const { done, value } = await reader.read();
+        if (done) break;
+
+        if (reqId !== requestSeqRef.current) {
+          reader.cancel();
+          return;
+        }
+
+        buffer += decoder.decode(value, { stream: true });
+        const lines = buffer.split('\n');
+        buffer = lines.pop() || '';
+
+        for (const line of lines) {
+          const trimmed = line.trim();
+          if (!trimmed || !trimmed.startsWith('data: ')) continue;
+
+          try {
+            const event = JSON.parse(trimmed.slice(6));
+            if (event.type === 'answer' && event.questionId && event.answer) {
+              setAnswersMap((prev) => ({
+                ...prev,
+                [event.questionId]: event.answer
+              }));
+            }
+          } catch {}
+        }
       }
     } catch (err) {
-      console.error('[CityExplorer] Error prefetching city answers:', err);
+      console.error('[CityExplorer] Error streaming city answers:', err);
     } finally {
       if (reqId === requestSeqRef.current) {
         setIsPrefetching(false);

@@ -6,11 +6,10 @@ import { env } from '@/config/env';
 
 export const dynamic = 'force-dynamic';
 
-// Rate Limiting Store
 const ipRateLimitMap = new Map<string, { count: number; resetAt: number }>();
 
 async function checkRateLimit(identifier: string): Promise<boolean> {
-  const limit = env.server?.CITY_EXPLORER_RATE_LIMIT_PER_MINUTE ?? 60;
+  const limit = env.server?.CITY_EXPLORER_REQUESTS_PER_MINUTE ?? 60;
   const windowMs = 60 * 1000;
   const now = Date.now();
 
@@ -23,7 +22,6 @@ async function checkRateLimit(identifier: string): Promise<boolean> {
     }
     return current <= limit;
   } catch {
-    // In-memory fallback rate limit
     let entry = ipRateLimitMap.get(identifier);
     if (!entry || now > entry.resetAt) {
       entry = { count: 1, resetAt: now + windowMs };
@@ -36,6 +34,7 @@ async function checkRateLimit(identifier: string): Promise<boolean> {
 }
 
 export async function POST(req: NextRequest) {
+  const startTime = Date.now();
   try {
     let userId = 'anonymous-user';
     try {
@@ -43,9 +42,7 @@ export async function POST(req: NextRequest) {
       if (user && user.id) {
         userId = user.id;
       }
-    } catch {
-      // Allow guest/public browsing if auth fails or not provided
-    }
+    } catch {}
 
     const ip = req.headers.get('x-forwarded-for') || '127.0.0.1';
     const rateLimitKey = `${userId}:${ip}`;
@@ -68,7 +65,6 @@ export async function POST(req: NextRequest) {
       );
     }
 
-    // Extract optional array of question items or IDs
     let questionIds: string[] | undefined = undefined;
     if (Array.isArray(body.questions) && body.questions.length > 0) {
       questionIds = body.questions
@@ -86,7 +82,17 @@ export async function POST(req: NextRequest) {
       forceRefreshQuestionId: body.forceRefreshQuestionId
     });
 
-    return NextResponse.json(payload, { status: 200 });
+    const durationMs = Date.now() - startTime;
+    const allCached = payload.answers.every((a) => a.cached);
+    const anyFallback = payload.answers.some((a) => a.provider === 'WEB_SEARCH');
+
+    const res = NextResponse.json(payload, { status: 200 });
+    res.headers.set('X-City-Cache', allCached ? 'HIT' : 'MISS');
+    res.headers.set('X-City-Provider', anyFallback ? 'WEB' : 'GEMINI');
+    res.headers.set('X-City-Latency-Ms', durationMs.toString());
+    res.headers.set('X-City-Fallback', anyFallback.toString());
+
+    return res;
   } catch (err: any) {
     console.error('[POST /api/explore/prefetch] API error:', err);
     return NextResponse.json(

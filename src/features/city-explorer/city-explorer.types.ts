@@ -1,6 +1,8 @@
-export type CityExplorerAnswerStatus = 'READY' | 'LOADING' | 'FAILED' | 'NO_EVIDENCE';
+export type CityExplorerAnswerStatus = 'READY' | 'LOADING' | 'FAILED' | 'NO_EVIDENCE' | 'UNAVAILABLE';
 
 export type QuestionKind = 'STATIC' | 'DYNAMIC';
+
+export type QuestionPriority = 'P0' | 'P1' | 'P2';
 
 export interface PredefinedQuestionItem {
   id: string;
@@ -8,6 +10,7 @@ export interface PredefinedQuestionItem {
   categoryIcon: string;
   question: string;
   kind: QuestionKind;
+  priority: QuestionPriority;
   description?: string;
   isWeather?: boolean;
 }
@@ -32,8 +35,10 @@ export interface CityExplorerAnswerResult {
   status: CityExplorerAnswerStatus;
   answer?: string;
   citations?: CitationItem[];
+  provider?: string;
   cached?: boolean;
   isStale?: boolean;
+  durationMs?: number;
   generatedAt?: string;
   error?: string;
 }
@@ -50,4 +55,14 @@ export interface PrefetchResponsePayload {
   success: boolean;
   city: CityInfo;
   answers: CityExplorerAnswerResult[];
+}
+
+export interface CityStreamEvent {
+  type: 'answer' | 'error' | 'done';
+  city: string;
+  questionId?: string;
+  answer?: CityExplorerAnswerResult;
+  error?: string;
+  completedCount?: number;
+  totalCount?: number;
 }

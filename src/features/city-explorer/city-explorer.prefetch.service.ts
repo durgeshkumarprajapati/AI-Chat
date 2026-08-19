@@ -10,10 +10,12 @@ import { getPredefinedQuestionsForCity, findQuestionById } from './city-explorer
 import { cityExplorerCacheService, CityExplorerCacheService } from './city-explorer.cache.service';
 import { cityExplorerAnswerService, CityExplorerAnswerService } from './city-explorer.answer.service';
 import { cityExplorerTelemetryService } from './city-explorer.telemetry.service';
+import { runWithConcurrencyLimit } from '@/lib/performance/concurrency';
 
 export class CityExplorerPrefetchService {
   private cache: CityExplorerCacheService;
   private answerService: CityExplorerAnswerService;
+  private inFlightMap: Map<string, Promise<CityExplorerAnswerResult>> = new Map();
 
   constructor(cache?: CityExplorerCacheService, answerService?: CityExplorerAnswerService) {
     this.cache = cache || cityExplorerCacheService;
@@ -22,11 +24,13 @@ export class CityExplorerPrefetchService {
 
   /**
    * Main prefetch entry point. Validates city & questions, executes cache lookups,
-   * schedules missing answer generations with bounded concurrency, and returns normalized payload.
+   * schedules missing answer generations with tiered priority (P0 -> P1 -> P2),
+   * bounded concurrency control, and request deduplication.
    */
   public async prefetchAnswers(
     userId: string,
-    input: PrefetchRequestInput
+    input: PrefetchRequestInput,
+    signal?: AbortSignal
   ): Promise<PrefetchResponsePayload> {
     const startTime = Date.now();
     const rawCity = (input.city || '').trim();
@@ -41,7 +45,6 @@ export class CityExplorerPrefetchService {
       country: input.country || 'India'
     };
 
-    // Resolve questions against trusted server-side registry
     const registryQuestions = getPredefinedQuestionsForCity(rawCity);
     let targetQuestions: PredefinedQuestionItem[] = [];
 
@@ -66,11 +69,10 @@ export class CityExplorerPrefetchService {
       forceRefreshQuestionId: input.forceRefreshQuestionId
     });
 
-    const maxConcurrency = env.server?.CITY_EXPLORER_MAX_CONCURRENT_QUERIES ?? 3;
     const resultsMap: Map<string, CityExplorerAnswerResult> = new Map();
     const missingQuestions: PredefinedQuestionItem[] = [];
 
-    // 1. Initial Cache Check Phase
+    // 1. Instant Cache Check Phase
     for (const qItem of targetQuestions) {
       const isForceRefresh = input.forceRefreshQuestionId === qItem.id;
 
@@ -89,53 +91,80 @@ export class CityExplorerPrefetchService {
       missingQuestions.push(qItem);
     }
 
-    // 2. Bounded Concurrency Worker Pool Phase for Missing Answers
+    // 2. Priority Grouping (P0 -> P1 -> P2) for Missing Answers
     if (missingQuestions.length > 0) {
-      await this.processWorkerPool(
-        missingQuestions,
-        maxConcurrency,
-        async (qItem) => {
-          const fingerprint = this.cache.computeFingerprint(rawCity, qItem.id);
-          const lockOwner = await this.cache.acquireGenerationLock(fingerprint);
+      const p0Items = missingQuestions.filter((q) => q.priority === 'P0');
+      const p1Items = missingQuestions.filter((q) => q.priority === 'P1');
+      const p2Items = missingQuestions.filter((q) => q.priority === 'P2');
 
-          try {
-            // Re-check cache after lock acquisition in case another worker populated it
-            if (!input.forceRefreshQuestionId || input.forceRefreshQuestionId !== qItem.id) {
-              const recheck = await this.cache.getCachedAnswer(rawCity, qItem.id);
-              if (recheck && recheck.result) {
-                resultsMap.set(qItem.id, recheck.result);
-                return;
+      const maxConcurrency = env.server?.CITY_EXPLORER_MAX_CONCURRENCY ?? 3;
+
+      for (const tierItems of [p0Items, p1Items, p2Items]) {
+        if (tierItems.length === 0) continue;
+
+        await runWithConcurrencyLimit(
+          tierItems,
+          maxConcurrency,
+          async (qItem) => {
+            const inFlightKey = `${rawCity.toLowerCase()}:${qItem.id}`;
+            const existingPromise = this.inFlightMap.get(inFlightKey);
+
+            if (existingPromise) {
+              const deduplicatedRes = await existingPromise;
+              resultsMap.set(qItem.id, deduplicatedRes);
+              return;
+            }
+
+            const taskPromise = (async (): Promise<CityExplorerAnswerResult> => {
+              const lockOwner = await this.cache.acquireGenerationLock(rawCity, qItem.id);
+
+              try {
+                if (!input.forceRefreshQuestionId || input.forceRefreshQuestionId !== qItem.id) {
+                  const recheck = await this.cache.getCachedAnswer(rawCity, qItem.id);
+                  if (recheck && recheck.result) {
+                    return recheck.result;
+                  }
+                }
+
+                const generated = await this.answerService.generateAnswer(userId, cityInfo, qItem, signal);
+
+                if (generated.status === 'READY' || generated.status === 'NO_EVIDENCE') {
+                  await this.cache.setCachedAnswer(rawCity, qItem.id, generated, qItem.kind);
+                }
+
+                return generated;
+              } finally {
+                if (lockOwner) {
+                  await this.cache.releaseGenerationLock(rawCity, qItem.id, lockOwner);
+                }
               }
-            }
+            })();
 
-            const generated = await this.answerService.generateAnswer(userId, cityInfo, qItem);
+            this.inFlightMap.set(inFlightKey, taskPromise);
 
-            if (generated.status === 'READY' || generated.status === 'NO_EVIDENCE') {
-              await this.cache.setCachedAnswer(rawCity, qItem.id, generated, qItem.kind);
+            try {
+              const res = await taskPromise;
+              resultsMap.set(qItem.id, res);
+            } catch (err) {
+              resultsMap.set(qItem.id, {
+                questionId: qItem.id,
+                category: qItem.category,
+                question: qItem.question,
+                status: 'FAILED',
+                error: 'Unable to load this answer right now.',
+                cached: false,
+                generatedAt: new Date().toISOString()
+              });
+            } finally {
+              this.inFlightMap.delete(inFlightKey);
             }
-
-            resultsMap.set(qItem.id, generated);
-          } catch (err) {
-            console.error(`[CityExplorerPrefetchService] Worker error generating question ${qItem.id}:`, err);
-            resultsMap.set(qItem.id, {
-              questionId: qItem.id,
-              category: qItem.category,
-              question: qItem.question,
-              status: 'FAILED',
-              error: 'Unable to load this answer right now.',
-              cached: false,
-              generatedAt: new Date().toISOString()
-            });
-          } finally {
-            if (lockOwner) {
-              await this.cache.releaseGenerationLock(fingerprint, lockOwner);
-            }
-          }
-        }
-      );
+          },
+          { signal, timeoutMs: env.server?.CITY_EXPLORER_SOURCE_TIMEOUT_MS || 5000 }
+        );
+      }
     }
 
-    // Assemble final output in exact registry order
+    // Assemble final output array in exact registry order
     const finalAnswers: CityExplorerAnswerResult[] = targetQuestions.map((q) => {
       return (
         resultsMap.get(q.id) || {
@@ -161,28 +190,6 @@ export class CityExplorerPrefetchService {
       city: cityInfo,
       answers: finalAnswers
     };
-  }
-
-  /**
-   * Controlled promise pool for executing async tasks with bounded concurrency.
-   */
-  private async processWorkerPool<T>(
-    items: T[],
-    concurrency: number,
-    taskFn: (_item: T) => Promise<void>
-  ): Promise<void> {
-    const queue = [...items];
-    const workers = Array(Math.min(concurrency, queue.length))
-      .fill(null)
-      .map(async () => {
-        while (queue.length > 0) {
-          const item = queue.shift();
-          if (item) {
-            await taskFn(item);
-          }
-        }
-      });
-    await Promise.all(workers);
   }
 }
 

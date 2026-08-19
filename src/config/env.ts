@@ -265,6 +265,17 @@ const serverEnvSchema = z
     GEMINI_THINKING_LEVEL: z.string().default('low'),
     GEMINI_MAX_RETRIES: z.coerce.number().int().nonnegative().default(2),
     GEMINI_RATE_LIMIT_PER_MINUTE: z.coerce.number().int().positive().default(120),
+    CITY_EXPLORER_V2_ENABLED: z.coerce.boolean().default(true),
+    CITY_EXPLORER_MAX_CONCURRENCY: z.coerce.number().int().positive().default(3),
+    CITY_EXPLORER_MAX_CONCURRENT_GEMINI: z.coerce.number().int().positive().default(3),
+    CITY_EXPLORER_MAX_CONCURRENT_WEB: z.coerce.number().int().positive().default(3),
+    CITY_EXPLORER_SOURCE_TIMEOUT_MS: z.coerce.number().int().positive().default(3000),
+    CITY_EXPLORER_MAX_SOURCE_FETCHES: z.coerce.number().int().positive().default(3),
+    CITY_EXPLORER_STATIC_TTL_SECONDS: z.coerce.number().int().positive().default(86400),
+    CITY_EXPLORER_DYNAMIC_TTL_SECONDS: z.coerce.number().int().positive().default(600),
+    CITY_EXPLORER_REQUESTS_PER_MINUTE: z.coerce.number().int().positive().default(60),
+    CITY_EXPLORER_CACHE_VERSION: z.string().default('v3'),
+    CITY_EXPLORER_PROMPT_VERSION: z.string().default('v3'),
     RAG_GENERAL_KNOWLEDGE_ENABLED: z
       .coerce.boolean()
       .default(true),
@@ -303,12 +314,6 @@ const serverEnvSchema = z
     CITY_EXPLORER_CACHE_TTL_SECONDS: z
       .coerce.number()
       .default(3600),
-    CITY_EXPLORER_STATIC_TTL_SECONDS: z
-      .coerce.number()
-      .default(86400),
-    CITY_EXPLORER_DYNAMIC_TTL_SECONDS: z
-      .coerce.number()
-      .default(1800),
     CITY_EXPLORER_MAX_CONCURRENT_QUERIES: z
       .coerce.number()
       .default(3),

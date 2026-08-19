@@ -46,6 +46,7 @@ interface MessageItem extends CollabMessageItem {
   createdAt: string;
   sender: UserSummary;
   replyTo?: { id: string; content: string; sender: { name: string | null; email: string } } | null;
+  receipts?: Array<{ id: string; userId: string; status: string; deliveredAt?: string | Date | null; readAt?: string | Date | null }>;
 }
 
 interface ChannelItem {
@@ -96,6 +97,14 @@ export default function CollabChatPage() {
   const [selectedMemberIds, setSelectedMemberIds] = useState<string[]>([]);
   const [isAddingMembers, setIsAddingMembers] = useState(false);
 
+  // Group Members & Management Modal
+  const [showMembersModal, setShowMembersModal] = useState(false);
+  const [removedBanner, setRemovedBanner] = useState<string | null>(null);
+
+  // Group Receipts Popover
+  const [receiptSummaryMessageId, setReceiptSummaryMessageId] = useState<string | null>(null);
+  const [receiptSummaryData, setReceiptSummaryData] = useState<any>(null);
+
   const [showShareModal, setShowShareModal] = useState(false);
   const [shareType, setShareType] = useState<'roadmap' | 'entity' | 'document' | 'question'>('roadmap');
   const [shareTargetId, setShareTargetId] = useState('');
@@ -136,8 +145,8 @@ export default function CollabChatPage() {
       const data = await res.json();
       if (data.success && data.data) {
         setMessages(data.data);
-        // Mark channel read
-        await fetch(`/api/collaboration/channels/${chId}/messages`, { method: 'PATCH' });
+        // Mark channel read & send read ACK
+        await fetch(`/api/collaboration/channels/${chId}/read`, { method: 'POST' });
       }
     } catch (err) {
       console.error('Failed to fetch messages:', err);
@@ -207,7 +216,7 @@ export default function CollabChatPage() {
     return () => clearTimeout(timer);
   }, [addMembersQuery, showAddMembersModal]);
 
-  // Real-time SSE event listener with deduplication
+  // Real-time SSE event listener with deduplication & delivery receipts
   useEffect(() => {
     const eventSource = new EventSource('/api/collaboration/events');
 
@@ -219,6 +228,14 @@ export default function CollabChatPage() {
           const newMsg = event.data as MessageItem;
           if (newMsg.channelId === activeChannelId) {
             setMessages((prev) => mergeMessages(prev, newMsg));
+            // Automatically send delivery ACK for message sent by another user
+            if (newMsg.senderId !== currentUser?.id) {
+              fetch(`/api/collaboration/channels/${activeChannelId}/messages/delivery`, {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ messageIds: [newMsg.id] })
+              }).catch(() => {});
+            }
           }
           fetchChannels();
         } else if (event.type === 'message:edit') {
@@ -233,6 +250,24 @@ export default function CollabChatPage() {
               m.id === messageId ? { ...m, isDeleted: true, content: 'This message was deleted.' } : m
             )
           );
+        } else if (event.type === 'member:removed') {
+          if (event.data?.userId === currentUser?.id) {
+            setRemovedBanner('You were removed from this group.');
+            if (event.channelId === activeChannelId) {
+              setActiveChannelId(null);
+              setMessages([]);
+            }
+          }
+          fetchChannels();
+        } else if (event.type === 'member:left' || event.type === 'member:owner_changed') {
+          fetchChannels();
+          if (activeChannelId && event.channelId === activeChannelId) {
+            fetchMessages(activeChannelId);
+          }
+        } else if (event.type === 'message:delivered' || event.type === 'message:read') {
+          if (activeChannelId && event.channelId === activeChannelId) {
+            fetchMessages(activeChannelId);
+          }
         } else if (event.type === 'ai:generating') {
           if (event.channelId === activeChannelId) {
             setIsAiGenerating(event.data.isGenerating);
@@ -244,7 +279,7 @@ export default function CollabChatPage() {
     return () => {
       eventSource.close();
     };
-  }, [activeChannelId, fetchChannels]);
+  }, [activeChannelId, currentUser?.id, fetchChannels, fetchMessages]);
 
   // Select User from Search & Start/Reuse DM
   const handleStartDM = async (targetUser: UserSummary) => {
@@ -298,6 +333,122 @@ export default function CollabChatPage() {
     }
   };
 
+  // Remove Group Member
+  const handleRemoveMember = async (targetUserId: string) => {
+    if (!activeChannelId) return;
+    if (!confirm('Are you sure you want to remove this member from the group?')) return;
+
+    try {
+      const res = await fetch(`/api/collaboration/channels/${activeChannelId}/members/${targetUserId}`, {
+        method: 'DELETE'
+      });
+      const data = await res.json();
+      if (data.success) {
+        await fetchChannels();
+        await fetchMessages(activeChannelId);
+      } else {
+        alert(data.error || 'Failed to remove member');
+      }
+    } catch (err) {
+      console.error('Failed to remove member:', err);
+    }
+  };
+
+  // Leave Group
+  const handleLeaveGroup = async () => {
+    if (!activeChannelId) return;
+    if (!confirm('Are you sure you want to leave this group?')) return;
+
+    try {
+      const res = await fetch(`/api/collaboration/channels/${activeChannelId}/leave`, {
+        method: 'POST'
+      });
+      const data = await res.json();
+      if (data.success) {
+        setShowMembersModal(false);
+        setActiveChannelId(null);
+        setMessages([]);
+        await fetchChannels();
+      } else {
+        alert(data.error || 'Failed to leave group');
+      }
+    } catch (err) {
+      console.error('Failed to leave group:', err);
+    }
+  };
+
+  // Transfer Ownership
+  const handleTransferOwner = async (newOwnerId: string) => {
+    if (!activeChannelId) return;
+    if (!confirm('Are you sure you want to transfer group ownership?')) return;
+
+    try {
+      const res = await fetch(`/api/collaboration/channels/${activeChannelId}/transfer-owner`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ userId: newOwnerId })
+      });
+      const data = await res.json();
+      if (data.success) {
+        await fetchChannels();
+        await fetchMessages(activeChannelId);
+      } else {
+        alert(data.error || 'Failed to transfer ownership');
+      }
+    } catch (err) {
+      console.error('Failed to transfer ownership:', err);
+    }
+  };
+
+  // Fetch Message Receipt Summary
+  const handleFetchReceiptSummary = async (messageId: string) => {
+    if (!activeChannelId) return;
+    setReceiptSummaryMessageId(messageId);
+    setReceiptSummaryData(null);
+    try {
+      const res = await fetch(`/api/collaboration/channels/${activeChannelId}/receipts/${messageId}`);
+      const data = await res.json();
+      if (data.success && data.data) {
+        setReceiptSummaryData(data.data);
+      }
+    } catch (err) {
+      console.error('Failed to fetch receipt summary:', err);
+    }
+  };
+
+  // Retry Failed Message (Reuses SAME clientMessageId)
+  const handleRetryMessage = async (msg: MessageItem) => {
+    if (!activeChannelId || !msg.clientMessageId) return;
+
+    setMessages((prev) =>
+      prev.map((m) => (m.clientMessageId === msg.clientMessageId ? { ...m, status: 'SENDING' } : m))
+    );
+
+    try {
+      const res = await fetch(`/api/collaboration/channels/${activeChannelId}/messages`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          content: msg.content,
+          replyToId: msg.replyToId,
+          clientMessageId: msg.clientMessageId
+        })
+      });
+      const data = await res.json();
+      if (data.success && data.data) {
+        setMessages((prev) => mergeMessages(prev, data.data));
+      } else {
+        setMessages((prev) =>
+          prev.map((m) => (m.clientMessageId === msg.clientMessageId ? { ...m, status: 'FAILED' } : m))
+        );
+      }
+    } catch (err) {
+      setMessages((prev) =>
+        prev.map((m) => (m.clientMessageId === msg.clientMessageId ? { ...m, status: 'FAILED' } : m))
+      );
+    }
+  };
+
   // Send message with clientMessageId & deduplication
   const handleSendMessage = async (e?: React.FormEvent) => {
     if (e) e.preventDefault();
@@ -347,9 +498,15 @@ export default function CollabChatPage() {
       const data = await res.json();
       if (data.success && data.data) {
         setMessages((prev) => mergeMessages(prev, data.data));
+      } else {
+        setMessages((prev) =>
+          prev.map((m) => (m.clientMessageId === clientMessageId ? { ...m, status: 'FAILED' } : m))
+        );
       }
     } catch (err) {
-      console.error('Failed to send message:', err);
+      setMessages((prev) =>
+        prev.map((m) => (m.clientMessageId === clientMessageId ? { ...m, status: 'FAILED' } : m))
+      );
     }
   };
 
@@ -672,6 +829,18 @@ export default function CollabChatPage() {
                 </div>
 
                 <div className="flex items-center space-x-2">
+                  {activeChannel.type === 'GROUP' && (
+                    <button
+                      onClick={() => setShowMembersModal(true)}
+                      className="px-3 py-1.5 bg-slate-100 dark:bg-slate-800 hover:bg-slate-200 dark:hover:bg-slate-700 text-slate-700 dark:text-slate-300 text-xs font-semibold rounded-xl transition flex items-center space-x-1"
+                      aria-label="View group members"
+                      data-tour="collab-group-members-btn"
+                    >
+                      <span>👥</span>
+                      <span>Members ({activeChannel.members.length})</span>
+                    </button>
+                  )}
+
                   {activeChannel.type === 'GROUP' && (activeChannel.role === 'OWNER' || activeChannel.role === 'ADMIN') && (
                     <button
                       onClick={() => {
@@ -698,6 +867,19 @@ export default function CollabChatPage() {
                   </button>
                 </div>
               </div>
+
+              {/* Removed from Group Banner Alert */}
+              {removedBanner && (
+                <div className="p-3 bg-rose-50 dark:bg-rose-950/60 border border-rose-200 dark:border-rose-800 rounded-xl flex items-center justify-between text-xs text-rose-700 dark:text-rose-300 mb-3">
+                  <div className="flex items-center space-x-2">
+                    <span>🚫</span>
+                    <span className="font-semibold">{removedBanner}</span>
+                  </div>
+                  <button onClick={() => setRemovedBanner(null)} className="text-rose-400 hover:text-rose-200 text-xs">
+                    ✕
+                  </button>
+                </div>
+              )}
 
               {/* Message History Feed */}
               <div className="flex-1 overflow-y-auto space-y-4 pr-2" data-tour="collab-message-feed">
@@ -813,10 +995,73 @@ export default function CollabChatPage() {
                             </div>
                           )}
 
-                          {/* Footer Actions & Metadata */}
-                          <div className="flex items-center justify-between text-[10px] opacity-75 pt-1">
+                          {/* Footer Actions, Receipt Icons & Metadata */}
+                          <div className="flex items-center justify-between text-[10px] opacity-90 pt-1 border-t border-white/10 dark:border-slate-800/40 mt-1">
                             <div className="flex items-center space-x-2">
                               {m.isEdited && <span className="font-mono text-amber-400">(edited)</span>}
+                              
+                              {/* Status Indicators & Receipts */}
+                              {isSelf && !m.isDeleted && !m.isAi && (
+                                <div className="flex items-center space-x-1.5 font-mono">
+                                  {m.status === 'SENDING' ? (
+                                    <span className="text-amber-300 animate-pulse" aria-label="Sending...">
+                                      Sending... ◌
+                                    </span>
+                                  ) : m.status === 'FAILED' ? (
+                                    <div className="flex items-center space-x-1">
+                                      <span className="text-rose-400 font-bold" aria-label="Failed">
+                                        ⚠ Failed
+                                      </span>
+                                      <button
+                                        type="button"
+                                        onClick={() => handleRetryMessage(m)}
+                                        className="underline text-amber-300 hover:text-white font-bold"
+                                        aria-label="Retry sending message"
+                                      >
+                                        Retry
+                                      </button>
+                                    </div>
+                                  ) : (
+                                    (() => {
+                                      const receipts = m.receipts || [];
+                                      const hasRead = receipts.some((r) => r.status === 'READ');
+                                      const hasDelivered = receipts.some((r) => r.status === 'DELIVERED');
+
+                                      if (hasRead) {
+                                        return (
+                                          <span className="text-emerald-300 font-bold" aria-label="Seen" title="Seen">
+                                            ✓✓ Seen
+                                          </span>
+                                        );
+                                      }
+                                      if (hasDelivered) {
+                                        return (
+                                          <span className="text-slate-300 font-bold" aria-label="Delivered" title="Delivered">
+                                            ✓✓ Delivered
+                                          </span>
+                                        );
+                                      }
+                                      return (
+                                        <span className="text-slate-300 font-bold" aria-label="Sent" title="Sent">
+                                          ✓ Sent
+                                        </span>
+                                      );
+                                    })()
+                                  )}
+                                </div>
+                              )}
+
+                              {/* Group Receipts Popover Trigger */}
+                              {activeChannel?.type === 'GROUP' && !m.isDeleted && !m.isAi && (
+                                <button
+                                  type="button"
+                                  onClick={() => handleFetchReceiptSummary(m.id)}
+                                  className="text-[10px] text-indigo-200 hover:text-white underline font-medium"
+                                  title="View message receipts"
+                                >
+                                  Seen info
+                                </button>
+                              )}
                             </div>
 
                             {!m.isDeleted && !m.isAi && (
@@ -879,20 +1124,27 @@ export default function CollabChatPage() {
                 </div>
               )}
 
-              {/* Message Input Box */}
-              <form onSubmit={handleSendMessage} className="mt-3 flex items-center space-x-2" data-tour="collab-input-box">
-                <input
-                  type="text"
-                  placeholder="Type a message... (Use @ai to ask Gemini Assistant)"
+              {/* Multiline Message Input Composer */}
+              <form onSubmit={handleSendMessage} className="mt-3 flex items-start space-x-2" data-tour="collab-input-box">
+                <textarea
+                  rows={2}
+                  placeholder="Type a message... (Press Enter to send, Shift+Enter for newline, use @ai for Gemini)"
                   value={inputContent}
                   onChange={(e) => setInputContent(e.target.value)}
-                  className="flex-1 bg-slate-100 dark:bg-slate-950 border border-slate-200 dark:border-slate-800 rounded-xl px-4 py-2.5 text-xs text-slate-900 dark:text-white placeholder-slate-400 focus:outline-none focus:border-indigo-500"
+                  onKeyDown={(e) => {
+                    if (e.key === 'Enter' && !e.shiftKey) {
+                      e.preventDefault();
+                      handleSendMessage();
+                    }
+                  }}
+                  className="flex-1 bg-slate-100 dark:bg-slate-950 border border-slate-200 dark:border-slate-800 rounded-xl px-4 py-2.5 text-xs text-slate-900 dark:text-white placeholder-slate-400 focus:outline-none focus:border-indigo-500 resize-none"
+                  aria-label="Message input composer"
                 />
 
                 <button
                   type="button"
                   onClick={() => setInputContent((prev) => `${prev} @ai `)}
-                  className="px-3 py-2.5 rounded-xl bg-purple-100 dark:bg-purple-950/60 hover:bg-purple-200 text-purple-700 dark:text-purple-300 border border-purple-200 dark:border-purple-800 font-mono text-xs font-bold transition"
+                  className="px-3 py-3 rounded-xl bg-purple-100 dark:bg-purple-950/60 hover:bg-purple-200 text-purple-700 dark:text-purple-300 border border-purple-200 dark:border-purple-800 font-mono text-xs font-bold transition"
                   title="Mention @ai"
                 >
                   @ai
@@ -1172,6 +1424,183 @@ export default function CollabChatPage() {
                 </button>
               </div>
             </form>
+          </div>
+        </div>
+      )}
+
+      {/* Group Members & Roles Management Modal */}
+      {showMembersModal && activeChannel && (
+        <div className="fixed inset-0 z-50 bg-slate-950/80 backdrop-blur-sm flex items-center justify-center p-4">
+          <div className="bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-2xl p-6 max-w-lg w-full space-y-4 shadow-2xl">
+            <div className="flex items-center justify-between border-b border-slate-200 dark:border-slate-800 pb-3">
+              <div className="flex items-center space-x-2">
+                <span className="text-lg">👥</span>
+                <h3 className="text-sm font-bold text-slate-900 dark:text-white">
+                  Group Members ({activeChannel.members.length})
+                </h3>
+              </div>
+              <button onClick={() => setShowMembersModal(false)} className="text-slate-400 hover:text-white text-xs">
+                ✕
+              </button>
+            </div>
+
+            <div className="max-h-72 overflow-y-auto divide-y divide-slate-100 dark:divide-slate-800/60">
+              {activeChannel.members.map((m) => {
+                const isMemberSelf = m.userId === currentUser?.id;
+                const isRequestorOwner = activeChannel.role === 'OWNER';
+                const isRequestorAdmin = activeChannel.role === 'ADMIN';
+                const canRemove =
+                  !isMemberSelf &&
+                  m.role !== 'OWNER' &&
+                  (isRequestorOwner || (isRequestorAdmin && m.role === 'MEMBER'));
+
+                const uName = m.user?.name;
+                const uEmail = m.user?.email || '';
+                const initialChar = (uName && uName.charAt(0)) ? uName.charAt(0).toUpperCase() : (uEmail.charAt(0) ? uEmail.charAt(0).toUpperCase() : 'U');
+
+                return (
+                  <div key={m.userId} className="py-3 flex items-center justify-between">
+                    <div className="flex items-center space-x-3">
+                      <div className="w-8 h-8 rounded-full bg-gradient-to-tr from-indigo-500 to-purple-500 text-white font-bold flex items-center justify-center text-xs">
+                        {initialChar}
+                      </div>
+                      <div>
+                        <div className="flex items-center space-x-2">
+                          <p className="text-xs font-bold text-slate-900 dark:text-white">
+                            {uName || (uEmail ? uEmail.split('@')[0] : 'User')}
+                          </p>
+                          {m.role === 'OWNER' ? (
+                            <span className="px-1.5 py-0.5 text-[9px] bg-amber-500/20 text-amber-500 font-bold rounded">
+                              👑 OWNER
+                            </span>
+                          ) : m.role === 'ADMIN' ? (
+                            <span className="px-1.5 py-0.5 text-[9px] bg-indigo-500/20 text-indigo-400 font-bold rounded">
+                              ⭐ ADMIN
+                            </span>
+                          ) : (
+                            <span className="px-1.5 py-0.5 text-[9px] bg-slate-500/20 text-slate-400 font-medium rounded">
+                              MEMBER
+                            </span>
+                          )}
+                        </div>
+                        <p className="text-[11px] text-slate-400">{m.user.email}</p>
+                      </div>
+                    </div>
+
+                    <div className="flex items-center space-x-2">
+                      {isRequestorOwner && !isMemberSelf && (
+                        <button
+                          onClick={() => handleTransferOwner(m.userId)}
+                          className="px-2 py-1 text-[10px] bg-amber-500/10 hover:bg-amber-500/20 text-amber-500 font-semibold rounded-lg transition"
+                          title="Make Owner"
+                        >
+                          Transfer Owner
+                        </button>
+                      )}
+                      {canRemove && (
+                        <button
+                          onClick={() => handleRemoveMember(m.userId)}
+                          className="px-2 py-1 text-[10px] bg-rose-500/10 hover:bg-rose-500/20 text-rose-400 font-semibold rounded-lg transition"
+                          title="Remove from group"
+                        >
+                          Remove
+                        </button>
+                      )}
+                    </div>
+                  </div>
+                );
+              })}
+            </div>
+
+            <div className="flex justify-between items-center border-t border-slate-200 dark:border-slate-800 pt-3">
+              <button
+                type="button"
+                onClick={handleLeaveGroup}
+                className="px-3 py-1.5 bg-rose-500/10 hover:bg-rose-500/20 text-rose-400 font-bold text-xs rounded-xl transition"
+              >
+                Leave Group 🚪
+              </button>
+              <button
+                type="button"
+                onClick={() => setShowMembersModal(false)}
+                className="px-4 py-2 bg-slate-800 hover:bg-slate-700 text-white font-semibold text-xs rounded-xl transition"
+              >
+                Close
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Group Message Receipts Popover Modal */}
+      {receiptSummaryMessageId && (
+        <div className="fixed inset-0 z-50 bg-slate-950/80 backdrop-blur-sm flex items-center justify-center p-4">
+          <div className="bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-2xl p-5 max-w-sm w-full space-y-4 shadow-2xl">
+            <div className="flex items-center justify-between border-b border-slate-200 dark:border-slate-800 pb-2.5">
+              <h3 className="text-xs font-bold text-slate-900 dark:text-white flex items-center space-x-1.5">
+                <span>✓✓</span>
+                <span>Message Receipt Details</span>
+              </h3>
+              <button
+                onClick={() => {
+                  setReceiptSummaryMessageId(null);
+                  setReceiptSummaryData(null);
+                }}
+                className="text-slate-400 hover:text-white text-xs"
+              >
+                ✕
+              </button>
+            </div>
+
+            {!receiptSummaryData ? (
+              <div className="p-6 text-center text-xs text-slate-400 animate-pulse">Loading receipt info...</div>
+            ) : (
+              <div className="space-y-3 text-xs">
+                <div>
+                  <h4 className="font-bold text-indigo-400 mb-1.5">
+                    Seen by ({receiptSummaryData.seenCount})
+                  </h4>
+                  {receiptSummaryData.seenBy.length === 0 ? (
+                    <p className="text-slate-500 italic text-[11px]">No members have seen this yet</p>
+                  ) : (
+                    <div className="space-y-1 max-h-32 overflow-y-auto">
+                      {receiptSummaryData.seenBy.map((item: any) => (
+                        <div key={item.userId} className="flex justify-between items-center text-[11px] p-1.5 bg-slate-50 dark:bg-slate-950 rounded-lg">
+                          <span className="font-semibold text-slate-900 dark:text-white">
+                            {item.user?.name || item.user?.email}
+                          </span>
+                          <span className="text-slate-400 text-[10px]">
+                            {new Date(item.readAt).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
+                          </span>
+                        </div>
+                      ))}
+                    </div>
+                  )}
+                </div>
+
+                <div className="border-t border-slate-200 dark:border-slate-800 pt-2">
+                  <h4 className="font-bold text-slate-400 mb-1.5">
+                    Delivered to ({receiptSummaryData.deliveredCount})
+                  </h4>
+                  {receiptSummaryData.deliveredTo.length === 0 ? (
+                    <p className="text-slate-500 italic text-[11px]">Pending delivery</p>
+                  ) : (
+                    <div className="space-y-1 max-h-32 overflow-y-auto">
+                      {receiptSummaryData.deliveredTo.map((item: any) => (
+                        <div key={item.userId} className="flex justify-between items-center text-[11px] p-1.5 bg-slate-50 dark:bg-slate-950 rounded-lg">
+                          <span className="text-slate-700 dark:text-slate-300">
+                            {item.user?.name || item.user?.email}
+                          </span>
+                          <span className="text-slate-400 text-[10px]">
+                            {new Date(item.deliveredAt).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
+                          </span>
+                        </div>
+                      ))}
+                    </div>
+                  )}
+                </div>
+              </div>
+            )}
           </div>
         </div>
       )}

@@ -47,7 +47,8 @@ const PHASES: PhaseConfig[] = [
   { phase: 44, name: 'Production City Explorer Provider Isolation & Zero-Stall Reliability', command: 'npm run test:phase44' },
   { phase: 45, name: 'Production Contextual Product Tour Engine & AI Knowledge Graph Guided Tour', command: 'npm run test:phase45' },
   { phase: 46, name: 'Production Real-Time Collaboration & AI Discussion Platform', command: 'npm run test:phase46' },
-  { phase: 46.1, name: 'Production Collaboration UX, User Search, 1-to-1 DM, Group Member Management & Deduplication', command: 'npm run test:phase46.1' }
+  { phase: 46.1, name: 'Production Collaboration UX, User Search, 1-to-1 DM, Group Member Management & Deduplication', command: 'npm run test:phase46.1' },
+  { phase: 47, name: 'Realtime Notifications, Delivery Receipts & Group Management', command: 'npm run test:phase47' }
 ];
 
 async function runAllPhases() {

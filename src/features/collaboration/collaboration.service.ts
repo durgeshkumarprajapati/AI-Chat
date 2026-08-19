@@ -1,8 +1,9 @@
 import { prisma } from '@/lib/prisma';
-import { CollabChannelType, CollabMemberRole } from '@prisma/client';
+import { CollabChannelType, CollabMemberRole, NotificationType, CollabReceiptStatus } from '@prisma/client';
 import { collabPubSubService } from './pubsub.service';
 import { collabPresenceService } from './presence.service';
 import { aiDiscussionService } from './ai-discussion.service';
+import { notificationService } from '@/features/notifications/notification.service';
 
 export interface SendMessageInput {
   content: string;
@@ -314,14 +315,27 @@ class CollaborationService {
   }
 
   /**
-   * Remove group member
+   * Remove group member with RBAC enforcement
    */
   public async removeMember(channelId: string, requestorId: string, targetUserId: string) {
-    const requestorMem = await prisma.collabChannelMember.findUnique({
-      where: { channelId_userId: { channelId, userId: requestorId } }
+    const channel = await prisma.collabChannel.findUnique({
+      where: { id: channelId },
+      include: { members: true }
     });
 
+    if (!channel || channel.type !== CollabChannelType.GROUP) {
+      throw new Error('Invalid or non-existent group channel');
+    }
+
+    const requestorMem = channel.members.find((m) => m.userId === requestorId);
     if (!requestorMem) throw new Error('Unauthorized');
+
+    const targetMem = channel.members.find((m) => m.userId === targetUserId);
+    if (!targetMem) throw new Error('Target user is not a member of this group');
+
+    if (targetMem.role === CollabMemberRole.OWNER) {
+      throw new Error('Forbidden: Cannot remove group owner');
+    }
 
     if (
       requestorId !== targetUserId &&
@@ -331,17 +345,156 @@ class CollaborationService {
       throw new Error('Forbidden: Only Owners or Admins can remove members');
     }
 
+    if (requestorMem.role === CollabMemberRole.ADMIN && targetMem.role === CollabMemberRole.ADMIN) {
+      throw new Error('Forbidden: Admins cannot remove other admins');
+    }
+
     await prisma.collabChannelMember.delete({
       where: { channelId_userId: { channelId, userId: targetUserId } }
     });
 
+    const eventId = `evt_rem_${Date.now()}_${Math.random().toString(36).substring(2, 8)}`;
     collabPubSubService.publish(channelId, {
-      type: 'presence:change',
+      eventId,
+      type: 'member:removed',
       channelId,
       senderId: requestorId,
-      data: { action: 'member_removed', targetUserId },
+      targetUserId,
+      data: {
+        eventId,
+        type: 'member:removed',
+        channelId,
+        userId: targetUserId,
+        removedBy: requestorId,
+        timestamp: new Date().toISOString()
+      },
       timestamp: new Date().toISOString()
     });
+
+    // Send notification to removed user
+    notificationService.createNotification({
+      userId: targetUserId,
+      type: NotificationType.GROUP_MEMBER_REMOVED,
+      title: 'Removed from Group',
+      body: `You were removed from ${channel.name || 'a group discussion'}`,
+      channelId,
+      actorUserId: requestorId
+    }).catch(() => {});
+
+    return { success: true };
+  }
+
+  /**
+   * Member self-leave group
+   */
+  public async leaveChannel(channelId: string, userId: string) {
+    const channel = await prisma.collabChannel.findUnique({
+      where: { id: channelId },
+      include: { members: true }
+    });
+
+    if (!channel || channel.type !== CollabChannelType.GROUP) {
+      throw new Error('Invalid or non-existent group channel');
+    }
+
+    const member = channel.members.find((m) => m.userId === userId);
+    if (!member) throw new Error('Not a member of this channel');
+
+    if (member.role === CollabMemberRole.OWNER && channel.members.length > 1) {
+      throw new Error('Owner must transfer ownership before leaving the group');
+    }
+
+    await prisma.collabChannelMember.delete({
+      where: { channelId_userId: { channelId, userId } }
+    });
+
+    const eventId = `evt_left_${Date.now()}_${Math.random().toString(36).substring(2, 8)}`;
+    collabPubSubService.publish(channelId, {
+      eventId,
+      type: 'member:left',
+      channelId,
+      senderId: userId,
+      data: {
+        eventId,
+        type: 'member:left',
+        channelId,
+        userId,
+        timestamp: new Date().toISOString()
+      },
+      timestamp: new Date().toISOString()
+    });
+
+    return { success: true };
+  }
+
+  /**
+   * Transfer group ownership
+   */
+  public async transferOwnership(channelId: string, currentOwnerId: string, newOwnerId: string) {
+    if (currentOwnerId === newOwnerId) {
+      throw new Error('Target user is already the group owner');
+    }
+
+    const channel = await prisma.collabChannel.findUnique({
+      where: { id: channelId },
+      include: { members: true }
+    });
+
+    if (!channel || channel.type !== CollabChannelType.GROUP) {
+      throw new Error('Invalid or non-existent group channel');
+    }
+
+    const ownerMem = channel.members.find((m) => m.userId === currentOwnerId);
+    if (!ownerMem || ownerMem.role !== CollabMemberRole.OWNER) {
+      throw new Error('Forbidden: Only the current group owner can transfer ownership');
+    }
+
+    const targetMem = channel.members.find((m) => m.userId === newOwnerId);
+    if (!targetMem) {
+      throw new Error('Target user must be an existing group member');
+    }
+
+    // Atomic role update
+    await prisma.$transaction([
+      prisma.collabChannelMember.update({
+        where: { channelId_userId: { channelId, userId: currentOwnerId } },
+        data: { role: CollabMemberRole.ADMIN }
+      }),
+      prisma.collabChannelMember.update({
+        where: { channelId_userId: { channelId, userId: newOwnerId } },
+        data: { role: CollabMemberRole.OWNER }
+      }),
+      prisma.collabChannel.update({
+        where: { id: channelId },
+        data: { createdById: newOwnerId }
+      })
+    ]);
+
+    const eventId = `evt_own_${Date.now()}_${Math.random().toString(36).substring(2, 8)}`;
+    collabPubSubService.publish(channelId, {
+      eventId,
+      type: 'member:owner_changed',
+      channelId,
+      senderId: currentOwnerId,
+      data: {
+        eventId,
+        type: 'member:owner_changed',
+        channelId,
+        previousOwnerId: currentOwnerId,
+        newOwnerId,
+        timestamp: new Date().toISOString()
+      },
+      timestamp: new Date().toISOString()
+    });
+
+    notificationService.createNotification({
+      userId: newOwnerId,
+      type: NotificationType.GROUP_OWNER_CHANGED,
+      title: 'Group Ownership Transferred',
+      body: `You are now the owner of ${channel.name || 'a group discussion'}`,
+      channelId,
+      actorUserId: currentOwnerId
+    }).catch(() => {});
 
     return { success: true };
   }
@@ -351,10 +504,37 @@ class CollaborationService {
    */
   public async sendMessage(channelId: string, senderId: string, input: SendMessageInput) {
     const membership = await prisma.collabChannelMember.findUnique({
-      where: { channelId_userId: { channelId, userId: senderId } }
+      where: { channelId_userId: { channelId, userId: senderId } },
+      include: {
+        channel: {
+          include: {
+            members: { select: { userId: true } }
+          }
+        }
+      }
     });
 
     if (!membership) throw new Error('Access Denied: Not a member of this channel');
+
+    // Multiline & Payload Validations
+    const MAX_LENGTH = parseInt(process.env.COLLAB_MAX_MESSAGE_LENGTH || '4000', 10);
+    const MAX_LINES = parseInt(process.env.COLLAB_MAX_MESSAGE_LINES || '100', 10);
+    const MAX_BYTES = parseInt(process.env.COLLAB_MAX_MESSAGE_BYTES || '16384', 10);
+
+    if (!input.content || !input.content.trim()) {
+      throw new Error('Message content cannot be empty');
+    }
+    if (input.content.length > MAX_LENGTH) {
+      throw new Error(`Message exceeds maximum length of ${MAX_LENGTH} characters`);
+    }
+    const lineCount = input.content.split('\n').length;
+    if (lineCount > MAX_LINES) {
+      throw new Error(`Message exceeds maximum line count of ${MAX_LINES} lines`);
+    }
+    const byteCount = Buffer.byteLength(input.content, 'utf8');
+    if (byteCount > MAX_BYTES) {
+      throw new Error(`Message exceeds maximum payload size of ${MAX_BYTES} bytes`);
+    }
 
     // Idempotency check: Return existing message if clientMessageId already processed
     if (input.clientMessageId) {
@@ -413,14 +593,51 @@ class CollaborationService {
       data: { lastReadAt: new Date(), lastReadMessageId: message.id }
     });
 
+    // Create delivery receipt for sender
+    await prisma.collabMessageReceipt.upsert({
+      where: { messageId_userId: { messageId: message.id, userId: senderId } },
+      create: {
+        messageId: message.id,
+        userId: senderId,
+        status: CollabReceiptStatus.READ,
+        deliveredAt: message.createdAt,
+        readAt: message.createdAt
+      },
+      update: {
+        status: CollabReceiptStatus.READ,
+        readAt: message.createdAt
+      }
+    });
+
     // Broadcast new message
+    const eventId = `evt_msg_${Date.now()}_${Math.random().toString(36).substring(2, 8)}`;
     collabPubSubService.publish(channelId, {
+      eventId,
       type: 'message:new',
       channelId,
       senderId,
       data: message,
       timestamp: message.createdAt.toISOString()
     });
+
+    // Send notifications to recipients
+    const recipientIds = membership.channel.members
+      .map((m) => m.userId)
+      .filter((uid) => uid !== senderId);
+
+    const senderDisplayName = message.sender.name || message.sender.email.split('@')[0];
+
+    for (const recipientId of recipientIds) {
+      notificationService.createNotification({
+        userId: recipientId,
+        type: NotificationType.MESSAGE_RECEIVED,
+        title: `Message from ${senderDisplayName}`,
+        body: input.content.length > 100 ? `${input.content.substring(0, 97)}...` : input.content,
+        channelId,
+        messageId: message.id,
+        actorUserId: senderId
+      }).catch(() => {});
+    }
 
     // Handle @ai / @gemini invocation
     if (aiDiscussionService.isAiMention(input.content)) {
@@ -570,7 +787,61 @@ class CollaborationService {
   }
 
   /**
-   * Mark channel read
+   * Delivery acknowledgement for message IDs
+   */
+  public async acknowledgeDelivery(channelId: string, userId: string, messageIds: string[]) {
+    if (!messageIds || messageIds.length === 0) return { count: 0 };
+
+    const membership = await prisma.collabChannelMember.findUnique({
+      where: { channelId_userId: { channelId, userId } }
+    });
+
+    if (!membership) throw new Error('Access Denied: Not a member of this channel');
+
+    // Verify messages belong to channel
+    const validMessages = await prisma.collabMessage.findMany({
+      where: { id: { in: messageIds }, channelId },
+      select: { id: true }
+    });
+
+    const validIds = validMessages.map((m) => m.id);
+    if (validIds.length === 0) return { count: 0 };
+
+    const now = new Date();
+
+    // Upsert receipts for recipient
+    await Promise.all(
+      validIds.map((msgId) =>
+        prisma.collabMessageReceipt.upsert({
+          where: { messageId_userId: { messageId: msgId, userId } },
+          create: {
+            messageId: msgId,
+            userId,
+            status: CollabReceiptStatus.DELIVERED,
+            deliveredAt: now
+          },
+          update: {
+            deliveredAt: now
+          }
+        })
+      )
+    );
+
+    const eventId = `evt_deliv_${Date.now()}_${Math.random().toString(36).substring(2, 8)}`;
+    collabPubSubService.publish(channelId, {
+      eventId,
+      type: 'message:delivered',
+      channelId,
+      senderId: userId,
+      data: { channelId, userId, messageIds: validIds, deliveredAt: now.toISOString() },
+      timestamp: now.toISOString()
+    });
+
+    return { count: validIds.length };
+  }
+
+  /**
+   * Mark channel read with receipt updates
    */
   public async markChannelRead(channelId: string, userId: string, lastMessageId?: string) {
     const membership = await prisma.collabChannelMember.findUnique({
@@ -579,23 +850,94 @@ class CollaborationService {
 
     if (!membership) throw new Error('Access Denied');
 
+    const now = new Date();
+
+    // Find all messages in channel sent by other users
+    const unreadMessages = await prisma.collabMessage.findMany({
+      where: {
+        channelId,
+        senderId: { not: userId }
+      },
+      select: { id: true }
+    });
+
+    const unreadMsgIds = unreadMessages.map((m) => m.id);
+
+    // Batch upsert read receipts for user
+    if (unreadMsgIds.length > 0) {
+      await Promise.all(
+        unreadMsgIds.map((msgId) =>
+          prisma.collabMessageReceipt.upsert({
+            where: { messageId_userId: { messageId: msgId, userId } },
+            create: {
+              messageId: msgId,
+              userId,
+              status: CollabReceiptStatus.READ,
+              deliveredAt: now,
+              readAt: now
+            },
+            update: {
+              status: CollabReceiptStatus.READ,
+              readAt: now
+            }
+          })
+        )
+      );
+    }
+
     await prisma.collabChannelMember.update({
       where: { channelId_userId: { channelId, userId } },
       data: {
-        lastReadAt: new Date(),
+        lastReadAt: now,
         lastReadMessageId: lastMessageId || membership.lastReadMessageId
       }
     });
 
+    const eventId = `evt_read_${Date.now()}_${Math.random().toString(36).substring(2, 8)}`;
     collabPubSubService.publish(channelId, {
-      type: 'receipt:update',
+      eventId,
+      type: 'message:read',
       channelId,
       senderId: userId,
-      data: { channelId, userId, readAt: new Date().toISOString() },
-      timestamp: new Date().toISOString()
+      data: { channelId, userId, lastReadMessageId: lastMessageId || membership.lastReadMessageId, readAt: now.toISOString() },
+      timestamp: now.toISOString()
     });
 
     return { success: true };
+  }
+
+  /**
+   * Get message receipt summary for group chat
+   */
+  public async getMessageReceiptSummary(channelId: string, userId: string, messageId: string) {
+    const membership = await prisma.collabChannelMember.findUnique({
+      where: { channelId_userId: { channelId, userId } }
+    });
+
+    if (!membership) throw new Error('Access Denied');
+
+    const receipts = await prisma.collabMessageReceipt.findMany({
+      where: { messageId },
+      include: {
+        user: { select: { id: true, name: true, email: true, avatarUrl: true } }
+      }
+    });
+
+    const seenBy = receipts
+      .filter((r) => r.status === CollabReceiptStatus.READ)
+      .map((r) => ({ userId: r.userId, user: r.user, readAt: r.readAt }));
+
+    const deliveredTo = receipts
+      .filter((r) => r.status === CollabReceiptStatus.DELIVERED || r.status === CollabReceiptStatus.READ)
+      .map((r) => ({ userId: r.userId, user: r.user, deliveredAt: r.deliveredAt }));
+
+    return {
+      messageId,
+      seenCount: seenBy.length,
+      deliveredCount: deliveredTo.length,
+      seenBy,
+      deliveredTo
+    };
   }
 }
 

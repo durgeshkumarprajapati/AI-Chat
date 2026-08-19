@@ -24,7 +24,7 @@ export interface CollabMessageItem {
     avatarUrl?: string | null;
   };
   replyTo?: { id: string; content: string; sender: { name: string | null; email: string } } | null;
-  status?: 'SENDING' | 'SENT' | 'FAILED';
+  status?: 'SENDING' | 'SENT' | 'FAILED' | 'DELIVERED' | 'READ';
 }
 
 /**

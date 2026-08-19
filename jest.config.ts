@@ -49,7 +49,8 @@ const config: Config = {
         '<rootDir>/tests/security/**/*.test.ts',
         '<rootDir>/tests/phase40-*.test.ts',
         '<rootDir>/tests/phase41-*.test.ts',
-        '<rootDir>/tests/phase42-*.test.ts'
+        '<rootDir>/tests/phase42-*.test.ts',
+        '<rootDir>/tests/phase43-*.test.ts'
       ],
       ...commonConfig
     },

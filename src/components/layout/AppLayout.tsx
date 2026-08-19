@@ -1,8 +1,8 @@
 'use client';
 
+import React, { useState, useEffect } from 'react';
 import Link from 'next/link';
 import { usePathname } from 'next/navigation';
-import { useState, useEffect } from 'react';
 import { ProductTour } from '../tour/ProductTour';
 import { ThemeToggle } from '../theme/ThemeToggle';
 import { useWorkspace } from '@/context/WorkspaceContext';
@@ -37,7 +37,6 @@ function InnerAppLayout({ children }: { children: React.ReactNode }) {
   const [healthStatus, setHealthStatus] = useState<'ok' | 'degraded' | 'loading'>('loading');
 
   useEffect(() => {
-    // Fetch initial health status
     fetch('/api/health')
       .then((res) => res.json())
       .then((data) => {
@@ -47,28 +46,45 @@ function InnerAppLayout({ children }: { children: React.ReactNode }) {
       .catch(() => setHealthStatus('degraded'));
   }, []);
 
-  const navItems = [
-    { name: 'Dashboard', href: '/' },
-    { name: 'RAG Chat', href: '/chat' },
-    { name: 'Documents', href: '/documents' },
-    { name: 'Knowledge Bases', href: '/knowledge-bases' },
-    { name: 'Knowledge Graph', href: '/knowledge-graph', badge: 'Phase 41' },
-    { name: 'City Explorer', href: '/explore', badge: activeCity ? `📍 ${activeCity}` : 'Phase 43' },
-    { name: 'AI Study Mode', href: '/study', badge: 'Phase 33' },
-    { name: 'Agentic Research', href: '/research', badge: 'Phase 34' },
-    { name: 'Workflows', href: '/workflows', badge: 'Phase 35' },
-    { name: 'Copilot', href: '/copilot', badge: 'Phase 36' },
-    { name: 'Project Workspaces', href: '/projects', badge: 'Phase 36' },
-    { name: 'AI Roadmaps', href: '/roadmaps' },
-    { name: 'RAG Debugger', href: '/rag-debug' },
-    { name: 'RAG Evaluation', href: '/rag-evaluation' }
+  const sidebarItems = [
+    { name: 'Dashboard', href: '/', icon: '🏠' },
+    { name: 'AI Copilot', href: '/copilot', icon: '🧠', badge: 'Phase 36' },
+    { name: 'Project Workspaces', href: '/projects', icon: '📁', badge: 'Phase 36' },
+    { name: 'RAG Chat', href: '/chat', icon: '💬' },
+    { name: 'AI Study Mode', href: '/study', icon: '🎓', badge: 'Phase 33' },
+    { name: 'Agentic Research', href: '/research', icon: '🔬', badge: 'Phase 34' },
+    { name: 'Workflows', href: '/workflows', icon: '🧩', badge: 'Phase 35' },
+    { name: 'AI Roadmaps', href: '/roadmaps', icon: '🚀', badge: 'Phase 31' },
+    { name: 'Documents', href: '/documents', icon: '📄' },
+    { name: 'Knowledge Bases', href: '/knowledge-bases', icon: '📚' },
+    { name: 'Knowledge Graph', href: '/knowledge-graph', icon: '🕸️', badge: 'Phase 41' },
+    {
+      name: activeCity ? `Explore ${activeCity}` : 'City Explorer',
+      href: '/explore',
+      icon: '🌆',
+      badge: activeCity ? `📍 ${activeCity}` : 'Phase 43'
+    },
+    { name: 'Copilot Memory', href: '/settings/copilot-memory', icon: '💾' },
+    { name: 'My Account', href: '/account', icon: '👤' },
+    { name: 'RAG Debugger', href: '/rag-debug', icon: '🐛' },
+    { name: 'RAG Evaluation', href: '/rag-evaluation', icon: '📊' }
   ];
 
   return (
     <div className="min-h-screen bg-slate-50 dark:bg-slate-950 text-slate-900 dark:text-slate-100 flex flex-col font-sans selection:bg-indigo-500 selection:text-white transition-colors">
-      {/* Top Header Navigation */}
+      {/* Clean Top Application Header */}
       <header className="sticky top-0 z-40 bg-white/90 dark:bg-slate-950/80 backdrop-blur-md border-b border-slate-200 dark:border-slate-800/80 px-4 lg:px-8 py-3 flex items-center justify-between">
-        <div className="flex items-center space-x-6">
+        <div className="flex items-center space-x-4">
+          {/* Mobile Drawer Toggle */}
+          <button
+            onClick={() => setIsMobileMenuOpen((prev) => !prev)}
+            className="lg:hidden p-2 rounded-xl text-slate-600 dark:text-slate-400 hover:bg-slate-100 dark:hover:bg-slate-900 border border-slate-200 dark:border-slate-800 transition"
+            aria-label="Toggle Navigation Menu"
+          >
+            {isMobileMenuOpen ? '✕' : '☰'}
+          </button>
+
+          {/* Application Branding Logo */}
           <Link href="/" className="flex items-center space-x-3 group">
             <div className="w-9 h-9 rounded-xl bg-gradient-to-tr from-indigo-600 via-indigo-500 to-purple-500 flex items-center justify-center font-bold text-white shadow-lg shadow-indigo-500/20 group-hover:scale-105 transition-transform">
               AI
@@ -80,35 +96,11 @@ function InnerAppLayout({ children }: { children: React.ReactNode }) {
               <span className="text-[10px] text-slate-500 dark:text-slate-400 font-mono tracking-wider">ENTERPRISE PLATFORM</span>
             </div>
           </Link>
-
-          {/* Desktop Nav Items */}
-          <nav className="hidden lg:flex items-center space-x-1">
-            {navItems.slice(0, 7).map((item) => {
-              const isActive = pathname === item.href;
-              return (
-                <Link
-                  key={item.name}
-                  href={item.href}
-                  className={`px-3 py-1.5 rounded-lg text-xs font-medium transition-all flex items-center space-x-1.5 ${
-                    isActive
-                      ? 'bg-slate-200 dark:bg-slate-800 text-slate-900 dark:text-white font-semibold shadow-sm'
-                      : 'text-slate-600 dark:text-slate-400 hover:text-slate-900 dark:hover:text-slate-200 hover:bg-slate-100 dark:hover:bg-slate-900'
-                  }`}
-                >
-                  <span>{item.name}</span>
-                  {item.badge && (
-                    <span className="text-[10px] px-1.5 py-0.2 bg-indigo-100 dark:bg-indigo-950 text-indigo-700 dark:text-indigo-400 rounded border border-indigo-200 dark:border-indigo-800 font-semibold">
-                      {item.badge}
-                    </span>
-                  )}
-                </Link>
-              );
-            })}
-          </nav>
         </div>
 
+        {/* Global Controls Area */}
         <div className="flex items-center space-x-3">
-          {/* System Status Pill */}
+          {/* Services Health Indicator */}
           <Link
             href="/health"
             className="hidden sm:flex items-center space-x-2 px-3 py-1.5 rounded-full bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 text-xs font-medium hover:border-slate-300 dark:hover:border-slate-700 transition-colors shadow-sm"
@@ -130,33 +122,101 @@ function InnerAppLayout({ children }: { children: React.ReactNode }) {
           {/* Theme Selector */}
           <ThemeToggle />
 
-          {/* Contextual Product Tour Header Controls */}
+          {/* Product Tour Controls */}
           <HeaderTourControls />
 
-          {/* User Auth Profile & Logout / Login Buttons */}
+          {/* User Account / Auth Menu */}
           <UserProfileMenu />
         </div>
       </header>
 
-      {/* Mobile Menu Drawer */}
-      {isMobileMenuOpen && (
-        <div className="md:hidden bg-white dark:bg-slate-900 border-b border-slate-200 dark:border-slate-800 p-4 space-y-2">
-          {navItems.map((item) => (
-            <Link
-              key={item.name}
-              href={item.href}
-              onClick={() => setIsMobileMenuOpen(false)}
-              className="flex items-center justify-between px-3 py-2.5 rounded-lg text-sm text-slate-700 dark:text-slate-300 hover:bg-slate-100 dark:hover:bg-slate-800"
-            >
-              <span>{item.name}</span>
-              {item.badge && <span className="text-xs text-indigo-600 dark:text-indigo-400">{item.badge}</span>}
-            </Link>
-          ))}
-        </div>
-      )}
+      {/* Main Body Shell: Left Sidebar + Main Content */}
+      <div className="flex-1 flex min-h-[calc(100vh-61px)]">
+        {/* Desktop Left Sidebar Navigation */}
+        <aside className="hidden lg:flex flex-col w-64 shrink-0 bg-white dark:bg-slate-950 border-r border-slate-200 dark:border-slate-800/80 sticky top-[61px] h-[calc(100vh-61px)] overflow-y-auto p-4 space-y-1 z-30">
+          <div className="px-3 py-1.5 text-[10px] font-mono uppercase font-bold text-slate-400 dark:text-slate-500 tracking-wider">
+            Navigation
+          </div>
+          {sidebarItems.map((item) => {
+            const isActive =
+              item.href === '/'
+                ? pathname === '/'
+                : pathname === item.href || pathname.startsWith(item.href + '/');
 
-      {/* Main Content Area */}
-      <main className="flex-1 flex flex-col">{children}</main>
+            return (
+              <Link
+                key={item.name}
+                href={item.href}
+                className={`px-3 py-2.5 rounded-xl text-xs font-medium transition-all flex items-center justify-between ${
+                  isActive
+                    ? 'bg-indigo-50 dark:bg-indigo-950/60 text-indigo-700 dark:text-indigo-300 font-semibold border border-indigo-200 dark:border-indigo-800/80 shadow-sm'
+                    : 'text-slate-700 dark:text-slate-300 hover:text-slate-900 dark:hover:text-white hover:bg-slate-100 dark:hover:bg-slate-900 border border-transparent'
+                }`}
+              >
+                <div className="flex items-center space-x-2.5 truncate">
+                  <span className="text-base leading-none">{item.icon}</span>
+                  <span className="truncate">{item.name}</span>
+                </div>
+                {item.badge && (
+                  <span className="text-[10px] px-2 py-0.5 rounded-md bg-indigo-100 dark:bg-indigo-950 text-indigo-700 dark:text-indigo-400 border border-indigo-200 dark:border-indigo-800 font-semibold whitespace-nowrap">
+                    {item.badge}
+                  </span>
+                )}
+              </Link>
+            );
+          })}
+        </aside>
+
+        {/* Mobile Navigation Menu Drawer */}
+        {isMobileMenuOpen && (
+          <div className="lg:hidden fixed inset-0 z-50 bg-slate-950/60 backdrop-blur-sm flex">
+            <div className="w-72 max-w-[80vw] bg-white dark:bg-slate-950 border-r border-slate-200 dark:border-slate-800 h-full p-4 overflow-y-auto space-y-1 shadow-2xl">
+              <div className="flex items-center justify-between border-b border-slate-200 dark:border-slate-800 pb-3 mb-2">
+                <span className="font-bold text-sm text-slate-900 dark:text-white">Navigation</span>
+                <button
+                  onClick={() => setIsMobileMenuOpen(false)}
+                  className="p-1 rounded-lg text-slate-500 hover:text-slate-900 dark:hover:text-white"
+                >
+                  ✕
+                </button>
+              </div>
+              {sidebarItems.map((item) => {
+                const isActive =
+                  item.href === '/'
+                    ? pathname === '/'
+                    : pathname === item.href || pathname.startsWith(item.href + '/');
+
+                return (
+                  <Link
+                    key={item.name}
+                    href={item.href}
+                    onClick={() => setIsMobileMenuOpen(false)}
+                    className={`px-3 py-2.5 rounded-xl text-xs font-medium transition-all flex items-center justify-between ${
+                      isActive
+                        ? 'bg-indigo-50 dark:bg-indigo-950/60 text-indigo-700 dark:text-indigo-300 font-semibold border border-indigo-200 dark:border-indigo-800/80 shadow-sm'
+                        : 'text-slate-700 dark:text-slate-300 hover:text-slate-900 dark:hover:text-white hover:bg-slate-100 dark:hover:bg-slate-900'
+                    }`}
+                  >
+                    <div className="flex items-center space-x-2.5 truncate">
+                      <span className="text-base leading-none">{item.icon}</span>
+                      <span className="truncate">{item.name}</span>
+                    </div>
+                    {item.badge && (
+                      <span className="text-[10px] px-2 py-0.5 rounded-md bg-indigo-100 dark:bg-indigo-950 text-indigo-700 dark:text-indigo-400 border border-indigo-200 dark:border-indigo-800 font-semibold whitespace-nowrap">
+                        {item.badge}
+                      </span>
+                    )}
+                  </Link>
+                );
+              })}
+            </div>
+            <div className="flex-1" onClick={() => setIsMobileMenuOpen(false)} />
+          </div>
+        )}
+
+        {/* Main Application Content Area */}
+        <main className="flex-1 min-w-0 overflow-x-hidden">{children}</main>
+      </div>
 
       {/* Universal Product Tour Overlay */}
       <ProductTour />

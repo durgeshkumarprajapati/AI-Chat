@@ -224,32 +224,49 @@ export default function UserDashboardPage() {
         </div>
 
         {/* Quick Action Navigation */}
-        <div className="grid grid-cols-1 md:grid-cols-3 gap-5">
+        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-5">
           <Link
             href="/chat"
-            className="p-5 rounded-2xl bg-slate-900/80 hover:bg-slate-800/80 border border-slate-800 hover:border-slate-700 text-left transition space-y-2 group"
+            className="p-5 rounded-2xl bg-white dark:bg-slate-900/80 hover:bg-slate-50 dark:hover:bg-slate-800/80 border border-slate-200 dark:border-slate-800 hover:border-slate-300 dark:hover:border-slate-700 text-left transition space-y-2 group shadow-sm"
           >
-            <div className="text-xs font-bold text-indigo-400 uppercase tracking-wider font-mono">Stream & Voice RAG</div>
-            <div className="text-sm font-semibold text-white group-hover:text-indigo-300">Start RAG Conversation →</div>
-            <p className="text-xs text-slate-400">Ask questions over uploaded PDF documents, web sources, or general knowledge with TTS voice readout.</p>
+            <div className="text-xs font-bold text-indigo-600 dark:text-indigo-400 uppercase tracking-wider font-mono">Stream & Voice RAG</div>
+            <div className="text-sm font-semibold text-slate-900 dark:text-white group-hover:text-indigo-600 dark:group-hover:text-indigo-300">Start RAG Conversation →</div>
+            <p className="text-xs text-slate-600 dark:text-slate-400">Ask questions over uploaded PDF documents, web sources, or general knowledge with TTS voice readout.</p>
           </Link>
 
           <Link
             href="/documents"
-            className="p-5 rounded-2xl bg-slate-900/80 hover:bg-slate-800/80 border border-slate-800 hover:border-slate-700 text-left transition space-y-2 group"
+            className="p-5 rounded-2xl bg-white dark:bg-slate-900/80 hover:bg-slate-50 dark:hover:bg-slate-800/80 border border-slate-200 dark:border-slate-800 hover:border-slate-300 dark:hover:border-slate-700 text-left transition space-y-2 group shadow-sm"
           >
-            <div className="text-xs font-bold text-sky-400 uppercase tracking-wider font-mono">Document Management</div>
-            <div className="text-sm font-semibold text-white group-hover:text-sky-300">Upload & Manage Files →</div>
-            <p className="text-xs text-slate-400">Upload PDFs, view page count, status, reprocess files, or manage document chunking.</p>
+            <div className="text-xs font-bold text-sky-600 dark:text-sky-400 uppercase tracking-wider font-mono">Document Management</div>
+            <div className="text-sm font-semibold text-slate-900 dark:text-white group-hover:text-sky-600 dark:group-hover:text-sky-300">Upload & Manage Files →</div>
+            <p className="text-xs text-slate-600 dark:text-slate-400">Upload PDFs, view page count, status, reprocess files, or manage document chunking.</p>
+          </Link>
+
+          <Link
+            href="/roadmaps"
+            className="p-5 rounded-2xl bg-white dark:bg-slate-900/80 hover:bg-slate-50 dark:hover:bg-slate-800/80 border border-slate-200 dark:border-slate-800 hover:border-indigo-500/50 text-left transition space-y-2 group shadow-sm relative"
+          >
+            <div className="flex items-center justify-between">
+              <div className="text-xs font-bold text-purple-600 dark:text-purple-400 uppercase tracking-wider font-mono">AI Learning Paths</div>
+              <span className="text-[10px] px-2 py-0.5 rounded-full bg-indigo-100 dark:bg-indigo-950 text-indigo-700 dark:text-indigo-300 font-semibold border border-indigo-200 dark:border-indigo-800">
+                Phase 31
+              </span>
+            </div>
+            <div className="text-sm font-semibold text-slate-900 dark:text-white group-hover:text-purple-600 dark:group-hover:text-purple-300 flex items-center justify-between">
+              <span>Create AI Roadmap 🚀</span>
+              <span className="text-xs">→</span>
+            </div>
+            <p className="text-xs text-slate-600 dark:text-slate-400">Generate personalized learning roadmaps, track skill mastery, and execute step-by-step tasks.</p>
           </Link>
 
           <button
             onClick={() => handleExplore(activeCity)}
-            className="p-5 rounded-2xl bg-slate-900/80 hover:bg-slate-800/80 border border-slate-800 hover:border-slate-700 text-left transition space-y-2 group w-full"
+            className="p-5 rounded-2xl bg-white dark:bg-slate-900/80 hover:bg-slate-50 dark:hover:bg-slate-800/80 border border-slate-200 dark:border-slate-800 hover:border-slate-300 dark:hover:border-slate-700 text-left transition space-y-2 group w-full shadow-sm"
           >
-            <div className="text-xs font-bold text-emerald-400 uppercase tracking-wider font-mono">City Explorer</div>
-            <div className="text-sm font-semibold text-white group-hover:text-emerald-300">Explore {activeCity} →</div>
-            <p className="text-xs text-slate-400">Discover places to visit, cuisine, culture, history, and shopping using Grounded Web Search.</p>
+            <div className="text-xs font-bold text-emerald-600 dark:text-emerald-400 uppercase tracking-wider font-mono">City Explorer</div>
+            <div className="text-sm font-semibold text-slate-900 dark:text-white group-hover:text-emerald-600 dark:group-hover:text-emerald-300">Explore {activeCity} →</div>
+            <p className="text-xs text-slate-600 dark:text-slate-400">Discover places to visit, cuisine, culture, history, and shopping using Grounded Web Search.</p>
           </button>
         </div>
       </div>

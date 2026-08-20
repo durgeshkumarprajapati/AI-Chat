@@ -19,7 +19,15 @@ export interface CollabEventPayload {
     | 'notification:new'
     | 'notification:read'
     | 'notification:count'
-    | 'mention:new';
+    | 'mention:new'
+    | 'quiz:participant_joined'
+    | 'quiz:submitted'
+    | 'quiz:expired'
+    | 'call:invite'
+    | 'call:accept'
+    | 'call:decline'
+    | 'call:ice_candidate'
+    | 'call:end';
   channelId: string;
   senderId?: string;
   targetUserId?: string;

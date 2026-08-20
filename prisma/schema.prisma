@@ -105,6 +105,10 @@ model User {
   collabMessagesSent     CollabMessage[]
   collabReceipts         CollabMessageReceipt[]
   collabMentions         CollabMessageMention[] @relation("UserCollabMentions")
+  createdMockTests       ScheduledMockTest[]    @relation("CreatedMockTests")
+  mockTestParticipants   MockTestParticipant[]
+  collabCallsHosted      CollabCall[]           @relation("HostedCollabCalls")
+  collabCallParticipations CollabCallParticipant[]
   notifications          Notification[]         @relation("UserNotifications")
   triggeredNotifications Notification[]         @relation("TriggeredNotifications")
   notificationPreference NotificationPreference?
@@ -2021,6 +2025,7 @@ model CollabChannel {
   createdBy User                  @relation("CreatedCollabChannels", fields: [createdById], references: [id], onDelete: Cascade)
   members   CollabChannelMember[]
   messages  CollabMessage[]
+  calls     CollabCall[]
 
   @@index([createdById])
   @@map("collab_channels")
@@ -2065,6 +2070,7 @@ model CollabMessage {
   sharedEntityId        String?           @map("shared_entity_id")
   sharedDocumentId      String?           @map("shared_document_id")
   sharedStudyQuestionId String?           @map("shared_study_question_id")
+  sharedMockTestId      String?           @map("shared_mock_test_id")
   voiceDurationMs       Int?              @map("voice_duration_ms")
   voiceMimeType         String?           @map("voice_mime_type")
   voiceStorageKey       String?           @map("voice_storage_key")
@@ -2074,12 +2080,13 @@ model CollabMessage {
   createdAt             DateTime          @default(now()) @map("created_at")
   updatedAt             DateTime          @updatedAt @map("updated_at")
 
-  channel  CollabChannel          @relation(fields: [channelId], references: [id], onDelete: Cascade)
-  sender   User                   @relation(fields: [senderId], references: [id], onDelete: Cascade)
-  replyTo  CollabMessage?         @relation("ThreadReplies", fields: [replyToId], references: [id], onDelete: SetNull)
-  replies  CollabMessage[]        @relation("ThreadReplies")
-  receipts CollabMessageReceipt[]
-  mentions CollabMessageMention[]
+  channel        CollabChannel          @relation(fields: [channelId], references: [id], onDelete: Cascade)
+  sender         User                   @relation(fields: [senderId], references: [id], onDelete: Cascade)
+  replyTo        CollabMessage?         @relation("ThreadReplies", fields: [replyToId], references: [id], onDelete: SetNull)
+  replies        CollabMessage[]        @relation("ThreadReplies")
+  receipts       CollabMessageReceipt[]
+  mentions       CollabMessageMention[]
+  sharedMockTest ScheduledMockTest?    @relation("SharedMockTestMessages", fields: [sharedMockTestId], references: [id], onDelete: SetNull)
 
   @@unique([channelId, clientMessageId])
   @@index([channelId])
@@ -2129,6 +2136,10 @@ enum NotificationType {
   GROUP_OWNER_CHANGED
   ROADMAP_SHARED
   AI_REPLY
+  MOCK_TEST_SCHEDULED
+  MOCK_TEST_STARTING
+  CALL_INCOMING
+  CALL_MISSED
 }
 
 model Notification {
@@ -2170,6 +2181,137 @@ model NotificationPreference {
 
   @@map("notification_preferences")
 }
+
+// ==========================================
+// PHASE 49 — AI MOCK TESTS & REALTIME CALLS
+// ==========================================
+
+enum MockTestStatus {
+  SCHEDULED
+  IN_PROGRESS
+  COMPLETED
+  EXPIRED
+  CANCELLED
+}
+
+enum MockTestParticipantStatus {
+  REGISTERED
+  IN_PROGRESS
+  SUBMITTED
+  EXPIRED
+  ABSENT
+}
+
+enum CallType {
+  VOICE
+  VIDEO
+}
+
+enum CallStatus {
+  RINGING
+  IN_CALL
+  ENDED
+  DECLINED
+  MISSED
+  CANCELLED
+}
+
+model ScheduledMockTest {
+  id                    String         @id @default(uuid())
+  createdById           String         @map("created_by_id")
+  title                 String
+  description           String?        @db.Text
+  topic                 String?
+  documentId            String?        @map("document_id")
+  knowledgeBaseId       String?        @map("knowledge_base_id")
+  scheduledStartTime    DateTime       @map("scheduled_start_time")
+  durationMinutes       Int            @default(30) @map("duration_minutes")
+  totalQuestions        Int            @default(10) @map("total_questions")
+  passingScore          Float          @default(70.0) @map("passing_score")
+  status                MockTestStatus @default(SCHEDULED)
+  googleCalendarEventId String?        @map("google_calendar_event_id")
+  googleCalendarLink    String?        @db.Text @map("google_calendar_link")
+  questions             Json           @default("[]")
+  createdAt             DateTime       @default(now()) @map("created_at")
+  updatedAt             DateTime       @updatedAt @map("updated_at")
+
+  createdBy        User                  @relation("CreatedMockTests", fields: [createdById], references: [id], onDelete: Cascade)
+  participants     MockTestParticipant[]
+  sharedInMessages CollabMessage[]       @relation("SharedMockTestMessages")
+
+  @@index([createdById])
+  @@index([scheduledStartTime])
+  @@index([status])
+  @@map("scheduled_mock_tests")
+}
+
+model MockTestParticipant {
+  id          String                    @id @default(uuid())
+  mockTestId  String                    @map("mock_test_id")
+  userId      String                    @map("user_id")
+  status      MockTestParticipantStatus @default(REGISTERED)
+  joinedAt    DateTime?                 @map("joined_at")
+  startedAt   DateTime?                 @map("started_at")
+  submittedAt DateTime?                 @map("submitted_at")
+  score       Float?
+  passed      Boolean?
+  answers     Json?                     @default("[]")
+  createdAt   DateTime                  @default(now()) @map("created_at")
+  updatedAt   DateTime                  @updatedAt @map("updated_at")
+
+  mockTest ScheduledMockTest @relation(fields: [mockTestId], references: [id], onDelete: Cascade)
+  user     User              @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@unique([mockTestId, userId])
+  @@index([mockTestId])
+  @@index([userId])
+  @@index([status])
+  @@map("mock_test_participants")
+}
+
+model CollabCall {
+  id              String     @id @default(uuid())
+  channelId       String     @map("channel_id")
+  hostId          String     @map("host_id")
+  type            CallType   @default(VOICE)
+  status          CallStatus @default(RINGING)
+  startedAt       DateTime?  @map("started_at")
+  endedAt         DateTime?  @map("ended_at")
+  durationSeconds Int?       @map("duration_seconds")
+  createdAt       DateTime   @default(now()) @map("created_at")
+  updatedAt       DateTime   @updatedAt @map("updated_at")
+
+  channel      CollabChannel           @relation(fields: [channelId], references: [id], onDelete: Cascade)
+  host         User                    @relation("HostedCollabCalls", fields: [hostId], references: [id], onDelete: Cascade)
+  participants CollabCallParticipant[]
+
+  @@index([channelId])
+  @@index([hostId])
+  @@index([status])
+  @@map("collab_calls")
+}
+
+model CollabCallParticipant {
+  id              String     @id @default(uuid())
+  callId          String     @map("call_id")
+  userId          String     @map("user_id")
+  status          CallStatus @default(RINGING)
+  joinedAt        DateTime?  @map("joined_at")
+  leftAt          DateTime?  @map("left_at")
+  isMuted         Boolean    @default(false) @map("is_muted")
+  isVideoOff      Boolean    @default(false) @map("is_video_off")
+  isScreenSharing Boolean    @default(false) @map("is_screen_sharing")
+  createdAt       DateTime   @default(now()) @map("created_at")
+
+  call CollabCall @relation(fields: [callId], references: [id], onDelete: Cascade)
+  user User       @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@unique([callId, userId])
+  @@index([callId])
+  @@index([userId])
+  @@map("collab_call_participants")
+}
+
 
 
 

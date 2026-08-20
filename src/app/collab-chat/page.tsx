@@ -1,6 +1,7 @@
 'use client';
 
 import React, { useEffect, useState, useRef, useCallback } from 'react';
+import Link from 'next/link';
 import { useWorkspace } from '@/context/WorkspaceContext';
 import { mergeMessages, CollabMessageItem } from '@/features/collaboration/message-deduplication';
 import { formatMessageTimestamp, groupMessagesByDate } from '@/features/collaboration/message-time';
@@ -42,6 +43,16 @@ interface MessageItem extends CollabMessageItem {
   sharedEntityId?: string | null;
   sharedDocumentId?: string | null;
   sharedStudyQuestionId?: string | null;
+  sharedMockTestId?: string | null;
+  sharedMockTest?: {
+    id: string;
+    title: string;
+    topic?: string | null;
+    scheduledStartTime: string;
+    durationMinutes: number;
+    totalQuestions: number;
+    googleCalendarLink?: string | null;
+  } | null;
   voiceDurationMs?: number | null;
   voiceMimeType?: string | null;
   voiceStorageKey?: string | null;
@@ -69,6 +80,26 @@ interface ChannelItem {
   latestMessage?: MessageItem | null;
   unreadCount: number;
   role: 'OWNER' | 'ADMIN' | 'MEMBER';
+}
+
+interface ActiveCallState {
+  id: string;
+  channelId: string;
+  type: 'VOICE' | 'VIDEO';
+  status: 'RINGING' | 'IN_CALL' | 'ENDED';
+  hostName: string;
+  isMuted: boolean;
+  isVideoOff: boolean;
+  isScreenSharing: boolean;
+  startedAt?: string;
+}
+
+interface IncomingCallInvite {
+  callId: string;
+  channelId: string;
+  hostId: string;
+  hostName: string;
+  callType: 'VOICE' | 'VIDEO';
 }
 
 function VoiceMessagePlayer({ msg }: { msg: MessageItem }) {
@@ -137,6 +168,59 @@ function VoiceMessagePlayer({ msg }: { msg: MessageItem }) {
   );
 }
 
+function SharedMockTestCard({ msg }: { msg: MessageItem }) {
+  const test = msg.sharedMockTest;
+  const testId = msg.sharedMockTestId || test?.id;
+  if (!testId) return null;
+
+  const title = test?.title || 'Scheduled AI Mock Test';
+  const topic = test?.topic || 'General Practice';
+  const duration = test?.durationMinutes || 30;
+  const questionsCount = test?.totalQuestions || 10;
+  const calLink = test?.googleCalendarLink;
+
+  return (
+    <div className="p-4 rounded-2xl bg-gradient-to-br from-indigo-900/90 to-purple-900/90 border border-indigo-500/40 text-white space-y-3 min-w-[280px] shadow-lg">
+      <div className="flex items-center space-x-2">
+        <span className="text-lg">📝</span>
+        <span className="font-bold text-xs uppercase tracking-wider text-indigo-300">Scheduled AI Mock Test</span>
+      </div>
+      <div>
+        <h4 className="text-sm font-bold truncate">{title}</h4>
+        <p className="text-[11px] text-indigo-200 mt-0.5">{topic} • {duration} mins • {questionsCount} MCQs</p>
+      </div>
+      <div className="flex flex-wrap gap-2 pt-1 border-t border-indigo-500/30">
+        {calLink && (
+          <a
+            href={calLink}
+            target="_blank"
+            rel="noopener noreferrer"
+            className="px-3 py-1.5 bg-slate-800 hover:bg-slate-700 text-slate-200 text-[11px] font-semibold rounded-xl transition flex items-center space-x-1"
+          >
+            <span>📅</span>
+            <span>Google Calendar</span>
+          </a>
+        )}
+        <a
+          href={`/api/study/mock-tests/${testId}/ics`}
+          download
+          className="px-3 py-1.5 bg-slate-800 hover:bg-slate-700 text-slate-200 text-[11px] font-semibold rounded-xl transition flex items-center space-x-1"
+        >
+          <span>📥</span>
+          <span>.ics</span>
+        </a>
+        <Link
+          href={`/study/mock-tests/${testId}`}
+          className="px-3.5 py-1.5 bg-indigo-500 hover:bg-indigo-400 text-white font-bold text-[11px] rounded-xl shadow transition flex items-center space-x-1"
+        >
+          <span>🚀</span>
+          <span>Take Test</span>
+        </Link>
+      </div>
+    </div>
+  );
+}
+
 function renderMessageContent(content: string) {
   if (!content) return null;
   const parts = content.split(/(@[a-zA-Z0-9_\-\.]+)/g);
@@ -194,6 +278,12 @@ export default function CollabChatPage() {
   const recordingTimerRef = useRef<NodeJS.Timeout | null>(null);
   const audioChunksRef = useRef<Blob[]>([]);
 
+  // Voice & Video Call State
+  const [activeCall, setActiveCall] = useState<ActiveCallState | null>(null);
+  const [incomingInvite, setIncomingInvite] = useState<IncomingCallInvite | null>(null);
+  const [callTimerSec, setCallTimerSec] = useState<number>(0);
+  const callIntervalRef = useRef<NodeJS.Timeout | null>(null);
+
   // Modals State
   const [showUserSearchModal, setShowUserSearchModal] = useState(false);
   const [userSearchQuery, setUserSearchQuery] = useState('');
@@ -213,7 +303,7 @@ export default function CollabChatPage() {
   const [removedBanner, setRemovedBanner] = useState<string | null>(null);
 
   const [showShareModal, setShowShareModal] = useState(false);
-  const [shareType, setShareType] = useState<'roadmap' | 'entity' | 'document' | 'question'>('roadmap');
+  const [shareType, setShareType] = useState<'roadmap' | 'entity' | 'document' | 'question' | 'mocktest'>('roadmap');
   const [shareTargetId, setShareTargetId] = useState('');
 
   const [isAiGenerating, setIsAiGenerating] = useState(false);
@@ -224,7 +314,11 @@ export default function CollabChatPage() {
   const requestIdRef = useRef<number>(0);
   const reconnectTimeoutRef = useRef<NodeJS.Timeout | null>(null);
 
-  // Refresh relative timestamps tick every 60s
+  // Critical Chat UX Fix: ALWAYS open a conversation at the latest message
+  const scrollToLatestMessage = useCallback((behavior: ScrollBehavior = 'auto') => {
+    messagesEndRef.current?.scrollIntoView({ behavior });
+  }, []);
+
   useEffect(() => {
     const refreshMs = parseInt(process.env.COLLAB_MESSAGE_TIMESTAMP_REFRESH_MS || '60000', 10);
     const interval = setInterval(() => setTimeTick(Date.now()), refreshMs);
@@ -234,10 +328,6 @@ export default function CollabChatPage() {
   useEffect(() => {
     activeChannelIdRef.current = activeChannelId;
   }, [activeChannelId]);
-
-  const scrollToBottom = useCallback(() => {
-    messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
-  }, []);
 
   const getChannelDisplayName = useCallback(
     (ch: ChannelItem): string => {
@@ -286,6 +376,8 @@ export default function CollabChatPage() {
         setChannels((prev) =>
           prev.map((c) => (c.id === chId ? { ...c, unreadCount: 0 } : c))
         );
+        // Critical UX Fix: Scroll to bottom immediately on channel message load
+        setTimeout(() => scrollToLatestMessage('auto'), 50);
       }
     } catch (err) {
       console.error('Failed to fetch messages:', err);
@@ -294,7 +386,7 @@ export default function CollabChatPage() {
         setLoadingMessages(false);
       }
     }
-  }, []);
+  }, [scrollToLatestMessage]);
 
   useEffect(() => {
     fetchChannels();
@@ -306,9 +398,10 @@ export default function CollabChatPage() {
     }
   }, [activeChannelId, fetchMessages]);
 
+  // Critical Chat UX Fix: Ensure feed scrolls to bottom when messages update
   useEffect(() => {
-    scrollToBottom();
-  }, [messages, scrollToBottom]);
+    scrollToLatestMessage('smooth');
+  }, [messages, scrollToLatestMessage]);
 
   // Real-time SSE Connection
   useEffect(() => {
@@ -352,6 +445,7 @@ export default function CollabChatPage() {
 
             if (newMsg.channelId === activeChId) {
               setMessages((prev) => mergeMessages(prev, newMsg));
+              scrollToLatestMessage('smooth');
 
               if (newMsg.senderId !== currentUser.id) {
                 fetch(`/api/collaboration/channels/${activeChId}/messages/delivery`, {
@@ -375,45 +469,31 @@ export default function CollabChatPage() {
                 )
               );
             }
-          } else if (event.type === 'member:removed') {
-            if (event.data?.userId === currentUser.id) {
-              setRemovedBanner('You were removed from this group.');
-              if (event.channelId === activeChId) {
-                setActiveChannelId(null);
-                setMessages([]);
-              }
-              fetchChannels();
+          } else if (event.type === 'call:invite') {
+            if (event.senderId !== currentUser.id) {
+              setIncomingInvite({
+                callId: event.data.callId,
+                channelId: event.channelId,
+                hostId: event.senderId || '',
+                hostName: event.data.hostName || 'Member',
+                callType: event.data.callType || 'VOICE'
+              });
             }
-          } else if (event.type === 'message:delivered' || event.type === 'message:read') {
-            if (event.channelId === activeChId) {
-              setMessages((prev) =>
-                prev.map((m) => {
-                  const isMatch = event.data?.messageIds?.includes(m.id) || m.id === event.data?.lastReadMessageId;
-                  if (isMatch) {
-                    const existingReceipts = m.receipts || [];
-                    const newReceiptStatus = event.type === 'message:read' ? 'READ' : 'DELIVERED';
-                    return {
-                      ...m,
-                      status: newReceiptStatus,
-                      receipts: [
-                        ...existingReceipts.filter((r) => r.userId !== event.senderId),
-                        {
-                          id: `rcpt_${Date.now()}_${Math.random()}`,
-                          userId: event.senderId,
-                          status: newReceiptStatus,
-                          deliveredAt: event.data?.deliveredAt || new Date().toISOString(),
-                          readAt: event.type === 'message:read' ? (event.data?.readAt || new Date().toISOString()) : null
-                        }
-                      ]
-                    };
-                  }
-                  return m;
-                })
-              );
+          } else if (event.type === 'call:accept') {
+            if (activeCall && activeCall.id === event.data.callId) {
+              setActiveCall((prev) => (prev ? { ...prev, status: 'IN_CALL' } : null));
+            }
+          } else if (event.type === 'call:decline' || event.type === 'call:end') {
+            if (activeCall && activeCall.id === event.data.callId) {
+              setActiveCall(null);
+              if (callIntervalRef.current) clearInterval(callIntervalRef.current);
+            }
+            if (incomingInvite && incomingInvite.callId === event.data.callId) {
+              setIncomingInvite(null);
             }
           } else if (event.type === 'ai:generating') {
             if (event.channelId === activeChId) {
-              setIsAiGenerating(event.data.isGenerating);
+              setIsAiGenerating(Boolean(event.data?.isGenerating));
             }
           }
         } catch {}
@@ -438,9 +518,93 @@ export default function CollabChatPage() {
       if (reconnectTimeoutRef.current) clearTimeout(reconnectTimeoutRef.current);
       if (eventSource) eventSource.close();
     };
-  }, [currentUser?.id, fetchChannels]);
+  }, [currentUser?.id, activeCall, incomingInvite, scrollToLatestMessage]);
 
-  // Voice Message Recording
+  // Initiate Voice / Video Call
+  const handleInitiateCall = async (type: 'VOICE' | 'VIDEO') => {
+    if (!activeChannelId) return;
+    try {
+      const res = await fetch('/api/collaboration/calls/initiate', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ channelId: activeChannelId, type })
+      });
+      const data = await res.json();
+      if (data.success && data.data) {
+        setActiveCall({
+          id: data.data.id,
+          channelId: activeChannelId,
+          type,
+          status: 'RINGING',
+          hostName: currentUser?.name || 'You',
+          isMuted: false,
+          isVideoOff: type === 'VOICE',
+          isScreenSharing: false,
+          startedAt: new Date().toISOString()
+        });
+        setCallTimerSec(0);
+        if (callIntervalRef.current) clearInterval(callIntervalRef.current);
+        callIntervalRef.current = setInterval(() => {
+          setCallTimerSec((prev) => prev + 1);
+        }, 1000);
+      }
+    } catch (err) {
+      console.error('Failed to initiate call:', err);
+    }
+  };
+
+  const handleCallAction = async (action: 'accept' | 'decline' | 'mute' | 'unmute' | 'video_off' | 'video_on' | 'end') => {
+    const targetCallId = activeCall?.id || incomingInvite?.callId;
+    if (!targetCallId) return;
+
+    try {
+      await fetch(`/api/collaboration/calls/${targetCallId}/action`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ action })
+      });
+
+      if (action === 'accept') {
+        if (incomingInvite) {
+          setActiveCall({
+            id: incomingInvite.callId,
+            channelId: incomingInvite.channelId,
+            type: incomingInvite.callType,
+            status: 'IN_CALL',
+            hostName: incomingInvite.hostName,
+            isMuted: false,
+            isVideoOff: incomingInvite.callType === 'VOICE',
+            isScreenSharing: false,
+            startedAt: new Date().toISOString()
+          });
+          setActiveChannelId(incomingInvite.channelId);
+          setIncomingInvite(null);
+          setCallTimerSec(0);
+          if (callIntervalRef.current) clearInterval(callIntervalRef.current);
+          callIntervalRef.current = setInterval(() => {
+            setCallTimerSec((prev) => prev + 1);
+          }, 1000);
+        }
+      } else if (action === 'decline') {
+        setIncomingInvite(null);
+      } else if (action === 'end') {
+        setActiveCall(null);
+        if (callIntervalRef.current) clearInterval(callIntervalRef.current);
+      } else if (action === 'mute') {
+        setActiveCall((prev) => (prev ? { ...prev, isMuted: true } : null));
+      } else if (action === 'unmute') {
+        setActiveCall((prev) => (prev ? { ...prev, isMuted: false } : null));
+      } else if (action === 'video_off') {
+        setActiveCall((prev) => (prev ? { ...prev, isVideoOff: true } : null));
+      } else if (action === 'video_on') {
+        setActiveCall((prev) => (prev ? { ...prev, isVideoOff: false } : null));
+      }
+    } catch (err) {
+      console.error('Call action error:', err);
+    }
+  };
+
+  // Voice Recording Handlers
   const startVoiceRecording = async () => {
     try {
       const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
@@ -801,6 +965,7 @@ export default function CollabChatPage() {
       else if (shareType === 'entity') bodyPayload.sharedEntityId = shareTargetId.trim();
       else if (shareType === 'document') bodyPayload.sharedDocumentId = shareTargetId.trim();
       else if (shareType === 'question') bodyPayload.sharedStudyQuestionId = shareTargetId.trim();
+      else if (shareType === 'mocktest') bodyPayload.sharedMockTestId = shareTargetId.trim();
 
       const res = await fetch(`/api/collaboration/channels/${activeChannelId}/messages`, {
         method: 'POST',
@@ -832,11 +997,19 @@ export default function CollabChatPage() {
             <span>Real-Time Collaboration Platform</span>
           </h1>
           <p className="text-xs text-slate-500 dark:text-slate-400 mt-0.5">
-            1-to-1 DMs, Group Discussions, @Mentions, Voice Messages & AI Discussion
+            DMs, Group Discussions, AI Mock Tests, Voice/Video Calling & Calendar Sync
           </p>
         </div>
 
         <div className="flex items-center space-x-3">
+          <Link
+            href="/study/mock-tests"
+            className="px-3.5 py-2 bg-emerald-600 hover:bg-emerald-500 text-white font-semibold text-xs rounded-xl shadow-md transition flex items-center space-x-1.5"
+          >
+            <span>📝</span>
+            <span>Scheduled AI Mock Tests</span>
+          </Link>
+
           <button
             onClick={() => {
               setShowUserSearchModal(true);
@@ -954,7 +1127,7 @@ export default function CollabChatPage() {
         <div className="lg:col-span-8 bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-2xl p-4 flex flex-col h-full overflow-hidden shadow-sm">
           {activeChannel ? (
             <>
-              {/* Active Channel Header */}
+              {/* Active Channel Header with Voice & Video Call Controls */}
               <div className="flex items-center justify-between border-b border-slate-200 dark:border-slate-800 pb-3 shrink-0">
                 <div className="flex items-center space-x-3">
                   <div className="w-9 h-9 rounded-xl bg-indigo-600 text-white font-bold flex items-center justify-center text-sm shadow-sm shrink-0">
@@ -973,6 +1146,28 @@ export default function CollabChatPage() {
                 </div>
 
                 <div className="flex items-center space-x-2">
+                  <button
+                    type="button"
+                    onClick={() => handleInitiateCall('VOICE')}
+                    className="px-3 py-1.5 bg-emerald-600 hover:bg-emerald-500 text-white text-xs font-semibold rounded-xl transition flex items-center space-x-1"
+                    title="Initiate Voice Call"
+                    data-tour="collab-voice-call-btn"
+                  >
+                    <span>📞</span>
+                    <span>Voice Call</span>
+                  </button>
+
+                  <button
+                    type="button"
+                    onClick={() => handleInitiateCall('VIDEO')}
+                    className="px-3 py-1.5 bg-indigo-600 hover:bg-indigo-500 text-white text-xs font-semibold rounded-xl transition flex items-center space-x-1"
+                    title="Initiate Video Call"
+                    data-tour="collab-video-call-btn"
+                  >
+                    <span>📹</span>
+                    <span>Video Call</span>
+                  </button>
+
                   {activeChannel.type === 'GROUP' && (
                     <button
                       onClick={() => setShowMembersModal(true)}
@@ -1012,14 +1207,58 @@ export default function CollabChatPage() {
                 </div>
               </div>
 
-              {/* Message History Feed with Date Separators & Relative Timestamps */}
+              {/* Floating Active Call Banner */}
+              {activeCall && activeCall.channelId === activeChannelId && (
+                <div className="p-3 bg-gradient-to-r from-emerald-950 to-slate-900 border border-emerald-500/40 rounded-xl flex items-center justify-between text-xs text-white my-2 shrink-0 shadow-lg">
+                  <div className="flex items-center space-x-3 font-mono">
+                    <span className="w-3 h-3 rounded-full bg-emerald-500 animate-ping" />
+                    <span className="font-bold text-emerald-400">
+                      {activeCall.type === 'VIDEO' ? '📹 Active Video Call' : '📞 Active Voice Call'}
+                    </span>
+                    <span className="text-slate-300">
+                      [{Math.floor(callTimerSec / 60)}:{Math.floor(callTimerSec % 60).toString().padStart(2, '0')}]
+                    </span>
+                  </div>
+
+                  <div className="flex items-center space-x-2">
+                    <button
+                      onClick={() => handleCallAction(activeCall.isMuted ? 'unmute' : 'mute')}
+                      className={`px-3 py-1 rounded-lg text-xs font-semibold transition ${
+                        activeCall.isMuted ? 'bg-amber-600 text-white' : 'bg-slate-800 text-slate-200'
+                      }`}
+                    >
+                      {activeCall.isMuted ? '🎙 Unmute' : '🎤 Mute'}
+                    </button>
+
+                    {activeCall.type === 'VIDEO' && (
+                      <button
+                        onClick={() => handleCallAction(activeCall.isVideoOff ? 'video_on' : 'video_off')}
+                        className={`px-3 py-1 rounded-lg text-xs font-semibold transition ${
+                          activeCall.isVideoOff ? 'bg-amber-600 text-white' : 'bg-slate-800 text-slate-200'
+                        }`}
+                      >
+                        {activeCall.isVideoOff ? '📹 Video On' : '📷 Video Off'}
+                      </button>
+                    )}
+
+                    <button
+                      onClick={() => handleCallAction('end')}
+                      className="px-3.5 py-1 bg-rose-600 hover:bg-rose-500 text-white font-bold rounded-lg text-xs shadow transition"
+                    >
+                      End Call 🔴
+                    </button>
+                  </div>
+                </div>
+              )}
+
+              {/* Message History Feed with Date Separators, Relative Timestamps & Auto-Scroll Fix */}
               <div className="flex-1 overflow-y-auto space-y-4 pr-2 my-3 min-h-0" data-tour="collab-message-feed">
                 {loadingMessages ? (
                   <div className="text-center py-20 text-xs text-slate-400 animate-pulse">Loading Messages...</div>
                 ) : messages.length === 0 ? (
                   <div className="text-center py-20 text-xs text-slate-400 space-y-2">
                     <p className="text-base">🚀</p>
-                    <p>Start the conversation! Type a message or record a voice note below.</p>
+                    <p>Start the conversation! Type a message, schedule a mock test, or call below.</p>
                   </div>
                 ) : (
                   groupedMessageClusters.map((cluster) => (
@@ -1075,7 +1314,7 @@ export default function CollabChatPage() {
                                 </div>
                               )}
 
-                              {/* Message Content Bubble (TEXT or VOICE) */}
+                              {/* Message Content Bubble (TEXT, VOICE or MOCK TEST CARD) */}
                               <div
                                 className={`p-3.5 rounded-2xl max-w-lg text-xs space-y-2 shadow-sm ${
                                   m.isAi
@@ -1087,6 +1326,8 @@ export default function CollabChatPage() {
                               >
                                 {m.messageType === 'VOICE' ? (
                                   <VoiceMessagePlayer msg={m} />
+                                ) : m.sharedMockTestId || m.sharedMockTest ? (
+                                  <SharedMockTestCard msg={m} />
                                 ) : (
                                   <p className="whitespace-pre-wrap leading-relaxed">{renderMessageContent(m.content)}</p>
                                 )}
@@ -1152,6 +1393,7 @@ export default function CollabChatPage() {
                   </div>
                 )}
 
+                {/* Critical Chat UX Fix: Reference element to scroll feed to bottom */}
                 <div ref={messagesEndRef} />
               </div>
 
@@ -1284,6 +1526,35 @@ export default function CollabChatPage() {
           )}
         </div>
       </div>
+
+      {/* Incoming Ringing Call Modal Overlay */}
+      {incomingInvite && (
+        <div className="fixed inset-0 z-50 bg-black/80 backdrop-blur-sm flex items-center justify-center p-4">
+          <div className="bg-slate-900 border border-slate-800 rounded-2xl w-full max-w-sm p-6 text-center text-white space-y-4 shadow-2xl animate-bounce">
+            <div className="w-16 h-16 rounded-full bg-indigo-600 text-white text-2xl font-bold flex items-center justify-center mx-auto shadow-lg">
+              {incomingInvite.callType === 'VIDEO' ? '📹' : '📞'}
+            </div>
+            <div>
+              <h3 className="text-base font-bold">Incoming {incomingInvite.callType} Call</h3>
+              <p className="text-xs text-slate-400 mt-1">{incomingInvite.hostName} is calling you...</p>
+            </div>
+            <div className="flex justify-center space-x-4 pt-2">
+              <button
+                onClick={() => handleCallAction('decline')}
+                className="px-5 py-2.5 bg-rose-600 hover:bg-rose-500 text-white font-bold text-xs rounded-xl shadow transition"
+              >
+                Decline 🚫
+              </button>
+              <button
+                onClick={() => handleCallAction('accept')}
+                className="px-5 py-2.5 bg-emerald-600 hover:bg-emerald-500 text-white font-bold text-xs rounded-xl shadow transition"
+              >
+                Accept 📞
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
 
       {/* User Search / New DM Modal */}
       {showUserSearchModal && (
@@ -1444,6 +1715,7 @@ export default function CollabChatPage() {
               <option value="entity">Knowledge Graph Entity</option>
               <option value="document">RAG Document</option>
               <option value="question">Study Question</option>
+              <option value="mocktest">Scheduled AI Mock Test</option>
             </select>
             <input
               type="text"

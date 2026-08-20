@@ -14,6 +14,7 @@ export interface SendMessageInput {
   sharedEntityId?: string;
   sharedDocumentId?: string;
   sharedStudyQuestionId?: string;
+  sharedMockTestId?: string;
   clientMessageId?: string;
   mentionedUserIds?: string[];
   metadata?: Record<string, unknown>;
@@ -568,6 +569,7 @@ class CollaborationService {
         sharedEntityId: input.sharedEntityId || null,
         sharedDocumentId: input.sharedDocumentId || null,
         sharedStudyQuestionId: input.sharedStudyQuestionId || null,
+        sharedMockTestId: input.sharedMockTestId || null,
         clientMessageId: input.clientMessageId || null,
         metadata: input.metadata ? (input.metadata as any) : undefined
       },
@@ -584,7 +586,8 @@ class CollaborationService {
           include: {
             mentionedUser: { select: { id: true, name: true, email: true } }
           }
-        }
+        },
+        sharedMockTest: true
       }
     });
 
@@ -944,7 +947,8 @@ class CollaborationService {
             sender: { select: { name: true, email: true } }
           }
         },
-        receipts: true
+        receipts: true,
+        sharedMockTest: true
       }
     });
 

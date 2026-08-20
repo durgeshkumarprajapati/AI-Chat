@@ -19,8 +19,9 @@ interface QuestionItem {
   groundingSource?: string;
 }
 
-export default function MockTestDetailPage({ params }: { params: Promise<{ id: string }> }) {
-  const { id: testId } = use(params);
+export default function MockTestDetailPage({ params }: { params: { id: string } | Promise<{ id: string }> }) {
+  const unwrappedParams = typeof (params as any)?.then === 'function' ? use(params as Promise<{ id: string }>) : (params as { id: string });
+  const testId = unwrappedParams.id;
   const [test, setTest] = useState<any>(null);
   const [questions, setQuestions] = useState<QuestionItem[]>([]);
   const [isSanitized, setIsSanitized] = useState(false);

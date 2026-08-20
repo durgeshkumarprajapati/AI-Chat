@@ -123,12 +123,14 @@ export class MockTestGeneratorService {
     const seenHashes = new Set<string>();
     let attempts = 0;
     const maxAttempts = envConfig.mockTests.maxGenerationAttempts;
+    const MAX_BATCH_SIZE = 5;
 
     while (acceptedQuestions.length < requestedCount && attempts < maxAttempts) {
       attempts++;
       const needed = requestedCount - acceptedQuestions.length;
+      const batchCount = Math.min(MAX_BATCH_SIZE, needed);
 
-      const systemPrompt = `You are a world-class AI Exam Creator. Generate exactly ${needed} challenging multiple-choice questions for a professional exam.
+      const systemPrompt = `You are a world-class AI Exam Creator. Generate exactly ${batchCount} challenging multiple-choice questions for a professional exam.
 Topic: ${topicStr} | Target Difficulty: ${difficulty}
 ${contextSnippet}
 MUST comply strictly:
@@ -157,20 +159,43 @@ OUTPUT SCHEMA (Raw JSON Array ONLY):
 ]`;
 
       try {
-        console.log(`[Telemetry] mock_test.generation.attempt attempt=${attempts}/${maxAttempts} needed=${needed}`);
+        console.log(`[Telemetry] mock_test.generation.attempt attempt=${attempts}/${maxAttempts} needed=${needed} batchSize=${batchCount}`);
 
         const result = await llmFallbackService.executeWithFallback(
           geminiProvider,
           {
-            prompt: `Generate ${needed} unique ${difficulty} MCQ questions on ${topicStr}. Do not repeat previous concepts.`,
+            prompt: `Generate ${batchCount} unique ${difficulty} MCQ questions on ${topicStr}. Do not repeat previous concepts.`,
             systemPrompt,
-            temperature: 0.2
+            temperature: 0.2,
+            responseFormat: { type: 'json_object' }
           }
         );
 
         const responseText = result.response.text.trim();
-        const cleanJson = responseText.replace(/```json/g, '').replace(/```/g, '').trim();
-        const parsed = JSON.parse(cleanJson);
+        const finishReason = result.response.finishReason || 'stop';
+
+        console.log(`[MockTestGenerator] attempt=${attempts}/${maxAttempts} needed=${needed} batchSize=${batchCount} textLength=${responseText.length} finishReason=${finishReason}`);
+
+        if (finishReason === 'length' || finishReason === 'max_tokens') {
+          console.warn(`[MockTestGenerator] Response was truncated due to token budget (finishReason=${finishReason})`);
+        }
+
+        const cleanJson = responseText
+          .replace(/^```json\s*/i, '')
+          .replace(/^```\s*/i, '')
+          .replace(/\s*```$/i, '')
+          .trim();
+
+        let parsed: any;
+        try {
+          parsed = JSON.parse(cleanJson);
+          if (!Array.isArray(parsed) && typeof parsed === 'object' && parsed !== null) {
+            parsed = parsed.questions || parsed.mcqs || parsed.data || [parsed];
+          }
+        } catch (parseErr: any) {
+          console.warn(`[MockTestGenerator] parseError position="${parseErr.message}" textLength=${responseText.length} finishReason=${finishReason}`);
+          continue;
+        }
 
         if (Array.isArray(parsed)) {
           for (let i = 0; i < parsed.length; i++) {

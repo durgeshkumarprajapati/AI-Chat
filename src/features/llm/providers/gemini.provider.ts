@@ -139,7 +139,8 @@ export class GeminiProvider implements LLMProvider {
           messages,
           temperature: request.temperature ?? 0.7,
           max_tokens: request.maxTokens || this.maxOutputTokens,
-          tools: request.tools
+          tools: request.tools,
+          response_format: request.responseFormat
         }),
         signal: controller.signal
       });
@@ -153,6 +154,7 @@ export class GeminiProvider implements LLMProvider {
 
       const data = await res.json();
       const text = data.choices?.[0]?.message?.content || '';
+      const finishReason = data.choices?.[0]?.finish_reason || 'stop';
       const totalMs = Date.now() - startTime;
 
       return {
@@ -164,7 +166,8 @@ export class GeminiProvider implements LLMProvider {
         totalMs,
         promptTokens: data.usage?.prompt_tokens,
         completionTokens: data.usage?.completion_tokens,
-        toolCalls: data.choices?.[0]?.message?.tool_calls
+        toolCalls: data.choices?.[0]?.message?.tool_calls,
+        finishReason
       };
     } catch (err: any) {
       clearTimeout(timeoutId);

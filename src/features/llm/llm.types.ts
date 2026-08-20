@@ -39,6 +39,7 @@ export interface LLMRequest {
   skipCache?: boolean;
   localOnly?: boolean;
   tools?: any[];
+  responseFormat?: { type: string };
 }
 
 export interface LLMResponse {
@@ -52,6 +53,7 @@ export interface LLMResponse {
   promptTokens?: number;
   completionTokens?: number;
   toolCalls?: any[];
+  finishReason?: string;
 }
 
 export interface LLMStreamChunk {

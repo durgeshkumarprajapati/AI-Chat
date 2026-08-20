@@ -40,26 +40,8 @@ export default function LoginPage() {
     }
   };
 
-  const handleGoogleAuth = async () => {
-    try {
-      const res = await fetch('/api/auth/google', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          googleId: 'google-oauth-demo-user-id',
-          email: email || 'user@gmail.com',
-          emailVerified: true,
-          name: 'Google Authenticated User'
-        })
-      });
-      const data = await res.json();
-      if (data.success) {
-        await refreshUser();
-        router.push('/dashboard');
-      }
-    } catch {
-      setError('Google authentication failed.');
-    }
+  const handleGoogleAuth = () => {
+    window.location.href = '/api/auth/google';
   };
 
   return (

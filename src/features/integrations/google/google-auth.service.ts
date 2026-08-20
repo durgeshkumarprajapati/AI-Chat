@@ -75,7 +75,6 @@ export class GoogleAuthService {
   public async exchangeCodeForTokens(code: string, userId: string) {
     const clientId = envConfig.google.clientId || process.env.GOOGLE_CLIENT_ID;
     const clientSecret = envConfig.google.clientSecret || process.env.GOOGLE_CLIENT_SECRET;
-    const redirectUri = envConfig.google.calendar.redirectUri;
 
     let accessToken = `mock_access_token_${Date.now()}`;
     let refreshToken: string | undefined = `mock_refresh_token_${Date.now()}`;
@@ -84,37 +83,45 @@ export class GoogleAuthService {
     let scope = envConfig.google.calendar.scope;
 
     if (clientId && clientSecret && code && !code.startsWith('mock_')) {
-      try {
-        const tokenRes = await fetch('https://oauth2.googleapis.com/token', {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
-          body: new URLSearchParams({
-            code,
-            client_id: clientId,
-            client_secret: clientSecret,
-            redirect_uri: redirectUri,
-            grant_type: 'authorization_code'
-          })
-        });
+      const redirectUris = [
+        envConfig.google.calendar.redirectUri,
+        envConfig.google.auth.redirectUri
+      ];
 
-        if (tokenRes.ok) {
-          const tokenData = await tokenRes.json();
-          accessToken = tokenData.access_token;
-          if (tokenData.refresh_token) refreshToken = tokenData.refresh_token;
-          if (tokenData.scope) scope = tokenData.scope;
-
-          // Fetch authenticated Google User Identity
-          const userinfoRes = await fetch('https://www.googleapis.com/oauth2/v2/userinfo', {
-            headers: { Authorization: `Bearer ${accessToken}` }
+      for (const uri of redirectUris) {
+        try {
+          const tokenRes = await fetch('https://oauth2.googleapis.com/token', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+            body: new URLSearchParams({
+              code,
+              client_id: clientId,
+              client_secret: clientSecret,
+              redirect_uri: uri,
+              grant_type: 'authorization_code'
+            })
           });
-          if (userinfoRes.ok) {
-            const userinfo = await userinfoRes.json();
-            if (userinfo.email) googleEmail = userinfo.email;
-            if (userinfo.id) googleUserId = userinfo.id;
+
+          if (tokenRes.ok) {
+            const tokenData = await tokenRes.json();
+            accessToken = tokenData.access_token;
+            if (tokenData.refresh_token) refreshToken = tokenData.refresh_token;
+            if (tokenData.scope) scope = tokenData.scope;
+
+            // Fetch authenticated Google User Identity
+            const userinfoRes = await fetch('https://www.googleapis.com/oauth2/v2/userinfo', {
+              headers: { Authorization: `Bearer ${accessToken}` }
+            });
+            if (userinfoRes.ok) {
+              const userinfo = await userinfoRes.json();
+              if (userinfo.email) googleEmail = userinfo.email;
+              if (userinfo.id) googleUserId = userinfo.id;
+            }
+            break;
           }
+        } catch (err) {
+          console.error('[GoogleAuth] Token exchange attempt failed:', err instanceof Error ? err.message : err);
         }
-      } catch (err) {
-        console.error('[GoogleAuth] Token exchange failed:', err instanceof Error ? err.message : err);
       }
     }
 

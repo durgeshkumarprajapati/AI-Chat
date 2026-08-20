@@ -4,6 +4,7 @@ import { collabPubSubService } from './pubsub.service';
 import { collabPresenceService } from './presence.service';
 import { aiDiscussionService } from './ai-discussion.service';
 import { notificationService } from '@/features/notifications/notification.service';
+import { voiceMessageStorageService } from './voice-storage.service';
 
 export interface SendMessageInput {
   content: string;
@@ -14,6 +15,7 @@ export interface SendMessageInput {
   sharedDocumentId?: string;
   sharedStudyQuestionId?: string;
   clientMessageId?: string;
+  mentionedUserIds?: string[];
   metadata?: Record<string, unknown>;
 }
 
@@ -577,6 +579,11 @@ class CollaborationService {
           include: {
             sender: { select: { name: true, email: true } }
           }
+        },
+        mentions: {
+          include: {
+            mentionedUser: { select: { id: true, name: true, email: true } }
+          }
         }
       }
     });
@@ -609,6 +616,61 @@ class CollaborationService {
       }
     });
 
+    // Mention Processing & Persistence
+    const channelMemberUserIds = membership.channel.members.map((m) => m.userId);
+    const validMentionedUserIds = new Set<string>();
+
+    if (input.mentionedUserIds && input.mentionedUserIds.length > 0) {
+      for (const uid of input.mentionedUserIds) {
+        if (channelMemberUserIds.includes(uid) && uid !== senderId) {
+          validMentionedUserIds.add(uid);
+        }
+      }
+    }
+
+    const finalMentionUserIds = Array.from(validMentionedUserIds).slice(
+      0,
+      parseInt(process.env.COLLAB_MENTION_MAX_PER_MESSAGE || '20', 10)
+    );
+
+    const senderDisplayName = message.sender.name || message.sender.email.split('@')[0];
+
+    if (finalMentionUserIds.length > 0) {
+      await prisma.collabMessageMention.createMany({
+        data: finalMentionUserIds.map((uid) => ({
+          messageId: message.id,
+          mentionedUserId: uid
+        })),
+        skipDuplicates: true
+      });
+
+      for (const mentionedUserId of finalMentionUserIds) {
+        notificationService.createNotification({
+          userId: mentionedUserId,
+          type: NotificationType.MENTION,
+          title: `Mentioned by ${senderDisplayName}`,
+          body: input.content.length > 100 ? `${input.content.substring(0, 97)}...` : input.content,
+          channelId,
+          messageId: message.id,
+          actorUserId: senderId
+        }).catch(() => {});
+
+        collabPubSubService.publish(channelId, {
+          eventId: `evt_ment_${Date.now()}_${Math.random().toString(36).substring(2, 8)}`,
+          type: 'mention:new',
+          channelId,
+          senderId,
+          data: {
+            messageId: message.id,
+            mentionedUserId,
+            senderId,
+            senderName: senderDisplayName
+          },
+          timestamp: new Date().toISOString()
+        });
+      }
+    }
+
     // Broadcast new message
     const eventId = `evt_msg_${Date.now()}_${Math.random().toString(36).substring(2, 8)}`;
     collabPubSubService.publish(channelId, {
@@ -620,12 +682,10 @@ class CollaborationService {
       timestamp: message.createdAt.toISOString()
     });
 
-    // Send notifications to recipients
+    // Send notifications to recipients (excluding mentioned users who already received MENTION notification)
     const recipientIds = membership.channel.members
       .map((m) => m.userId)
-      .filter((uid) => uid !== senderId);
-
-    const senderDisplayName = message.sender.name || message.sender.email.split('@')[0];
+      .filter((uid) => uid !== senderId && !finalMentionUserIds.includes(uid));
 
     for (const recipientId of recipientIds) {
       notificationService.createNotification({
@@ -641,10 +701,145 @@ class CollaborationService {
 
     // Handle @ai / @gemini invocation
     if (aiDiscussionService.isAiMention(input.content)) {
-      // Fire AI response asynchronously
       aiDiscussionService.handleAiDiscussion(channelId, message.id, input.content, senderId).catch((err) => {
         console.error('AI discussion trigger error:', err);
       });
+    }
+
+    return message;
+  }
+
+  /**
+   * Send Voice Message
+   */
+  public async sendVoiceMessage(
+    channelId: string,
+    senderId: string,
+    voiceBuffer: Buffer,
+    mimeType: string,
+    durationMs?: number,
+    clientMessageId?: string
+  ) {
+    const membership = await prisma.collabChannelMember.findUnique({
+      where: { channelId_userId: { channelId, userId: senderId } },
+      include: {
+        channel: {
+          include: {
+            members: { select: { userId: true } }
+          }
+        }
+      }
+    });
+
+    if (!membership) throw new Error('Access Denied: Not a member of this channel');
+
+    // Rate Limit Check
+    const rateLimit = parseInt(process.env.COLLAB_VOICE_RATE_LIMIT_PER_MINUTE || '10', 10);
+    const oneMinuteAgo = new Date(Date.now() - 60000);
+    const recentVoiceCount = await prisma.collabMessage.count({
+      where: {
+        senderId,
+        messageType: 'VOICE',
+        createdAt: { gte: oneMinuteAgo }
+      }
+    });
+    if (recentVoiceCount >= rateLimit) {
+      throw new Error(`Voice message rate limit exceeded (${rateLimit}/minute). Please wait before recording again.`);
+    }
+
+    // Idempotency check
+    if (clientMessageId) {
+      const existing = await prisma.collabMessage.findUnique({
+        where: { channelId_clientMessageId: { channelId, clientMessageId } },
+        include: {
+          sender: { select: { id: true, name: true, email: true, role: true, avatarUrl: true } },
+          receipts: true,
+          mentions: { include: { mentionedUser: { select: { id: true, name: true, email: true } } } }
+        }
+      });
+      if (existing) return existing;
+    }
+
+    // Upload audio
+    const uploadResult = await voiceMessageStorageService.uploadVoiceMessage({
+      channelId,
+      userId: senderId,
+      buffer: voiceBuffer,
+      mimeType,
+      durationMs
+    });
+
+    // Create VOICE message
+    const message = await prisma.collabMessage.create({
+      data: {
+        channelId,
+        senderId,
+        messageType: 'VOICE',
+        content: '🎤 Voice message',
+        voiceDurationMs: uploadResult.durationMs,
+        voiceMimeType: uploadResult.mimeType,
+        voiceStorageKey: uploadResult.storageKey,
+        voiceFileSizeBytes: uploadResult.fileSizeBytes,
+        clientMessageId: clientMessageId || null
+      },
+      include: {
+        sender: { select: { id: true, name: true, email: true, role: true, avatarUrl: true } },
+        receipts: true,
+        mentions: { include: { mentionedUser: { select: { id: true, name: true, email: true } } } }
+      }
+    });
+
+    await prisma.collabChannel.update({
+      where: { id: channelId },
+      data: { updatedAt: new Date() }
+    });
+
+    await prisma.collabChannelMember.update({
+      where: { channelId_userId: { channelId, userId: senderId } },
+      data: { lastReadAt: new Date(), lastReadMessageId: message.id }
+    });
+
+    await prisma.collabMessageReceipt.upsert({
+      where: { messageId_userId: { messageId: message.id, userId: senderId } },
+      create: {
+        messageId: message.id,
+        userId: senderId,
+        status: CollabReceiptStatus.READ,
+        deliveredAt: message.createdAt,
+        readAt: message.createdAt
+      },
+      update: {
+        status: CollabReceiptStatus.READ,
+        readAt: message.createdAt
+      }
+    });
+
+    const eventId = `evt_msg_${Date.now()}_${Math.random().toString(36).substring(2, 8)}`;
+    collabPubSubService.publish(channelId, {
+      eventId,
+      type: 'message:new',
+      channelId,
+      senderId,
+      data: message,
+      timestamp: message.createdAt.toISOString()
+    });
+
+    const recipientIds = membership.channel.members
+      .map((m) => m.userId)
+      .filter((uid) => uid !== senderId);
+
+    const senderDisplayName = message.sender.name || message.sender.email.split('@')[0];
+
+    for (const recipientId of recipientIds) {
+      notificationService.createNotification({
+        userId: recipientId,
+        type: NotificationType.MESSAGE_RECEIVED,
+        title: `Voice Message from ${senderDisplayName}`,
+        body: '🎤 Sent a voice message',
+        channelId,
+        messageId: message.id,
+        actorUserId: senderId
+      }).catch(() => {});
     }
 
     return message;

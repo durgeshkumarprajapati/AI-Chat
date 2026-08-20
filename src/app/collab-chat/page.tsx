@@ -1,9 +1,9 @@
 'use client';
 
 import React, { useEffect, useState, useRef, useCallback } from 'react';
-import Link from 'next/link';
 import { useWorkspace } from '@/context/WorkspaceContext';
 import { mergeMessages, CollabMessageItem } from '@/features/collaboration/message-deduplication';
+import { formatMessageTimestamp, groupMessagesByDate } from '@/features/collaboration/message-time';
 
 interface UserSummary {
   id: string;
@@ -30,6 +30,7 @@ interface MessageItem extends CollabMessageItem {
   id: string;
   channelId: string;
   senderId: string;
+  messageType?: 'TEXT' | 'VOICE';
   content: string;
   replyToId?: string | null;
   isEdited: boolean;
@@ -41,6 +42,10 @@ interface MessageItem extends CollabMessageItem {
   sharedEntityId?: string | null;
   sharedDocumentId?: string | null;
   sharedStudyQuestionId?: string | null;
+  voiceDurationMs?: number | null;
+  voiceMimeType?: string | null;
+  voiceStorageKey?: string | null;
+  voiceFileSizeBytes?: number | null;
   clientMessageId?: string | null;
   metadata?: Record<string, unknown> | null;
   createdAt: string;
@@ -48,6 +53,7 @@ interface MessageItem extends CollabMessageItem {
   replyTo?: { id: string; content: string; sender: { name: string | null; email: string } } | null;
   status?: 'SENDING' | 'SENT' | 'FAILED' | 'DELIVERED' | 'READ';
   receipts?: Array<{ id: string; userId: string; status: string; deliveredAt?: string | Date | null; readAt?: string | Date | null }>;
+  mentions?: Array<{ id: string; mentionedUserId: string; mentionedUser?: { id: string; name: string | null; email: string } }>;
 }
 
 interface ChannelItem {
@@ -65,6 +71,100 @@ interface ChannelItem {
   role: 'OWNER' | 'ADMIN' | 'MEMBER';
 }
 
+function VoiceMessagePlayer({ msg }: { msg: MessageItem }) {
+  const [isPlaying, setIsPlaying] = useState(false);
+  const [currentTime, setCurrentTime] = useState(0);
+  const audioRef = useRef<HTMLAudioElement | null>(null);
+
+  const durationSec = Math.round((msg.voiceDurationMs || 5000) / 1000);
+  const audioUrl = `/api/collaboration/voice/${msg.id}`;
+
+  const togglePlay = () => {
+    if (!audioRef.current) return;
+    if (isPlaying) {
+      audioRef.current.pause();
+    } else {
+      audioRef.current.play().catch(() => {});
+    }
+  };
+
+  return (
+    <div className="flex items-center space-x-3 p-3 rounded-xl bg-slate-900/90 border border-slate-800 text-white min-w-[240px]">
+      <audio
+        ref={audioRef}
+        src={audioUrl}
+        onPlay={() => setIsPlaying(true)}
+        onPause={() => setIsPlaying(false)}
+        onEnded={() => {
+          setIsPlaying(false);
+          setCurrentTime(0);
+        }}
+        onTimeUpdate={() => {
+          if (audioRef.current) setCurrentTime(audioRef.current.currentTime);
+        }}
+      />
+      <button
+        type="button"
+        onClick={togglePlay}
+        className="w-8 h-8 rounded-full bg-indigo-600 hover:bg-indigo-500 text-white font-bold flex items-center justify-center text-xs shadow transition shrink-0"
+        aria-label={isPlaying ? 'Pause voice message' : 'Play voice message'}
+      >
+        {isPlaying ? '⏸' : '▶'}
+      </button>
+
+      <div className="flex-1 space-y-1">
+        <div
+          className="w-full bg-slate-800 rounded-full h-1.5 overflow-hidden cursor-pointer"
+          onClick={(e) => {
+            const rect = e.currentTarget.getBoundingClientRect();
+            const pct = (e.clientX - rect.left) / rect.width;
+            if (audioRef.current) {
+              audioRef.current.currentTime = pct * (audioRef.current.duration || durationSec);
+            }
+          }}
+        >
+          <div
+            className="bg-indigo-500 h-1.5 rounded-full transition-all duration-100"
+            style={{ width: `${(currentTime / (audioRef.current?.duration || durationSec)) * 100}%` }}
+          />
+        </div>
+        <div className="flex justify-between text-[10px] text-slate-400 font-mono">
+          <span>{Math.floor(currentTime / 60)}:{Math.floor(currentTime % 60).toString().padStart(2, '0')}</span>
+          <span>{Math.floor(durationSec / 60)}:{Math.floor(durationSec % 60).toString().padStart(2, '0')}</span>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+function renderMessageContent(content: string) {
+  if (!content) return null;
+  const parts = content.split(/(@[a-zA-Z0-9_\-\.]+)/g);
+  return (
+    <span>
+      {parts.map((part, i) => {
+        if (part.startsWith('@')) {
+          const isAi = part.toLowerCase() === '@ai' || part.toLowerCase() === '@gemini';
+          return (
+            <span
+              key={i}
+              className={`px-1.5 py-0.5 rounded font-mono font-bold text-[11px] mx-0.5 ${
+                isAi
+                  ? 'bg-purple-500/20 text-purple-300 border border-purple-500/40'
+                  : 'bg-indigo-500/20 text-indigo-300 border border-indigo-500/40'
+              }`}
+              data-tour={!isAi ? 'collab-mention-tag' : undefined}
+            >
+              {part}
+            </span>
+          );
+        }
+        return <span key={i}>{part}</span>;
+      })}
+    </span>
+  );
+}
+
 export default function CollabChatPage() {
   const { currentUser } = useWorkspace();
   const [channels, setChannels] = useState<ChannelItem[]>([]);
@@ -73,53 +173,64 @@ export default function CollabChatPage() {
   const [inputContent, setInputContent] = useState('');
   const [replyToMessage, setReplyToMessage] = useState<MessageItem | null>(null);
 
-  const [searchQuery, setSearchQuery] = useState('');
-  const [searchResults, setSearchResults] = useState<MessageItem[]>([]);
-  const [isSearching, setIsSearching] = useState(false);
+  // Periodic tick for relative timestamps refresh
+  const [timeTick, setTimeTick] = useState<number>(Date.now());
 
   const [loadingChannels, setLoadingChannels] = useState(true);
   const [loadingMessages, setLoadingMessages] = useState(false);
 
-  // User Search & DM Modal
+  // Mention Autocomplete State
+  const [showMentionPopup, setShowMentionPopup] = useState(false);
+  const [mentionQuery, setMentionQuery] = useState('');
+  const [mentionSelectedIndex, setMentionSelectedIndex] = useState(0);
+  const [mentionedUserIds, setMentionedUserIds] = useState<string[]>([]);
+
+  // Voice Recording State
+  const [isRecording, setIsRecording] = useState(false);
+  const [recordingDuration, setRecordingDuration] = useState(0);
+  const [recordedBlob, setRecordedBlob] = useState<Blob | null>(null);
+  const [recordedAudioUrl, setRecordedAudioUrl] = useState<string | null>(null);
+  const mediaRecorderRef = useRef<MediaRecorder | null>(null);
+  const recordingTimerRef = useRef<NodeJS.Timeout | null>(null);
+  const audioChunksRef = useRef<Blob[]>([]);
+
+  // Modals State
   const [showUserSearchModal, setShowUserSearchModal] = useState(false);
   const [userSearchQuery, setUserSearchQuery] = useState('');
   const [userSearchResults, setUserSearchResults] = useState<UserSummary[]>([]);
   const [isSearchingUsers, setIsSearchingUsers] = useState(false);
 
-  // Group Creation Modal
   const [showCreateModal, setShowCreateModal] = useState(false);
   const [newGroupTitle, setNewGroupTitle] = useState('');
   const [newGroupDescription, setNewGroupDescription] = useState('');
 
-  // Add Group Members Modal
   const [showAddMembersModal, setShowAddMembersModal] = useState(false);
   const [addMembersQuery, setAddMembersQuery] = useState('');
   const [addMembersSearchResults, setAddMembersSearchResults] = useState<UserSummary[]>([]);
   const [selectedMemberIds, setSelectedMemberIds] = useState<string[]>([]);
-  const [isAddingMembers, setIsAddingMembers] = useState(false);
 
-  // Group Members & Management Modal
   const [showMembersModal, setShowMembersModal] = useState(false);
   const [removedBanner, setRemovedBanner] = useState<string | null>(null);
-
-  // Group Receipts Popover
-  const [receiptSummaryMessageId, setReceiptSummaryMessageId] = useState<string | null>(null);
-  const [receiptSummaryData, setReceiptSummaryData] = useState<any>(null);
 
   const [showShareModal, setShowShareModal] = useState(false);
   const [shareType, setShareType] = useState<'roadmap' | 'entity' | 'document' | 'question'>('roadmap');
   const [shareTargetId, setShareTargetId] = useState('');
 
-  const [editingMessageId, setEditingMessageId] = useState<string | null>(null);
-  const [editContent, setEditContent] = useState('');
   const [isAiGenerating, setIsAiGenerating] = useState(false);
 
   const messagesEndRef = useRef<HTMLDivElement>(null);
+  const textareaRef = useRef<HTMLTextAreaElement>(null);
   const activeChannelIdRef = useRef<string | null>(activeChannelId);
   const requestIdRef = useRef<number>(0);
   const reconnectTimeoutRef = useRef<NodeJS.Timeout | null>(null);
 
-  // Sync activeChannelIdRef
+  // Refresh relative timestamps tick every 60s
+  useEffect(() => {
+    const refreshMs = parseInt(process.env.COLLAB_MESSAGE_TIMESTAMP_REFRESH_MS || '60000', 10);
+    const interval = setInterval(() => setTimeTick(Date.now()), refreshMs);
+    return () => clearInterval(interval);
+  }, []);
+
   useEffect(() => {
     activeChannelIdRef.current = activeChannelId;
   }, [activeChannelId]);
@@ -128,7 +239,6 @@ export default function CollabChatPage() {
     messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
   }, []);
 
-  // Format channel display name for DMs and Groups safely
   const getChannelDisplayName = useCallback(
     (ch: ChannelItem): string => {
       if (ch.type === 'GROUP') {
@@ -147,7 +257,6 @@ export default function CollabChatPage() {
     [currentUser?.id]
   );
 
-  // Fetch channels list
   const fetchChannels = useCallback(async () => {
     try {
       const res = await fetch('/api/collaboration/channels');
@@ -165,7 +274,6 @@ export default function CollabChatPage() {
     }
   }, []);
 
-  // Fetch active channel messages with race-condition guard
   const fetchMessages = useCallback(async (chId: string) => {
     const requestId = ++requestIdRef.current;
     setLoadingMessages(true);
@@ -174,9 +282,7 @@ export default function CollabChatPage() {
       const data = await res.json();
       if (requestId === requestIdRef.current && data.success && data.data) {
         setMessages(data.data);
-        // Mark channel read
         await fetch(`/api/collaboration/channels/${chId}/read`, { method: 'POST' }).catch(() => {});
-        // Reset unread count locally
         setChannels((prev) =>
           prev.map((c) => (c.id === chId ? { ...c, unreadCount: 0 } : c))
         );
@@ -204,7 +310,7 @@ export default function CollabChatPage() {
     scrollToBottom();
   }, [messages, scrollToBottom]);
 
-  // Real-time SSE Connection bound ONLY to currentUser?.id with exponential backoff
+  // Real-time SSE Connection
   useEffect(() => {
     if (!currentUser?.id) return;
 
@@ -215,16 +321,9 @@ export default function CollabChatPage() {
 
     const connect = () => {
       if (isUnmounted) return;
-
-      const isDebug = process.env.NEXT_PUBLIC_COLLAB_REALTIME_DEBUG === 'true';
-      if (isDebug) {
-        console.log(`[CollabRealtime] Connecting SSE for user ${currentUser.id}... (Attempt ${reconnectAttempt + 1})`);
-      }
-
       eventSource = new EventSource('/api/collaboration/events');
 
       eventSource.onopen = () => {
-        if (isDebug) console.log('[CollabRealtime] SSE connection established');
         reconnectAttempt = 0;
       };
 
@@ -236,8 +335,6 @@ export default function CollabChatPage() {
 
           if (event.type === 'message:new') {
             const newMsg = event.data as MessageItem;
-
-            // Targeted channel preview & unread count update
             setChannels((prev) =>
               prev.map((c) => {
                 if (c.id === newMsg.channelId) {
@@ -253,11 +350,9 @@ export default function CollabChatPage() {
               })
             );
 
-            // Reconcile message into active feed without full fetch
             if (newMsg.channelId === activeChId) {
               setMessages((prev) => mergeMessages(prev, newMsg));
 
-              // Auto delivery ACK
               if (newMsg.senderId !== currentUser.id) {
                 fetch(`/api/collaboration/channels/${activeChId}/messages/delivery`, {
                   method: 'POST',
@@ -271,13 +366,6 @@ export default function CollabChatPage() {
             if (updated.channelId === activeChId) {
               setMessages((prev) => prev.map((m) => (m.id === updated.id ? updated : m)));
             }
-            setChannels((prev) =>
-              prev.map((c) =>
-                c.id === updated.channelId && c.latestMessage?.id === updated.id
-                  ? { ...c, latestMessage: updated }
-                  : c
-              )
-            );
           } else if (event.type === 'message:delete') {
             const { messageId, channelId: chId } = event.data;
             if (chId === activeChId) {
@@ -295,17 +383,7 @@ export default function CollabChatPage() {
                 setMessages([]);
               }
               fetchChannels();
-            } else {
-              setChannels((prev) =>
-                prev.map((c) =>
-                  c.id === event.channelId
-                    ? { ...c, members: c.members.filter((m) => m.userId !== event.data?.userId) }
-                    : c
-                )
-              );
             }
-          } else if (event.type === 'member:left' || event.type === 'member:owner_changed') {
-            fetchChannels();
           } else if (event.type === 'message:delivered' || event.type === 'message:read') {
             if (event.channelId === activeChId) {
               setMessages((prev) =>
@@ -349,9 +427,6 @@ export default function CollabChatPage() {
         }
         const delay = backoffDelays[Math.min(reconnectAttempt, backoffDelays.length - 1)];
         reconnectAttempt++;
-        if (isDebug) {
-          console.warn(`[CollabRealtime] SSE Connection interrupted. Reconnecting in ${delay}ms...`);
-        }
         reconnectTimeoutRef.current = setTimeout(connect, delay);
       };
     };
@@ -365,239 +440,222 @@ export default function CollabChatPage() {
     };
   }, [currentUser?.id, fetchChannels]);
 
-  // Debounced User Search for DM Modal
-  useEffect(() => {
-    if (!showUserSearchModal || userSearchQuery.trim().length < 2) {
-      setUserSearchResults([]);
-      return;
-    }
-
-    const timer = setTimeout(async () => {
-      setIsSearchingUsers(true);
-      try {
-        const res = await fetch(`/api/collaboration/users/search?q=${encodeURIComponent(userSearchQuery)}`);
-        const data = await res.json();
-        if (data.success && data.data) {
-          setUserSearchResults(data.data);
-        }
-      } catch (err) {
-        console.error('User search failed:', err);
-      } finally {
-        setIsSearchingUsers(false);
-      }
-    }, 350);
-
-    return () => clearTimeout(timer);
-  }, [userSearchQuery, showUserSearchModal]);
-
-  // Debounced User Search for Add Members Modal
-  useEffect(() => {
-    if (!showAddMembersModal || addMembersQuery.trim().length < 2) {
-      setAddMembersSearchResults([]);
-      return;
-    }
-
-    const timer = setTimeout(async () => {
-      try {
-        const res = await fetch(`/api/collaboration/users/search?q=${encodeURIComponent(addMembersQuery)}`);
-        const data = await res.json();
-        if (data.success && data.data) {
-          setAddMembersSearchResults(data.data);
-        }
-      } catch (err) {
-        console.error('Add members search failed:', err);
-      }
-    }, 350);
-
-    return () => clearTimeout(timer);
-  }, [addMembersQuery, showAddMembersModal]);
-
-  // Select User from Search & Start/Reuse DM
-  const handleStartDM = async (targetUser: UserSummary) => {
+  // Voice Message Recording
+  const startVoiceRecording = async () => {
     try {
-      const res = await fetch('/api/collaboration/channels', {
+      const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+      audioChunksRef.current = [];
+
+      const mimeType = MediaRecorder.isTypeSupported('audio/webm;codecs=opus')
+        ? 'audio/webm;codecs=opus'
+        : MediaRecorder.isTypeSupported('audio/mp4')
+        ? 'audio/mp4'
+        : 'audio/webm';
+
+      const recorder = new MediaRecorder(stream, { mimeType });
+      mediaRecorderRef.current = recorder;
+
+      recorder.ondataavailable = (e) => {
+        if (e.data.size > 0) audioChunksRef.current.push(e.data);
+      };
+
+      recorder.onstop = () => {
+        stream.getTracks().forEach((t) => t.stop());
+        const blob = new Blob(audioChunksRef.current, { type: mimeType });
+        setRecordedBlob(blob);
+        const url = URL.createObjectURL(blob);
+        setRecordedAudioUrl(url);
+      };
+
+      recorder.start(100);
+      setIsRecording(true);
+      setRecordingDuration(0);
+
+      recordingTimerRef.current = setInterval(() => {
+        setRecordingDuration((prev) => prev + 1);
+      }, 1000);
+    } catch {
+      alert('Microphone permission is required to record a voice message.');
+    }
+  };
+
+  const stopVoiceRecording = () => {
+    if (mediaRecorderRef.current && isRecording) {
+      mediaRecorderRef.current.stop();
+      setIsRecording(false);
+      if (recordingTimerRef.current) clearInterval(recordingTimerRef.current);
+    }
+  };
+
+  const cancelVoiceRecording = () => {
+    if (mediaRecorderRef.current && isRecording) {
+      mediaRecorderRef.current.stop();
+      setIsRecording(false);
+      if (recordingTimerRef.current) clearInterval(recordingTimerRef.current);
+    }
+    setRecordedBlob(null);
+    if (recordedAudioUrl) URL.revokeObjectURL(recordedAudioUrl);
+    setRecordedAudioUrl(null);
+    setRecordingDuration(0);
+  };
+
+  const handleSendVoiceMessage = async () => {
+    if (!recordedBlob || !activeChannelId || !currentUser) return;
+
+    const clientMessageId = `client_voice_${Date.now()}_${Math.random().toString(36).substring(2, 9)}`;
+    const durationMs = recordingDuration * 1000;
+
+    const blobToSend = recordedBlob;
+    cancelVoiceRecording();
+
+    const optimisticMsg: MessageItem = {
+      id: clientMessageId,
+      clientMessageId,
+      channelId: activeChannelId,
+      senderId: currentUser.id,
+      messageType: 'VOICE',
+      content: '🎤 Voice message',
+      voiceDurationMs: durationMs,
+      isEdited: false,
+      isDeleted: false,
+      isAi: false,
+      createdAt: new Date().toISOString(),
+      sender: {
+        id: currentUser.id,
+        name: currentUser.name || null,
+        email: currentUser.email,
+        role: currentUser.role || 'USER',
+        avatarUrl: currentUser.avatarUrl || null
+      },
+      status: 'SENDING'
+    };
+
+    setMessages((prev) => mergeMessages(prev, optimisticMsg));
+
+    try {
+      const formData = new FormData();
+      formData.append('audio', blobToSend, 'voice.webm');
+      formData.append('durationMs', durationMs.toString());
+      formData.append('clientMessageId', clientMessageId);
+
+      const res = await fetch(`/api/collaboration/channels/${activeChannelId}/voice`, {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          type: 'DIRECT',
-          targetUserId: targetUser.id
-        })
-      });
-      const data = await res.json();
-      if (data.success && data.data) {
-        setShowUserSearchModal(false);
-        setUserSearchQuery('');
-        setUserSearchResults([]);
-        await fetchChannels();
-        setActiveChannelId(data.data.id);
-      }
-    } catch (err) {
-      console.error('Failed to start DM:', err);
-    }
-  };
-
-  // Add Selected Members to Active Group
-  const handleAddMembersSubmit = async (e: React.FormEvent) => {
-    e.preventDefault();
-    if (!activeChannelId || selectedMemberIds.length === 0) return;
-
-    setIsAddingMembers(true);
-    try {
-      const res = await fetch(`/api/collaboration/channels/${activeChannelId}/members`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ userIds: selectedMemberIds })
-      });
-      const data = await res.json();
-      if (data.success) {
-        setShowAddMembersModal(false);
-        setSelectedMemberIds([]);
-        setAddMembersQuery('');
-        setAddMembersSearchResults([]);
-        await fetchChannels();
-        await fetchMessages(activeChannelId);
-      }
-    } catch (err) {
-      console.error('Failed to add group members:', err);
-    } finally {
-      setIsAddingMembers(false);
-    }
-  };
-
-  // Remove Group Member
-  const handleRemoveMember = async (targetUserId: string) => {
-    if (!activeChannelId) return;
-    if (!confirm('Are you sure you want to remove this member from the group?')) return;
-
-    try {
-      const res = await fetch(`/api/collaboration/channels/${activeChannelId}/members/${targetUserId}`, {
-        method: 'DELETE'
-      });
-      const data = await res.json();
-      if (data.success) {
-        await fetchChannels();
-        await fetchMessages(activeChannelId);
-      } else {
-        alert(data.error || 'Failed to remove member');
-      }
-    } catch (err) {
-      console.error('Failed to remove member:', err);
-    }
-  };
-
-  // Leave Group
-  const handleLeaveGroup = async () => {
-    if (!activeChannelId) return;
-    if (!confirm('Are you sure you want to leave this group?')) return;
-
-    try {
-      const res = await fetch(`/api/collaboration/channels/${activeChannelId}/leave`, {
-        method: 'POST'
-      });
-      const data = await res.json();
-      if (data.success) {
-        setShowMembersModal(false);
-        setActiveChannelId(null);
-        setMessages([]);
-        await fetchChannels();
-      } else {
-        alert(data.error || 'Failed to leave group');
-      }
-    } catch (err) {
-      console.error('Failed to leave group:', err);
-    }
-  };
-
-  // Transfer Ownership
-  const handleTransferOwner = async (newOwnerId: string) => {
-    if (!activeChannelId) return;
-    if (!confirm('Are you sure you want to transfer group ownership?')) return;
-
-    try {
-      const res = await fetch(`/api/collaboration/channels/${activeChannelId}/transfer-owner`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ userId: newOwnerId })
-      });
-      const data = await res.json();
-      if (data.success) {
-        await fetchChannels();
-        await fetchMessages(activeChannelId);
-      } else {
-        alert(data.error || 'Failed to transfer ownership');
-      }
-    } catch (err) {
-      console.error('Failed to transfer ownership:', err);
-    }
-  };
-
-  // Fetch Message Receipt Summary
-  const handleFetchReceiptSummary = async (messageId: string) => {
-    if (!activeChannelId) return;
-    setReceiptSummaryMessageId(messageId);
-    setReceiptSummaryData(null);
-    try {
-      const res = await fetch(`/api/collaboration/channels/${activeChannelId}/receipts/${messageId}`);
-      const data = await res.json();
-      if (data.success && data.data) {
-        setReceiptSummaryData(data.data);
-      }
-    } catch (err) {
-      console.error('Failed to fetch receipt summary:', err);
-    }
-  };
-
-  // Retry Failed Message (Reuses SAME clientMessageId)
-  const handleRetryMessage = async (msg: MessageItem) => {
-    if (!activeChannelId || !msg.clientMessageId) return;
-
-    setMessages((prev) =>
-      prev.map((m) => (m.clientMessageId === msg.clientMessageId ? { ...m, status: 'SENDING' } : m))
-    );
-
-    try {
-      const res = await fetch(`/api/collaboration/channels/${activeChannelId}/messages`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          content: msg.content,
-          replyToId: msg.replyToId,
-          clientMessageId: msg.clientMessageId
-        })
+        body: formData
       });
       const data = await res.json();
       if (data.success && data.data) {
         setMessages((prev) => mergeMessages(prev, data.data));
       } else {
         setMessages((prev) =>
-          prev.map((m) => (m.clientMessageId === msg.clientMessageId ? { ...m, status: 'FAILED' } : m))
+          prev.map((m) => (m.clientMessageId === clientMessageId ? { ...m, status: 'FAILED' } : m))
         );
       }
-    } catch (err) {
+    } catch {
       setMessages((prev) =>
-        prev.map((m) => (m.clientMessageId === msg.clientMessageId ? { ...m, status: 'FAILED' } : m))
+        prev.map((m) => (m.clientMessageId === clientMessageId ? { ...m, status: 'FAILED' } : m))
       );
     }
   };
 
-  // Send message with clientMessageId & deduplication
+  // Mention Autocomplete Handler
+  const activeChannel = channels.find((c) => c.id === activeChannelId);
+  const activeChannelMembers = activeChannel?.members?.filter((m) => m.userId !== currentUser?.id) || [];
+
+  const filteredMentionMembers = activeChannelMembers.filter((m) => {
+    const q = mentionQuery.toLowerCase();
+    const nameStr = (m.user?.name || '').toLowerCase();
+    const emailStr = (m.user?.email || '').toLowerCase();
+    return nameStr.includes(q) || emailStr.includes(q);
+  });
+
+  const handleInputChange = (e: React.ChangeEvent<HTMLTextAreaElement>) => {
+    const val = e.target.value;
+    setInputContent(val);
+
+    const cursorPos = e.target.selectionStart || val.length;
+    const textBeforeCursor = val.substring(0, cursorPos);
+    const lastAtPos = textBeforeCursor.lastIndexOf('@');
+
+    if (lastAtPos !== -1 && activeChannel?.type === 'GROUP') {
+      const queryStr = textBeforeCursor.substring(lastAtPos + 1);
+      if (!queryStr.includes(' ')) {
+        setShowMentionPopup(true);
+        setMentionQuery(queryStr);
+        setMentionSelectedIndex(0);
+        return;
+      }
+    }
+    setShowMentionPopup(false);
+  };
+
+  const handleSelectMention = (member: MemberItem) => {
+    const nameToInsert = member.user?.name || member.user?.email.split('@')[0] || 'user';
+    const cursorPos = textareaRef.current?.selectionStart || inputContent.length;
+    const textBeforeCursor = inputContent.substring(0, cursorPos);
+    const lastAtPos = textBeforeCursor.lastIndexOf('@');
+    const textAfterCursor = inputContent.substring(cursorPos);
+
+    const newText = inputContent.substring(0, lastAtPos) + `@${nameToInsert} ` + textAfterCursor;
+    setInputContent(newText);
+    setMentionedUserIds((prev) => Array.from(new Set([...prev, member.userId])));
+    setShowMentionPopup(false);
+
+    setTimeout(() => {
+      textareaRef.current?.focus();
+    }, 50);
+  };
+
+  const handleKeyDown = (e: React.KeyboardEvent<HTMLTextAreaElement>) => {
+    if (showMentionPopup && filteredMentionMembers.length > 0) {
+      if (e.key === 'ArrowDown') {
+        e.preventDefault();
+        setMentionSelectedIndex((prev) => (prev + 1) % filteredMentionMembers.length);
+        return;
+      }
+      if (e.key === 'ArrowUp') {
+        e.preventDefault();
+        setMentionSelectedIndex((prev) => (prev - 1 + filteredMentionMembers.length) % filteredMentionMembers.length);
+        return;
+      }
+      if (e.key === 'Enter' || e.key === 'Tab') {
+        e.preventDefault();
+        const targetMem = filteredMentionMembers[mentionSelectedIndex];
+        if (targetMem) handleSelectMention(targetMem);
+        return;
+      }
+      if (e.key === 'Escape') {
+        e.preventDefault();
+        setShowMentionPopup(false);
+        return;
+      }
+    }
+
+    if (e.key === 'Enter' && !e.shiftKey) {
+      e.preventDefault();
+      handleSendMessage();
+    }
+  };
+
   const handleSendMessage = async (e?: React.FormEvent) => {
     if (e) e.preventDefault();
     if (!inputContent.trim() || !activeChannelId || !currentUser) return;
 
     const contentToSend = inputContent.trim();
+    const idsToSend = [...mentionedUserIds];
     setInputContent('');
+    setMentionedUserIds([]);
+    setShowMentionPopup(false);
     const replyId = replyToMessage?.id;
     setReplyToMessage(null);
 
     const clientMessageId = `client_${Date.now()}_${Math.random().toString(36).substring(2, 9)}`;
 
-    // Optimistic UI insertion
     const optimisticMsg: MessageItem = {
       id: clientMessageId,
       clientMessageId,
       channelId: activeChannelId,
       senderId: currentUser.id,
+      messageType: 'TEXT',
       content: contentToSend,
       replyToId: replyId,
       isEdited: false,
@@ -623,7 +681,8 @@ export default function CollabChatPage() {
         body: JSON.stringify({
           content: contentToSend,
           replyToId: replyId,
-          clientMessageId
+          clientMessageId,
+          mentionedUserIds: idsToSend
         })
       });
       const data = await res.json();
@@ -634,27 +693,57 @@ export default function CollabChatPage() {
           prev.map((m) => (m.clientMessageId === clientMessageId ? { ...m, status: 'FAILED' } : m))
         );
       }
-    } catch (err) {
+    } catch {
       setMessages((prev) =>
         prev.map((m) => (m.clientMessageId === clientMessageId ? { ...m, status: 'FAILED' } : m))
       );
     }
   };
 
-  // Create Group Channel
-  const handleCreateGroup = async (e: React.FormEvent) => {
-    e.preventDefault();
-    if (!newGroupTitle.trim()) return;
-
+  const handleSearchUsers = async (q: string) => {
+    setUserSearchQuery(q);
+    if (!q.trim()) {
+      setUserSearchResults([]);
+      return;
+    }
+    setIsSearchingUsers(true);
     try {
-      const res = await fetch('/api/collaboration/channels', {
+      const res = await fetch(`/api/collaboration/users/search?q=${encodeURIComponent(q)}`);
+      const data = await res.json();
+      if (data.success && data.data) {
+        setUserSearchResults(data.data);
+      }
+    } catch {
+    } finally {
+      setIsSearchingUsers(false);
+    }
+  };
+
+  const handleStartDirectChat = async (targetUserId: string) => {
+    try {
+      const res = await fetch('/api/collaboration/channels/direct', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          type: 'GROUP',
-          name: newGroupTitle.trim(),
-          description: newGroupDescription.trim()
-        })
+        body: JSON.stringify({ targetUserId })
+      });
+      const data = await res.json();
+      if (data.success && data.data) {
+        setShowUserSearchModal(false);
+        await fetchChannels();
+        setActiveChannelId(data.data.id);
+      }
+    } catch (err) {
+      console.error('Failed to create direct chat:', err);
+    }
+  };
+
+  const handleCreateGroup = async () => {
+    if (!newGroupTitle.trim()) return;
+    try {
+      const res = await fetch('/api/collaboration/channels/group', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ name: newGroupTitle.trim(), description: newGroupDescription.trim() })
       });
       const data = await res.json();
       if (data.success && data.data) {
@@ -665,102 +754,73 @@ export default function CollabChatPage() {
         setActiveChannelId(data.data.id);
       }
     } catch (err) {
-      console.error('Failed to create channel:', err);
+      console.error('Failed to create group:', err);
     }
   };
 
-  // Edit Message
-  const handleSaveEdit = async (messageId: string) => {
-    if (!editContent.trim()) return;
-    try {
-      const res = await fetch(`/api/collaboration/messages/${messageId}`, {
-        method: 'PATCH',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ content: editContent.trim() })
-      });
-      const data = await res.json();
-      if (data.success && data.data) {
-        setMessages((prev) => prev.map((m) => (m.id === messageId ? data.data : m)));
-        setEditingMessageId(null);
-        setEditContent('');
-      }
-    } catch (err) {
-      console.error('Failed to edit message:', err);
-    }
-  };
-
-  // Delete Message
-  const handleDeleteMessage = async (messageId: string) => {
-    if (!confirm('Are you sure you want to delete this message?')) return;
-    try {
-      const res = await fetch(`/api/collaboration/messages/${messageId}`, {
-        method: 'DELETE'
-      });
-      const data = await res.json();
-      if (data.success) {
-        setMessages((prev) =>
-          prev.map((m) =>
-            m.id === messageId ? { ...m, isDeleted: true, content: 'This message was deleted.' } : m
-          )
-        );
-      }
-    } catch (err) {
-      console.error('Failed to delete message:', err);
-    }
-  };
-
-  // Search messages
-  const handleSearch = async (query: string) => {
-    setSearchQuery(query);
-    if (!query.trim()) {
-      setIsSearching(false);
-      setSearchResults([]);
+  const handleSearchAddMembers = async (q: string) => {
+    setAddMembersQuery(q);
+    if (!q.trim()) {
+      setAddMembersSearchResults([]);
       return;
     }
-
-    setIsSearching(true);
     try {
-      const res = await fetch(`/api/collaboration/messages/search?q=${encodeURIComponent(query)}`);
+      const res = await fetch(`/api/collaboration/users/search?q=${encodeURIComponent(q)}`);
       const data = await res.json();
       if (data.success && data.data) {
-        setSearchResults(data.data);
+        const existingUserIds = activeChannel?.members.map((m) => m.userId) || [];
+        setAddMembersSearchResults(data.data.filter((u: UserSummary) => !existingUserIds.includes(u.id)));
       }
     } catch {}
   };
 
-  // Share Asset
-  const handleShareAsset = async (e: React.FormEvent) => {
-    e.preventDefault();
-    if (!shareTargetId.trim() || !activeChannelId) return;
-
-    const payload: Record<string, string> = {
-      content: `Shared ${shareType.toUpperCase()}: ${shareTargetId}`
-    };
-
-    if (shareType === 'roadmap') payload.sharedRoadmapId = shareTargetId;
-    if (shareType === 'entity') payload.sharedEntityId = shareTargetId;
-    if (shareType === 'document') payload.sharedDocumentId = shareTargetId;
-    if (shareType === 'question') payload.sharedStudyQuestionId = shareTargetId;
-
+  const handleAddMembers = async () => {
+    if (!activeChannelId || selectedMemberIds.length === 0) return;
     try {
+      const res = await fetch(`/api/collaboration/channels/${activeChannelId}/members`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ userIds: selectedMemberIds })
+      });
+      const data = await res.json();
+      if (data.success) {
+        setShowAddMembersModal(false);
+        setSelectedMemberIds([]);
+        fetchChannels();
+      }
+    } catch (err) {
+      console.error('Failed to add group members:', err);
+    }
+  };
+
+  const handleShareAsset = async () => {
+    if (!activeChannelId || !shareTargetId.trim()) return;
+    try {
+      const bodyPayload: any = { content: `🔗 Shared a ${shareType} asset` };
+      if (shareType === 'roadmap') bodyPayload.sharedRoadmapId = shareTargetId.trim();
+      else if (shareType === 'entity') bodyPayload.sharedEntityId = shareTargetId.trim();
+      else if (shareType === 'document') bodyPayload.sharedDocumentId = shareTargetId.trim();
+      else if (shareType === 'question') bodyPayload.sharedStudyQuestionId = shareTargetId.trim();
+
       const res = await fetch(`/api/collaboration/channels/${activeChannelId}/messages`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(payload)
+        body: JSON.stringify(bodyPayload)
       });
       const data = await res.json();
-      if (data.success && data.data) {
+      if (data.success) {
         setShowShareModal(false);
         setShareTargetId('');
-        setMessages((prev) => mergeMessages(prev, data.data));
+        if (data.data) setMessages((prev) => mergeMessages(prev, data.data));
       }
     } catch (err) {
       console.error('Failed to share asset:', err);
     }
   };
 
-  const activeChannel = channels.find((c) => c.id === activeChannelId);
   const activeChannelTitle = activeChannel ? getChannelDisplayName(activeChannel) : '';
+  const now = new Date(timeTick);
+  const groupedMessageClusters = groupMessagesByDate(messages, now);
 
   return (
     <div className="w-full max-w-[1600px] mx-auto h-[calc(100vh-80px)] flex flex-col p-4 sm:p-6 lg:p-8 overflow-hidden" data-tour="collab-chat-container">
@@ -772,7 +832,7 @@ export default function CollabChatPage() {
             <span>Real-Time Collaboration Platform</span>
           </h1>
           <p className="text-xs text-slate-500 dark:text-slate-400 mt-0.5">
-            1-to-1 DMs, Group Discussions, Asset Sharing & AI Discussion Mode
+            1-to-1 DMs, Group Discussions, @Mentions, Voice Messages & AI Discussion
           </p>
         </div>
 
@@ -801,123 +861,93 @@ export default function CollabChatPage() {
         </div>
       </div>
 
+      {removedBanner && (
+        <div className="p-3 bg-amber-500/10 border border-amber-500/30 text-amber-300 text-xs rounded-xl flex items-center justify-between shrink-0 mb-2">
+          <span>{removedBanner}</span>
+          <button onClick={() => setRemovedBanner(null)} className="font-bold">✕</button>
+        </div>
+      )}
+
       {/* Main Grid: Left Channel Sidebar (4 Cols) + Right Chat Panel (8 Cols) */}
       <div className="grid grid-cols-1 lg:grid-cols-12 gap-6 flex-1 min-h-0 overflow-hidden">
         {/* Left Sidebar (4 Cols) */}
         <div className="lg:col-span-4 bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-2xl p-4 flex flex-col h-full overflow-hidden shadow-sm" data-tour="collab-channels-list">
-          {/* Search Bar */}
-          <div className="mb-3 shrink-0">
-            <input
-              type="text"
-              placeholder="Search messages across chats..."
-              value={searchQuery}
-              onChange={(e) => handleSearch(e.target.value)}
-              className="w-full bg-slate-100 dark:bg-slate-950 border border-slate-200 dark:border-slate-800 rounded-xl px-3.5 py-2 text-xs text-slate-900 dark:text-white placeholder-slate-400 focus:outline-none focus:border-indigo-500"
-            />
-          </div>
-
-          {/* Search Results / Channels List */}
-          {isSearching ? (
-            <div className="flex-1 overflow-y-auto space-y-2 pr-1 min-h-0">
-              <div className="text-[11px] font-mono font-bold uppercase text-slate-400 px-2 flex justify-between items-center">
-                <span>Search Results</span>
-                <span className="text-indigo-400 font-bold">{searchResults.length}</span>
-              </div>
-              {searchResults.length === 0 ? (
-                <div className="text-center py-8 text-xs text-slate-400">No matching messages found</div>
-              ) : (
-                searchResults.map((m) => (
-                  <div
-                    key={m.id}
-                    onClick={() => {
-                      setActiveChannelId(m.channelId);
-                      setIsSearching(false);
-                      setSearchQuery('');
-                    }}
-                    className="p-3 rounded-xl bg-slate-50 dark:bg-slate-950 border border-slate-200 dark:border-slate-800 hover:border-indigo-500 transition cursor-pointer space-y-1"
-                  >
-                    <div className="flex items-center justify-between text-[10px] text-slate-400">
-                      <span className="font-semibold text-indigo-400">{m.sender.name || m.sender.email}</span>
-                      <span>{new Date(m.createdAt).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}</span>
-                    </div>
-                    <p className="text-xs text-slate-700 dark:text-slate-300 line-clamp-2">{m.content}</p>
-                  </div>
-                ))
-              )}
+          {/* Channels List */}
+          <div className="flex-1 overflow-y-auto space-y-2 pr-1 min-h-0">
+            <div className="text-[11px] font-mono font-bold uppercase text-slate-400 px-2 flex justify-between items-center mb-1">
+              <span>Active Conversations</span>
+              <span className="text-indigo-400 font-bold">{channels.length}</span>
             </div>
-          ) : (
-            <div className="flex-1 overflow-y-auto space-y-2 pr-1 min-h-0">
-              <div className="text-[11px] font-mono font-bold uppercase text-slate-400 px-2 flex justify-between items-center mb-1">
-                <span>Active Conversations</span>
-                <span className="text-indigo-400 font-bold">{channels.length}</span>
+
+            {loadingChannels ? (
+              <div className="text-center py-12 text-xs text-slate-400 animate-pulse">Loading Channels...</div>
+            ) : channels.length === 0 ? (
+              <div className="text-center py-12 text-xs text-slate-400 space-y-2">
+                <p>No conversations started yet.</p>
+                <p className="text-[11px] text-indigo-400 font-medium">Click &quot;New Chat&quot; to search users!</p>
               </div>
+            ) : (
+              channels.map((ch) => {
+                const isActive = ch.id === activeChannelId;
+                const displayName = getChannelDisplayName(ch);
+                const otherMember = ch.members?.find((m) => m.userId !== currentUser?.id);
+                const isOnline = otherMember?.presence?.status === 'ONLINE';
 
-              {loadingChannels ? (
-                <div className="text-center py-12 text-xs text-slate-400 animate-pulse">Loading Channels...</div>
-              ) : channels.length === 0 ? (
-                <div className="text-center py-12 text-xs text-slate-400 space-y-2">
-                  <p>No conversations started yet.</p>
-                  <p className="text-[11px] text-indigo-400 font-medium">Click &quot;New Chat&quot; to search users!</p>
-                </div>
-              ) : (
-                channels.map((ch) => {
-                  const isActive = ch.id === activeChannelId;
-                  const displayName = getChannelDisplayName(ch);
-                  const otherMember = ch.members?.find((m) => m.userId !== currentUser?.id);
-                  const isOnline = otherMember?.presence?.status === 'ONLINE';
-
-                  return (
-                    <div
-                      key={ch.id}
-                      onClick={() => setActiveChannelId(ch.id)}
-                      className={`p-3 rounded-xl border transition cursor-pointer flex items-center justify-between ${
-                        isActive
-                          ? 'bg-indigo-50 dark:bg-indigo-950/60 border-indigo-500 text-slate-900 dark:text-white font-semibold shadow-sm'
-                          : 'bg-slate-50 dark:bg-slate-950/40 border-slate-200 dark:border-slate-800 hover:border-slate-300 dark:hover:border-slate-700 text-slate-700 dark:text-slate-300'
-                      }`}
-                    >
-                      <div className="flex items-center space-x-3 truncate">
-                        <div className="relative shrink-0">
-                          <div className="w-9 h-9 rounded-xl bg-gradient-to-tr from-indigo-600 to-purple-600 text-white font-bold flex items-center justify-center text-xs shadow-sm">
-                            {ch.type === 'GROUP' ? '👥' : (displayName ? displayName[0]?.toUpperCase() : '💬')}
-                          </div>
-                          {ch.type === 'DIRECT' && (
-                            <span
-                              className={`absolute -bottom-0.5 -right-0.5 w-3 h-3 rounded-full border-2 border-white dark:border-slate-900 ${
-                                isOnline ? 'bg-emerald-500' : 'bg-slate-400'
-                              }`}
-                            />
-                          )}
+                return (
+                  <div
+                    key={ch.id}
+                    onClick={() => setActiveChannelId(ch.id)}
+                    className={`p-3 rounded-xl border transition cursor-pointer flex items-center justify-between ${
+                      isActive
+                        ? 'bg-indigo-50 dark:bg-indigo-950/60 border-indigo-500 text-slate-900 dark:text-white font-semibold shadow-sm'
+                        : 'bg-slate-50 dark:bg-slate-950/40 border-slate-200 dark:border-slate-800 hover:border-slate-300 dark:hover:border-slate-700 text-slate-700 dark:text-slate-300'
+                    }`}
+                  >
+                    <div className="flex items-center space-x-3 truncate">
+                      <div className="relative shrink-0">
+                        <div className="w-9 h-9 rounded-xl bg-gradient-to-tr from-indigo-600 to-purple-600 text-white font-bold flex items-center justify-center text-xs shadow-sm">
+                          {ch.type === 'GROUP' ? '👥' : (displayName ? displayName[0]?.toUpperCase() : '💬')}
                         </div>
-
-                        <div className="flex flex-col truncate min-w-0">
-                          <div className="flex items-center space-x-2">
-                            <span className="text-xs font-bold truncate max-w-[140px] text-slate-900 dark:text-white">
-                              {displayName}
-                            </span>
-                            {ch.type === 'GROUP' && (
-                              <span className="text-[9px] px-1.5 py-0.2 rounded bg-indigo-100 dark:bg-indigo-950 text-indigo-700 dark:text-indigo-400 font-mono">
-                                GROUP
-                              </span>
-                            )}
-                          </div>
-                          <span className="text-[11px] text-slate-400 truncate mt-0.5">
-                            {ch.latestMessage ? ch.latestMessage.content : 'No messages yet'}
-                          </span>
-                        </div>
+                        {ch.type === 'DIRECT' && (
+                          <span
+                            className={`absolute -bottom-0.5 -right-0.5 w-3 h-3 rounded-full border-2 border-white dark:border-slate-900 ${
+                              isOnline ? 'bg-emerald-500' : 'bg-slate-400'
+                            }`}
+                          />
+                        )}
                       </div>
 
-                      {ch.unreadCount > 0 && (
-                        <span className="w-5 h-5 rounded-full bg-indigo-600 text-white text-[10px] font-bold flex items-center justify-center shrink-0 ml-2">
-                          {ch.unreadCount}
+                      <div className="flex flex-col truncate min-w-0">
+                        <div className="flex items-center space-x-2">
+                          <span className="text-xs font-bold truncate max-w-[140px] text-slate-900 dark:text-white">
+                            {displayName}
+                          </span>
+                          {ch.type === 'GROUP' && (
+                            <span className="text-[9px] px-1.5 py-0.2 rounded bg-indigo-100 dark:bg-indigo-950 text-indigo-700 dark:text-indigo-400 font-mono">
+                              GROUP
+                            </span>
+                          )}
+                        </div>
+                        <span className="text-[11px] text-slate-400 truncate mt-0.5">
+                          {ch.latestMessage
+                            ? ch.latestMessage.messageType === 'VOICE'
+                              ? '🎤 Voice message'
+                              : ch.latestMessage.content
+                            : 'No messages yet'}
                         </span>
-                      )}
+                      </div>
                     </div>
-                  );
-                })
-              )}
-            </div>
-          )}
+
+                    {ch.unreadCount > 0 && (
+                      <span className="w-5 h-5 rounded-full bg-indigo-600 text-white text-[10px] font-bold flex items-center justify-center shrink-0 ml-2">
+                        {ch.unreadCount}
+                      </span>
+                    )}
+                  </div>
+                );
+              })
+            )}
+          </div>
         </div>
 
         {/* Right Chat Panel (8 Cols) */}
@@ -982,226 +1012,136 @@ export default function CollabChatPage() {
                 </div>
               </div>
 
-              {/* Removed from Group Banner Alert */}
-              {removedBanner && (
-                <div className="p-3 bg-rose-50 dark:bg-rose-950/60 border border-rose-200 dark:border-rose-800 rounded-xl flex items-center justify-between text-xs text-rose-700 dark:text-rose-300 my-2 shrink-0">
-                  <div className="flex items-center space-x-2">
-                    <span>🚫</span>
-                    <span className="font-semibold">{removedBanner}</span>
-                  </div>
-                  <button onClick={() => setRemovedBanner(null)} className="text-rose-400 hover:text-rose-200 text-xs">
-                    ✕
-                  </button>
-                </div>
-              )}
-
-              {/* Message History Feed */}
+              {/* Message History Feed with Date Separators & Relative Timestamps */}
               <div className="flex-1 overflow-y-auto space-y-4 pr-2 my-3 min-h-0" data-tour="collab-message-feed">
                 {loadingMessages ? (
                   <div className="text-center py-20 text-xs text-slate-400 animate-pulse">Loading Messages...</div>
                 ) : messages.length === 0 ? (
                   <div className="text-center py-20 text-xs text-slate-400 space-y-2">
                     <p className="text-base">🚀</p>
-                    <p>Start the conversation! Type a message below.</p>
+                    <p>Start the conversation! Type a message or record a voice note below.</p>
                   </div>
                 ) : (
-                  messages.map((m) => {
-                    const isSelf = m.senderId === currentUser?.id;
-                    const msgKey = m.id || m.clientMessageId || `msg_${Math.random()}`;
+                  groupedMessageClusters.map((cluster) => (
+                    <div key={cluster.groupLabel} className="space-y-4">
+                      {/* Date Separator Banner */}
+                      <div className="flex items-center justify-center my-3" data-tour="collab-date-separator">
+                        <div className="border-t border-slate-200 dark:border-slate-800 flex-1" />
+                        <span className="px-3 py-0.5 rounded-full bg-slate-100 dark:bg-slate-800 text-[10px] font-mono font-bold text-slate-500 dark:text-slate-400 tracking-wider mx-3 shadow-xs">
+                          ───── {cluster.groupLabel} ─────
+                        </span>
+                        <div className="border-t border-slate-200 dark:border-slate-800 flex-1" />
+                      </div>
 
-                    return (
-                      <div
-                        key={msgKey}
-                        className={`flex items-start space-x-3 group ${isSelf ? 'flex-row-reverse space-x-reverse' : ''}`}
-                      >
-                        {/* Sender Avatar */}
-                        {(() => {
-                          const sName = m.sender?.name;
-                          const sEmail = m.sender?.email || '';
-                          const avatarChar = (sName && sName.charAt(0)) ? sName.charAt(0).toUpperCase() : (sEmail.charAt(0) ? sEmail.charAt(0).toUpperCase() : 'U');
-                          return (
-                            <div className="w-8 h-8 rounded-full bg-gradient-to-tr from-indigo-600 to-purple-600 text-white font-bold flex items-center justify-center text-xs shrink-0 shadow-sm">
-                              {m.isAi ? '🤖' : avatarChar}
-                            </div>
-                          );
-                        })()}
+                      {cluster.messages.map((m) => {
+                        const isSelf = m.senderId === currentUser?.id;
+                        const msgKey = m.id || m.clientMessageId || `msg_${Math.random()}`;
+                        const ts = formatMessageTimestamp(m.createdAt, now);
 
-                        <div className="flex flex-col space-y-1 max-w-lg">
-                          {/* Sender Info & Header */}
-                          <div className={`flex items-center space-x-2 text-[11px] text-slate-400 ${isSelf ? 'justify-end' : ''}`}>
-                            <span className="font-semibold text-slate-700 dark:text-slate-300">
-                              {m.isAi ? 'Gemini AI Assistant' : isSelf ? 'You' : m.sender.name || m.sender.email.split('@')[0]}
-                            </span>
-                            <span>•</span>
-                            <span>{new Date(m.createdAt).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}</span>
-                          </div>
-
-                          {/* Quoted Parent Reply Card */}
-                          {m.replyTo && (
-                            <div className="p-2 rounded-xl bg-slate-100 dark:bg-slate-950 border-l-4 border-indigo-500 text-[11px] text-slate-600 dark:text-slate-400 mb-1">
-                              <span className="font-bold text-indigo-400">{m.replyTo.sender.name || m.replyTo.sender.email}:</span>{' '}
-                              <span className="line-clamp-1">{m.replyTo.content}</span>
-                            </div>
-                          )}
-
-                          {/* Message Content Bubble */}
+                        return (
                           <div
-                            className={`p-3.5 rounded-2xl max-w-lg text-xs space-y-2 shadow-sm ${
-                              m.isAi
-                                ? 'bg-purple-50 dark:bg-purple-950/40 border border-purple-200 dark:border-purple-800 text-slate-900 dark:text-slate-100'
-                                : isSelf
-                                ? 'bg-indigo-600 text-white rounded-br-none'
-                                : 'bg-slate-100 dark:bg-slate-950 border border-slate-200 dark:border-slate-800 text-slate-900 dark:text-slate-100 rounded-bl-none'
-                            }`}
+                            key={msgKey}
+                            className={`flex items-start space-x-3 group ${isSelf ? 'flex-row-reverse space-x-reverse' : ''}`}
                           >
-                            {editingMessageId === m.id ? (
-                              <div className="space-y-2">
-                                <input
-                                  type="text"
-                                  value={editContent}
-                                  onChange={(e) => setEditContent(e.target.value)}
-                                  className="w-full p-2 bg-white dark:bg-slate-900 border border-slate-300 dark:border-slate-700 rounded-lg text-xs text-slate-900 dark:text-white"
-                                />
-                                <div className="flex space-x-2 justify-end">
-                                  <button
-                                    onClick={() => setEditingMessageId(null)}
-                                    className="px-2 py-1 text-[10px] text-slate-400 hover:text-white"
-                                  >
-                                    Cancel
-                                  </button>
-                                  <button
-                                    onClick={() => handleSaveEdit(m.id)}
-                                    className="px-3 py-1 text-[10px] bg-indigo-600 text-white rounded-lg font-semibold"
-                                  >
-                                    Save
-                                  </button>
+                            {/* Sender Avatar */}
+                            {(() => {
+                              const sName = m.sender?.name;
+                              const sEmail = m.sender?.email || '';
+                              const avatarChar = (sName && sName.charAt(0)) ? sName.charAt(0).toUpperCase() : (sEmail.charAt(0) ? sEmail.charAt(0).toUpperCase() : 'U');
+                              return (
+                                <div className="w-8 h-8 rounded-full bg-gradient-to-tr from-indigo-600 to-purple-600 text-white font-bold flex items-center justify-center text-xs shrink-0 shadow-sm">
+                                  {m.isAi ? '🤖' : avatarChar}
                                 </div>
-                              </div>
-                            ) : (
-                              <p className="whitespace-pre-wrap leading-relaxed">{m.content}</p>
-                            )}
+                              );
+                            })()}
 
-                            {/* Shared Asset Cards */}
-                            {m.sharedRoadmapId && (
-                              <div className="p-3 rounded-xl bg-indigo-950/80 border border-indigo-800/80 text-white space-y-1">
-                                <div className="flex items-center space-x-1.5 text-xs font-bold">
-                                  <span>🚀</span>
-                                  <span>Shared AI Roadmap</span>
-                                </div>
-                                <p className="text-[11px] text-indigo-300">ID: {m.sharedRoadmapId}</p>
-                                <Link
-                                  href={`/roadmaps/${m.sharedRoadmapId}`}
-                                  className="inline-block px-3 py-1 bg-indigo-600 hover:bg-indigo-500 text-white text-[10px] font-semibold rounded-lg transition"
-                                >
-                                  View Roadmap →
-                                </Link>
-                              </div>
-                            )}
-
-                            {/* Footer Actions, Receipt Icons & Metadata */}
-                            <div className="flex items-center justify-between text-[10px] opacity-90 pt-1 border-t border-white/10 dark:border-slate-800/40 mt-1">
-                              <div className="flex items-center space-x-2">
-                                {m.isEdited && <span className="font-mono text-amber-400">(edited)</span>}
-                                
-                                {/* Status Indicators & Receipts */}
-                                {isSelf && !m.isDeleted && !m.isAi && (
-                                  <div className="flex items-center space-x-1.5 font-mono">
-                                    {m.status === 'SENDING' ? (
-                                      <span className="text-amber-300 animate-pulse" aria-label="Sending...">
-                                        Sending... ◌
-                                      </span>
-                                    ) : m.status === 'FAILED' ? (
-                                      <div className="flex items-center space-x-1">
-                                        <span className="text-rose-400 font-bold" aria-label="Failed">
-                                          ⚠ Failed
-                                        </span>
-                                        <button
-                                          type="button"
-                                          onClick={() => handleRetryMessage(m)}
-                                          className="underline text-amber-300 hover:text-white font-bold"
-                                          aria-label="Retry sending message"
-                                        >
-                                          Retry
-                                        </button>
-                                      </div>
-                                    ) : (
-                                      (() => {
-                                        const receipts = m.receipts || [];
-                                        const hasRead = receipts.some((r) => r.status === 'READ');
-                                        const hasDelivered = receipts.some((r) => r.status === 'DELIVERED');
-
-                                        if (hasRead) {
-                                          return (
-                                            <span className="text-emerald-300 font-bold" aria-label="Seen" title="Seen">
-                                              ✓✓ Seen
-                                            </span>
-                                          );
-                                        }
-                                        if (hasDelivered) {
-                                          return (
-                                            <span className="text-slate-300 font-bold" aria-label="Delivered" title="Delivered">
-                                              ✓✓ Delivered
-                                            </span>
-                                          );
-                                        }
-                                        return (
-                                          <span className="text-slate-300 font-bold" aria-label="Sent" title="Sent">
-                                            ✓ Sent
-                                          </span>
-                                        );
-                                      })()
-                                    )}
-                                  </div>
-                                )}
-
-                                {/* Group Receipts Popover Trigger */}
-                                {activeChannel?.type === 'GROUP' && !m.isDeleted && !m.isAi && (
-                                  <button
-                                    type="button"
-                                    onClick={() => handleFetchReceiptSummary(m.id)}
-                                    className="text-[10px] text-indigo-200 hover:text-white underline font-medium"
-                                    title="View message receipts"
-                                  >
-                                    Seen info
-                                  </button>
-                                )}
+                            <div className="flex flex-col space-y-1 max-w-lg">
+                              {/* Header & Relative Timestamp with Absolute Title Tooltip */}
+                              <div className={`flex items-center space-x-2 text-[11px] text-slate-400 ${isSelf ? 'justify-end' : ''}`}>
+                                <span className="font-semibold text-slate-700 dark:text-slate-300">
+                                  {m.isAi ? 'Gemini AI Assistant' : isSelf ? 'You' : m.sender?.name || m.sender?.email.split('@')[0]}
+                                </span>
+                                <span>•</span>
+                                <span title={ts.absolute} className="cursor-help font-medium">
+                                  {ts.relative}
+                                </span>
                               </div>
 
-                              {!m.isDeleted && !m.isAi && (
-                                <div className="flex items-center space-x-2 opacity-0 group-hover:opacity-100 transition">
-                                  <button
-                                    onClick={() => setReplyToMessage(m)}
-                                    className="hover:underline text-indigo-300"
-                                  >
-                                    Reply
-                                  </button>
-                                  {isSelf && (
-                                    <>
-                                      <button
-                                        onClick={() => {
-                                          setEditingMessageId(m.id);
-                                          setEditContent(m.content);
-                                        }}
-                                        className="hover:underline text-slate-300"
-                                      >
-                                        Edit
-                                      </button>
-                                      <button
-                                        onClick={() => handleDeleteMessage(m.id)}
-                                        className="hover:underline text-rose-400"
-                                      >
-                                        Delete
-                                      </button>
-                                    </>
-                                  )}
+                              {/* Quoted Parent Reply Card */}
+                              {m.replyTo && (
+                                <div className="p-2 rounded-xl bg-slate-100 dark:bg-slate-950 border-l-4 border-indigo-500 text-[11px] text-slate-600 dark:text-slate-400 mb-1">
+                                  <span className="font-bold text-indigo-400">{m.replyTo.sender.name || m.replyTo.sender.email}:</span>{' '}
+                                  <span className="line-clamp-1">{m.replyTo.content}</span>
                                 </div>
                               )}
+
+                              {/* Message Content Bubble (TEXT or VOICE) */}
+                              <div
+                                className={`p-3.5 rounded-2xl max-w-lg text-xs space-y-2 shadow-sm ${
+                                  m.isAi
+                                    ? 'bg-purple-50 dark:bg-purple-950/40 border border-purple-200 dark:border-purple-800 text-slate-900 dark:text-slate-100'
+                                    : isSelf
+                                    ? 'bg-indigo-600 text-white rounded-br-none'
+                                    : 'bg-slate-100 dark:bg-slate-950 border border-slate-200 dark:border-slate-800 text-slate-900 dark:text-slate-100 rounded-bl-none'
+                                }`}
+                              >
+                                {m.messageType === 'VOICE' ? (
+                                  <VoiceMessagePlayer msg={m} />
+                                ) : (
+                                  <p className="whitespace-pre-wrap leading-relaxed">{renderMessageContent(m.content)}</p>
+                                )}
+
+                                {/* Footer Actions & Receipt Indicators */}
+                                <div className="flex items-center justify-between text-[10px] opacity-90 pt-1 border-t border-white/10 dark:border-slate-800/40 mt-1">
+                                  <div className="flex items-center space-x-2">
+                                    {m.isEdited && <span className="font-mono text-amber-400">(edited)</span>}
+
+                                    {isSelf && !m.isDeleted && !m.isAi && (
+                                      <div className="flex items-center space-x-1.5 font-mono">
+                                        {m.status === 'SENDING' ? (
+                                          <span className="text-amber-300 animate-pulse" aria-label="Sending...">
+                                            Sending... ◌
+                                          </span>
+                                        ) : m.status === 'FAILED' ? (
+                                          <div className="flex items-center space-x-1">
+                                            <span className="text-rose-400 font-bold" aria-label="Failed">
+                                              ⚠ Failed
+                                            </span>
+                                          </div>
+                                        ) : (
+                                          (() => {
+                                            const receipts = m.receipts || [];
+                                            const hasRead = receipts.some((r) => r.status === 'READ');
+                                            const hasDelivered = receipts.some((r) => r.status === 'DELIVERED');
+
+                                            if (hasRead) {
+                                              return <span className="text-emerald-300 font-bold" aria-label="Seen">✓✓ Seen</span>;
+                                            }
+                                            if (hasDelivered) {
+                                              return <span className="text-slate-300 font-bold" aria-label="Delivered">✓✓ Delivered</span>;
+                                            }
+                                            return <span className="text-slate-300 font-bold" aria-label="Sent">✓ Sent</span>;
+                                          })()
+                                        )}
+                                      </div>
+                                    )}
+                                  </div>
+
+                                  {!m.isDeleted && !m.isAi && (
+                                    <div className="flex items-center space-x-2 opacity-0 group-hover:opacity-100 transition">
+                                      <button onClick={() => setReplyToMessage(m)} className="hover:underline text-indigo-300">
+                                        Reply
+                                      </button>
+                                    </div>
+                                  )}
+                                </div>
+                              </div>
                             </div>
                           </div>
-                        </div>
-                      </div>
-                    );
-                  })
+                        );
+                      })}
+                    </div>
+                  ))
                 )}
 
                 {/* AI Generating Indicator */}
@@ -1215,35 +1155,109 @@ export default function CollabChatPage() {
                 <div ref={messagesEndRef} />
               </div>
 
-              {/* Quoted Reply Banner */}
-              {replyToMessage && (
-                <div className="p-2.5 bg-slate-100 dark:bg-slate-950 border border-slate-200 dark:border-slate-800 rounded-xl flex items-center justify-between text-xs text-slate-700 dark:text-slate-300 mb-2 shrink-0">
-                  <div className="flex items-center space-x-2 truncate">
-                    <span className="font-bold text-indigo-400">Replying to {replyToMessage.sender.name || replyToMessage.sender.email}:</span>
-                    <span className="truncate">{replyToMessage.content}</span>
+              {/* Voice Recording Card / Preview Panel */}
+              {isRecording && (
+                <div className="p-3 bg-rose-950/60 border border-rose-800 rounded-xl flex items-center justify-between text-xs text-rose-300 mb-2 shrink-0 animate-pulse">
+                  <div className="flex items-center space-x-2 font-mono">
+                    <span className="w-2.5 h-2.5 rounded-full bg-rose-500 animate-ping" />
+                    <span className="font-bold">Recording Voice Note...</span>
+                    <span>{Math.floor(recordingDuration / 60)}:{Math.floor(recordingDuration % 60).toString().padStart(2, '0')}</span>
                   </div>
-                  <button onClick={() => setReplyToMessage(null)} className="text-slate-400 hover:text-white">
-                    ✕
-                  </button>
+                  <div className="flex items-center space-x-2">
+                    <button
+                      type="button"
+                      onClick={cancelVoiceRecording}
+                      className="px-2.5 py-1 bg-slate-800 hover:bg-slate-700 text-white rounded-lg text-xs"
+                    >
+                      Cancel
+                    </button>
+                    <button
+                      type="button"
+                      onClick={stopVoiceRecording}
+                      className="px-3 py-1 bg-rose-600 hover:bg-rose-500 text-white font-bold rounded-lg text-xs"
+                    >
+                      Stop ⏹
+                    </button>
+                  </div>
                 </div>
               )}
 
-              {/* Multiline Message Input Composer */}
+              {recordedAudioUrl && !isRecording && (
+                <div className="p-3 bg-indigo-950/80 border border-indigo-800 rounded-xl flex items-center justify-between text-xs text-white mb-2 shrink-0">
+                  <div className="flex items-center space-x-3">
+                    <span>🎤 Voice Note Ready</span>
+                    <audio src={recordedAudioUrl} controls className="h-7 w-48" />
+                  </div>
+                  <div className="flex items-center space-x-2">
+                    <button
+                      type="button"
+                      onClick={cancelVoiceRecording}
+                      className="px-2.5 py-1 bg-slate-800 hover:bg-slate-700 text-slate-300 rounded-lg text-xs"
+                    >
+                      Delete
+                    </button>
+                    <button
+                      type="button"
+                      onClick={handleSendVoiceMessage}
+                      className="px-3.5 py-1 bg-indigo-600 hover:bg-indigo-500 text-white font-bold rounded-lg text-xs shadow transition"
+                    >
+                      Send Voice 🚀
+                    </button>
+                  </div>
+                </div>
+              )}
+
+              {/* Mention Autocomplete Overlay Popup */}
+              {showMentionPopup && filteredMentionMembers.length > 0 && (
+                <div className="relative mb-1 z-30">
+                  <div className="absolute bottom-0 left-0 w-64 bg-slate-900 border border-slate-800 rounded-xl shadow-2xl overflow-hidden divide-y divide-slate-800 max-h-48 overflow-y-auto">
+                    <div className="p-2 text-[10px] font-mono font-bold text-slate-400 uppercase bg-slate-950">
+                      Mention Group Member ({filteredMentionMembers.length})
+                    </div>
+                    {filteredMentionMembers.map((mem, index) => (
+                      <div
+                        key={mem.userId}
+                        onClick={() => handleSelectMention(mem)}
+                        className={`p-2.5 flex items-center space-x-2 cursor-pointer transition ${
+                          index === mentionSelectedIndex ? 'bg-indigo-600 text-white' : 'hover:bg-slate-800 text-slate-200'
+                        }`}
+                      >
+                        <div className="w-6 h-6 rounded-full bg-gradient-to-tr from-indigo-500 to-purple-500 text-white font-bold flex items-center justify-center text-[10px]">
+                          {mem.user?.name ? mem.user.name.charAt(0).toUpperCase() : (mem.user?.email ? mem.user.email.charAt(0).toUpperCase() : 'U')}
+                        </div>
+                        <div className="truncate">
+                          <p className="text-xs font-bold truncate">{mem.user?.name || mem.user?.email.split('@')[0]}</p>
+                          <p className="text-[10px] opacity-75 truncate">{mem.user?.email}</p>
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              )}
+
+              {/* Multiline Message Composer Form */}
               <form onSubmit={handleSendMessage} className="mt-3 flex items-start space-x-2 shrink-0" data-tour="collab-input-box">
                 <textarea
+                  ref={textareaRef}
                   rows={2}
-                  placeholder="Type a message... (Press Enter to send, Shift+Enter for newline, use @ai for Gemini)"
+                  placeholder="Type a message... Use @ to mention group members, or click 🎤 to record voice note..."
                   value={inputContent}
-                  onChange={(e) => setInputContent(e.target.value)}
-                  onKeyDown={(e) => {
-                    if (e.key === 'Enter' && !e.shiftKey) {
-                      e.preventDefault();
-                      handleSendMessage();
-                    }
-                  }}
+                  onChange={handleInputChange}
+                  onKeyDown={handleKeyDown}
                   className="flex-1 bg-slate-100 dark:bg-slate-950 border border-slate-200 dark:border-slate-800 rounded-xl px-4 py-2.5 text-xs text-slate-900 dark:text-white placeholder-slate-400 focus:outline-none focus:border-indigo-500 resize-none"
                   aria-label="Message input composer"
                 />
+
+                <button
+                  type="button"
+                  onClick={startVoiceRecording}
+                  disabled={isRecording}
+                  className="px-3 py-3 rounded-xl bg-rose-500/10 hover:bg-rose-500/20 text-rose-400 border border-rose-500/30 font-semibold text-xs transition"
+                  title="Record Voice Message"
+                  data-tour="collab-voice-btn"
+                >
+                  🎤
+                </button>
 
                 <button
                   type="button"
@@ -1271,102 +1285,38 @@ export default function CollabChatPage() {
         </div>
       </div>
 
-      {/* New Group Modal */}
-      {showCreateModal && (
-        <div className="fixed inset-0 z-50 bg-slate-950/80 backdrop-blur-sm flex items-center justify-center p-4">
-          <div className="bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-2xl p-6 max-w-md w-full space-y-5 shadow-2xl">
-            <div className="flex items-center justify-between border-b border-slate-200 dark:border-slate-800 pb-3">
-              <h3 className="text-sm font-bold text-slate-900 dark:text-white">Create Group Discussion</h3>
-              <button onClick={() => setShowCreateModal(false)} className="text-slate-400 hover:text-white text-xs">
-                ✕
-              </button>
-            </div>
-
-            <form onSubmit={handleCreateGroup} className="space-y-4">
-              <div>
-                <label className="block text-xs font-semibold text-slate-700 dark:text-slate-300 mb-1">Group Title</label>
-                <input
-                  type="text"
-                  required
-                  placeholder="e.g. Project Architecture Sync"
-                  value={newGroupTitle}
-                  onChange={(e) => setNewGroupTitle(e.target.value)}
-                  className="w-full bg-slate-100 dark:bg-slate-950 border border-slate-200 dark:border-slate-800 rounded-xl px-3.5 py-2 text-xs text-slate-900 dark:text-white focus:outline-none focus:border-indigo-500"
-                />
-              </div>
-
-              <div>
-                <label className="block text-xs font-semibold text-slate-700 dark:text-slate-300 mb-1">Description (Optional)</label>
-                <input
-                  type="text"
-                  placeholder="e.g. Channel for architecture discussions"
-                  value={newGroupDescription}
-                  onChange={(e) => setNewGroupDescription(e.target.value)}
-                  className="w-full bg-slate-100 dark:bg-slate-950 border border-slate-200 dark:border-slate-800 rounded-xl px-3.5 py-2 text-xs text-slate-900 dark:text-white focus:outline-none focus:border-indigo-500"
-                />
-              </div>
-
-              <div className="flex space-x-3 justify-end pt-2">
-                <button
-                  type="button"
-                  onClick={() => setShowCreateModal(false)}
-                  className="px-4 py-2 text-xs font-semibold text-slate-400 hover:text-white"
-                >
-                  Cancel
-                </button>
-                <button
-                  type="submit"
-                  disabled={!newGroupTitle.trim()}
-                  className="px-5 py-2 bg-indigo-600 hover:bg-indigo-500 disabled:opacity-50 text-white font-semibold text-xs rounded-xl shadow-md transition"
-                >
-                  Create Group
-                </button>
-              </div>
-            </form>
-          </div>
-        </div>
-      )}
-
-      {/* User Search & 1-to-1 DM Modal */}
+      {/* User Search / New DM Modal */}
       {showUserSearchModal && (
-        <div className="fixed inset-0 z-50 bg-slate-950/80 backdrop-blur-sm flex items-center justify-center p-4">
-          <div className="bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-2xl p-6 max-w-md w-full space-y-4 shadow-2xl">
-            <div className="flex items-center justify-between border-b border-slate-200 dark:border-slate-800 pb-3">
-              <h3 className="text-sm font-bold text-slate-900 dark:text-white">Start 1-to-1 Direct Chat</h3>
-              <button onClick={() => setShowUserSearchModal(false)} className="text-slate-400 hover:text-white text-xs">
-                ✕
-              </button>
+        <div className="fixed inset-0 z-50 bg-black/60 backdrop-blur-xs flex items-center justify-center p-4">
+          <div className="bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-2xl w-full max-w-md p-6 shadow-2xl space-y-4">
+            <div className="flex justify-between items-center">
+              <h3 className="text-sm font-bold text-slate-900 dark:text-white">Start New Direct Message</h3>
+              <button onClick={() => setShowUserSearchModal(false)} className="text-slate-400 hover:text-white">✕</button>
             </div>
-
-            <div>
-              <input
-                type="text"
-                placeholder="Search user by name or email..."
-                value={userSearchQuery}
-                onChange={(e) => setUserSearchQuery(e.target.value)}
-                className="w-full bg-slate-100 dark:bg-slate-950 border border-slate-200 dark:border-slate-800 rounded-xl px-3.5 py-2 text-xs text-slate-900 dark:text-white focus:outline-none focus:border-indigo-500"
-              />
-            </div>
-
-            <div className="max-h-60 overflow-y-auto space-y-1.5 pr-1">
+            <input
+              type="text"
+              placeholder="Search user by name or email..."
+              value={userSearchQuery}
+              onChange={(e) => handleSearchUsers(e.target.value)}
+              className="w-full bg-slate-100 dark:bg-slate-950 border border-slate-200 dark:border-slate-800 rounded-xl px-3 py-2 text-xs text-slate-900 dark:text-white"
+            />
+            <div className="max-h-60 overflow-y-auto space-y-2">
               {isSearchingUsers ? (
-                <div className="text-center py-6 text-xs text-slate-400 animate-pulse">Searching users...</div>
-              ) : userSearchQuery.trim().length < 2 ? (
-                <div className="text-center py-6 text-xs text-slate-400">Type at least 2 characters to search...</div>
+                <p className="text-xs text-slate-400 text-center py-4">Searching...</p>
               ) : userSearchResults.length === 0 ? (
-                <div className="text-center py-6 text-xs text-slate-400">No users found</div>
+                <p className="text-xs text-slate-400 text-center py-4">No users found</p>
               ) : (
                 userSearchResults.map((u) => (
                   <div
                     key={u.id}
-                    onClick={() => handleStartDM(u)}
-                    className="p-3 rounded-xl bg-slate-50 dark:bg-slate-950 border border-slate-200 dark:border-slate-800 hover:border-indigo-500 transition cursor-pointer flex items-center justify-between"
+                    onClick={() => handleStartDirectChat(u.id)}
+                    className="p-2.5 rounded-xl bg-slate-50 dark:bg-slate-950 hover:bg-indigo-600 hover:text-white transition cursor-pointer flex items-center justify-between text-xs"
                   >
                     <div>
-                      <p className="text-xs font-bold text-slate-900 dark:text-white">{u.name || u.email.split('@')[0]}</p>
-                      <p className="text-[11px] text-slate-400">{u.email}</p>
+                      <p className="font-bold">{u.name || u.email.split('@')[0]}</p>
+                      <p className="text-[10px] opacity-75">{u.email}</p>
                     </div>
-                    <span className="text-xs text-indigo-400 font-semibold">Start Chat →</span>
+                    <span className="text-[10px] font-mono">Chat →</span>
                   </div>
                 ))
               )}
@@ -1375,326 +1325,137 @@ export default function CollabChatPage() {
         </div>
       )}
 
-      {/* Share Asset Modal */}
-      {showShareModal && (
-        <div className="fixed inset-0 z-50 bg-slate-950/80 backdrop-blur-sm flex items-center justify-center p-4">
-          <div className="bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-2xl p-6 max-w-md w-full space-y-4 shadow-2xl">
-            <div className="flex items-center justify-between border-b border-slate-200 dark:border-slate-800 pb-3">
-              <h3 className="text-sm font-bold text-slate-900 dark:text-white">Share Workspace Asset</h3>
-              <button onClick={() => setShowShareModal(false)} className="text-slate-400 hover:text-white text-xs">
-                ✕
-              </button>
+      {/* Create Group Modal */}
+      {showCreateModal && (
+        <div className="fixed inset-0 z-50 bg-black/60 backdrop-blur-xs flex items-center justify-center p-4">
+          <div className="bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-2xl w-full max-w-md p-6 shadow-2xl space-y-4">
+            <div className="flex justify-between items-center">
+              <h3 className="text-sm font-bold text-slate-900 dark:text-white">Create New Group Channel</h3>
+              <button onClick={() => setShowCreateModal(false)} className="text-slate-400 hover:text-white">✕</button>
             </div>
-
-            <form onSubmit={handleShareAsset} className="space-y-4">
-              <div>
-                <label className="block text-xs font-semibold text-slate-700 dark:text-slate-300 mb-1">Asset Type</label>
-                <select
-                  value={shareType}
-                  onChange={(e: any) => setShareType(e.target.value)}
-                  className="w-full bg-slate-100 dark:bg-slate-950 border border-slate-200 dark:border-slate-800 rounded-xl px-3.5 py-2 text-xs text-slate-900 dark:text-white focus:outline-none focus:border-indigo-500"
-                >
-                  <option value="roadmap">🚀 AI Roadmap</option>
-                  <option value="entity">🕸️ Knowledge Graph Entity</option>
-                  <option value="document">📄 Document</option>
-                  <option value="question">❓ Study Question</option>
-                </select>
-              </div>
-
-              <div>
-                <label className="block text-xs font-semibold text-slate-700 dark:text-slate-300 mb-1">Target Asset ID</label>
-                <input
-                  type="text"
-                  required
-                  placeholder="Enter Asset UUID..."
-                  value={shareTargetId}
-                  onChange={(e) => setShareTargetId(e.target.value)}
-                  className="w-full bg-slate-100 dark:bg-slate-950 border border-slate-200 dark:border-slate-800 rounded-xl px-3.5 py-2 text-xs text-slate-900 dark:text-white focus:outline-none focus:border-indigo-500"
-                />
-              </div>
-
-              <div className="flex space-x-3 justify-end pt-2">
-                <button
-                  type="button"
-                  onClick={() => setShowShareModal(false)}
-                  className="px-4 py-2 text-xs font-semibold text-slate-400 hover:text-white"
-                >
-                  Cancel
-                </button>
-                <button
-                  type="submit"
-                  disabled={!shareTargetId.trim()}
-                  className="px-5 py-2 bg-indigo-600 hover:bg-indigo-500 disabled:opacity-50 text-white font-semibold text-xs rounded-xl shadow-md transition"
-                >
-                  Share to Chat
-                </button>
-              </div>
-            </form>
+            <input
+              type="text"
+              placeholder="Group Title..."
+              value={newGroupTitle}
+              onChange={(e) => setNewGroupTitle(e.target.value)}
+              className="w-full bg-slate-100 dark:bg-slate-950 border border-slate-200 dark:border-slate-800 rounded-xl px-3 py-2 text-xs text-slate-900 dark:text-white"
+            />
+            <textarea
+              placeholder="Group Description (Optional)..."
+              value={newGroupDescription}
+              onChange={(e) => setNewGroupDescription(e.target.value)}
+              className="w-full bg-slate-100 dark:bg-slate-950 border border-slate-200 dark:border-slate-800 rounded-xl px-3 py-2 text-xs text-slate-900 dark:text-white"
+            />
+            <div className="flex justify-end space-x-2">
+              <button onClick={() => setShowCreateModal(false)} className="px-4 py-2 bg-slate-800 text-slate-300 text-xs rounded-xl">Cancel</button>
+              <button onClick={handleCreateGroup} className="px-4 py-2 bg-indigo-600 text-white font-bold text-xs rounded-xl">Create Group</button>
+            </div>
           </div>
         </div>
       )}
 
       {/* Add Members Modal */}
       {showAddMembersModal && (
-        <div className="fixed inset-0 z-50 bg-slate-950/80 backdrop-blur-sm flex items-center justify-center p-4">
-          <div className="bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-2xl p-6 max-w-md w-full space-y-4 shadow-2xl">
-            <div className="flex items-center justify-between border-b border-slate-200 dark:border-slate-800 pb-3">
+        <div className="fixed inset-0 z-50 bg-black/60 backdrop-blur-xs flex items-center justify-center p-4">
+          <div className="bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-2xl w-full max-w-md p-6 shadow-2xl space-y-4">
+            <div className="flex justify-between items-center">
               <h3 className="text-sm font-bold text-slate-900 dark:text-white">Add Members to Group</h3>
-              <button onClick={() => setShowAddMembersModal(false)} className="text-slate-400 hover:text-white text-xs">
-                ✕
-              </button>
+              <button onClick={() => setShowAddMembersModal(false)} className="text-slate-400 hover:text-white">✕</button>
             </div>
-
-            <form onSubmit={handleAddMembersSubmit} className="space-y-3">
-              <input
-                type="text"
-                placeholder="Search user to add..."
-                value={addMembersQuery}
-                onChange={(e) => setAddMembersQuery(e.target.value)}
-                className="w-full bg-slate-100 dark:bg-slate-950 border border-slate-200 dark:border-slate-800 rounded-xl px-3.5 py-2 text-xs text-slate-900 dark:text-white focus:outline-none focus:border-indigo-500"
-              />
-
-              <div className="max-h-60 overflow-y-auto space-y-1.5 pr-1">
-                {addMembersQuery.trim().length < 2 ? (
-                  <div className="text-center py-6 text-xs text-slate-400">Type at least 2 characters to search users...</div>
-                ) : addMembersSearchResults.length === 0 ? (
-                  <div className="text-center py-6 text-xs text-slate-400">No users found</div>
-                ) : (
-                  addMembersSearchResults.map((u) => {
-                    const isSelected = selectedMemberIds.includes(u.id);
-                    const isAlreadyInGroup = activeChannel?.members?.some((m) => m.userId === u.id);
-
-                    return (
-                      <div
-                        key={u.id}
-                        onClick={() => {
-                          if (isAlreadyInGroup) return;
-                          setSelectedMemberIds((prev) =>
-                            isSelected ? prev.filter((id) => id !== u.id) : [...prev, u.id]
-                          );
-                        }}
-                        className={`p-2.5 rounded-xl border transition flex items-center justify-between ${
-                          isAlreadyInGroup
-                            ? 'opacity-50 cursor-not-allowed bg-slate-100 dark:bg-slate-950 border-slate-200 dark:border-slate-800'
-                            : isSelected
-                            ? 'bg-indigo-50 dark:bg-indigo-950 border-indigo-500 cursor-pointer'
-                            : 'bg-slate-50 dark:bg-slate-950 border-slate-200 dark:border-slate-800 hover:border-slate-300 dark:hover:border-slate-700 cursor-pointer'
-                        }`}
-                      >
-                        <div className="flex items-center space-x-3">
-                          <input
-                            type="checkbox"
-                            checked={isSelected || Boolean(isAlreadyInGroup)}
-                            disabled={Boolean(isAlreadyInGroup)}
-                            onChange={() => {}}
-                            className="rounded border-slate-300 text-indigo-600 focus:ring-indigo-500"
-                          />
-                          <div>
-                            <p className="text-xs font-bold text-slate-900 dark:text-white">{u.name || u.email.split('@')[0]}</p>
-                            <p className="text-[11px] text-slate-400">{u.email}</p>
-                          </div>
-                        </div>
-                        {isAlreadyInGroup && <span className="text-[10px] text-slate-400 font-mono">Already Member</span>}
-                      </div>
-                    );
-                  })
-                )}
-              </div>
-
-              <div className="flex space-x-3 justify-end pt-2">
-                <button
-                  type="button"
-                  onClick={() => setShowAddMembersModal(false)}
-                  className="px-4 py-2 text-xs font-semibold text-slate-400 hover:text-white"
-                >
-                  Cancel
-                </button>
-                <button
-                  type="submit"
-                  disabled={selectedMemberIds.length === 0 || isAddingMembers}
-                  className="px-5 py-2 bg-indigo-600 hover:bg-indigo-500 disabled:opacity-50 text-white font-semibold text-xs rounded-xl shadow-md transition"
-                >
-                  {isAddingMembers ? 'Adding Members...' : `Add Selected (${selectedMemberIds.length})`}
-                </button>
-              </div>
-            </form>
-          </div>
-        </div>
-      )}
-
-      {/* Group Members & Roles Management Modal */}
-      {showMembersModal && activeChannel && (
-        <div className="fixed inset-0 z-50 bg-slate-950/80 backdrop-blur-sm flex items-center justify-center p-4">
-          <div className="bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-2xl p-6 max-w-lg w-full space-y-4 shadow-2xl">
-            <div className="flex items-center justify-between border-b border-slate-200 dark:border-slate-800 pb-3">
-              <div className="flex items-center space-x-2">
-                <span className="text-lg">👥</span>
-                <h3 className="text-sm font-bold text-slate-900 dark:text-white">
-                  Group Members ({activeChannel.members.length})
-                </h3>
-              </div>
-              <button onClick={() => setShowMembersModal(false)} className="text-slate-400 hover:text-white text-xs">
-                ✕
-              </button>
-            </div>
-
-            <div className="max-h-72 overflow-y-auto divide-y divide-slate-100 dark:divide-slate-800/60">
-              {activeChannel.members.map((m) => {
-                const isMemberSelf = m.userId === currentUser?.id;
-                const isRequestorOwner = activeChannel.role === 'OWNER';
-                const isRequestorAdmin = activeChannel.role === 'ADMIN';
-                const canRemove =
-                  !isMemberSelf &&
-                  m.role !== 'OWNER' &&
-                  (isRequestorOwner || (isRequestorAdmin && m.role === 'MEMBER'));
-
-                const uName = m.user?.name;
-                const uEmail = m.user?.email || '';
-                const initialChar = (uName && uName.charAt(0)) ? uName.charAt(0).toUpperCase() : (uEmail.charAt(0) ? uEmail.charAt(0).toUpperCase() : 'U');
-
+            <input
+              type="text"
+              placeholder="Search user to add..."
+              value={addMembersQuery}
+              onChange={(e) => handleSearchAddMembers(e.target.value)}
+              className="w-full bg-slate-100 dark:bg-slate-950 border border-slate-200 dark:border-slate-800 rounded-xl px-3 py-2 text-xs text-slate-900 dark:text-white"
+            />
+            <div className="max-h-48 overflow-y-auto space-y-2">
+              {addMembersSearchResults.map((u) => {
+                const isSel = selectedMemberIds.includes(u.id);
                 return (
-                  <div key={m.userId} className="py-3 flex items-center justify-between">
-                    <div className="flex items-center space-x-3">
-                      <div className="w-8 h-8 rounded-full bg-gradient-to-tr from-indigo-500 to-purple-500 text-white font-bold flex items-center justify-center text-xs">
-                        {initialChar}
-                      </div>
-                      <div>
-                        <div className="flex items-center space-x-2">
-                          <p className="text-xs font-bold text-slate-900 dark:text-white">
-                            {uName || (uEmail ? uEmail.split('@')[0] : 'User')}
-                          </p>
-                          {m.role === 'OWNER' ? (
-                            <span className="px-1.5 py-0.5 text-[9px] bg-amber-500/20 text-amber-500 font-bold rounded">
-                              👑 OWNER
-                            </span>
-                          ) : m.role === 'ADMIN' ? (
-                            <span className="px-1.5 py-0.5 text-[9px] bg-indigo-500/20 text-indigo-400 font-bold rounded">
-                              ⭐ ADMIN
-                            </span>
-                          ) : (
-                            <span className="px-1.5 py-0.5 text-[9px] bg-slate-500/20 text-slate-400 font-medium rounded">
-                              MEMBER
-                            </span>
-                          )}
-                        </div>
-                        <p className="text-[11px] text-slate-400">{uEmail}</p>
-                      </div>
+                  <div
+                    key={u.id}
+                    onClick={() => {
+                      if (isSel) setSelectedMemberIds((prev) => prev.filter((id) => id !== u.id));
+                      else setSelectedMemberIds((prev) => [...prev, u.id]);
+                    }}
+                    className={`p-2.5 rounded-xl border text-xs cursor-pointer flex items-center justify-between ${
+                      isSel ? 'bg-indigo-600 text-white border-indigo-500' : 'bg-slate-950 border-slate-800 text-slate-300'
+                    }`}
+                  >
+                    <div>
+                      <p className="font-bold">{u.name || u.email.split('@')[0]}</p>
+                      <p className="text-[10px] opacity-75">{u.email}</p>
                     </div>
-
-                    <div className="flex items-center space-x-2">
-                      {isRequestorOwner && !isMemberSelf && (
-                        <button
-                          onClick={() => handleTransferOwner(m.userId)}
-                          className="px-2 py-1 text-[10px] bg-amber-500/10 hover:bg-amber-500/20 text-amber-500 font-semibold rounded-lg transition"
-                          title="Make Owner"
-                        >
-                          Transfer Owner
-                        </button>
-                      )}
-                      {canRemove && (
-                        <button
-                          onClick={() => handleRemoveMember(m.userId)}
-                          className="px-2 py-1 text-[10px] bg-rose-500/10 hover:bg-rose-500/20 text-rose-400 font-semibold rounded-lg transition"
-                          title="Remove from group"
-                        >
-                          Remove
-                        </button>
-                      )}
-                    </div>
+                    <span>{isSel ? '✓ Selected' : '+ Select'}</span>
                   </div>
                 );
               })}
             </div>
-
-            <div className="flex justify-between items-center border-t border-slate-200 dark:border-slate-800 pt-3">
-              <button
-                type="button"
-                onClick={handleLeaveGroup}
-                className="px-3 py-1.5 bg-rose-500/10 hover:bg-rose-500/20 text-rose-400 font-bold text-xs rounded-xl transition"
-              >
-                Leave Group 🚪
-              </button>
-              <button
-                type="button"
-                onClick={() => setShowMembersModal(false)}
-                className="px-4 py-2 bg-slate-800 hover:bg-slate-700 text-white font-semibold text-xs rounded-xl transition"
-              >
-                Close
+            <div className="flex justify-end space-x-2">
+              <button onClick={() => setShowAddMembersModal(false)} className="px-4 py-2 bg-slate-800 text-slate-300 text-xs rounded-xl">Cancel</button>
+              <button onClick={handleAddMembers} disabled={selectedMemberIds.length === 0} className="px-4 py-2 bg-indigo-600 disabled:opacity-50 text-white font-bold text-xs rounded-xl">
+                Add Selected ({selectedMemberIds.length})
               </button>
             </div>
           </div>
         </div>
       )}
 
-      {/* Group Message Receipts Popover Modal */}
-      {receiptSummaryMessageId && (
-        <div className="fixed inset-0 z-50 bg-slate-950/80 backdrop-blur-sm flex items-center justify-center p-4">
-          <div className="bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-2xl p-5 max-w-sm w-full space-y-4 shadow-2xl">
-            <div className="flex items-center justify-between border-b border-slate-200 dark:border-slate-800 pb-2.5">
-              <h3 className="text-xs font-bold text-slate-900 dark:text-white flex items-center space-x-1.5">
-                <span>✓✓</span>
-                <span>Message Receipt Details</span>
-              </h3>
-              <button
-                onClick={() => {
-                  setReceiptSummaryMessageId(null);
-                  setReceiptSummaryData(null);
-                }}
-                className="text-slate-400 hover:text-white text-xs"
-              >
-                ✕
-              </button>
+      {/* Group Members List Modal */}
+      {showMembersModal && activeChannel && (
+        <div className="fixed inset-0 z-50 bg-black/60 backdrop-blur-xs flex items-center justify-center p-4">
+          <div className="bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-2xl w-full max-w-md p-6 shadow-2xl space-y-4">
+            <div className="flex justify-between items-center">
+              <h3 className="text-sm font-bold text-slate-900 dark:text-white">Group Members ({activeChannel.members.length})</h3>
+              <button onClick={() => setShowMembersModal(false)} className="text-slate-400 hover:text-white">✕</button>
             </div>
-
-            {!receiptSummaryData ? (
-              <div className="p-6 text-center text-xs text-slate-400 animate-pulse">Loading receipt info...</div>
-            ) : (
-              <div className="space-y-3 text-xs">
-                <div>
-                  <h4 className="font-bold text-indigo-400 mb-1.5">
-                    Seen by ({receiptSummaryData.seenCount})
-                  </h4>
-                  {receiptSummaryData.seenBy.length === 0 ? (
-                    <p className="text-slate-500 italic text-[11px]">No members have seen this yet</p>
-                  ) : (
-                    <div className="space-y-1 max-h-32 overflow-y-auto">
-                      {receiptSummaryData.seenBy.map((item: any) => (
-                        <div key={item.userId} className="flex justify-between items-center text-[11px] p-1.5 bg-slate-50 dark:bg-slate-950 rounded-lg">
-                          <span className="font-semibold text-slate-900 dark:text-white">
-                            {item.user?.name || item.user?.email}
-                          </span>
-                          <span className="text-slate-400 text-[10px]">
-                            {new Date(item.readAt).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
-                          </span>
-                        </div>
-                      ))}
-                    </div>
-                  )}
+            <div className="max-h-60 overflow-y-auto space-y-2">
+              {activeChannel.members.map((m) => (
+                <div key={m.id} className="p-2.5 rounded-xl bg-slate-50 dark:bg-slate-950 border border-slate-200 dark:border-slate-800 flex items-center justify-between text-xs text-slate-800 dark:text-slate-200">
+                  <div>
+                    <p className="font-bold">{m.user.name || m.user.email.split('@')[0]}</p>
+                    <p className="text-[10px] opacity-75">{m.user.email}</p>
+                  </div>
+                  <span className="px-2 py-0.5 rounded bg-indigo-500/20 text-indigo-400 font-mono text-[10px]">
+                    {m.role}
+                  </span>
                 </div>
+              ))}
+            </div>
+          </div>
+        </div>
+      )}
 
-                <div className="border-t border-slate-200 dark:border-slate-800 pt-2">
-                  <h4 className="font-bold text-slate-400 mb-1.5">
-                    Delivered to ({receiptSummaryData.deliveredCount})
-                  </h4>
-                  {receiptSummaryData.deliveredTo.length === 0 ? (
-                    <p className="text-slate-500 italic text-[11px]">Pending delivery</p>
-                  ) : (
-                    <div className="space-y-1 max-h-32 overflow-y-auto">
-                      {receiptSummaryData.deliveredTo.map((item: any) => (
-                        <div key={item.userId} className="flex justify-between items-center text-[11px] p-1.5 bg-slate-50 dark:bg-slate-950 rounded-lg">
-                          <span className="text-slate-700 dark:text-slate-300">
-                            {item.user?.name || item.user?.email}
-                          </span>
-                          <span className="text-slate-400 text-[10px]">
-                            {new Date(item.deliveredAt).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
-                          </span>
-                        </div>
-                      ))}
-                    </div>
-                  )}
-                </div>
-              </div>
-            )}
+      {/* Share Asset Modal */}
+      {showShareModal && (
+        <div className="fixed inset-0 z-50 bg-black/60 backdrop-blur-xs flex items-center justify-center p-4">
+          <div className="bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-2xl w-full max-w-md p-6 shadow-2xl space-y-4">
+            <div className="flex justify-between items-center">
+              <h3 className="text-sm font-bold text-slate-900 dark:text-white">Share Asset in Conversation</h3>
+              <button onClick={() => setShowShareModal(false)} className="text-slate-400 hover:text-white">✕</button>
+            </div>
+            <select
+              value={shareType}
+              onChange={(e) => setShareType(e.target.value as any)}
+              className="w-full bg-slate-100 dark:bg-slate-950 border border-slate-200 dark:border-slate-800 rounded-xl px-3 py-2 text-xs text-slate-900 dark:text-white"
+            >
+              <option value="roadmap">AI Roadmap</option>
+              <option value="entity">Knowledge Graph Entity</option>
+              <option value="document">RAG Document</option>
+              <option value="question">Study Question</option>
+            </select>
+            <input
+              type="text"
+              placeholder="Enter Target Asset UUID / ID..."
+              value={shareTargetId}
+              onChange={(e) => setShareTargetId(e.target.value)}
+              className="w-full bg-slate-100 dark:bg-slate-950 border border-slate-200 dark:border-slate-800 rounded-xl px-3 py-2 text-xs text-slate-900 dark:text-white"
+            />
+            <div className="flex justify-end space-x-2">
+              <button onClick={() => setShowShareModal(false)} className="px-4 py-2 bg-slate-800 text-slate-300 text-xs rounded-xl">Cancel</button>
+              <button onClick={handleShareAsset} disabled={!shareTargetId.trim()} className="px-4 py-2 bg-indigo-600 disabled:opacity-50 text-white font-bold text-xs rounded-xl">Share Asset</button>
+            </div>
           </div>
         </div>
       )}

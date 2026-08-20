@@ -104,6 +104,7 @@ model User {
   collabMemberships      CollabChannelMember[]
   collabMessagesSent     CollabMessage[]
   collabReceipts         CollabMessageReceipt[]
+  collabMentions         CollabMessageMention[] @relation("UserCollabMentions")
   notifications          Notification[]         @relation("UserNotifications")
   triggeredNotifications Notification[]         @relation("TriggeredNotifications")
   notificationPreference NotificationPreference?
@@ -2043,37 +2044,63 @@ model CollabChannelMember {
   @@map("collab_channel_members")
 }
 
+enum CollabMessageType {
+  TEXT
+  VOICE
+}
+
 model CollabMessage {
-  id                    String   @id @default(uuid())
-  channelId             String   @map("channel_id")
-  senderId              String   @map("sender_id")
+  id                    String            @id @default(uuid())
+  channelId             String            @map("channel_id")
+  senderId              String            @map("sender_id")
+  messageType           CollabMessageType @default(TEXT) @map("message_type")
   content               String
-  replyToId             String?  @map("reply_to_id")
-  isEdited              Boolean  @default(false) @map("is_edited")
-  isDeleted             Boolean  @default(false) @map("is_deleted")
-  isAi                  Boolean  @default(false) @map("is_ai")
-  aiModel               String?  @map("ai_model")
-  sharedRoadmapId       String?  @map("shared_roadmap_id")
-  sharedRoadmapStepId   String?  @map("shared_roadmap_step_id")
-  sharedEntityId        String?  @map("shared_entity_id")
-  sharedDocumentId      String?  @map("shared_document_id")
-  sharedStudyQuestionId String?  @map("shared_study_question_id")
+  replyToId             String?           @map("reply_to_id")
+  isEdited              Boolean           @default(false) @map("is_edited")
+  isDeleted             Boolean           @default(false) @map("is_deleted")
+  isAi                  Boolean           @default(false) @map("is_ai")
+  aiModel               String?           @map("ai_model")
+  sharedRoadmapId       String?           @map("shared_roadmap_id")
+  sharedRoadmapStepId   String?           @map("shared_roadmap_step_id")
+  sharedEntityId        String?           @map("shared_entity_id")
+  sharedDocumentId      String?           @map("shared_document_id")
+  sharedStudyQuestionId String?           @map("shared_study_question_id")
+  voiceDurationMs       Int?              @map("voice_duration_ms")
+  voiceMimeType         String?           @map("voice_mime_type")
+  voiceStorageKey       String?           @map("voice_storage_key")
+  voiceFileSizeBytes    Int?              @map("voice_file_size_bytes")
   metadata              Json?
-  clientMessageId       String?  @map("client_message_id")
-  createdAt             DateTime @default(now()) @map("created_at")
-  updatedAt             DateTime @updatedAt @map("updated_at")
+  clientMessageId       String?           @map("client_message_id")
+  createdAt             DateTime          @default(now()) @map("created_at")
+  updatedAt             DateTime          @updatedAt @map("updated_at")
 
   channel  CollabChannel          @relation(fields: [channelId], references: [id], onDelete: Cascade)
   sender   User                   @relation(fields: [senderId], references: [id], onDelete: Cascade)
   replyTo  CollabMessage?         @relation("ThreadReplies", fields: [replyToId], references: [id], onDelete: SetNull)
   replies  CollabMessage[]        @relation("ThreadReplies")
   receipts CollabMessageReceipt[]
+  mentions CollabMessageMention[]
 
   @@unique([channelId, clientMessageId])
   @@index([channelId])
   @@index([senderId])
   @@index([replyToId])
   @@map("collab_messages")
+}
+
+model CollabMessageMention {
+  id              String   @id @default(uuid())
+  messageId       String   @map("message_id")
+  mentionedUserId String   @map("mentioned_user_id")
+  createdAt       DateTime @default(now()) @map("created_at")
+
+  message       CollabMessage @relation(fields: [messageId], references: [id], onDelete: Cascade)
+  mentionedUser User          @relation("UserCollabMentions", fields: [mentionedUserId], references: [id], onDelete: Cascade)
+
+  @@unique([messageId, mentionedUserId])
+  @@index([messageId])
+  @@index([mentionedUserId, createdAt])
+  @@map("collab_message_mentions")
 }
 
 model CollabMessageReceipt {

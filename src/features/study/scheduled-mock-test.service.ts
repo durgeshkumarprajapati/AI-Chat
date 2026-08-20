@@ -46,14 +46,22 @@ export class ScheduledMockTestService {
       questionCount: totalQuestions
     });
 
-    // Create Google Calendar Template URL
+    // Create Google Calendar Details & Template URL
     const scheduledEnd = new Date(scheduledStart.getTime() + durationMinutes * 60 * 1000);
-    const googleCalendarLink = googleCalendarService.generateGoogleCalendarUrl({
+    const eventDetails = {
       title: `📝 AI Mock Test: ${input.title}`,
       description: input.description || `AI Generated Mock Test on ${input.topic || input.title}`,
       startTime: scheduledStart,
       endTime: scheduledEnd
-    });
+    };
+
+    let googleCalendarLink = googleCalendarService.generateGoogleCalendarUrl(eventDetails);
+
+    // Attempt direct Google Calendar API creation if connected
+    const apiResult = await googleCalendarService.createCalendarEventViaApi(userId, eventDetails);
+    if (apiResult?.htmlLink) {
+      googleCalendarLink = apiResult.htmlLink;
+    }
 
     const mockTest = await prisma.scheduledMockTest.create({
       data: {

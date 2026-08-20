@@ -6,18 +6,76 @@ import { MockTestStatus, MockTestParticipantStatus } from '@prisma/client';
 
 export class MockTestSessionService {
   /**
+   * Normalizes raw questions (handling both legacy string array options and canonical object array options)
+   */
+  public normalizeQuestion(raw: any, index = 0): MCQQuestion {
+    if (!raw) {
+      return {
+        id: `q_${index + 1}`,
+        questionText: 'Question unavailable',
+        type: 'MCQ_SINGLE',
+        options: [
+          { id: 'A', optionText: 'Option A' },
+          { id: 'B', optionText: 'Option B' },
+          { id: 'C', optionText: 'Option C' },
+          { id: 'D', optionText: 'Option D' }
+        ],
+        explanation: 'No explanation available.'
+      };
+    }
+
+    const qText = String(raw.questionText || raw.question || `Question ${index + 1}`);
+
+    const rawOpts = Array.isArray(raw.options) ? raw.options : [];
+    const options = rawOpts.map((o: any, idx: number) => {
+      const optId = typeof o === 'object' && o?.id ? String(o.id) : String.fromCharCode(65 + idx);
+      const optText = typeof o === 'string' ? o : String(o?.optionText || o?.text || `Option ${optId}`);
+      const isCorrect = typeof o === 'object' && typeof o?.isCorrect === 'boolean'
+        ? o.isCorrect
+        : typeof raw.correctOptionIndex === 'number'
+        ? raw.correctOptionIndex === idx
+        : false;
+
+      return {
+        id: optId,
+        optionText: optText,
+        isCorrect
+      };
+    });
+
+    const correctOptionId = raw.correctOptionId ||
+      (typeof raw.correctOptionIndex === 'number' ? String.fromCharCode(65 + raw.correctOptionIndex) : options.find((o: any) => o.isCorrect)?.id || 'A');
+
+    return {
+      id: String(raw.id || `q_${index + 1}`),
+      questionText: qText,
+      type: raw.type || 'MCQ_SINGLE',
+      options,
+      correctOptionId,
+      explanation: String(raw.explanation || 'Correct based on technical context.'),
+      difficulty: raw.difficulty || 'MEDIUM',
+      evidenceIds: Array.isArray(raw.evidenceIds) ? raw.evidenceIds : [],
+      groundingSource: raw.groundingSource
+    };
+  }
+
+  /**
    * Formats raw questions for client exposure: STRIPS correct options and explanations!
    */
   public sanitizeQuestionsForClient(questions: MCQQuestion[]): ClientQuestionPayload[] {
-    return questions.map((q) => ({
-      id: q.id,
-      questionText: q.questionText,
-      type: q.type || 'MCQ_SINGLE',
-      options: (q.options || []).map((o) => ({
-        id: o.id,
-        optionText: o.optionText
-      }))
-    }));
+    return (questions || []).map((raw, idx) => {
+      const q = this.normalizeQuestion(raw, idx);
+      return {
+        id: q.id,
+        questionText: q.questionText,
+        type: q.type || 'MCQ_SINGLE',
+        options: (q.options || []).map((o) => ({
+          id: o.id,
+          optionText: o.optionText
+        })),
+        difficulty: q.difficulty
+      };
+    });
   }
 
   /**
@@ -75,7 +133,8 @@ export class MockTestSessionService {
     }
 
     const rawQuestions = (mockTest.questions as unknown as MCQQuestion[]) || [];
-    const clientQuestions = this.sanitizeQuestionsForClient(rawQuestions);
+    const normalized = rawQuestions.map((q, idx) => this.normalizeQuestion(q, idx));
+    const clientQuestions = this.sanitizeQuestionsForClient(normalized);
 
     return {
       success: true,
@@ -102,7 +161,9 @@ export class MockTestSessionService {
     const scheduledEnd = new Date(mockTest.scheduledStartTime.getTime() + mockTest.durationMinutes * 60 * 1000);
     const isSubmissionValid = mockTestTimerService.isSubmissionValid(scheduledEnd);
 
-    const questions = (mockTest.questions as unknown as MCQQuestion[]) || [];
+    const rawQuestions = (mockTest.questions as unknown as MCQQuestion[]) || [];
+    const questions = rawQuestions.map((q, idx) => this.normalizeQuestion(q, idx));
+
     const scoreResult = mockTestScoringService.evaluateTest(questions, userSubmissions, mockTest.passingScore);
 
     const statusEnum = isSubmissionValid ? MockTestParticipantStatus.SUBMITTED : MockTestParticipantStatus.AUTO_SUBMITTED;

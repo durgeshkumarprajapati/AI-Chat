@@ -47,18 +47,10 @@ const config: Config = {
         '<rootDir>/tests/integration/**/*.test.ts',
         '<rootDir>/tests/api/**/*.test.ts',
         '<rootDir>/tests/security/**/*.test.ts',
-        '<rootDir>/tests/phase40-*.test.ts',
-        '<rootDir>/tests/phase41-*.test.ts',
-        '<rootDir>/tests/phase42-*.test.ts',
-        '<rootDir>/tests/phase43-*.test.ts',
-        '<rootDir>/tests/phase44-*.test.ts',
-        '<rootDir>/tests/phase45-*.test.ts',
-        '<rootDir>/tests/phase46-*.test.ts',
-        '<rootDir>/tests/phase47-*.test.ts',
-        '<rootDir>/tests/phase47.1-*.test.ts',
-        '<rootDir>/tests/phase48-*.test.ts',
-        '<rootDir>/tests/phase49-*.test.ts',
-        '<rootDir>/tests/phase50-*.test.ts'
+        '<rootDir>/tests/phase4[0-9]*.test.ts',
+        '<rootDir>/tests/phase5[0-9]*.test.ts',
+        '<rootDir>/tests/phase[6-9][0-9]*.test.ts',
+        '<rootDir>/tests/phase*.spec.ts'
       ],
       ...commonConfig
     },

@@ -181,6 +181,15 @@ const serverEnvSchema = z
     SESSION_EXPIRY_DAYS: z.coerce.number().int().positive().default(7),
     GOOGLE_CLIENT_ID: z.string().optional(),
     GOOGLE_CLIENT_SECRET: z.string().optional(),
+    GOOGLE_REDIRECT_URI: z.string().optional().default('http://localhost:3000/api/auth/google/callback'),
+    MOCK_TEST_DEFAULT_QUESTION_COUNT: z.coerce.number().int().positive().default(10),
+    MOCK_TEST_MAX_QUESTION_COUNT: z.coerce.number().int().positive().default(50),
+    MOCK_TEST_MAX_GENERATION_ATTEMPTS: z.coerce.number().int().positive().default(3),
+    MOCK_TEST_QUESTION_SIMILARITY_THRESHOLD: z.coerce.number().min(0).max(1).default(0.85),
+    WEBRTC_STUN_SERVERS: z.string().default('stun:stun.l.google.com:19302'),
+    WEBRTC_TURN_SERVERS: z.string().optional(),
+    WEBRTC_TURN_USERNAME: z.string().optional(),
+    WEBRTC_TURN_CREDENTIAL: z.string().optional(),
     CHAT_UPLOAD_ENABLED: z.coerce.boolean().default(true),
     CHAT_UPLOAD_MAX_BYTES: z.coerce.number().int().positive().default(10485760),
     CHAT_UPLOAD_MAX_FILES: z.coerce.number().int().positive().default(5),
@@ -488,3 +497,42 @@ function validateEnv() {
 }
 
 export const env = validateEnv();
+
+export const envConfig = {
+  server: env.server,
+  client: env.client,
+  llm: {
+    gemini: {
+      enabled: env.server?.GEMINI_ENABLED ?? true,
+      apiKey: env.server?.GEMINI_API_KEY,
+      fastModel: env.server?.GEMINI_FAST_MODEL ?? 'gemini-2.5-flash',
+      reasoningModel: env.server?.GEMINI_REASONING_MODEL ?? 'gemini-2.5-pro',
+      timeoutMs: env.server?.GEMINI_TIMEOUT_MS ?? 30000,
+      maxOutputTokens: env.server?.GEMINI_MAX_OUTPUT_TOKENS ?? 4096
+    },
+    ollama: {
+      baseUrl: env.server?.OLLAMA_BASE_URL ?? 'http://localhost:11434',
+      chatModel: env.server?.OLLAMA_CHAT_MODEL ?? 'llama3.2',
+      embeddingModel: env.server?.OLLAMA_EMBEDDING_MODEL ?? 'nomic-embed-text'
+    }
+  },
+  google: {
+    clientId: env.server?.GOOGLE_CLIENT_ID,
+    clientSecret: env.server?.GOOGLE_CLIENT_SECRET,
+    redirectUri: env.server?.GOOGLE_REDIRECT_URI ?? 'http://localhost:3000/api/auth/google/callback',
+    enabled: Boolean(env.server?.GOOGLE_CLIENT_ID && env.server?.GOOGLE_CLIENT_SECRET)
+  },
+  webrtc: {
+    stunServers: (env.server?.WEBRTC_STUN_SERVERS ?? 'stun:stun.l.google.com:19302').split(','),
+    turnServers: env.server?.WEBRTC_TURN_SERVERS ? env.server.WEBRTC_TURN_SERVERS.split(',') : [],
+    turnUsername: env.server?.WEBRTC_TURN_USERNAME,
+    turnCredential: env.server?.WEBRTC_TURN_CREDENTIAL
+  },
+  mockTests: {
+    defaultQuestionCount: env.server?.MOCK_TEST_DEFAULT_QUESTION_COUNT ?? 10,
+    maxQuestionCount: env.server?.MOCK_TEST_MAX_QUESTION_COUNT ?? 50,
+    maxGenerationAttempts: env.server?.MOCK_TEST_MAX_GENERATION_ATTEMPTS ?? 3,
+    similarityThreshold: env.server?.MOCK_TEST_QUESTION_SIMILARITY_THRESHOLD ?? 0.85
+  }
+};
+

@@ -1,3 +1,13 @@
+import { z } from 'zod';
+
+export const ExploreAnswerSchema = z.object({
+  answer: z.string().min(1),
+  confidence: z.enum(['high', 'medium', 'low']).catch('medium'),
+  highlights: z.array(z.string()).optional()
+});
+
+export type ExploreAnswerDTO = z.infer<typeof ExploreAnswerSchema>;
+
 export type CityExplorerAnswerStatus = 'READY' | 'LOADING' | 'FAILED' | 'NO_EVIDENCE' | 'UNAVAILABLE';
 
 export type QuestionKind = 'STATIC' | 'DYNAMIC';
@@ -34,6 +44,8 @@ export interface CityExplorerAnswerResult {
   question: string;
   status: CityExplorerAnswerStatus;
   answer?: string;
+  confidence?: 'high' | 'medium' | 'low';
+  highlights?: string[];
   citations?: CitationItem[];
   provider?: string;
   cached?: boolean;

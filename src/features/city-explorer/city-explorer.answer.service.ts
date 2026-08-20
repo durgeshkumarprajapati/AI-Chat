@@ -40,7 +40,8 @@ export class CityExplorerAnswerService {
     userId: string,
     city: CityInfo,
     questionItem: PredefinedQuestionItem,
-    signal?: AbortSignal
+    signal?: AbortSignal,
+    context?: { text: string; source?: string }[]
   ): Promise<CityExplorerAnswerResult> {
     const startTime = Date.now();
     const cityStr = city.name.trim();
@@ -59,11 +60,11 @@ export class CityExplorerAnswerService {
       const geminiProvider = this.providers.find((p) => p.name === 'GEMINI');
       if (geminiProvider && geminiProvider.supports(questionItem)) {
         try {
-          const res = await geminiProvider.generateAnswer(userId, city, questionItem, signal);
+          const res = await (geminiProvider as any).generateAnswer(userId, city, questionItem, signal, context);
           return res;
         } catch (err: any) {
           console.warn(`[CityExplorerAnswerService] Gemini provider failed for ${questionItem.id}, attempting WebSearch fallback:`, err?.message || String(err));
-          cityExplorerTelemetryService.logEvent('city_explorer.answer.fallback_used', cityStr, questionItem.id, userId, {
+          cityExplorerTelemetryService.logEvent('explore.ai.fallback', cityStr, questionItem.id, userId, {
             primaryProvider: 'GEMINI',
             fallbackProvider: 'WEB_SEARCH',
             reason: err?.message || String(err)

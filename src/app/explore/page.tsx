@@ -412,30 +412,43 @@ function CityExplorerContent() {
                           <span className="text-indigo-600 dark:text-indigo-400 text-sm">📍</span>
                           <span>{qItem.question}</span>
                         </h4>
-                        {ansResult?.cached && (
-                          <span className="text-[9px] font-mono px-1.5 py-0.5 rounded bg-slate-200 dark:bg-slate-900 text-slate-600 dark:text-slate-400 border border-slate-300 dark:border-slate-800 whitespace-nowrap">
-                            ⚡ Cached
+                        {ansResult?.status === 'READY' && ansResult?.answer && (
+                          <span className="text-[9px] font-semibold px-2 py-0.5 rounded-full bg-indigo-50 dark:bg-indigo-950/60 text-indigo-700 dark:text-indigo-300 border border-indigo-200 dark:border-indigo-800/60 whitespace-nowrap">
+                            {ansResult.cached ? '✨ AI Answer • Cached' : '✨ AI Generated'}
                           </span>
                         )}
                       </div>
 
                       {/* Answer Body / Skeleton Loader / Error State */}
                       {isLoading ? (
-                        <div className="space-y-2 py-1 animate-pulse" aria-busy="true">
-                          <div className="h-3.5 bg-slate-200 dark:bg-slate-800/80 rounded w-full"></div>
-                          <div className="h-3.5 bg-slate-200 dark:bg-slate-800/80 rounded w-5/6"></div>
-                          <div className="h-3.5 bg-slate-200/80 dark:bg-slate-800/60 rounded w-4/6"></div>
-                          <div className="flex items-center space-x-2 pt-1">
-                            <div className="h-2.5 bg-slate-200/60 dark:bg-slate-800/50 rounded w-16"></div>
-                            <div className="h-2.5 bg-slate-200/60 dark:bg-slate-800/50 rounded w-20"></div>
+                        <div className="space-y-2.5 py-1" aria-busy="true">
+                          <div className="flex items-center space-x-2 text-[11px] font-medium text-indigo-600 dark:text-indigo-400 animate-pulse">
+                            <span>✨ Generating AI answer...</span>
                           </div>
+                          <div className="h-3.5 bg-slate-200 dark:bg-slate-800/80 rounded w-full animate-pulse"></div>
+                          <div className="h-3.5 bg-slate-200 dark:bg-slate-800/80 rounded w-5/6 animate-pulse"></div>
+                          <div className="h-3.5 bg-slate-200/80 dark:bg-slate-800/60 rounded w-4/6 animate-pulse"></div>
                         </div>
-                      ) : ansResult?.status === 'READY' ? (
+                      ) : ansResult?.status === 'READY' && ansResult?.answer ? (
                         <div className="space-y-3">
                           {/* Answer Text */}
                           <div className="text-xs text-slate-700 dark:text-slate-300 leading-relaxed space-y-1.5 whitespace-pre-line border-l-2 border-indigo-600 dark:border-indigo-500/80 pl-3 py-0.5 font-normal">
                             {ansResult.answer}
                           </div>
+
+                          {/* Highlights Pills */}
+                          {ansResult.highlights && ansResult.highlights.length > 0 && (
+                            <div className="flex flex-wrap gap-1.5 pt-1">
+                              {ansResult.highlights.map((hl: string, hIdx: number) => (
+                                <span
+                                  key={hIdx}
+                                  className="text-[10px] font-medium px-2 py-0.5 rounded-md bg-slate-100 dark:bg-slate-900 text-slate-700 dark:text-slate-300 border border-slate-200 dark:border-slate-800"
+                                >
+                                  • {hl}
+                                </span>
+                              ))}
+                            </div>
+                          )}
 
                           {/* Sources & Citations */}
                           {ansResult.citations && ansResult.citations.length > 0 && (
@@ -487,38 +500,28 @@ function CityExplorerContent() {
                             </Link>
                           </div>
                         </div>
-                      ) : ansResult?.status === 'NO_EVIDENCE' ? (
-                        <div className="p-3 bg-amber-50 dark:bg-amber-950/20 border border-amber-200 dark:border-amber-800/40 rounded-lg space-y-2">
-                          <p className="text-[11px] font-medium text-amber-900 dark:text-amber-300 leading-normal">
-                            Reliable information could not be found for this question.
-                          </p>
-                          <button
-                            onClick={() => handleRefreshQuestion(qItem.id)}
-                            className="px-2.5 py-1 bg-amber-600 hover:bg-amber-700 dark:bg-amber-900/40 dark:hover:bg-amber-800/60 text-white dark:text-amber-200 border border-amber-600 dark:border-amber-700/50 rounded-lg text-[10px] font-semibold transition"
-                          >
-                            Retry
-                          </button>
-                        </div>
                       ) : ansResult?.status === 'FAILED' ? (
-                        <div className="p-3 bg-rose-50 dark:bg-rose-950/20 border border-rose-200 dark:border-rose-800/40 rounded-lg space-y-2">
+                        <div className="p-3 bg-rose-50/50 dark:bg-rose-950/20 border border-rose-200/80 dark:border-rose-800/40 rounded-lg space-y-2">
                           <p className="text-[11px] font-medium text-rose-900 dark:text-rose-300 leading-normal">
-                            {ansResult.error || 'Unable to load this answer right now.'}
+                            ⚠ AI answer is temporarily unavailable.
                           </p>
                           <button
                             onClick={() => handleRefreshQuestion(qItem.id)}
-                            className="px-2.5 py-1 bg-rose-600 hover:bg-rose-700 dark:bg-rose-900/40 dark:hover:bg-rose-800/60 text-white dark:text-rose-200 border border-rose-600 dark:border-rose-700/50 rounded-lg text-[10px] font-semibold transition"
+                            className="px-2.5 py-1 bg-rose-600 hover:bg-rose-700 dark:bg-rose-900/40 dark:hover:bg-rose-800/60 text-white dark:text-rose-200 border border-rose-600 dark:border-rose-700/50 rounded-lg text-[10px] font-semibold transition shadow-sm"
                           >
                             Retry
                           </button>
                         </div>
                       ) : (
-                        <div className="flex items-center justify-between text-xs text-slate-500 dark:text-slate-400 pt-1">
-                          <span>Click to generate grounded answer</span>
+                        <div className="p-3 bg-amber-50/50 dark:bg-amber-950/20 border border-amber-200/80 dark:border-amber-800/40 rounded-lg space-y-2">
+                          <p className="text-[11px] font-medium text-amber-900 dark:text-amber-300 leading-normal">
+                            ⚠ AI answer is temporarily unavailable.
+                          </p>
                           <button
                             onClick={() => handleRefreshQuestion(qItem.id)}
-                            className="px-2.5 py-1 bg-indigo-600 hover:bg-indigo-500 text-white rounded-lg text-[10px] font-medium transition shadow-sm"
+                            className="px-2.5 py-1 bg-amber-600 hover:bg-amber-700 dark:bg-amber-900/40 dark:hover:bg-amber-800/60 text-white dark:text-amber-200 border border-amber-600 dark:border-amber-700/50 rounded-lg text-[10px] font-semibold transition shadow-sm"
                           >
-                            Fetch Answer ✨
+                            Retry
                           </button>
                         </div>
                       )}

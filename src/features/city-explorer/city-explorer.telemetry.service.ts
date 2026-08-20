@@ -21,7 +21,17 @@ export interface CityExplorerTelemetryEvent {
     | 'city_explorer.stream.completed'
     | 'city_explorer.stream.timeout'
     | 'city_explorer.architecture_violation'
-    | 'city_explorer.prefetch.cancelled';
+    | 'city_explorer.prefetch.cancelled'
+    | 'explore.ai.request.started'
+    | 'explore.ai.cache.hit'
+    | 'explore.ai.cache.miss'
+    | 'explore.ai.generation.started'
+    | 'explore.ai.generation.completed'
+    | 'explore.ai.generation.failed'
+    | 'explore.ai.validation.failed'
+    | 'explore.ai.retry'
+    | 'explore.ai.fallback'
+    | 'explore.ai.answer.refreshed';
   userId?: string;
   city: string;
   questionId?: string;

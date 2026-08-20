@@ -523,14 +523,18 @@ export const envConfig = {
     clientId: env.server?.GOOGLE_CLIENT_ID,
     clientSecret: env.server?.GOOGLE_CLIENT_SECRET,
 
-    auth: {
-      redirectUri: env.server?.GOOGLE_AUTH_REDIRECT_URI ?? 'http://localhost:3000/api/auth/google/callback',
-      scopes: env.server?.GOOGLE_AUTH_SCOPES ?? 'openid email profile'
+    get auth() {
+      return {
+        redirectUri: process.env.GOOGLE_AUTH_REDIRECT_URI || env.server?.GOOGLE_AUTH_REDIRECT_URI || 'http://localhost:3000/api/auth/google/callback',
+        scopes: process.env.GOOGLE_AUTH_SCOPES || env.server?.GOOGLE_AUTH_SCOPES || 'openid email profile'
+      };
     },
 
-    calendar: {
-      redirectUri: env.server?.GOOGLE_REDIRECT_URI ?? 'http://localhost:3000/api/integrations/google/callback',
-      scope: env.server?.GOOGLE_CALENDAR_SCOPE ?? 'https://www.googleapis.com/auth/calendar.events'
+    get calendar() {
+      return {
+        redirectUri: process.env.GOOGLE_REDIRECT_URI || env.server?.GOOGLE_REDIRECT_URI || 'http://localhost:3000/api/integrations/google/callback',
+        scope: process.env.GOOGLE_CALENDAR_SCOPE || env.server?.GOOGLE_CALENDAR_SCOPE || 'https://www.googleapis.com/auth/calendar.events'
+      };
     },
 
     // Backward compatibility properties
@@ -550,6 +554,16 @@ export const envConfig = {
     maxQuestionCount: env.server?.MOCK_TEST_MAX_QUESTION_COUNT ?? 50,
     maxGenerationAttempts: env.server?.MOCK_TEST_MAX_GENERATION_ATTEMPTS ?? 3,
     similarityThreshold: env.server?.MOCK_TEST_QUESTION_SIMILARITY_THRESHOLD ?? 0.85
+  },
+  cityExplorer: {
+    v2Enabled: env.server?.CITY_EXPLORER_V2_ENABLED ?? true,
+    primaryProvider: env.server?.CITY_EXPLORER_PRIMARY_PROVIDER ?? 'gemini',
+    fallbackProvider: env.server?.CITY_EXPLORER_FALLBACK_PROVIDER ?? 'web_search',
+    maxConcurrency: env.server?.CITY_EXPLORER_MAX_CONCURRENCY ?? 3,
+    geminiTimeoutMs: env.server?.CITY_EXPLORER_GEMINI_TIMEOUT_MS ?? 30000,
+    staticTtlSeconds: env.server?.CITY_EXPLORER_STATIC_TTL_SECONDS ?? 86400,
+    dynamicTtlSeconds: env.server?.CITY_EXPLORER_DYNAMIC_TTL_SECONDS ?? 600,
+    requestsPerMinute: env.server?.CITY_EXPLORER_REQUESTS_PER_MINUTE ?? 60
   }
 };
 

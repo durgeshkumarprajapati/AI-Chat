@@ -2,7 +2,6 @@ import { prisma } from '@/lib/prisma';
 import { MockTestLibraryQueryFilters, PaginatedLibraryResponse, MockTestLibraryCardDTO } from './mock-test-library.types';
 import { mockTestLibraryTelemetryService } from './mock-test-library.telemetry';
 import { mockTestSessionService } from '../mock-test-session.service';
-import { MCQQuestion } from '../mock-test.types';
 import { MockTestStatus } from '@prisma/client';
 
 export class MockTestLibraryService {
@@ -141,8 +140,9 @@ export class MockTestLibraryService {
 
     if (!test) throw new Error('Mock test not found');
 
-    const rawQuestions = (test.questions as unknown as MCQQuestion[]) || [];
-    mockTestLibraryTelemetryService.logQuestionViewed(userId, mockTestId, rawQuestions.length);
+    const rawQuestions = (test.questions as unknown as any[]) || [];
+    const questions = rawQuestions.map((q, idx) => mockTestSessionService.normalizeQuestion(q, idx));
+    mockTestLibraryTelemetryService.logQuestionViewed(userId, mockTestId, questions.length);
 
     const isCreator = test.createdById === userId;
     const userParticipant = test.participants[0];
@@ -152,14 +152,14 @@ export class MockTestLibraryService {
     if (!isCreator && !isCompleted) {
       return {
         isSanitized: true,
-        questions: mockTestSessionService.sanitizeQuestionsForClient(rawQuestions)
+        questions: mockTestSessionService.sanitizeQuestionsForClient(questions)
       };
     }
 
     // Creator or completed test: return full questions with correct answers & explanations
     return {
       isSanitized: false,
-      questions: rawQuestions
+      questions
     };
   }
 

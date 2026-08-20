@@ -194,16 +194,17 @@ export default function MockTestDetailPage({ params }: { params: { id: string } 
 
             <div className="space-y-6">
               {questions.map((q, idx) => (
-                <div key={q.id} className="p-4 rounded-xl bg-slate-950 border border-slate-800 space-y-3">
+                <div key={q.id || `q_${idx}`} className="p-4 rounded-xl bg-slate-950 border border-slate-800 space-y-3">
                   <h4 className="text-sm font-bold text-slate-100">
-                    Q{idx + 1}. {q.questionText}
+                    Q{idx + 1}. {q.questionText || (q as any).question || 'Question unavailable'}
                   </h4>
                   <div className="space-y-2">
-                    {q.options.map((opt) => {
+                    {q.options?.map((opt, oIdx) => {
+                      const optText = opt.optionText || (opt as any).text || (typeof opt === 'string' ? opt : `Option ${oIdx + 1}`);
                       const isSelected = selectedAnswers[q.id]?.includes(opt.id);
                       return (
                         <button
-                          key={opt.id}
+                          key={opt.id || `opt_${oIdx}`}
                           type="button"
                           onClick={() => handleOptionSelect(q.id, opt.id)}
                           className={`w-full text-left p-3 rounded-lg text-xs transition border ${
@@ -212,7 +213,7 @@ export default function MockTestDetailPage({ params }: { params: { id: string } 
                               : 'bg-slate-900 border-slate-800 text-slate-300 hover:bg-slate-800'
                           }`}
                         >
-                          {opt.optionText}
+                          {optText}
                         </button>
                       );
                     })}
@@ -245,10 +246,10 @@ export default function MockTestDetailPage({ params }: { params: { id: string } 
 
             <div className="space-y-4">
               {questions.map((q, idx) => (
-                <div key={q.id} className="p-4 rounded-xl bg-slate-900/80 border border-slate-800 space-y-3">
+                <div key={q.id || `q_insp_${idx}`} className="p-4 rounded-xl bg-slate-900/80 border border-slate-800 space-y-3">
                   <div className="flex items-start justify-between gap-3">
                     <h4 className="text-sm font-bold text-slate-100">
-                      Q{idx + 1}. {q.questionText}
+                      Q{idx + 1}. {q.questionText || (q as any).question || 'Question unavailable'}
                     </h4>
                     <span className="text-[10px] bg-slate-800 text-slate-400 px-2 py-0.5 rounded font-mono shrink-0">
                       {q.type || 'MCQ_SINGLE'}
@@ -256,18 +257,19 @@ export default function MockTestDetailPage({ params }: { params: { id: string } 
                   </div>
 
                   <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
-                    {q.options.map((opt) => {
+                    {q.options?.map((opt, oIdx) => {
+                      const optText = opt.optionText || (opt as any).text || (typeof opt === 'string' ? opt : `Option ${oIdx + 1}`);
                       const isCorrect = opt.isCorrect || q.correctOptionId === opt.id;
                       return (
                         <div
-                          key={opt.id}
+                          key={opt.id || `opt_insp_${oIdx}`}
                           className={`p-2.5 rounded-lg text-xs border ${
                             isCorrect
                               ? 'bg-emerald-950/40 border-emerald-500/50 text-emerald-300 font-semibold'
                               : 'bg-slate-950 border-slate-800/80 text-slate-300'
                           }`}
                         >
-                          <span>{opt.optionText}</span>
+                          <span>{optText}</span>
                           {isCorrect && <span className="ml-2 text-emerald-400 font-bold">✓</span>}
                         </div>
                       );

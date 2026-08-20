@@ -1,5 +1,6 @@
 import { prisma } from '@/lib/prisma';
-import { mockTestGeneratorService, MCQQuestion } from './mock-test-generator.service';
+import { mockTestGeneratorService } from '@/features/mock-tests/mock-test-generator.service';
+import { MCQQuestion } from '@/features/mock-tests/mock-test.types';
 import { googleCalendarService } from '@/features/calendar/google-calendar.service';
 import { MockTestStatus, MockTestParticipantStatus } from '@prisma/client';
 
@@ -37,8 +38,8 @@ export class ScheduledMockTestService {
       throw new Error('Scheduled start time must be in the future');
     }
 
-    // Generate AI questions via Gemini
-    const questions = await mockTestGeneratorService.generateMCQQuestions({
+    // Generate AI questions via Gemini canonical generator
+    const questions = await mockTestGeneratorService.generateQuestions({
       topic: input.topic || input.title,
       documentId: input.documentId,
       knowledgeBaseId: input.knowledgeBaseId,
@@ -212,7 +213,11 @@ export class ScheduledMockTestService {
     let correctCount = 0;
     const evaluatedAnswers = input.answers.map((ans) => {
       const q = questions[ans.questionIndex];
-      const isCorrect = q ? q.correctOptionIndex === ans.selectedOptionIndex : false;
+      const isCorrect = q
+        ? (typeof (q as any).correctOptionIndex === 'number'
+            ? (q as any).correctOptionIndex === ans.selectedOptionIndex
+            : q.options[ans.selectedOptionIndex]?.id === q.correctOptionId || Boolean(q.options[ans.selectedOptionIndex]?.isCorrect))
+        : false;
       if (isCorrect) correctCount++;
       return {
         questionIndex: ans.questionIndex,

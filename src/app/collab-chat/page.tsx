@@ -929,14 +929,16 @@ export default function CollabChatPage() {
 
   const handleStartDirectChat = async (targetUserId: string) => {
     try {
-      const res = await fetch('/api/collaboration/channels/direct', {
+      const res = await fetch('/api/collaboration/channels', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ targetUserId })
+        body: JSON.stringify({ type: 'DIRECT', targetUserId })
       });
       const data = await res.json();
       if (data.success && data.data) {
         setShowUserSearchModal(false);
+        setUserSearchQuery('');
+        setUserSearchResults([]);
         await fetchChannels();
         setActiveChannelId(data.data.id);
       }
@@ -948,10 +950,10 @@ export default function CollabChatPage() {
   const handleCreateGroup = async () => {
     if (!newGroupTitle.trim()) return;
     try {
-      const res = await fetch('/api/collaboration/channels/group', {
+      const res = await fetch('/api/collaboration/channels', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ name: newGroupTitle.trim(), description: newGroupDescription.trim() })
+        body: JSON.stringify({ type: 'GROUP', name: newGroupTitle.trim(), description: newGroupDescription.trim() })
       });
       const data = await res.json();
       if (data.success && data.data) {

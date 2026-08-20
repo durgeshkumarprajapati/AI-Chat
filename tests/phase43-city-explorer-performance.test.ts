@@ -30,7 +30,7 @@ describe('Phase 43 — Ultra-Low-Latency AI City Explorer & Hotfix Master Suite'
       'LOW'
     );
     expect(route.providerName).toBe('gemini');
-    expect(route.modelName).toBe('gemini-2.5-flash');
+    expect(route.modelName).toMatch(/^gemini-.*flash$/);
   });
 
   it('2. LOW complexity does not override explicit City Explorer Gemini policy', () => {

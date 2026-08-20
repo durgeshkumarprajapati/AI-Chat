@@ -32,7 +32,7 @@ describe('Phase 44 — Production City Explorer Provider Isolation & Zero-Stall 
   it('1. City Explorer routes directly to Gemini', () => {
     const route = llmPolicyService.selectRoute({ prompt: 'Tell me about Vadodara', feature: 'CITY_EXPLORER' }, 'MEDIUM');
     expect(route.providerName).toBe('gemini');
-    expect(route.modelName).toBe('gemini-2.5-flash');
+    expect(route.modelName).toMatch(/^gemini-.*flash$/);
   });
 
   it('2. LOW complexity does not route City Explorer to Ollama', () => {

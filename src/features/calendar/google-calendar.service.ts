@@ -2,12 +2,15 @@ import { googleAuthService } from '@/features/integrations/google/google-auth.se
 
 export interface CalendarEventDetails {
   mockTestId?: string;
+  scheduledCallId?: string;
   title: string;
   description?: string;
   location?: string;
   startTime: Date;
   endTime: Date;
   timeZone?: string;
+  createConference?: boolean;
+  conferenceRequestId?: string;
 }
 
 export type CalendarCreationResult =
@@ -15,6 +18,8 @@ export type CalendarCreationResult =
       success: true;
       eventId: string;
       htmlLink: string;
+      meetUrl?: string;
+      conferenceId?: string;
       verified: boolean;
     }
   | {
@@ -28,8 +33,8 @@ export class GoogleCalendarService {
    * Generates a sanitized deterministic event ID suitable for Google Calendar API
    * Google Calendar event ID requirement: lowercase letters a-v and digits 0-9 only, length 5-1024.
    */
-  public generateDeterministicEventId(mockTestId: string): string {
-    const sanitized = mockTestId.toLowerCase().replace(/[^a-v0-9]/g, '');
+  public generateDeterministicEventId(entityId: string): string {
+    const sanitized = entityId.toLowerCase().replace(/[^a-v0-9]/g, '');
     if (sanitized.length >= 5) return sanitized;
     return `mcq${sanitized.padEnd(5, '0')}`;
   }
@@ -84,7 +89,8 @@ export class GoogleCalendarService {
 
     const attendees = attendeeEmails.map((e) => ({ email: e }));
     const timeZone = event.timeZone || Intl.DateTimeFormat().resolvedOptions().timeZone || 'UTC';
-    const deterministicId = event.mockTestId ? this.generateDeterministicEventId(event.mockTestId) : undefined;
+    const targetEntityId = event.scheduledCallId || event.mockTestId;
+    const deterministicId = targetEntityId ? this.generateDeterministicEventId(targetEntityId) : undefined;
 
     console.log('[GoogleCalendar] calendarId=primary');
     console.log(`[GoogleCalendar] start=${event.startTime.toISOString()}`);
@@ -94,7 +100,7 @@ export class GoogleCalendarService {
 
     const requestBody: any = {
       summary: event.title,
-      description: event.description || 'AI Mock Test scheduled from Document AI platform',
+      description: event.description || 'Scheduled Call from Document AI platform',
       location: event.location || 'Document AI Collaboration Platform',
       start: {
         dateTime: event.startTime.toISOString(),
@@ -122,10 +128,21 @@ export class GoogleCalendarService {
       requestBody.attendees = attendees;
     }
 
+    if (event.createConference) {
+      const confReqId = event.conferenceRequestId || (deterministicId ? `meet_${deterministicId}` : `meet_${Date.now()}`);
+      requestBody.conferenceData = {
+        createRequest: {
+          requestId: confReqId,
+          conferenceSolutionKey: { type: 'hangoutsMeet' }
+        }
+      };
+    }
+
     // Mock token bypass for testing/mock environment
     if (accessToken.startsWith('mock_access_token_')) {
       const mockEventId = deterministicId || `mock_evt_${Date.now()}`;
       const mockHtmlLink = `https://calendar.google.com/calendar/event?eid=${mockEventId}`;
+      const mockMeetUrl = event.createConference ? `https://meet.google.com/mock-${mockEventId}` : undefined;
 
       console.log('[GoogleCalendar] Calling events.insert');
       console.log('[GoogleCalendar] events.insert status=200');
@@ -137,14 +154,19 @@ export class GoogleCalendarService {
         success: true,
         eventId: mockEventId,
         htmlLink: mockHtmlLink,
+        meetUrl: mockMeetUrl,
+        conferenceId: mockMeetUrl ? `conf_${mockEventId}` : undefined,
         verified: true
       };
     }
 
     try {
       console.log('[GoogleCalendar] Calling events.insert');
+      const url = event.createConference
+        ? 'https://www.googleapis.com/calendar/v3/calendars/primary/events?sendUpdates=all&conferenceDataVersion=1'
+        : 'https://www.googleapis.com/calendar/v3/calendars/primary/events?sendUpdates=all';
 
-      const res = await fetch('https://www.googleapis.com/calendar/v3/calendars/primary/events?sendUpdates=all', {
+      const res = await fetch(url, {
         method: 'POST',
         headers: {
           Authorization: `Bearer ${accessToken}`,
@@ -177,6 +199,12 @@ export class GoogleCalendarService {
       console.log(`[GoogleCalendar] eventId=${data.id}`);
       console.log(`[GoogleCalendar] htmlLink=${data.htmlLink}`);
 
+      const meetUrl =
+        data.conferenceData?.entryPoints?.find((e: any) => e.entryPointType === 'video')?.uri ||
+        data.hangoutLink ||
+        undefined;
+      const conferenceId = data.conferenceData?.conferenceId || undefined;
+
       // 2. Perform diagnostic verification GET events.get
       let verified = false;
       try {
@@ -202,6 +230,8 @@ export class GoogleCalendarService {
         success: true,
         eventId: data.id,
         htmlLink: data.htmlLink,
+        meetUrl,
+        conferenceId,
         verified
       };
     } catch (err: any) {
@@ -211,6 +241,134 @@ export class GoogleCalendarService {
         error: err?.message || 'Google Calendar request failed',
         errorCode: 'GOOGLE_CALENDAR_TEMPORARY_FAILURE'
       };
+    }
+  }
+
+  /**
+   * Update (reschedule) existing Google Calendar Event
+   */
+  public async updateCalendarEventViaApi(
+    userId: string,
+    eventId: string,
+    event: CalendarEventDetails,
+    attendeeEmails: string[] = []
+  ): Promise<CalendarCreationResult> {
+    const tokenResult = await googleAuthService.getValidAccessToken(userId);
+    if (tokenResult.status !== 'VALID' || !tokenResult.accessToken) {
+      return {
+        success: false,
+        error: 'Google Calendar integration unavailable',
+        errorCode: tokenResult.status === 'NOT_CONNECTED' ? 'GOOGLE_CALENDAR_NOT_CONNECTED' : 'GOOGLE_REAUTH_REQUIRED'
+      };
+    }
+
+    const { accessToken } = tokenResult;
+    const timeZone = event.timeZone || Intl.DateTimeFormat().resolvedOptions().timeZone || 'UTC';
+    const attendees = attendeeEmails.map((e) => ({ email: e }));
+
+    const requestBody: any = {
+      summary: event.title,
+      description: event.description,
+      location: event.location || 'Document AI Collaboration Platform',
+      start: { dateTime: event.startTime.toISOString(), timeZone },
+      end: { dateTime: event.endTime.toISOString(), timeZone }
+    };
+
+    if (attendees.length > 0) {
+      requestBody.attendees = attendees;
+    }
+
+    if (accessToken.startsWith('mock_access_token_')) {
+      const mockHtmlLink = `https://calendar.google.com/calendar/event?eid=${eventId}`;
+      const mockMeetUrl = event.createConference ? `https://meet.google.com/mock-${eventId}` : undefined;
+      return {
+        success: true,
+        eventId,
+        htmlLink: mockHtmlLink,
+        meetUrl: mockMeetUrl,
+        conferenceId: mockMeetUrl ? `conf_${eventId}` : undefined,
+        verified: true
+      };
+    }
+
+    try {
+      const url = `https://www.googleapis.com/calendar/v3/calendars/primary/events/${encodeURIComponent(eventId)}?sendUpdates=all&conferenceDataVersion=1`;
+      const res = await fetch(url, {
+        method: 'PATCH',
+        headers: {
+          Authorization: `Bearer ${accessToken}`,
+          'Content-Type': 'application/json'
+        },
+        body: JSON.stringify(requestBody)
+      });
+
+      if (!res.ok) {
+        const errorText = await res.text();
+        return {
+          success: false,
+          error: `Google Calendar API patch error: ${errorText.slice(0, 150)}`,
+          errorCode: res.status === 401 ? 'GOOGLE_TOKEN_INVALID' : 'GOOGLE_CALENDAR_TEMPORARY_FAILURE'
+        };
+      }
+
+      const data = await res.json();
+      const meetUrl =
+        data.conferenceData?.entryPoints?.find((e: any) => e.entryPointType === 'video')?.uri ||
+        data.hangoutLink ||
+        undefined;
+      const conferenceId = data.conferenceData?.conferenceId || undefined;
+
+      return {
+        success: true,
+        eventId: data.id,
+        htmlLink: data.htmlLink,
+        meetUrl,
+        conferenceId,
+        verified: true
+      };
+    } catch (err: any) {
+      return {
+        success: false,
+        error: err?.message || 'Failed to update Google Calendar event',
+        errorCode: 'GOOGLE_CALENDAR_TEMPORARY_FAILURE'
+      };
+    }
+  }
+
+  /**
+   * Delete / cancel Google Calendar Event
+   */
+  public async deleteCalendarEventViaApi(
+    userId: string,
+    eventId: string
+  ): Promise<{ success: boolean; error?: string }> {
+    const tokenResult = await googleAuthService.getValidAccessToken(userId);
+    if (tokenResult.status !== 'VALID' || !tokenResult.accessToken) {
+      return { success: false, error: 'Google Calendar integration unavailable' };
+    }
+
+    const { accessToken } = tokenResult;
+    if (accessToken.startsWith('mock_access_token_')) {
+      return { success: true };
+    }
+
+    try {
+      const res = await fetch(
+        `https://www.googleapis.com/calendar/v3/calendars/primary/events/${encodeURIComponent(eventId)}?sendUpdates=all`,
+        {
+          method: 'DELETE',
+          headers: { Authorization: `Bearer ${accessToken}` }
+        }
+      );
+
+      if (!res.ok && res.status !== 404 && res.status !== 410) {
+        const errText = await res.text();
+        return { success: false, error: `Google Calendar delete HTTP ${res.status}: ${errText.slice(0, 100)}` };
+      }
+
+      return { success: true };
+    } catch (err: any) {
+      return { success: false, error: err?.message || 'Failed to delete Google Calendar event' };
     }
   }
 

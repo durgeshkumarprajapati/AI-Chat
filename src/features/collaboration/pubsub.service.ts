@@ -27,7 +27,12 @@ export interface CollabEventPayload {
     | 'call:accept'
     | 'call:decline'
     | 'call:ice_candidate'
-    | 'call:end';
+    | 'call:end'
+    | 'scheduled-call:created'
+    | 'scheduled-call:updated'
+    | 'scheduled-call:calendar-synced'
+    | 'scheduled-call:calendar-failed'
+    | 'scheduled-call:cancelled';
   channelId: string;
   senderId?: string;
   targetUserId?: string;

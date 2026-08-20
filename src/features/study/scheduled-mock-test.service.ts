@@ -48,21 +48,14 @@ export class ScheduledMockTestService {
 
     // Create Google Calendar Details & Template URL
     const scheduledEnd = new Date(scheduledStart.getTime() + durationMinutes * 60 * 1000);
-    const eventDetails = {
+    const fallbackTemplateUrl = googleCalendarService.generateGoogleCalendarUrl({
       title: `📝 AI Mock Test: ${input.title}`,
       description: input.description || `AI Generated Mock Test on ${input.topic || input.title}`,
       startTime: scheduledStart,
       endTime: scheduledEnd
-    };
+    });
 
-    let googleCalendarLink = googleCalendarService.generateGoogleCalendarUrl(eventDetails);
-
-    // Attempt direct Google Calendar API creation if connected
-    const apiResult = await googleCalendarService.createCalendarEventViaApi(userId, eventDetails);
-    if (apiResult?.htmlLink) {
-      googleCalendarLink = apiResult.htmlLink;
-    }
-
+    // 1. Create Scheduled Mock Test record
     const mockTest = await prisma.scheduledMockTest.create({
       data: {
         createdById: userId,
@@ -76,7 +69,8 @@ export class ScheduledMockTestService {
         totalQuestions: questions.length,
         passingScore,
         status: MockTestStatus.SCHEDULED,
-        googleCalendarLink,
+        googleCalendarLink: fallbackTemplateUrl,
+        googleCalendarSyncStatus: 'PENDING',
         questions: questions as any
       },
       include: {
@@ -84,7 +78,7 @@ export class ScheduledMockTestService {
       }
     });
 
-    // Automatically register creator as participant
+    // 2. Register creator as participant
     await prisma.mockTestParticipant.create({
       data: {
         mockTestId: mockTest.id,
@@ -93,7 +87,59 @@ export class ScheduledMockTestService {
       }
     });
 
-    return mockTest;
+    // 3. Attempt direct Google Calendar API creation (isolated from mock test creation)
+    const eventDetails = {
+      mockTestId: mockTest.id,
+      title: `📝 AI Mock Test: ${input.title}`,
+      description: input.description || `AI Generated Mock Test on ${input.topic || input.title}`,
+      startTime: scheduledStart,
+      endTime: scheduledEnd
+    };
+
+    try {
+      const apiResult = await googleCalendarService.createCalendarEventViaApi(userId, eventDetails);
+
+      if (apiResult.success) {
+        const updated = await prisma.scheduledMockTest.update({
+          where: { id: mockTest.id },
+          data: {
+            googleCalendarEventId: apiResult.eventId,
+            googleCalendarEventUrl: apiResult.htmlLink,
+            googleCalendarLink: apiResult.htmlLink,
+            googleCalendarSyncStatus: 'SYNCED',
+            googleCalendarSyncedAt: new Date(),
+            googleCalendarSyncError: null
+          },
+          include: {
+            createdBy: { select: { id: true, name: true, email: true, avatarUrl: true } }
+          }
+        });
+        return updated;
+      } else {
+        const syncStatus = apiResult.errorCode === 'GOOGLE_CALENDAR_NOT_CONNECTED' ? 'NOT_CONNECTED' : 'FAILED';
+        const updated = await prisma.scheduledMockTest.update({
+          where: { id: mockTest.id },
+          data: {
+            googleCalendarSyncStatus: syncStatus,
+            googleCalendarSyncError: apiResult.error
+          },
+          include: {
+            createdBy: { select: { id: true, name: true, email: true, avatarUrl: true } }
+          }
+        });
+        return updated;
+      }
+    } catch (calendarErr: any) {
+      console.error('[ScheduledMockTest] Calendar integration exception:', calendarErr?.message || calendarErr);
+      await prisma.scheduledMockTest.update({
+        where: { id: mockTest.id },
+        data: {
+          googleCalendarSyncStatus: 'FAILED',
+          googleCalendarSyncError: calendarErr?.message || 'Calendar integration failed'
+        }
+      });
+      return mockTest;
+    }
   }
 
   /**

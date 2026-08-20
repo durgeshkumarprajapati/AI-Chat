@@ -47,6 +47,7 @@ export default function MockTestDetailPage({ params }: { params: { id: string } 
 
   // Delete State
   const [isDeleting, setIsDeleting] = useState(false);
+  const [isRetryingCalendar, setIsRetryingCalendar] = useState(false);
 
   // Share Modal State
   const [showShareModal, setShowShareModal] = useState(false);
@@ -108,6 +109,25 @@ export default function MockTestDetailPage({ params }: { params: { id: string } 
       alert('Failed to delete test: ' + (err?.message || err));
     } finally {
       setIsDeleting(false);
+    }
+  };
+
+  const handleRetryCalendarSync = async () => {
+    setIsRetryingCalendar(true);
+    try {
+      const res = await fetch(`/api/mock-tests/${testId}/calendar/retry`, {
+        method: 'POST'
+      });
+      const data = await res.json();
+      if (data.success) {
+        fetchTestDetails();
+      } else {
+        alert(data.error || 'Failed to retry Google Calendar sync');
+      }
+    } catch {
+      alert('Failed to connect server');
+    } finally {
+      setIsRetryingCalendar(false);
     }
   };
 
@@ -299,6 +319,66 @@ export default function MockTestDetailPage({ params }: { params: { id: string } 
                 </div>
               </form>
             </div>
+          </div>
+        )}
+
+        {/* Google Calendar Integration Diagnostic Banner */}
+        {test.googleCalendarSyncStatus === 'SYNCED' || test.googleCalendarEventUrl ? (
+          <div className="p-4 bg-emerald-950/40 border border-emerald-500/30 rounded-2xl flex items-center justify-between text-xs">
+            <span className="text-emerald-300 font-semibold flex items-center gap-2">
+              <span>✓ Added to Google Calendar</span>
+            </span>
+            <a
+              href={test.googleCalendarEventUrl || test.googleCalendarLink}
+              target="_blank"
+              rel="noopener noreferrer"
+              className="px-3.5 py-1.5 bg-emerald-600 hover:bg-emerald-500 text-white font-bold rounded-xl transition"
+            >
+              Open in Google Calendar ↗
+            </a>
+          </div>
+        ) : test.googleCalendarSyncStatus === 'NOT_CONNECTED' ? (
+          <div className="p-4 bg-amber-950/40 border border-amber-500/30 rounded-2xl flex items-center justify-between text-xs">
+            <span className="text-amber-300 font-semibold flex items-center gap-2">
+              <span>⚠ Google Calendar not connected</span>
+            </span>
+            <a
+              href="/api/integrations/google/connect"
+              className="px-3.5 py-1.5 bg-amber-600 hover:bg-amber-500 text-white font-bold rounded-xl transition"
+            >
+              Connect Google Calendar
+            </a>
+          </div>
+        ) : test.googleCalendarSyncError &&
+          (test.googleCalendarSyncError.includes('SCOPE_REQUIRED') || test.googleCalendarSyncError.includes('PERMISSION_DENIED')) ? (
+          <div className="p-4 bg-amber-950/40 border border-amber-500/30 rounded-2xl flex items-center justify-between text-xs">
+            <span className="text-amber-300 font-semibold flex items-center gap-2">
+              <span>⚠ Google Calendar permission required</span>
+            </span>
+            <a
+              href="/api/integrations/google/connect"
+              className="px-3.5 py-1.5 bg-amber-600 hover:bg-amber-500 text-white font-bold rounded-xl transition"
+            >
+              Reconnect Google Calendar
+            </a>
+          </div>
+        ) : (
+          <div className="p-4 bg-rose-950/40 border border-rose-500/30 rounded-2xl flex items-center justify-between text-xs">
+            <div className="space-y-0.5">
+              <span className="text-rose-300 font-semibold flex items-center gap-2">
+                <span>⚠ Google Calendar event creation failed</span>
+              </span>
+              {test.googleCalendarSyncError && (
+                <p className="text-[11px] text-rose-400/80">{test.googleCalendarSyncError}</p>
+              )}
+            </div>
+            <button
+              onClick={handleRetryCalendarSync}
+              disabled={isRetryingCalendar}
+              className="px-3.5 py-1.5 bg-rose-600 hover:bg-rose-500 text-white font-bold rounded-xl transition"
+            >
+              {isRetryingCalendar ? 'Retrying...' : 'Retry Sync'}
+            </button>
           </div>
         )}
 

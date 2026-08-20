@@ -8,18 +8,18 @@ export async function GET(req: NextRequest) {
     const userId = url.searchParams.get('state');
 
     if (!userId) {
-      return NextResponse.json({ success: false, error: 'Invalid state parameter' }, { status: 400 });
+      return NextResponse.json({ success: false, error: 'Invalid state parameter (userId missing)' }, { status: 400 });
     }
 
-    // Save tokens encrypted at rest
-    await googleAuthService.saveGoogleTokens(
-      userId,
-      code || `mock_access_token_${Date.now()}`,
-      `mock_refresh_token_${Date.now()}`,
-      'user@gmail.com'
-    );
+    if (!code) {
+      return NextResponse.json({ success: false, error: 'Missing authorization code parameter' }, { status: 400 });
+    }
 
-    return NextResponse.redirect(`${process.env.NEXTAUTH_URL || 'http://localhost:3000'}/study/mock-tests?google_connected=true`);
+    // Exchange code for real tokens & authenticated user identity
+    await googleAuthService.exchangeCodeForTokens(code, userId);
+
+    const baseUrl = process.env.NEXTAUTH_URL || `${url.protocol}//${url.host}`;
+    return NextResponse.redirect(`${baseUrl}/study/mock-tests?google_connected=true`);
   } catch (err: any) {
     return NextResponse.json(
       { success: false, error: err.message || 'Google OAuth callback failed' },

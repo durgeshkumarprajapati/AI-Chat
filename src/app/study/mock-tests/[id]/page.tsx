@@ -2,6 +2,8 @@
 
 import React, { useState, useEffect, use } from 'react';
 import Link from 'next/link';
+import { useRouter } from 'next/navigation';
+import { useWorkspace } from '@/context/WorkspaceContext';
 
 interface QuestionOption {
   id: string;
@@ -19,7 +21,16 @@ interface QuestionItem {
   groundingSource?: string;
 }
 
+interface CollabChannel {
+  id: string;
+  name: string | null;
+  type: 'DIRECT' | 'GROUP';
+  members: Array<{ user: { id: string; name: string | null; email: string } }>;
+}
+
 export default function MockTestDetailPage({ params }: { params: { id: string } | Promise<{ id: string }> }) {
+  const router = useRouter();
+  const { currentUser } = useWorkspace();
   const unwrappedParams = typeof (params as any)?.then === 'function' ? use(params as Promise<{ id: string }>) : (params as { id: string });
   const testId = unwrappedParams.id;
   const [test, setTest] = useState<any>(null);
@@ -33,6 +44,16 @@ export default function MockTestDetailPage({ params }: { params: { id: string } 
   const [selectedAnswers, setSelectedAnswers] = useState<Record<string, string[]>>({});
   const [submitting, setSubmitting] = useState(false);
   const [scoreResult, setScoreResult] = useState<any>(null);
+
+  // Delete State
+  const [isDeleting, setIsDeleting] = useState(false);
+
+  // Share Modal State
+  const [showShareModal, setShowShareModal] = useState(false);
+  const [channels, setChannels] = useState<CollabChannel[]>([]);
+  const [selectedChannelId, setSelectedChannelId] = useState<string>('');
+  const [shareMessage, setShareMessage] = useState('');
+  const [isSharing, setIsSharing] = useState(false);
 
   useEffect(() => {
     fetchTestDetails();
@@ -68,73 +89,139 @@ export default function MockTestDetailPage({ params }: { params: { id: string } 
     }
   };
 
+  const handleDeleteTest = async () => {
+    if (!confirm('Are you sure you want to delete this scheduled MCQ test? This action cannot be undone.')) return;
+    setIsDeleting(true);
+
+    try {
+      const res = await fetch(`/api/mock-tests/${testId}`, {
+        method: 'DELETE'
+      });
+      const data = await res.json();
+
+      if (data.success) {
+        router.push('/study/mock-tests');
+      } else {
+        alert(data.error || 'Failed to delete test');
+      }
+    } catch (err: any) {
+      alert('Failed to delete test: ' + (err?.message || err));
+    } finally {
+      setIsDeleting(false);
+    }
+  };
+
+  const openShareModal = async () => {
+    setShowShareModal(true);
+    setShareMessage(`📝 Join my scheduled AI Mock Test: "${test?.title || 'MCQ Quiz'}"!`);
+    try {
+      const res = await fetch('/api/collaboration/channels');
+      const data = await res.json();
+      if (data.success && Array.isArray(data.data)) {
+        setChannels(data.data);
+        if (data.data.length > 0) setSelectedChannelId(data.data[0].id);
+      }
+    } catch (err) {
+      console.error('Failed to load channels for sharing:', err);
+    }
+  };
+
+  const handleExecuteShare = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!selectedChannelId) return;
+
+    setIsSharing(true);
+    try {
+      const res = await fetch(`/api/mock-tests/${testId}/share`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          channelId: selectedChannelId,
+          message: shareMessage
+        })
+      });
+      const data = await res.json();
+
+      if (data.success) {
+        alert('🎉 Mock test shared successfully to chat channel!');
+        setShowShareModal(false);
+      } else {
+        alert(data.error || 'Failed to share test');
+      }
+    } catch {
+      alert('Failed to connect server');
+    } finally {
+      setIsSharing(false);
+    }
+  };
+
   const handleStartSession = async () => {
     try {
-      const res = await fetch(`/api/study/mock-tests/${testId}/start`, { method: 'POST' });
+      const res = await fetch(`/api/mock-tests/${testId}/session`, {
+        method: 'POST'
+      });
       const data = await res.json();
       if (data.success) {
+        setQuestions(data.questions || []);
         setIsTakingTest(true);
       } else {
-        alert(data.error || 'Failed to start quiz session');
+        alert(data.error || 'Failed to start session');
       }
     } catch {
       alert('Failed to connect server');
     }
   };
 
-  const handleOptionSelect = (questionId: string, optionId: string) => {
+  const handleOptionSelect = (qId: string, optId: string) => {
     setSelectedAnswers((prev) => ({
       ...prev,
-      [questionId]: [optionId]
+      [qId]: [optId]
     }));
   };
 
   const handleSubmitTest = async () => {
     setSubmitting(true);
     try {
-      const submissions = Object.entries(selectedAnswers).map(([questionId, selectedOptionIds]) => ({
-        questionId,
-        selectedOptionIds
-      }));
-
-      const res = await fetch(`/api/study/mock-tests/${testId}/submit`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ submissions })
+      const payloadAnswers = questions.map((q, idx) => {
+        const selectedOptId = selectedAnswers[q.id]?.[0];
+        const optIdx = q.options.findIndex((o) => o.id === selectedOptId);
+        return {
+          questionIndex: idx,
+          selectedOptionIndex: optIdx >= 0 ? optIdx : 0
+        };
       });
 
+      const res = await fetch(`/api/mock-tests/${testId}/submit`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ answers: payloadAnswers })
+      });
       const data = await res.json();
+
       if (data.success) {
         setScoreResult(data.scoreResult);
         setIsTakingTest(false);
-        fetchTestDetails();
         fetchTestQuestions();
       } else {
         alert(data.error || 'Failed to submit test');
       }
     } catch {
-      alert('Submission failed');
+      alert('Failed to submit test');
     } finally {
       setSubmitting(false);
     }
   };
 
   if (loading && !test) {
-    return <div className="min-h-screen bg-slate-950 text-slate-400 p-10 text-center text-sm">Loading test details...</div>;
+    return <div className="min-h-screen bg-slate-950 text-slate-400 p-10 text-center">Loading mock test...</div>;
   }
 
   if (!test) {
-    return (
-      <div className="min-h-screen bg-slate-950 text-slate-100 p-10 text-center space-y-4">
-        <h2 className="text-xl font-bold">Mock Test Not Found</h2>
-        <Link href="/study/mock-tests" className="inline-block px-4 py-2 bg-slate-800 text-xs text-slate-200 rounded-lg">
-          Back to Library
-        </Link>
-      </div>
-    );
+    return <div className="min-h-screen bg-slate-950 text-rose-400 p-10 text-center">Mock test not found</div>;
   }
 
-  const isCompleted = test.status === 'COMPLETED' || Boolean(userParticipant?.submittedAt) || Boolean(scoreResult);
+  const isCompleted = test.status === 'COMPLETED' || Boolean(userParticipant?.submittedAt);
+  const isCreator = currentUser?.id && test.createdById === currentUser.id;
 
   return (
     <div className="min-h-screen bg-slate-950 text-slate-100 p-6 md:p-10">
@@ -152,13 +239,29 @@ export default function MockTestDetailPage({ params }: { params: { id: string } 
             <p className="text-xs text-slate-400 mt-1">{test.topic || test.description || 'AI MCQ Assessment'}</p>
           </div>
 
-          <div className="flex items-center gap-2">
+          <div className="flex items-center gap-2 flex-wrap sm:flex-nowrap">
             <Link
               href="/study/mock-tests"
-              className="px-4 py-2 bg-slate-800 hover:bg-slate-700 text-slate-300 text-xs font-semibold rounded-xl transition"
+              className="px-3.5 py-2 bg-slate-800 hover:bg-slate-700 text-slate-300 text-xs font-semibold rounded-xl transition"
             >
-              ← Back to Library
+              ← Back
             </Link>
+            <button
+              onClick={openShareModal}
+              className="px-3.5 py-2 bg-indigo-600/30 hover:bg-indigo-600/50 text-indigo-300 border border-indigo-500/30 text-xs font-semibold rounded-xl transition flex items-center gap-1"
+            >
+              <span>🔗 Share</span>
+            </button>
+            {isCreator && (
+              <button
+                onClick={handleDeleteTest}
+                disabled={isDeleting}
+                className="px-3.5 py-2 bg-rose-600/20 hover:bg-rose-600/40 text-rose-300 border border-rose-500/30 text-xs font-semibold rounded-xl transition"
+                title="Delete Test (Creator Only)"
+              >
+                {isDeleting ? 'Deleting...' : '🗑 Delete'}
+              </button>
+            )}
             {!isTakingTest && !isCompleted && (
               <button
                 onClick={handleStartSession}
@@ -169,6 +272,35 @@ export default function MockTestDetailPage({ params }: { params: { id: string } 
             )}
           </div>
         </div>
+
+        {/* Share Modal */}
+        {showShareModal && (
+          <div className="fixed inset-0 bg-black/70 z-50 flex items-center justify-center p-4">
+            <div className="bg-slate-900 border border-slate-700 p-6 rounded-2xl w-full max-w-sm space-y-4">
+              <h3 className="font-bold text-white">Share Mock Test</h3>
+              <form onSubmit={handleExecuteShare} className="space-y-4">
+                <select
+                  className="w-full bg-slate-800 text-xs p-2.5 rounded-lg border border-slate-700"
+                  value={selectedChannelId}
+                  onChange={(e) => setSelectedChannelId(e.target.value)}
+                >
+                  {channels.map((c) => <option key={c.id} value={c.id}>{c.name || 'Channel'}</option>)}
+                </select>
+                <textarea
+                  className="w-full bg-slate-800 text-xs p-2.5 rounded-lg border border-slate-700"
+                  value={shareMessage}
+                  onChange={(e) => setShareMessage(e.target.value)}
+                />
+                <div className="flex gap-2">
+                  <button type="button" onClick={() => setShowShareModal(false)} className="flex-1 text-xs py-2">Cancel</button>
+                  <button type="submit" disabled={isSharing} className="flex-1 bg-indigo-600 text-xs font-bold py-2 rounded-lg">
+                    {isSharing ? 'Sending...' : 'Send to Chat'}
+                  </button>
+                </div>
+              </form>
+            </div>
+          </div>
+        )}
 
         {/* Score Summary Banner if completed */}
         {(isCompleted || scoreResult) && (

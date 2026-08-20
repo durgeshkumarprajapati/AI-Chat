@@ -183,6 +183,32 @@ export class MockTestLibraryService {
       mockTest: participant.mockTest
     };
   }
+
+  /**
+   * Delete scheduled mock test — strictly Creator Only!
+   */
+  public async deleteMockTest(mockTestId: string, userId: string) {
+    const test = await prisma.scheduledMockTest.findUnique({
+      where: { id: mockTestId }
+    });
+
+    if (!test) {
+      throw new Error('Mock test not found');
+    }
+
+    if (test.createdById !== userId) {
+      throw new Error('Forbidden: Only the creator of this mock test can delete it');
+    }
+
+    await prisma.scheduledMockTest.delete({
+      where: { id: mockTestId }
+    });
+
+    return {
+      success: true,
+      message: 'Mock test deleted successfully'
+    };
+  }
 }
 
 export const mockTestLibraryService = new MockTestLibraryService();

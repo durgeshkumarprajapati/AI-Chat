@@ -2,6 +2,7 @@
 
 import React, { useState, useEffect } from 'react';
 import Link from 'next/link';
+import { useWorkspace } from '@/context/WorkspaceContext';
 
 interface MockTestCard {
   id: string;
@@ -22,7 +23,15 @@ interface MockTestCard {
   createdAt: string;
 }
 
+interface CollabChannel {
+  id: string;
+  name: string | null;
+  type: 'DIRECT' | 'GROUP';
+  members: Array<{ user: { id: string; name: string | null; email: string } }>;
+}
+
 export default function MockTestLibraryPage() {
+  const { currentUser } = useWorkspace();
   const [tests, setTests] = useState<MockTestCard[]>([]);
   const [activeTab, setActiveTab] = useState<'ALL' | 'SCHEDULED' | 'LIVE' | 'COMPLETED' | 'EXPIRED' | 'SHARED'>('ALL');
   const [searchQuery, setSearchQuery] = useState('');
@@ -38,6 +47,16 @@ export default function MockTestLibraryPage() {
   const [newQuestionsCount, setNewQuestionsCount] = useState(10);
   const [newScheduleTime, setNewScheduleTime] = useState('');
   const [isCreating, setIsCreating] = useState(false);
+
+  // Delete State
+  const [deletingId, setDeletingId] = useState<string | null>(null);
+
+  // Share Modal State
+  const [shareTargetTest, setShareTargetTest] = useState<MockTestCard | null>(null);
+  const [channels, setChannels] = useState<CollabChannel[]>([]);
+  const [selectedChannelId, setSelectedChannelId] = useState<string>('');
+  const [shareMessage, setShareMessage] = useState('');
+  const [isSharing, setIsSharing] = useState(false);
 
   useEffect(() => {
     fetchTests(1, activeTab, searchQuery);
@@ -107,6 +126,72 @@ export default function MockTestLibraryPage() {
     }
   };
 
+  const handleDeleteTest = async (testId: string) => {
+    if (!confirm('Are you sure you want to delete this scheduled MCQ test? This action cannot be undone.')) return;
+    setDeletingId(testId);
+
+    try {
+      const res = await fetch(`/api/mock-tests/${testId}`, {
+        method: 'DELETE'
+      });
+      const data = await res.json();
+
+      if (data.success) {
+        setTests((prev) => prev.filter((t) => t.id !== testId));
+      } else {
+        alert(data.error || 'Failed to delete test');
+      }
+    } catch (err: any) {
+      alert('Failed to delete test: ' + (err?.message || err));
+    } finally {
+      setDeletingId(null);
+    }
+  };
+
+  const openShareModal = async (test: MockTestCard) => {
+    setShareTargetTest(test);
+    setShareMessage(`📝 Join my scheduled AI Mock Test: "${test.title}"!`);
+    try {
+      const res = await fetch('/api/collaboration/channels');
+      const data = await res.json();
+      if (data.success && Array.isArray(data.data)) {
+        setChannels(data.data);
+        if (data.data.length > 0) setSelectedChannelId(data.data[0].id);
+      }
+    } catch (err) {
+      console.error('Failed to load channels for sharing:', err);
+    }
+  };
+
+  const handleExecuteShare = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!shareTargetTest || !selectedChannelId) return;
+
+    setIsSharing(true);
+    try {
+      const res = await fetch(`/api/mock-tests/${shareTargetTest.id}/share`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          channelId: selectedChannelId,
+          message: shareMessage
+        })
+      });
+      const data = await res.json();
+
+      if (data.success) {
+        alert('🎉 Mock test shared successfully to chat channel!');
+        setShareTargetTest(null);
+      } else {
+        alert(data.error || 'Failed to share test');
+      }
+    } catch {
+      alert('Failed to connect server');
+    } finally {
+      setIsSharing(false);
+    }
+  };
+
   return (
     <div className="min-h-screen bg-slate-950 text-slate-100 p-6 md:p-10">
       <div className="max-w-6xl mx-auto space-y-6">
@@ -116,7 +201,7 @@ export default function MockTestLibraryPage() {
             <h1 className="text-2xl font-bold text-white flex items-center gap-3" data-tour="mock-test-library-header">
               <span>📝 Centralized Mock Test & MCQ Library</span>
             </h1>
-            <p className="text-slate-400 text-sm mt-1">Discover, create, schedule, and review AI-generated multiple-choice assessment tests.</p>
+            <p className="text-slate-400 text-sm mt-1">Discover, create, schedule, share, and review AI-generated multiple-choice assessment tests.</p>
           </div>
           <div className="flex items-center gap-3">
             <button
@@ -206,6 +291,7 @@ export default function MockTestLibraryPage() {
               const isLive = test.status === 'IN_PROGRESS';
               const isCompleted = test.status === 'COMPLETED' || Boolean(test.userParticipantStatus === 'SUBMITTED');
               const isExpired = test.status === 'EXPIRED';
+              const isCreator = currentUser?.id && test.createdById === currentUser.id;
 
               return (
                 <div
@@ -227,7 +313,19 @@ export default function MockTestLibraryPage() {
                       >
                         {isLive ? '🔴 LIVE NOW' : isCompleted ? '✅ COMPLETED' : isExpired ? '⏰ EXPIRED' : '📅 SCHEDULED'}
                       </span>
-                      <span className="text-[11px] text-slate-500 font-mono">By {test.creatorName}</span>
+                      <div className="flex items-center gap-2">
+                        <span className="text-[11px] text-slate-500 font-mono">By {test.creatorName}</span>
+                        {isCreator && (
+                          <button
+                            onClick={() => handleDeleteTest(test.id)}
+                            disabled={deletingId === test.id}
+                            className="p-1 rounded-lg text-rose-400 hover:text-rose-300 hover:bg-rose-950/40 transition text-xs"
+                            title="Delete Task (Creator Only)"
+                          >
+                            {deletingId === test.id ? '⏳' : '🗑'}
+                          </button>
+                        )}
+                      </div>
                     </div>
 
                     <h3 className="text-base font-bold text-slate-100 line-clamp-1">{test.title}</h3>
@@ -255,6 +353,13 @@ export default function MockTestLibraryPage() {
                       >
                         {isCompleted ? 'View Questions' : isLive ? 'Take Test Now' : 'View Test Details'}
                       </Link>
+                      <button
+                        onClick={() => openShareModal(test)}
+                        className="px-2.5 py-2 rounded-xl bg-indigo-600/30 hover:bg-indigo-600/50 text-indigo-300 border border-indigo-500/30 text-xs transition font-semibold flex items-center gap-1"
+                        title="Share with Friends / Channel"
+                      >
+                        <span>🔗 Share</span>
+                      </button>
                       {test.googleCalendarLink && (
                         <a
                           href={test.googleCalendarLink}
@@ -299,71 +404,71 @@ export default function MockTestLibraryPage() {
                 </button>
               </div>
 
-              <form onSubmit={handleScheduleTest} className="space-y-3.5 text-xs">
-                <div>
-                  <label className="block text-slate-400 mb-1 font-semibold">Test Title *</label>
+              <form onSubmit={handleScheduleTest} className="space-y-4 text-xs">
+                <div className="space-y-1">
+                  <label className="text-slate-300 font-semibold">Test Title</label>
                   <input
                     type="text"
                     required
-                    placeholder="e.g. Distributed Systems Architecture Exam"
+                    placeholder="e.g. Distributed Systems & Microservices Quiz"
                     value={newTitle}
                     onChange={(e) => setNewTitle(e.target.value)}
-                    className="w-full px-3 py-2 bg-slate-950 border border-slate-800 rounded-lg text-slate-100 focus:outline-none focus:border-emerald-500"
+                    className="w-full px-3.5 py-2 rounded-xl bg-slate-950 border border-slate-800 text-slate-200 focus:outline-none focus:border-emerald-500"
                   />
                 </div>
 
-                <div>
-                  <label className="block text-slate-400 mb-1 font-semibold">Topic / Subject</label>
+                <div className="space-y-1">
+                  <label className="text-slate-300 font-semibold">Topic / Domain</label>
                   <input
                     type="text"
-                    placeholder="e.g. Kubernetes, React Hooks, System Design"
+                    placeholder="e.g. System Design & Data Structures"
                     value={newTopic}
                     onChange={(e) => setNewTopic(e.target.value)}
-                    className="w-full px-3 py-2 bg-slate-950 border border-slate-800 rounded-lg text-slate-100 focus:outline-none focus:border-emerald-500"
+                    className="w-full px-3.5 py-2 rounded-xl bg-slate-950 border border-slate-800 text-slate-200 focus:outline-none focus:border-emerald-500"
                   />
                 </div>
 
                 <div className="grid grid-cols-2 gap-3">
-                  <div>
-                    <label className="block text-slate-400 mb-1 font-semibold">Duration (Mins)</label>
+                  <div className="space-y-1">
+                    <label className="text-slate-300 font-semibold">Duration (Mins)</label>
                     <input
                       type="number"
                       min={5}
                       max={180}
                       value={newDuration}
-                      onChange={(e) => setNewDuration(parseInt(e.target.value, 10) || 30)}
-                      className="w-full px-3 py-2 bg-slate-950 border border-slate-800 rounded-lg text-slate-100 focus:outline-none focus:border-emerald-500"
+                      onChange={(e) => setNewDuration(Number(e.target.value))}
+                      className="w-full px-3.5 py-2 rounded-xl bg-slate-950 border border-slate-800 text-slate-200 focus:outline-none focus:border-emerald-500"
                     />
                   </div>
-                  <div>
-                    <label className="block text-slate-400 mb-1 font-semibold">Questions Count</label>
+                  <div className="space-y-1">
+                    <label className="text-slate-300 font-semibold">Questions Count</label>
                     <input
                       type="number"
                       min={1}
                       max={50}
                       value={newQuestionsCount}
-                      onChange={(e) => setNewQuestionsCount(parseInt(e.target.value, 10) || 10)}
-                      className="w-full px-3 py-2 bg-slate-950 border border-slate-800 rounded-lg text-slate-100 focus:outline-none focus:border-emerald-500"
+                      onChange={(e) => setNewQuestionsCount(Number(e.target.value))}
+                      className="w-full px-3.5 py-2 rounded-xl bg-slate-950 border border-slate-800 text-slate-200 focus:outline-none focus:border-emerald-500"
                     />
                   </div>
                 </div>
 
-                <div>
-                  <label className="block text-slate-400 mb-1 font-semibold">Scheduled Start Time *</label>
+                <div className="space-y-1">
+                  <label className="text-slate-300 font-semibold">Scheduled Start Time</label>
                   <input
                     type="datetime-local"
                     required
                     value={newScheduleTime}
                     onChange={(e) => setNewScheduleTime(e.target.value)}
-                    className="w-full px-3 py-2 bg-slate-950 border border-slate-800 rounded-lg text-slate-100 focus:outline-none focus:border-emerald-500"
+                    className="w-full px-3.5 py-2 rounded-xl bg-slate-950 border border-slate-800 text-slate-200 focus:outline-none focus:border-emerald-500"
                   />
                 </div>
 
-                <div className="pt-3 flex items-center justify-end gap-2 border-t border-slate-800">
+                <div className="pt-3 border-t border-slate-800 flex justify-end gap-2">
                   <button
                     type="button"
                     onClick={() => setShowScheduleModal(false)}
-                    className="px-4 py-2 rounded-xl bg-slate-800 hover:bg-slate-700 text-slate-300 font-semibold transition"
+                    className="px-4 py-2 rounded-xl bg-slate-800 text-slate-300 hover:bg-slate-700 transition font-semibold"
                   >
                     Cancel
                   </button>
@@ -372,7 +477,84 @@ export default function MockTestLibraryPage() {
                     disabled={isCreating}
                     className="px-4 py-2 rounded-xl bg-emerald-600 hover:bg-emerald-500 text-white font-semibold transition"
                   >
-                    {isCreating ? 'Generating Test...' : 'Generate & Schedule'}
+                    {isCreating ? 'Generating & Scheduling...' : 'Create AI Test'}
+                  </button>
+                </div>
+              </form>
+            </div>
+          </div>
+        )}
+
+        {/* Share Mock Test Modal */}
+        {shareTargetTest && (
+          <div className="fixed inset-0 z-50 bg-black/70 backdrop-blur-xs flex items-center justify-center p-4">
+            <div className="bg-slate-900 border border-slate-800 rounded-2xl max-w-md w-full p-6 space-y-4 shadow-2xl">
+              <div className="flex items-center justify-between border-b border-slate-800 pb-3">
+                <h3 className="text-base font-bold text-white flex items-center gap-2">
+                  <span>🔗 Share Mock Test with Friend or Channel</span>
+                </h3>
+                <button onClick={() => setShareTargetTest(null)} className="text-slate-400 hover:text-white font-bold text-sm">
+                  ✕
+                </button>
+              </div>
+
+              <form onSubmit={handleExecuteShare} className="space-y-4 text-xs">
+                <div className="p-3 bg-slate-950 border border-slate-800 rounded-xl space-y-1">
+                  <p className="font-bold text-slate-200">{shareTargetTest.title}</p>
+                  <p className="text-[11px] text-slate-400">
+                    ⏱ {shareTargetTest.durationMinutes} mins • ❓ {shareTargetTest.totalQuestions} questions
+                  </p>
+                </div>
+
+                <div className="space-y-1">
+                  <label className="text-slate-300 font-semibold">Select Destination Channel / Direct Message</label>
+                  {channels.length === 0 ? (
+                    <p className="text-slate-500 py-2 text-[11px]">No active channels found. Start a new DM or group in Collab Chat first!</p>
+                  ) : (
+                    <select
+                      value={selectedChannelId}
+                      onChange={(e) => setSelectedChannelId(e.target.value)}
+                      className="w-full px-3.5 py-2 rounded-xl bg-slate-950 border border-slate-800 text-slate-200 focus:outline-none focus:border-indigo-500"
+                    >
+                      {channels.map((ch) => {
+                        const name = ch.type === 'DIRECT'
+                          ? `💬 DM with ${ch.members.map((m) => m.user.name || m.user.email.split('@')[0]).join(', ')}`
+                          : `📢 Group: ${ch.name || 'Group'}`;
+                        return (
+                          <option key={ch.id} value={ch.id}>
+                            {name}
+                          </option>
+                        );
+                      })}
+                    </select>
+                  )}
+                </div>
+
+                <div className="space-y-1">
+                  <label className="text-slate-300 font-semibold">Optional Note to Chat</label>
+                  <input
+                    type="text"
+                    value={shareMessage}
+                    onChange={(e) => setShareMessage(e.target.value)}
+                    className="w-full px-3.5 py-2 rounded-xl bg-slate-950 border border-slate-800 text-slate-200 focus:outline-none focus:border-indigo-500"
+                    placeholder="e.g. Join this quiz with me!"
+                  />
+                </div>
+
+                <div className="pt-3 border-t border-slate-800 flex justify-end gap-2">
+                  <button
+                    type="button"
+                    onClick={() => setShareTargetTest(null)}
+                    className="px-4 py-2 rounded-xl bg-slate-800 text-slate-300 hover:bg-slate-700 transition font-semibold"
+                  >
+                    Cancel
+                  </button>
+                  <button
+                    type="submit"
+                    disabled={isSharing || !selectedChannelId}
+                    className="px-4 py-2 rounded-xl bg-indigo-600 hover:bg-indigo-500 text-white font-semibold transition"
+                  >
+                    {isSharing ? 'Sharing...' : 'Send to Chat 🚀'}
                   </button>
                 </div>
               </form>

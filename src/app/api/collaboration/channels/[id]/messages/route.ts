@@ -38,6 +38,7 @@ export async function POST(
       sharedEntityId,
       sharedDocumentId,
       sharedStudyQuestionId,
+      sharedMockTestId,
       clientMessageId,
       metadata
     } = body;
@@ -54,6 +55,7 @@ export async function POST(
       sharedEntityId,
       sharedDocumentId,
       sharedStudyQuestionId,
+      sharedMockTestId,
       clientMessageId,
       metadata
     });

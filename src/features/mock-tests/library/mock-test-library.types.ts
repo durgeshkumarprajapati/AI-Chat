@@ -24,6 +24,9 @@ export interface MockTestLibraryCardDTO {
   totalQuestions: number;
   status: MockTestStatus;
   googleCalendarLink?: string | null;
+  googleCalendarEventUrl?: string | null;
+  googleCalendarSyncStatus?: string | null;
+  googleCalendarSyncError?: string | null;
   participantCount: number;
   userParticipantStatus?: string | null;
   userScore?: number | null;

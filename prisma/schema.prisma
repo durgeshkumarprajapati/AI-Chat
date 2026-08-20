@@ -2226,24 +2226,35 @@ enum CallStatus {
   CANCELLED
 }
 
+enum CalendarSyncStatus {
+  PENDING
+  SYNCED
+  FAILED
+  NOT_CONNECTED
+}
+
 model ScheduledMockTest {
-  id                    String         @id @default(uuid())
-  createdById           String         @map("created_by_id")
-  title                 String
-  description           String?        @db.Text
-  topic                 String?
-  documentId            String?        @map("document_id")
-  knowledgeBaseId       String?        @map("knowledge_base_id")
-  scheduledStartTime    DateTime       @map("scheduled_start_time")
-  durationMinutes       Int            @default(30) @map("duration_minutes")
-  totalQuestions        Int            @default(10) @map("total_questions")
-  passingScore          Float          @default(70.0) @map("passing_score")
-  status                MockTestStatus @default(SCHEDULED)
-  googleCalendarEventId String?        @map("google_calendar_event_id")
-  googleCalendarLink    String?        @db.Text @map("google_calendar_link")
-  questions             Json           @default("[]")
-  createdAt             DateTime       @default(now()) @map("created_at")
-  updatedAt             DateTime       @updatedAt @map("updated_at")
+  id                      String             @id @default(uuid())
+  createdById             String             @map("created_by_id")
+  title                   String
+  description             String?            @db.Text
+  topic                   String?
+  documentId              String?            @map("document_id")
+  knowledgeBaseId         String?            @map("knowledge_base_id")
+  scheduledStartTime      DateTime           @map("scheduled_start_time")
+  durationMinutes         Int                @default(30) @map("duration_minutes")
+  totalQuestions          Int                @default(10) @map("total_questions")
+  passingScore            Float              @default(70.0) @map("passing_score")
+  status                  MockTestStatus     @default(SCHEDULED)
+  googleCalendarEventId   String?            @map("google_calendar_event_id")
+  googleCalendarLink      String?            @db.Text @map("google_calendar_link")
+  googleCalendarEventUrl  String?            @db.Text @map("google_calendar_event_url")
+  googleCalendarSyncStatus CalendarSyncStatus @default(PENDING) @map("google_calendar_sync_status")
+  googleCalendarSyncError String?            @db.Text @map("google_calendar_sync_error")
+  googleCalendarSyncedAt  DateTime?          @map("google_calendar_synced_at")
+  questions               Json               @default("[]")
+  createdAt               DateTime           @default(now()) @map("created_at")
+  updatedAt               DateTime           @updatedAt @map("updated_at")
 
   createdBy        User                  @relation("CreatedMockTests", fields: [createdById], references: [id], onDelete: Cascade)
   participants     MockTestParticipant[]

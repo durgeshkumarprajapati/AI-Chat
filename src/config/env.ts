@@ -181,7 +181,8 @@ const serverEnvSchema = z
     SESSION_EXPIRY_DAYS: z.coerce.number().int().positive().default(7),
     GOOGLE_CLIENT_ID: z.string().optional(),
     GOOGLE_CLIENT_SECRET: z.string().optional(),
-    GOOGLE_REDIRECT_URI: z.string().optional().default('http://localhost:3000/api/auth/google/callback'),
+    GOOGLE_REDIRECT_URI: z.string().optional().default('http://localhost:3000/api/integrations/google/callback'),
+    GOOGLE_CALENDAR_SCOPE: z.string().default('https://www.googleapis.com/auth/calendar.events'),
     MOCK_TEST_DEFAULT_QUESTION_COUNT: z.coerce.number().int().positive().default(10),
     MOCK_TEST_MAX_QUESTION_COUNT: z.coerce.number().int().positive().default(50),
     MOCK_TEST_MAX_GENERATION_ATTEMPTS: z.coerce.number().int().positive().default(3),
@@ -519,7 +520,8 @@ export const envConfig = {
   google: {
     clientId: env.server?.GOOGLE_CLIENT_ID,
     clientSecret: env.server?.GOOGLE_CLIENT_SECRET,
-    redirectUri: env.server?.GOOGLE_REDIRECT_URI ?? 'http://localhost:3000/api/auth/google/callback',
+    redirectUri: env.server?.GOOGLE_REDIRECT_URI ?? 'http://localhost:3000/api/integrations/google/callback',
+    calendarScope: env.server?.GOOGLE_CALENDAR_SCOPE ?? 'https://www.googleapis.com/auth/calendar.events',
     enabled: Boolean(env.server?.GOOGLE_CLIENT_ID && env.server?.GOOGLE_CLIENT_SECRET)
   },
   webrtc: {

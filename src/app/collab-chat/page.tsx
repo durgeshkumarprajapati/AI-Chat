@@ -5,6 +5,8 @@ import Link from 'next/link';
 import { useWorkspace } from '@/context/WorkspaceContext';
 import { mergeMessages, CollabMessageItem } from '@/features/collaboration/message-deduplication';
 import { formatMessageTimestamp, groupMessagesByDate } from '@/features/collaboration/message-time';
+import { ScheduleCallModal } from '@/components/collaboration/ScheduleCallModal';
+import { ScheduledCallCard, ScheduledCallData } from '@/components/collaboration/ScheduledCallCard';
 
 interface UserSummary {
   id: string;
@@ -31,7 +33,9 @@ interface MessageItem extends CollabMessageItem {
   id: string;
   channelId: string;
   senderId: string;
-  messageType?: 'TEXT' | 'VOICE' | 'CALL_EVENT';
+  messageType?: 'TEXT' | 'VOICE' | 'CALL_EVENT' | 'SCHEDULED_CALL';
+  scheduledCallId?: string | null;
+  scheduledCall?: ScheduledCallData | null;
   content: string;
   replyToId?: string | null;
   isEdited: boolean;
@@ -334,6 +338,54 @@ function renderMessageContent(content: string) {
   );
 }
 
+const ScheduledCallMessageWrapper: React.FC<{
+  msg: MessageItem;
+  currentUserId: string;
+  onReschedule?: (_call: ScheduledCallData) => void;
+  onCancel?: () => void;
+}> = ({ msg, currentUserId, onReschedule, onCancel }) => {
+  const [callData, setCallData] = useState<ScheduledCallData | null>(
+    msg.scheduledCall || (msg.metadata?.scheduledCall as any) || null
+  );
+  const [loading, setLoading] = useState(!callData && Boolean(msg.scheduledCallId));
+
+  useEffect(() => {
+    if (!callData && msg.scheduledCallId) {
+      fetch(`/api/collaboration/calls/scheduled/${msg.scheduledCallId}`)
+        .then((res) => res.json())
+        .then((data) => {
+          if (data.success && data.data) {
+            setCallData(data.data);
+          }
+        })
+        .catch(() => {})
+        .finally(() => setLoading(false));
+    }
+  }, [msg.scheduledCallId, callData]);
+
+  if (loading) {
+    return <div className="p-3 bg-slate-100 dark:bg-slate-900 rounded-xl text-xs text-slate-400 animate-pulse">Loading call details...</div>;
+  }
+
+  if (!callData) {
+    return (
+      <div className="p-3 bg-slate-100 dark:bg-slate-900 rounded-xl text-xs text-slate-500 font-medium flex items-center space-x-2">
+        <span>📹</span>
+        <span>Scheduled Call details unavailable</span>
+      </div>
+    );
+  }
+
+  return (
+    <ScheduledCallCard
+      call={callData}
+      currentUserId={currentUserId}
+      onReschedule={onReschedule}
+      onCancel={onCancel}
+    />
+  );
+};
+
 export default function CollabChatPage() {
   const { currentUser } = useWorkspace();
   const [channels, setChannels] = useState<ChannelItem[]>([]);
@@ -392,6 +444,9 @@ export default function CollabChatPage() {
   const [shareTargetId, setShareTargetId] = useState('');
 
   const [isAiGenerating, setIsAiGenerating] = useState(false);
+
+  // Schedule Call Modal State
+  const [showScheduleCallModal, setShowScheduleCallModal] = useState(false);
 
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const textareaRef = useRef<HTMLTextAreaElement>(null);
@@ -579,6 +634,16 @@ export default function CollabChatPage() {
           } else if (event.type === 'ai:generating') {
             if (event.channelId === activeChId) {
               setIsAiGenerating(Boolean(event.data?.isGenerating));
+            }
+          } else if (
+            event.type === 'scheduled-call:created' ||
+            event.type === 'scheduled-call:updated' ||
+            event.type === 'scheduled-call:calendar-synced' ||
+            event.type === 'scheduled-call:calendar-failed' ||
+            event.type === 'scheduled-call:cancelled'
+          ) {
+            if (event.channelId === activeChId && activeChId) {
+              fetchMessages(activeChId);
             }
           }
         } catch {}
@@ -1285,6 +1350,16 @@ export default function CollabChatPage() {
                   )}
 
                   <button
+                    onClick={() => setShowScheduleCallModal(true)}
+                    className="px-3 py-1.5 bg-indigo-50 dark:bg-indigo-950/60 hover:bg-indigo-100 dark:hover:bg-indigo-900/60 text-indigo-700 dark:text-indigo-300 border border-indigo-200 dark:border-indigo-800/60 text-xs font-semibold rounded-xl transition flex items-center space-x-1"
+                    data-tour="collab-schedule-call-btn"
+                    title="Schedule a Google Meet Call"
+                  >
+                    <span>🗓</span>
+                    <span>Schedule Call</span>
+                  </button>
+
+                  <button
                     onClick={() => setShowShareModal(true)}
                     className="px-3 py-1.5 bg-slate-100 dark:bg-slate-800 hover:bg-slate-200 dark:hover:bg-slate-700 text-slate-700 dark:text-slate-300 text-xs font-semibold rounded-xl transition"
                     data-tour="collab-share-asset-btn"
@@ -1415,6 +1490,15 @@ export default function CollabChatPage() {
                                   <VoiceMessagePlayer msg={m} />
                                 ) : m.messageType === 'CALL_EVENT' || m.callSessionId ? (
                                   <CallEventMessageCard msg={m} />
+                                ) : m.messageType === 'SCHEDULED_CALL' || m.scheduledCallId || m.scheduledCall ? (
+                                  <ScheduledCallMessageWrapper
+                                    msg={m}
+                                    currentUserId={currentUser?.id || ''}
+                                    onReschedule={() => {
+                                      setShowScheduleCallModal(true);
+                                    }}
+                                    onCancel={() => activeChannelId && fetchMessages(activeChannelId)}
+                                  />
                                 ) : m.sharedMockTestId || m.sharedMockTest ? (
                                   <SharedMockTestCard msg={m} />
                                 ) : (
@@ -1819,6 +1903,24 @@ export default function CollabChatPage() {
             </div>
           </div>
         </div>
+      )}
+
+      {/* Schedule Call Modal */}
+      {activeChannel && currentUser && (
+        <ScheduleCallModal
+          isOpen={showScheduleCallModal}
+          onClose={() => setShowScheduleCallModal(false)}
+          channelId={activeChannel.id}
+          channelName={getChannelDisplayName(activeChannel)}
+          channelType={activeChannel.type}
+          members={activeChannel.members}
+          currentUserId={currentUser.id}
+          onSuccess={() => {
+            if (activeChannelId) {
+              fetchMessages(activeChannelId);
+            }
+          }}
+        />
       )}
     </div>
   );

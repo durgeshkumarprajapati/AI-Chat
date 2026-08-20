@@ -279,7 +279,7 @@ const serverEnvSchema = z
     GEMINI_RATE_LIMIT_PER_MINUTE: z.coerce.number().int().positive().default(120),
     CITY_EXPLORER_V2_ENABLED: z.coerce.boolean().default(true),
     CITY_EXPLORER_PRIMARY_PROVIDER: z.string().default('gemini'),
-    CITY_EXPLORER_FALLBACK_PROVIDER: z.string().default('web_search'),
+    CITY_EXPLORER_FALLBACK_PROVIDER: z.string().default('none'),
     CITY_EXPLORER_ALLOW_OLLAMA_FALLBACK: z.coerce.boolean().default(false),
     CITY_EXPLORER_MAX_CONCURRENCY: z.coerce.number().int().positive().default(3),
     CITY_EXPLORER_MAX_CONCURRENT_GEMINI: z.coerce.number().int().positive().default(3),

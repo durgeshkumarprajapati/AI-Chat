@@ -2053,6 +2053,7 @@ model CollabChannelMember {
 enum CollabMessageType {
   TEXT
   VOICE
+  CALL_EVENT
 }
 
 model CollabMessage {
@@ -2072,6 +2073,7 @@ model CollabMessage {
   sharedDocumentId      String?           @map("shared_document_id")
   sharedStudyQuestionId String?           @map("shared_study_question_id")
   sharedMockTestId      String?           @map("shared_mock_test_id")
+  callSessionId         String?           @map("call_session_id")
   voiceDurationMs       Int?              @map("voice_duration_ms")
   voiceMimeType         String?           @map("voice_mime_type")
   voiceStorageKey       String?           @map("voice_storage_key")
@@ -2088,6 +2090,7 @@ model CollabMessage {
   receipts       CollabMessageReceipt[]
   mentions       CollabMessageMention[]
   sharedMockTest ScheduledMockTest?    @relation("SharedMockTestMessages", fields: [sharedMockTestId], references: [id], onDelete: SetNull)
+  callSession    CollabCall?           @relation("CallEventMessages", fields: [callSessionId], references: [id], onDelete: SetNull)
 
   @@unique([channelId, clientMessageId])
   @@index([channelId])
@@ -2288,13 +2291,17 @@ model CollabCall {
   createdAt       DateTime   @default(now()) @map("created_at")
   updatedAt       DateTime   @updatedAt @map("updated_at")
 
-  channel      CollabChannel           @relation(fields: [channelId], references: [id], onDelete: Cascade)
-  host         User                    @relation("HostedCollabCalls", fields: [hostId], references: [id], onDelete: Cascade)
-  participants CollabCallParticipant[]
+  channel           CollabChannel           @relation(fields: [channelId], references: [id], onDelete: Cascade)
+  host              User                    @relation("HostedCollabCalls", fields: [hostId], references: [id], onDelete: Cascade)
+  participants      CollabCallParticipant[]
+  callEventMessages CollabMessage[]         @relation("CallEventMessages")
 
   @@index([channelId])
   @@index([hostId])
   @@index([status])
+  @@index([channelId, createdAt])
+  @@index([createdAt])
+  @@index([status, createdAt])
   @@map("collab_calls")
 }
 
@@ -2316,6 +2323,7 @@ model CollabCallParticipant {
   @@unique([callId, userId])
   @@index([callId])
   @@index([userId])
+  @@index([userId, createdAt])
   @@map("collab_call_participants")
 }
 

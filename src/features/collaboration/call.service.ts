@@ -216,6 +216,10 @@ export class CollabCallService {
         data: { callId, endedBy: userId, durationSeconds },
         timestamp: new Date().toISOString()
       });
+
+      // Persist structured call event message in chat timeline
+      const { callHistoryService } = await import('./call-history/call-history.service');
+      await callHistoryService.createCallEventMessage(callId).catch(() => {});
     }
 
     return { success: true };

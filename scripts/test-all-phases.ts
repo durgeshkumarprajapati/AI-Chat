@@ -51,7 +51,8 @@ const PHASES: PhaseConfig[] = [
   { phase: 47, name: 'Realtime Notifications, Delivery Receipts & Group Management', command: 'npm run test:phase47' },
   { phase: 47.1, name: 'Production Chat UI Stability & Realtime Render/Reconnection Fix', command: 'npm run test:phase47.1' },
   { phase: 48, name: 'Production Collaboration Messaging UX: Relative Timestamps, @Mentions & Voice Messages', command: 'npm run test:phase48' },
-  { phase: 49, name: 'Production Scheduled AI Mock Tests, Google Calendar Integration & Realtime Voice/Video Calling', command: 'npm run test:phase49' }
+  { phase: 49, name: 'Production Scheduled AI Mock Tests, Google Calendar Integration & Realtime Voice/Video Calling', command: 'npm run test:phase49' },
+  { phase: 50, name: 'Production Call History & Mock Test/MCQ Library', command: 'npm run test:phase50' }
 ];
 
 async function runAllPhases() {

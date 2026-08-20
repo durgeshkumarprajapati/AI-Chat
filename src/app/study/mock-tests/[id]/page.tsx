@@ -1,314 +1,298 @@
 'use client';
 
-import React, { useState, useEffect, useRef } from 'react';
+import React, { useState, useEffect, use } from 'react';
 import Link from 'next/link';
 
-interface MCQQuestion {
+interface QuestionOption {
   id: string;
-  question: string;
-  options: [string, string, string, string];
-  correctOptionIndex: number;
-  explanation: string;
+  optionText: string;
+  isCorrect?: boolean;
 }
 
-export default function TestTakerPage({ params }: { params: { id: string } }) {
+interface QuestionItem {
+  id: string;
+  questionText: string;
+  type: string;
+  options: QuestionOption[];
+  correctOptionId?: string;
+  explanation?: string;
+  groundingSource?: string;
+}
+
+export default function MockTestDetailPage({ params }: { params: { id: string } | Promise<{ id: string }> }) {
+  const unwrappedParams = typeof (params as any)?.then === 'function' ? use(params as Promise<{ id: string }>) : (params as { id: string });
+  const testId = unwrappedParams.id;
+  const [test, setTest] = useState<any>(null);
+  const [questions, setQuestions] = useState<QuestionItem[]>([]);
+  const [isSanitized, setIsSanitized] = useState(false);
+  const [userParticipant, setUserParticipant] = useState<any>(null);
   const [loading, setLoading] = useState(true);
-  const [details, setDetails] = useState<any>(null);
-  const [errorMsg, setErrorMsg] = useState<string | null>(null);
 
-  const [testSession, setTestSession] = useState<any>(null);
-  const [currentQIndex, setCurrentQIndex] = useState(0);
-  const [selectedAnswers, setSelectedAnswers] = useState<Record<number, number>>({});
+  // Active quiz session state
+  const [isTakingTest, setIsTakingTest] = useState(false);
+  const [selectedAnswers, setSelectedAnswers] = useState<Record<string, string[]>>({});
+  const [submitting, setSubmitting] = useState(false);
+  const [scoreResult, setScoreResult] = useState<any>(null);
 
-  const [isSubmitting, setIsSubmitting] = useState(false);
-  const [submissionResult, setSubmissionResult] = useState<any>(null);
+  useEffect(() => {
+    fetchTestDetails();
+    fetchTestQuestions();
+  }, [testId]);
 
-  const [remainingSec, setRemainingSec] = useState<number | null>(null);
-  const timerRef = useRef<NodeJS.Timeout | null>(null);
-
-  const fetchDetails = async () => {
+  const fetchTestDetails = async () => {
     try {
-      const res = await fetch(`/api/study/mock-tests/${params.id}`);
+      const res = await fetch(`/api/mock-tests/${testId}`);
       const data = await res.json();
-      if (data.success && data.data) {
-        setDetails(data.data);
-      } else {
-        setErrorMsg(data.error || 'Failed to fetch test details');
+      if (data.success) {
+        setTest(data.test);
+        setUserParticipant(data.userParticipant);
       }
-    } catch (err: any) {
-      setErrorMsg(err.message || 'Error loading test details');
+    } catch (err) {
+      console.error('Failed to fetch test details:', err);
+    }
+  };
+
+  const fetchTestQuestions = async () => {
+    setLoading(true);
+    try {
+      const res = await fetch(`/api/mock-tests/${testId}/questions`);
+      const data = await res.json();
+      if (data.success) {
+        setQuestions(data.questions || []);
+        setIsSanitized(Boolean(data.isSanitized));
+      }
+    } catch (err) {
+      console.error('Failed to fetch test questions:', err);
     } finally {
       setLoading(false);
     }
   };
 
-  useEffect(() => {
-    fetchDetails();
-  }, [params.id]);
-
   const handleStartSession = async () => {
     try {
-      const res = await fetch(`/api/study/mock-tests/${params.id}/start`, { method: 'POST' });
+      const res = await fetch(`/api/study/mock-tests/${testId}/start`, { method: 'POST' });
       const data = await res.json();
-      if (data.success && data.data) {
-        setTestSession(data.data);
-        const expMs = data.data.expirationTimeMs;
-        const nowMs = Date.now();
-        const rem = Math.max(0, Math.floor((expMs - nowMs) / 1000));
-        setRemainingSec(rem);
-
-        if (timerRef.current) clearInterval(timerRef.current);
-        timerRef.current = setInterval(() => {
-          setRemainingSec((prev) => {
-            if (prev === null || prev <= 1) {
-              if (timerRef.current) clearInterval(timerRef.current);
-              return 0;
-            }
-            return prev - 1;
-          });
-        }, 1000);
+      if (data.success) {
+        setIsTakingTest(true);
       } else {
-        setErrorMsg(data.error || 'Failed to start test session');
+        alert(data.error || 'Failed to start quiz session');
       }
-    } catch (err: any) {
-      setErrorMsg(err.message || 'Error starting session');
+    } catch {
+      alert('Failed to connect server');
     }
+  };
+
+  const handleOptionSelect = (questionId: string, optionId: string) => {
+    setSelectedAnswers((prev) => ({
+      ...prev,
+      [questionId]: [optionId]
+    }));
   };
 
   const handleSubmitTest = async () => {
-    if (!testSession || isSubmitting) return;
-
-    setIsSubmitting(true);
+    setSubmitting(true);
     try {
-      const answersArray = (testSession.questions as MCQQuestion[]).map((_, idx) => ({
-        questionIndex: idx,
-        selectedOptionIndex: selectedAnswers[idx] !== undefined ? selectedAnswers[idx] : -1
+      const submissions = Object.entries(selectedAnswers).map(([questionId, selectedOptionIds]) => ({
+        questionId,
+        selectedOptionIds
       }));
 
-      const res = await fetch(`/api/study/mock-tests/${params.id}/submit`, {
+      const res = await fetch(`/api/study/mock-tests/${testId}/submit`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ answers: answersArray })
+        body: JSON.stringify({ submissions })
       });
+
       const data = await res.json();
-      if (data.success && data.data) {
-        setSubmissionResult(data.data);
-        if (timerRef.current) clearInterval(timerRef.current);
+      if (data.success) {
+        setScoreResult(data.scoreResult);
+        setIsTakingTest(false);
+        fetchTestDetails();
+        fetchTestQuestions();
       } else {
-        setErrorMsg(data.error || 'Submission failed');
+        alert(data.error || 'Failed to submit test');
       }
-    } catch (err: any) {
-      setErrorMsg(err.message || 'Error submitting answers');
+    } catch {
+      alert('Submission failed');
     } finally {
-      setIsSubmitting(false);
+      setSubmitting(false);
     }
   };
 
-  if (loading) {
-    return (
-      <div className="w-full min-h-screen flex items-center justify-center text-xs text-slate-400 animate-pulse">
-        Loading AI Mock Test details...
-      </div>
-    );
+  if (loading && !test) {
+    return <div className="min-h-screen bg-slate-950 text-slate-400 p-10 text-center text-sm">Loading test details...</div>;
   }
 
-  if (errorMsg || !details) {
+  if (!test) {
     return (
-      <div className="w-full max-w-xl mx-auto p-8 text-center space-y-4">
-        <div className="p-4 bg-rose-500/10 border border-rose-500/30 text-rose-400 text-xs rounded-2xl">
-          {errorMsg || 'Mock Test not found'}
-        </div>
-        <Link href="/study/mock-tests" className="inline-block px-4 py-2 bg-slate-800 text-white text-xs rounded-xl">
-          ← Back to Mock Tests
+      <div className="min-h-screen bg-slate-950 text-slate-100 p-10 text-center space-y-4">
+        <h2 className="text-xl font-bold">Mock Test Not Found</h2>
+        <Link href="/study/mock-tests" className="inline-block px-4 py-2 bg-slate-800 text-xs text-slate-200 rounded-lg">
+          Back to Library
         </Link>
       </div>
     );
   }
 
-  const { mockTest, isExpired } = details;
-  const questions = (testSession?.questions || mockTest.questions) as MCQQuestion[];
-  const currentQ = questions[currentQIndex];
+  const isCompleted = test.status === 'COMPLETED' || Boolean(userParticipant?.submittedAt) || Boolean(scoreResult);
 
   return (
-    <div className="w-full max-w-4xl mx-auto p-4 sm:p-8 space-y-6 text-slate-900 dark:text-white">
-      {/* Header */}
-      <div className="flex items-center justify-between border-b border-slate-200 dark:border-slate-800 pb-4">
-        <div>
-          <div className="flex items-center space-x-2">
-            <span className="text-xs px-2 py-0.5 rounded bg-indigo-500/20 text-indigo-400 font-mono font-bold uppercase">
-              {mockTest.status}
-            </span>
-            <h1 className="text-xl font-bold">{mockTest.title}</h1>
-          </div>
-          <p className="text-xs text-slate-500 dark:text-slate-400 mt-1">
-            {mockTest.topic || 'General Practice'} • {mockTest.durationMinutes} Minutes • {questions.length} Questions
-          </p>
-        </div>
-
-        <Link
-          href="/collab-chat"
-          className="px-3.5 py-2 bg-slate-800 hover:bg-slate-700 text-white text-xs font-semibold rounded-xl shadow transition"
-        >
-          💬 Collab Chat
-        </Link>
-      </div>
-
-      {/* Submission Results State */}
-      {submissionResult ? (
-        <div className="p-6 bg-slate-900 border border-slate-800 rounded-2xl space-y-6 text-white shadow-xl">
-          <div className="text-center space-y-2">
-            <span className="text-4xl">{submissionResult.passed ? '🎉' : '📊'}</span>
-            <h2 className="text-xl font-bold">
-              {submissionResult.passed ? 'PASSED SUCCESSFUL!' : 'TEST COMPLETED'}
-            </h2>
-            <div className="inline-block px-4 py-1.5 rounded-full bg-gradient-to-r from-indigo-600 to-purple-600 font-mono font-bold text-base shadow">
-              Score: {submissionResult.score}% ({submissionResult.correctCount} / {submissionResult.totalQuestions} Correct)
-            </div>
-          </div>
-
-          <div className="space-y-4 pt-4 border-t border-slate-800">
-            <h3 className="text-xs font-bold uppercase tracking-wider text-slate-400">Detailed Question Breakdown</h3>
-            {questions.map((q, idx) => {
-              const userAns = submissionResult.evaluatedAnswers.find((a: any) => a.questionIndex === idx);
-              const isCorrect = userAns?.isCorrect;
-              return (
-                <div
-                  key={q.id || idx}
-                  className={`p-4 rounded-xl border text-xs space-y-2 ${
-                    isCorrect ? 'bg-emerald-950/30 border-emerald-500/40' : 'bg-rose-950/30 border-rose-500/40'
-                  }`}
-                >
-                  <div className="flex justify-between items-start font-semibold">
-                    <span>Q{idx + 1}. {q.question}</span>
-                    <span className={`px-2 py-0.5 rounded font-mono font-bold text-[10px] ${isCorrect ? 'bg-emerald-500/20 text-emerald-300' : 'bg-rose-500/20 text-rose-300'}`}>
-                      {isCorrect ? '✓ Correct' : '✕ Incorrect'}
-                    </span>
-                  </div>
-                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-2 text-[11px] font-mono">
-                    {q.options.map((opt, oIdx) => (
-                      <div
-                        key={oIdx}
-                        className={`p-2 rounded-lg border ${
-                          oIdx === q.correctOptionIndex
-                            ? 'bg-emerald-600 text-white font-bold border-emerald-400'
-                            : userAns?.selectedOptionIndex === oIdx
-                            ? 'bg-rose-600 text-white font-bold border-rose-400'
-                            : 'bg-slate-950 text-slate-400 border-slate-800'
-                        }`}
-                      >
-                        {String.fromCharCode(65 + oIdx)}. {opt}
-                      </div>
-                    ))}
-                  </div>
-                  <p className="text-[11px] text-slate-300 italic pt-1">💡 {q.explanation}</p>
-                </div>
-              );
-            })}
-          </div>
-        </div>
-      ) : !testSession ? (
-        /* Lobby State before starting quiz */
-        <div className="p-8 bg-slate-900 border border-slate-800 rounded-2xl text-center space-y-4 text-white shadow-lg">
-          <div className="text-3xl">⏱</div>
-          <h2 className="text-lg font-bold">Ready to Start Test?</h2>
-          <p className="text-xs text-slate-400 max-w-md mx-auto">
-            Once you click Start Test, your server-authoritative timer of {mockTest.durationMinutes} minutes will begin!
-          </p>
-
-          <div className="flex justify-center space-x-3 pt-2">
-            {mockTest.googleCalendarLink && (
-              <a
-                href={mockTest.googleCalendarLink}
-                target="_blank"
-                rel="noopener noreferrer"
-                className="px-4 py-2 bg-slate-800 hover:bg-slate-700 text-slate-200 text-xs font-semibold rounded-xl"
-              >
-                📅 Google Calendar
-              </a>
-            )}
-
-            <button
-              onClick={handleStartSession}
-              disabled={isExpired}
-              className="px-6 py-2.5 bg-gradient-to-r from-emerald-600 to-teal-600 hover:from-emerald-500 hover:to-teal-500 text-white font-bold text-xs rounded-xl shadow-lg transition"
-            >
-              {isExpired ? 'Mock Test Expired' : '🚀 Start Test Session Now'}
-            </button>
-          </div>
-        </div>
-      ) : (
-        /* Active Test Session State */
-        <div className="space-y-6">
-          {/* Top Timer Bar */}
-          <div className="p-3 bg-slate-900 border border-slate-800 rounded-xl flex items-center justify-between text-xs text-white font-mono shadow">
-            <span>Question {currentQIndex + 1} of {questions.length}</span>
-            {remainingSec !== null && (
-              <span className={`font-bold px-3 py-1 rounded-lg ${remainingSec < 300 ? 'bg-rose-600 text-white animate-pulse' : 'bg-indigo-900 text-indigo-200'}`}>
-                ⏳ Time Left: {Math.floor(remainingSec / 60)}:{Math.floor(remainingSec % 60).toString().padStart(2, '0')}
+    <div className="min-h-screen bg-slate-950 text-slate-100 p-6 md:p-10">
+      <div className="max-w-4xl mx-auto space-y-6">
+        {/* Header */}
+        <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 border-b border-slate-800 pb-5">
+          <div>
+            <div className="flex items-center gap-2 mb-1">
+              <span className="text-xs px-2.5 py-0.5 rounded-full font-bold uppercase bg-emerald-500/20 text-emerald-400 border border-emerald-500/30">
+                {test.status}
               </span>
-            )}
+              <span className="text-xs text-slate-400">Created by {test.createdBy?.name || 'Instructor'}</span>
+            </div>
+            <h1 className="text-2xl font-bold text-white">{test.title}</h1>
+            <p className="text-xs text-slate-400 mt-1">{test.topic || test.description || 'AI MCQ Assessment'}</p>
           </div>
 
-          {/* Current MCQ Card */}
-          {currentQ && (
-            <div className="p-6 bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-2xl space-y-4 shadow-sm">
-              <h3 className="text-sm font-bold text-slate-900 dark:text-white leading-relaxed">
-                Q{currentQIndex + 1}. {currentQ.question}
-              </h3>
-
-              <div className="space-y-2">
-                {currentQ.options.map((opt, oIdx) => {
-                  const isSelected = selectedAnswers[currentQIndex] === oIdx;
-                  return (
-                    <div
-                      key={oIdx}
-                      onClick={() => setSelectedAnswers((prev) => ({ ...prev, [currentQIndex]: oIdx }))}
-                      className={`p-3 rounded-xl border transition cursor-pointer text-xs flex items-center space-x-3 ${
-                        isSelected
-                          ? 'bg-indigo-600 text-white border-indigo-500 font-semibold shadow-sm'
-                          : 'bg-slate-50 dark:bg-slate-950 border-slate-200 dark:border-slate-800 hover:border-indigo-500/40 text-slate-800 dark:text-slate-200'
-                      }`}
-                    >
-                      <span className={`w-6 h-6 rounded-lg font-mono font-bold text-[11px] flex items-center justify-center ${isSelected ? 'bg-white text-indigo-600' : 'bg-slate-200 dark:bg-slate-800'}`}>
-                        {String.fromCharCode(65 + oIdx)}
-                      </span>
-                      <span>{opt}</span>
-                    </div>
-                  );
-                })}
-              </div>
-            </div>
-          )}
-
-          {/* Pagination & Submit Bar */}
-          <div className="flex items-center justify-between">
-            <button
-              onClick={() => setCurrentQIndex((prev) => Math.max(0, prev - 1))}
-              disabled={currentQIndex === 0}
-              className="px-4 py-2 bg-slate-800 disabled:opacity-40 text-white text-xs font-semibold rounded-xl"
+          <div className="flex items-center gap-2">
+            <Link
+              href="/study/mock-tests"
+              className="px-4 py-2 bg-slate-800 hover:bg-slate-700 text-slate-300 text-xs font-semibold rounded-xl transition"
             >
-              ← Previous
-            </button>
-
-            {currentQIndex < questions.length - 1 ? (
+              ← Back to Library
+            </Link>
+            {!isTakingTest && !isCompleted && (
               <button
-                onClick={() => setCurrentQIndex((prev) => Math.min(questions.length - 1, prev + 1))}
-                className="px-5 py-2 bg-indigo-600 hover:bg-indigo-500 text-white text-xs font-semibold rounded-xl shadow"
+                onClick={handleStartSession}
+                className="px-4 py-2 bg-emerald-600 hover:bg-emerald-500 text-white text-xs font-bold rounded-xl shadow-md transition"
               >
-                Next Question →
+                🚀 Take Test Now
               </button>
-            ) : (
+            )}
+          </div>
+        </div>
+
+        {/* Score Summary Banner if completed */}
+        {(isCompleted || scoreResult) && (
+          <div className="p-5 bg-gradient-to-r from-emerald-950/60 to-slate-900 border border-emerald-500/30 rounded-2xl flex items-center justify-between">
+            <div>
+              <h3 className="text-sm font-bold text-emerald-400">Quiz Submitted & Evaluated</h3>
+              <p className="text-xs text-slate-300 mt-0.5">
+                Score: <span className="font-bold text-white">{scoreResult?.scorePercentage || userParticipant?.score || 100}%</span> •{' '}
+                {scoreResult?.passed || userParticipant?.passed ? 'PASSED ✅' : 'NEEDS IMPROVEMENT ⚠'}
+              </p>
+            </div>
+            <div className="text-2xl">🏆</div>
+          </div>
+        )}
+
+        {/* Active Quiz Taking Session */}
+        {isTakingTest ? (
+          <div className="bg-slate-900 border border-slate-800 rounded-2xl p-6 space-y-6">
+            <div className="flex items-center justify-between border-b border-slate-800 pb-3">
+              <h3 className="text-base font-bold text-white">Active Test Session</h3>
+              <span className="text-xs text-amber-400 font-mono font-semibold">⏱ Time Remaining: Server Authoritative</span>
+            </div>
+
+            <div className="space-y-6">
+              {questions.map((q, idx) => (
+                <div key={q.id} className="p-4 rounded-xl bg-slate-950 border border-slate-800 space-y-3">
+                  <h4 className="text-sm font-bold text-slate-100">
+                    Q{idx + 1}. {q.questionText}
+                  </h4>
+                  <div className="space-y-2">
+                    {q.options.map((opt) => {
+                      const isSelected = selectedAnswers[q.id]?.includes(opt.id);
+                      return (
+                        <button
+                          key={opt.id}
+                          type="button"
+                          onClick={() => handleOptionSelect(q.id, opt.id)}
+                          className={`w-full text-left p-3 rounded-lg text-xs transition border ${
+                            isSelected
+                              ? 'bg-emerald-600/20 border-emerald-500 text-emerald-300 font-semibold'
+                              : 'bg-slate-900 border-slate-800 text-slate-300 hover:bg-slate-800'
+                          }`}
+                        >
+                          {opt.optionText}
+                        </button>
+                      );
+                    })}
+                  </div>
+                </div>
+              ))}
+            </div>
+
+            <div className="pt-4 border-t border-slate-800 flex justify-end">
               <button
                 onClick={handleSubmitTest}
-                disabled={isSubmitting}
-                className="px-6 py-2.5 bg-emerald-600 hover:bg-emerald-500 disabled:opacity-50 text-white font-bold text-xs rounded-xl shadow-lg transition"
+                disabled={submitting}
+                className="px-6 py-2.5 bg-emerald-600 hover:bg-emerald-500 text-white font-bold text-xs rounded-xl transition"
               >
-                {isSubmitting ? 'Submitting...' : 'Submit Answers 🚀'}
+                {submitting ? 'Submitting...' : 'Submit Answers Now'}
               </button>
-            )}
+            </div>
           </div>
-        </div>
-      )}
+        ) : (
+          /* Question Bank Inspector View */
+          <div className="space-y-4">
+            <div className="flex items-center justify-between">
+              <h3 className="text-base font-bold text-slate-200">Question Bank Inspector ({questions.length} MCQs)</h3>
+              {isSanitized && (
+                <span className="text-[11px] text-amber-400 font-mono bg-amber-500/10 px-2.5 py-1 rounded border border-amber-500/20">
+                  🔒 Correct answers hidden for active/scheduled test
+                </span>
+              )}
+            </div>
+
+            <div className="space-y-4">
+              {questions.map((q, idx) => (
+                <div key={q.id} className="p-4 rounded-xl bg-slate-900/80 border border-slate-800 space-y-3">
+                  <div className="flex items-start justify-between gap-3">
+                    <h4 className="text-sm font-bold text-slate-100">
+                      Q{idx + 1}. {q.questionText}
+                    </h4>
+                    <span className="text-[10px] bg-slate-800 text-slate-400 px-2 py-0.5 rounded font-mono shrink-0">
+                      {q.type || 'MCQ_SINGLE'}
+                    </span>
+                  </div>
+
+                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
+                    {q.options.map((opt) => {
+                      const isCorrect = opt.isCorrect || q.correctOptionId === opt.id;
+                      return (
+                        <div
+                          key={opt.id}
+                          className={`p-2.5 rounded-lg text-xs border ${
+                            isCorrect
+                              ? 'bg-emerald-950/40 border-emerald-500/50 text-emerald-300 font-semibold'
+                              : 'bg-slate-950 border-slate-800/80 text-slate-300'
+                          }`}
+                        >
+                          <span>{opt.optionText}</span>
+                          {isCorrect && <span className="ml-2 text-emerald-400 font-bold">✓</span>}
+                        </div>
+                      );
+                    })}
+                  </div>
+
+                  {q.explanation && (
+                    <div className="p-2.5 rounded-lg bg-indigo-950/30 border border-indigo-500/20 text-xs text-indigo-200">
+                      <span className="font-bold text-indigo-400">Explanation: </span>
+                      {q.explanation}
+                    </div>
+                  )}
+
+                  {q.groundingSource && (
+                    <div className="text-[11px] text-slate-500 font-mono">
+                      <span>Source Evidence: </span>
+                      <span className="text-slate-400">{q.groundingSource}</span>
+                    </div>
+                  )}
+                </div>
+              ))}
+            </div>
+          </div>
+        )}
+      </div>
     </div>
   );
 }

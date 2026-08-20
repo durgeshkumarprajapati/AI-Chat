@@ -31,7 +31,7 @@ interface MessageItem extends CollabMessageItem {
   id: string;
   channelId: string;
   senderId: string;
-  messageType?: 'TEXT' | 'VOICE';
+  messageType?: 'TEXT' | 'VOICE' | 'CALL_EVENT';
   content: string;
   replyToId?: string | null;
   isEdited: boolean;
@@ -44,6 +44,7 @@ interface MessageItem extends CollabMessageItem {
   sharedDocumentId?: string | null;
   sharedStudyQuestionId?: string | null;
   sharedMockTestId?: string | null;
+  callSessionId?: string | null;
   sharedMockTest?: {
     id: string;
     title: string;
@@ -215,6 +216,49 @@ function SharedMockTestCard({ msg }: { msg: MessageItem }) {
         >
           <span>🚀</span>
           <span>Take Test</span>
+        </Link>
+      </div>
+    </div>
+  );
+}
+
+function CallEventMessageCard({ msg }: { msg: MessageItem }) {
+  const isMissed = msg.content.includes('Missed') || msg.metadata?.status === 'MISSED';
+  const isDeclined = msg.content.includes('declined') || msg.metadata?.status === 'DECLINED';
+  const isVideo = msg.metadata?.callType === 'VIDEO' || msg.content.includes('video');
+  const isGroup = msg.metadata?.isGroup || msg.content.includes('Group');
+
+  return (
+    <div className="p-3.5 bg-slate-900/90 border border-slate-800 rounded-xl space-y-2 max-w-sm text-slate-100 shadow-md">
+      <div className="flex items-center justify-between">
+        <div className="flex items-center space-x-2">
+          <span className="text-base">{isVideo ? '📹' : '📞'}</span>
+          <span className="font-bold text-xs text-white">
+            {isGroup ? 'Group Call Event' : isVideo ? 'Video Call' : 'Voice Call'}
+          </span>
+        </div>
+        <span
+          className={`text-[10px] px-2 py-0.5 rounded font-bold uppercase ${
+            isMissed
+              ? 'bg-rose-500/20 text-rose-400 border border-rose-500/30'
+              : isDeclined
+              ? 'bg-amber-500/20 text-amber-400 border border-amber-500/30'
+              : 'bg-emerald-500/20 text-emerald-400 border border-emerald-500/30'
+          }`}
+        >
+          {isMissed ? 'Missed' : isDeclined ? 'Declined' : 'Ended'}
+        </span>
+      </div>
+
+      <p className="text-xs text-slate-300 font-medium">{msg.content}</p>
+
+      <div className="pt-2 border-t border-slate-800 flex items-center justify-between">
+        <Link
+          href="/collab-chat/calls"
+          className="text-[11px] text-blue-400 hover:text-blue-300 font-semibold transition flex items-center space-x-1"
+        >
+          <span>View call history</span>
+          <span>→</span>
         </Link>
       </div>
     </div>
@@ -1326,6 +1370,8 @@ export default function CollabChatPage() {
                               >
                                 {m.messageType === 'VOICE' ? (
                                   <VoiceMessagePlayer msg={m} />
+                                ) : m.messageType === 'CALL_EVENT' || m.callSessionId ? (
+                                  <CallEventMessageCard msg={m} />
                                 ) : m.sharedMockTestId || m.sharedMockTest ? (
                                   <SharedMockTestCard msg={m} />
                                 ) : (

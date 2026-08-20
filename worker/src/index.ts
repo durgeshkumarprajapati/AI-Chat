@@ -2,6 +2,7 @@ import amqp, { Channel, ConsumeMessage } from 'amqplib';
 import dotenv from 'dotenv';
 import { documentProcessor, DocumentProcessingJob } from './processors/document.processor.js';
 import { workerDocumentRepository } from './repositories/document.repository.js';
+import { workerCalendarSyncProcessor } from './processors/calendar-sync.processor.js';
 import { prisma } from './lib/prisma.js';
 
 dotenv.config({ path: '../.env' });
@@ -88,6 +89,17 @@ export async function startWorker() {
     );
 
     consumerTag = consumeResult.consumerTag;
+
+    // Start periodic Google Calendar Sync Retry loop
+    const syncInterval = setInterval(async () => {
+      if (isShuttingDown) return;
+      try {
+        await workerCalendarSyncProcessor.processPendingAndRetryJobs();
+      } catch (err) {
+        console.error('[Worker] Periodic calendar sync retry error:', err);
+      }
+    }, 30000);
+    syncInterval.unref();
   } catch (error) {
     console.error('[Worker] Failed to start worker:', error);
     process.exit(1);

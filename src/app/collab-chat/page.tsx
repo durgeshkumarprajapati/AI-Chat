@@ -53,6 +53,9 @@ interface MessageItem extends CollabMessageItem {
     durationMinutes: number;
     totalQuestions: number;
     googleCalendarLink?: string | null;
+    googleCalendarEventUrl?: string | null;
+    googleCalendarSyncStatus?: string | null;
+    googleCalendarSyncError?: string | null;
   } | null;
   voiceDurationMs?: number | null;
   voiceMimeType?: string | null;
@@ -178,7 +181,24 @@ function SharedMockTestCard({ msg }: { msg: MessageItem }) {
   const topic = test?.topic || 'General Practice';
   const duration = test?.durationMinutes || 30;
   const questionsCount = test?.totalQuestions || 10;
-  const calLink = test?.googleCalendarLink;
+  const syncStatus = test?.googleCalendarSyncStatus || 'PENDING';
+  const openUrl = test?.googleCalendarEventUrl || test?.googleCalendarLink;
+
+  const renderCalendarStatus = () => {
+    if (syncStatus === 'SYNCED') {
+      return <p className="text-[11px] text-emerald-300 font-semibold flex items-center gap-1"><span>✓</span> Added to Google Calendar</p>;
+    }
+    if (syncStatus === 'SYNCING') {
+      return <p className="text-[11px] text-amber-300 font-semibold flex items-center gap-1"><span>⏳</span> Adding to Google Calendar...</p>;
+    }
+    if (syncStatus === 'RETRY_PENDING') {
+      return <p className="text-[11px] text-sky-300 font-semibold flex items-center gap-1"><span>↻</span> Calendar sync pending</p>;
+    }
+    if (syncStatus === 'REAUTH_REQUIRED' || syncStatus === 'NOT_CONNECTED') {
+      return <p className="text-[11px] text-amber-400 font-semibold flex items-center gap-1"><span>⚠</span> Reconnect Google Calendar</p>;
+    }
+    return <p className="text-[11px] text-rose-300 font-semibold flex items-center gap-1"><span>⚠</span> Calendar synchronization failed</p>;
+  };
 
   return (
     <div className="p-4 rounded-2xl bg-gradient-to-br from-indigo-900/90 to-purple-900/90 border border-indigo-500/40 text-white space-y-3 min-w-[280px] shadow-lg">
@@ -190,33 +210,54 @@ function SharedMockTestCard({ msg }: { msg: MessageItem }) {
         <h4 className="text-sm font-bold truncate">{title}</h4>
         <p className="text-[11px] text-indigo-200 mt-0.5">{topic} • {duration} mins • {questionsCount} MCQs</p>
       </div>
-      <div className="flex flex-wrap gap-2 pt-1 border-t border-indigo-500/30">
-        {calLink && (
+
+      <div className="pt-1 border-t border-indigo-500/30 space-y-2">
+        {renderCalendarStatus()}
+        <div className="flex flex-wrap gap-2">
+          {syncStatus === 'SYNCED' && openUrl ? (
+            <a
+              href={openUrl}
+              target="_blank"
+              rel="noopener noreferrer"
+              className="px-3 py-1.5 bg-emerald-600 hover:bg-emerald-500 text-white text-[11px] font-bold rounded-xl transition flex items-center space-x-1"
+            >
+              <span>📅</span>
+              <span>Open Calendar</span>
+            </a>
+          ) : syncStatus === 'REAUTH_REQUIRED' || syncStatus === 'NOT_CONNECTED' ? (
+            <a
+              href="/api/integrations/google/connect"
+              className="px-3 py-1.5 bg-amber-600 hover:bg-amber-500 text-white text-[11px] font-bold rounded-xl transition flex items-center space-x-1"
+            >
+              <span>🔑</span>
+              <span>Connect Google</span>
+            </a>
+          ) : (
+            <button
+              onClick={() => alert('Calendar event is still being created.')}
+              className="px-3 py-1.5 bg-slate-800 hover:bg-slate-700 text-slate-300 text-[11px] font-semibold rounded-xl transition flex items-center space-x-1"
+            >
+              <span>📅</span>
+              <span>Open Calendar</span>
+            </button>
+          )}
+
           <a
-            href={calLink}
-            target="_blank"
-            rel="noopener noreferrer"
+            href={`/api/study/mock-tests/${testId}/ics`}
+            download
             className="px-3 py-1.5 bg-slate-800 hover:bg-slate-700 text-slate-200 text-[11px] font-semibold rounded-xl transition flex items-center space-x-1"
           >
-            <span>📅</span>
-            <span>Google Calendar</span>
+            <span>📥</span>
+            <span>.ics</span>
           </a>
-        )}
-        <a
-          href={`/api/study/mock-tests/${testId}/ics`}
-          download
-          className="px-3 py-1.5 bg-slate-800 hover:bg-slate-700 text-slate-200 text-[11px] font-semibold rounded-xl transition flex items-center space-x-1"
-        >
-          <span>📥</span>
-          <span>.ics</span>
-        </a>
-        <Link
-          href={`/study/mock-tests/${testId}`}
-          className="px-3.5 py-1.5 bg-indigo-500 hover:bg-indigo-400 text-white font-bold text-[11px] rounded-xl shadow transition flex items-center space-x-1"
-        >
-          <span>🚀</span>
-          <span>Take Test</span>
-        </Link>
+          <Link
+            href={`/study/mock-tests/${testId}`}
+            className="px-3.5 py-1.5 bg-indigo-500 hover:bg-indigo-400 text-white font-bold text-[11px] rounded-xl shadow transition flex items-center space-x-1"
+          >
+            <span>🚀</span>
+            <span>Take Test</span>
+          </Link>
+        </div>
       </div>
     </div>
   );

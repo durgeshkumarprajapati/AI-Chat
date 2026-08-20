@@ -109,6 +109,7 @@ model User {
   mockTestParticipants   MockTestParticipant[]
   collabCallsHosted      CollabCall[]           @relation("HostedCollabCalls")
   collabCallParticipations CollabCallParticipant[]
+  googleIntegration      GoogleIntegration?
   notifications          Notification[]         @relation("UserNotifications")
   triggeredNotifications Notification[]         @relation("TriggeredNotifications")
   notificationPreference NotificationPreference?
@@ -2138,6 +2139,11 @@ enum NotificationType {
   AI_REPLY
   MOCK_TEST_SCHEDULED
   MOCK_TEST_STARTING
+  MOCK_TEST_INVITATION
+  MOCK_TEST_STARTED
+  MOCK_TEST_COMPLETED
+  MOCK_TEST_EXPIRING
+  MOCK_TEST_RESULT
   CALL_INCOMING
   CALL_MISSED
 }
@@ -2198,6 +2204,7 @@ enum MockTestParticipantStatus {
   REGISTERED
   IN_PROGRESS
   SUBMITTED
+  AUTO_SUBMITTED
   EXPIRED
   ABSENT
 }
@@ -2310,6 +2317,23 @@ model CollabCallParticipant {
   @@index([callId])
   @@index([userId])
   @@map("collab_call_participants")
+}
+
+model GoogleIntegration {
+  id                    String    @id @default(uuid())
+  userId                String    @unique @map("user_id")
+  googleUserId          String?   @map("google_user_id")
+  email                 String?
+  encryptedAccessToken  String    @db.Text @map("encrypted_access_token")
+  encryptedRefreshToken String?   @db.Text @map("encrypted_refresh_token")
+  tokenExpiresAt        DateTime? @map("token_expires_at")
+  scope                 String?
+  createdAt             DateTime  @default(now()) @map("created_at")
+  updatedAt             DateTime  @updatedAt @map("updated_at")
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@map("google_integrations")
 }
 
 

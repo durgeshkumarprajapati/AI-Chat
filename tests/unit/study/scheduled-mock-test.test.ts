@@ -1,16 +1,37 @@
+import { mockTestTimerService } from '@/features/mock-tests/mock-test-timer.service';
 import { googleCalendarService } from '@/features/calendar/google-calendar.service';
 
-describe('ScheduledMockTestService Unit Tests', () => {
-  test('evaluates MCQ answers correctly with passing score', async () => {
-    const mockTestInput = {
-      title: 'Unit Test MCQ',
-      scheduledStartTime: new Date(Date.now() + 3600000),
-      durationMinutes: 30,
-      totalQuestions: 2
-    };
+describe('MockTestTimerService & Calendar Unit Tests', () => {
+  test('calculates server-authoritative remaining time for late join (scheduledEndAt - serverNow)', () => {
+    const scheduledStart = new Date('2026-08-25T19:00:00Z');
+    const nowServer = new Date('2026-08-25T19:10:00Z'); // Joined 10 mins late
 
-    expect(mockTestInput.totalQuestions).toBe(2);
-    expect(mockTestInput.durationMinutes).toBe(30);
+    const timer = mockTestTimerService.calculateServerTimer({
+      scheduledStartAt: scheduledStart,
+      durationMinutes: 30,
+      allowLateJoin: true,
+      nowServer
+    });
+
+    expect(timer.isStarted).toBe(true);
+    expect(timer.isExpired).toBe(false);
+    expect(timer.canJoin).toBe(true);
+    // Remaining time MUST be 20 minutes (1200 seconds), NOT 30 minutes!
+    expect(timer.remainingSeconds).toBe(1200);
+  });
+
+  test('rejects late join when allowLateJoin is false', () => {
+    const scheduledStart = new Date('2026-08-25T19:00:00Z');
+    const nowServer = new Date('2026-08-25T19:10:00Z');
+
+    const timer = mockTestTimerService.calculateServerTimer({
+      scheduledStartAt: scheduledStart,
+      durationMinutes: 30,
+      allowLateJoin: false,
+      nowServer
+    });
+
+    expect(timer.canJoin).toBe(false);
   });
 
   test('GoogleCalendarService generates valid URLs and .ics content', () => {

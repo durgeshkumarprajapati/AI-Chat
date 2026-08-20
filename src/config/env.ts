@@ -284,7 +284,7 @@ const serverEnvSchema = z
     CITY_EXPLORER_MAX_CONCURRENCY: z.coerce.number().int().positive().default(3),
     CITY_EXPLORER_MAX_CONCURRENT_GEMINI: z.coerce.number().int().positive().default(3),
     CITY_EXPLORER_MAX_CONCURRENT_WEB: z.coerce.number().int().positive().default(3),
-    CITY_EXPLORER_GEMINI_TIMEOUT_MS: z.coerce.number().int().positive().default(8000),
+    CITY_EXPLORER_GEMINI_TIMEOUT_MS: z.coerce.number().int().positive().default(30000),
     CITY_EXPLORER_WEBSEARCH_TIMEOUT_MS: z.coerce.number().int().positive().default(5000),
     CITY_EXPLORER_SOURCE_TIMEOUT_MS: z.coerce.number().int().positive().default(2500),
     CITY_EXPLORER_REQUEST_TIMEOUT_MS: z.coerce.number().int().positive().default(12000),

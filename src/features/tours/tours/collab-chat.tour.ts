@@ -49,6 +49,13 @@ export const collabChatTour: TourDefinition = {
       description: 'View instant bell alerts for new messages, mentions, role updates, and shared roadmaps with custom preferences.',
       target: 'data-tour="notification-center"',
       placement: 'left'
+    },
+    {
+      id: 'collab-voice',
+      title: 'Voice Recording & Audio Notes',
+      description: 'Record, preview, and send voice messages with interactive audio waveform controls.',
+      target: 'data-tour="collab-voice-btn"',
+      placement: 'top'
     }
   ]
 };

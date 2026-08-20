@@ -49,7 +49,8 @@ const PHASES: PhaseConfig[] = [
   { phase: 46, name: 'Production Real-Time Collaboration & AI Discussion Platform', command: 'npm run test:phase46' },
   { phase: 46.1, name: 'Production Collaboration UX, User Search, 1-to-1 DM, Group Member Management & Deduplication', command: 'npm run test:phase46.1' },
   { phase: 47, name: 'Realtime Notifications, Delivery Receipts & Group Management', command: 'npm run test:phase47' },
-  { phase: 47.1, name: 'Production Chat UI Stability & Realtime Render/Reconnection Fix', command: 'npm run test:phase47.1' }
+  { phase: 47.1, name: 'Production Chat UI Stability & Realtime Render/Reconnection Fix', command: 'npm run test:phase47.1' },
+  { phase: 48, name: 'Production Collaboration Messaging UX: Relative Timestamps, @Mentions & Voice Messages', command: 'npm run test:phase48' }
 ];
 
 async function runAllPhases() {

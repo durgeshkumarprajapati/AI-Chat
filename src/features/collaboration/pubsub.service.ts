@@ -18,7 +18,8 @@ export interface CollabEventPayload {
     | 'member:owner_changed'
     | 'notification:new'
     | 'notification:read'
-    | 'notification:count';
+    | 'notification:count'
+    | 'mention:new';
   channelId: string;
   senderId?: string;
   targetUserId?: string;

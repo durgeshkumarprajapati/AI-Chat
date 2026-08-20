@@ -107,6 +107,7 @@ model User {
   collabMentions         CollabMessageMention[] @relation("UserCollabMentions")
   createdMockTests       ScheduledMockTest[]    @relation("CreatedMockTests")
   mockTestParticipants   MockTestParticipant[]
+  calendarSyncs          MockTestCalendarSync[]
   collabCallsHosted      CollabCall[]           @relation("HostedCollabCalls")
   collabCallParticipations CollabCallParticipant[]
   googleIntegration      GoogleIntegration?
@@ -2228,42 +2229,76 @@ enum CallStatus {
 
 enum CalendarSyncStatus {
   PENDING
+  SYNCING
   SYNCED
+  RETRY_PENDING
   FAILED
+  REAUTH_REQUIRED
   NOT_CONNECTED
+  CANCELLED
 }
 
 model ScheduledMockTest {
-  id                      String             @id @default(uuid())
-  createdById             String             @map("created_by_id")
+  id                      String                 @id @default(uuid())
+  createdById             String                 @map("created_by_id")
   title                   String
-  description             String?            @db.Text
+  description             String?                @db.Text
   topic                   String?
-  documentId              String?            @map("document_id")
-  knowledgeBaseId         String?            @map("knowledge_base_id")
-  scheduledStartTime      DateTime           @map("scheduled_start_time")
-  durationMinutes         Int                @default(30) @map("duration_minutes")
-  totalQuestions          Int                @default(10) @map("total_questions")
-  passingScore            Float              @default(70.0) @map("passing_score")
-  status                  MockTestStatus     @default(SCHEDULED)
-  googleCalendarEventId   String?            @map("google_calendar_event_id")
-  googleCalendarLink      String?            @db.Text @map("google_calendar_link")
-  googleCalendarEventUrl  String?            @db.Text @map("google_calendar_event_url")
-  googleCalendarSyncStatus CalendarSyncStatus @default(PENDING) @map("google_calendar_sync_status")
-  googleCalendarSyncError String?            @db.Text @map("google_calendar_sync_error")
-  googleCalendarSyncedAt  DateTime?          @map("google_calendar_synced_at")
-  questions               Json               @default("[]")
-  createdAt               DateTime           @default(now()) @map("created_at")
-  updatedAt               DateTime           @updatedAt @map("updated_at")
+  documentId              String?                @map("document_id")
+  knowledgeBaseId         String?                @map("knowledge_base_id")
+  scheduledStartTime      DateTime               @map("scheduled_start_time")
+  durationMinutes         Int                    @default(30) @map("duration_minutes")
+  totalQuestions          Int                    @default(10) @map("total_questions")
+  passingScore            Float                  @default(70.0) @map("passing_score")
+  status                  MockTestStatus         @default(SCHEDULED)
+  googleCalendarEventId   String?                @map("google_calendar_event_id")
+  googleCalendarLink      String?                @db.Text @map("google_calendar_link")
+  googleCalendarEventUrl  String?                @db.Text @map("google_calendar_event_url")
+  googleCalendarSyncStatus CalendarSyncStatus     @default(PENDING) @map("google_calendar_sync_status")
+  googleCalendarSyncError String?                @db.Text @map("google_calendar_sync_error")
+  googleCalendarSyncedAt  DateTime?              @map("google_calendar_synced_at")
+  questions               Json                   @default("[]")
+  createdAt               DateTime               @default(now()) @map("created_at")
+  updatedAt               DateTime               @updatedAt @map("updated_at")
 
   createdBy        User                  @relation("CreatedMockTests", fields: [createdById], references: [id], onDelete: Cascade)
   participants     MockTestParticipant[]
   sharedInMessages CollabMessage[]       @relation("SharedMockTestMessages")
+  calendarSyncs    MockTestCalendarSync[]
 
   @@index([createdById])
   @@index([scheduledStartTime])
   @@index([status])
   @@map("scheduled_mock_tests")
+}
+
+model MockTestCalendarSync {
+  id               String             @id @default(uuid())
+  mockTestId       String             @map("mock_test_id")
+  userId           String             @map("user_id")
+  provider         String             @default("google")
+  calendarId       String             @default("primary")
+  eventId          String?            @map("event_id")
+  eventHtmlLink    String?            @db.Text @map("event_html_link")
+  status           CalendarSyncStatus @default(PENDING)
+  lastAttemptAt    DateTime?          @map("last_attempt_at")
+  nextRetryAt      DateTime?          @map("next_retry_at")
+  attemptCount     Int                @default(0) @map("attempt_count")
+  lastErrorCode    String?            @map("last_error_code")
+  lastErrorMessage String?            @db.Text @map("last_error_message")
+  syncedAt         DateTime?          @map("synced_at")
+  createdAt        DateTime           @default(now()) @map("created_at")
+  updatedAt        DateTime           @updatedAt @map("updated_at")
+
+  mockTest ScheduledMockTest @relation(fields: [mockTestId], references: [id], onDelete: Cascade)
+  user     User              @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@unique([mockTestId, userId])
+  @@index([userId, status])
+  @@index([mockTestId])
+  @@index([nextRetryAt])
+  @@index([status, nextRetryAt])
+  @@map("mock_test_calendar_syncs")
 }
 
 model MockTestParticipant {

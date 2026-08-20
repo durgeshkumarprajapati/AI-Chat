@@ -2,6 +2,7 @@ import { prisma } from '@/lib/prisma';
 import { mockTestGeneratorService } from '@/features/mock-tests/mock-test-generator.service';
 import { MCQQuestion } from '@/features/mock-tests/mock-test.types';
 import { googleCalendarService } from '@/features/calendar/google-calendar.service';
+import { calendarSyncService } from '@/features/google-calendar/google-calendar.service';
 import { MockTestStatus, MockTestParticipantStatus } from '@prisma/client';
 
 export interface ScheduleMockTestInput {
@@ -87,57 +88,18 @@ export class ScheduledMockTestService {
       }
     });
 
-    // 3. Attempt direct Google Calendar API creation (isolated from mock test creation)
-    const eventDetails = {
-      mockTestId: mockTest.id,
-      title: `📝 AI Mock Test: ${input.title}`,
-      description: input.description || `AI Generated Mock Test on ${input.topic || input.title}`,
-      startTime: scheduledStart,
-      endTime: scheduledEnd
-    };
-
+    // 3. Attempt Google Calendar API synchronization via CalendarSyncService
     try {
-      const apiResult = await googleCalendarService.createCalendarEventViaApi(userId, eventDetails);
-
-      if (apiResult.success) {
-        const updated = await prisma.scheduledMockTest.update({
-          where: { id: mockTest.id },
-          data: {
-            googleCalendarEventId: apiResult.eventId,
-            googleCalendarEventUrl: apiResult.htmlLink,
-            googleCalendarLink: apiResult.htmlLink,
-            googleCalendarSyncStatus: 'SYNCED',
-            googleCalendarSyncedAt: new Date(),
-            googleCalendarSyncError: null
-          },
-          include: {
-            createdBy: { select: { id: true, name: true, email: true, avatarUrl: true } }
-          }
-        });
-        return updated;
-      } else {
-        const syncStatus = apiResult.errorCode === 'GOOGLE_CALENDAR_NOT_CONNECTED' ? 'NOT_CONNECTED' : 'FAILED';
-        const updated = await prisma.scheduledMockTest.update({
-          where: { id: mockTest.id },
-          data: {
-            googleCalendarSyncStatus: syncStatus,
-            googleCalendarSyncError: apiResult.error
-          },
-          include: {
-            createdBy: { select: { id: true, name: true, email: true, avatarUrl: true } }
-          }
-        });
-        return updated;
-      }
-    } catch (calendarErr: any) {
-      console.error('[ScheduledMockTest] Calendar integration exception:', calendarErr?.message || calendarErr);
-      await prisma.scheduledMockTest.update({
+      await calendarSyncService.synchronizeMockTest(mockTest.id, userId);
+      const updated = await prisma.scheduledMockTest.findUnique({
         where: { id: mockTest.id },
-        data: {
-          googleCalendarSyncStatus: 'FAILED',
-          googleCalendarSyncError: calendarErr?.message || 'Calendar integration failed'
+        include: {
+          createdBy: { select: { id: true, name: true, email: true, avatarUrl: true } }
         }
       });
+      return updated || mockTest;
+    } catch (calendarErr: any) {
+      console.error('[ScheduledMockTest] Calendar sync exception:', calendarErr?.message || calendarErr);
       return mockTest;
     }
   }

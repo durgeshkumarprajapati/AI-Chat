@@ -522,6 +522,7 @@ export const envConfig = {
     clientSecret: env.server?.GOOGLE_CLIENT_SECRET,
     redirectUri: env.server?.GOOGLE_REDIRECT_URI ?? 'http://localhost:3000/api/integrations/google/callback',
     calendarScope: env.server?.GOOGLE_CALENDAR_SCOPE ?? 'https://www.googleapis.com/auth/calendar.events',
+    maxRetries: 5,
     enabled: Boolean(env.server?.GOOGLE_CLIENT_ID && env.server?.GOOGLE_CLIENT_SECRET)
   },
   webrtc: {

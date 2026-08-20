@@ -169,7 +169,7 @@ export class GeminiProvider implements LLMProvider {
     } catch (err: any) {
       clearTimeout(timeoutId);
       if (err.name === 'AbortError') {
-        throw new Error(`Gemini request timed out after ${request.timeoutMs || this.timeoutMs}ms.`);
+        throw new Error(`Gemini request timed out after ${request.timeoutMs || this.timeoutMs}ms. Check GEMINI_API_KEY, internet connectivity to Google APIs, or increase GEMINI_TIMEOUT_MS in .env.`);
       }
       throw err;
     }

@@ -269,7 +269,7 @@ const serverEnvSchema = z
     GEMINI_API_KEY: z.string().optional(),
     GEMINI_FAST_MODEL: z.string().default('gemini-2.5-flash'),
     GEMINI_REASONING_MODEL: z.string().default('gemini-2.5-pro'),
-    GEMINI_TIMEOUT_MS: z.coerce.number().int().positive().default(30000),
+    GEMINI_TIMEOUT_MS: z.coerce.number().int().positive().default(60000),
     GEMINI_MAX_OUTPUT_TOKENS: z.coerce.number().int().positive().default(4096),
     GEMINI_THINKING_LEVEL: z.string().default('low'),
     GEMINI_MAX_RETRIES: z.coerce.number().int().nonnegative().default(2),

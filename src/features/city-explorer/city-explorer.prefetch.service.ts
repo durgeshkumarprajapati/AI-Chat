@@ -80,11 +80,17 @@ export class CityExplorerPrefetchService {
         const cachedEntry = await this.cache.getCachedAnswer(rawCity, qItem.id);
         if (cachedEntry && cachedEntry.result) {
           resultsMap.set(qItem.id, cachedEntry.result);
+          cityExplorerTelemetryService.logEvent('explore.ai.cache.hit', rawCity, qItem.id, userId);
           cityExplorerTelemetryService.logEvent('city_explorer.answer.cache_hit', rawCity, qItem.id, userId);
           continue;
         }
+      } else {
+        cityExplorerTelemetryService.logEvent('explore.ai.answer.refreshed', rawCity, qItem.id, userId);
       }
 
+      cityExplorerTelemetryService.logEvent('explore.ai.cache.miss', rawCity, qItem.id, userId, {
+        isForceRefresh
+      });
       cityExplorerTelemetryService.logEvent('city_explorer.answer.cache_miss', rawCity, qItem.id, userId, {
         isForceRefresh
       });
@@ -159,7 +165,7 @@ export class CityExplorerPrefetchService {
               this.inFlightMap.delete(inFlightKey);
             }
           },
-          { signal, timeoutMs: env.server?.CITY_EXPLORER_SOURCE_TIMEOUT_MS || 5000 }
+          { signal, timeoutMs: env.server?.CITY_EXPLORER_GEMINI_TIMEOUT_MS || 30000 }
         );
       }
     }

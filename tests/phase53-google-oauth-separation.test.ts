@@ -8,6 +8,7 @@ describe('Phase 53 — Separate Google Sign-In OAuth from Google Calendar OAuth'
   let testUser: any;
 
   beforeAll(async () => {
+    process.env.GOOGLE_AUTH_REDIRECT_URI = 'http://localhost:3000/api/auth/google/callback';
     testUser = await prisma.user.findFirst({ where: { email: 'phase53_test@example.com' } });
     if (!testUser) {
       testUser = await prisma.user.create({

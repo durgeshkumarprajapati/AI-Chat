@@ -43,6 +43,11 @@ export class LLMFallbackService {
         throw err;
       }
 
+      // For CITY_EXPLORER, if Ollama fallback is not allowed, rethrow primary provider error directly
+      if (request.feature === 'CITY_EXPLORER' && process.env.CITY_EXPLORER_ALLOW_OLLAMA_FALLBACK !== 'true') {
+        throw err;
+      }
+
       // Check if Ollama fallback is disallowed for CITY_EXPLORER
       this.checkCityExplorerOllamaForbidden(request, 'ollama');
 

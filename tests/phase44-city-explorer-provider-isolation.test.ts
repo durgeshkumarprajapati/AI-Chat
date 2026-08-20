@@ -53,7 +53,7 @@ describe('Phase 44 — Production City Explorer Provider Isolation & Zero-Stall 
     expect(route.providerName).not.toBe('ollama');
   });
 
-  it('5. Gemini failure uses WebSearch fallback without triggering Ollama', async () => {
+  it('5. Gemini failure returns FAILED status without triggering Ollama or WebSearch', async () => {
     jest.spyOn(geminiCityAnswerProvider, 'generateAnswer').mockRejectedValueOnce(new Error('Gemini API 503 Unavailable'));
     const result = await cityExplorerAnswerService.generateAnswer('u1', { name: 'Vadodara' }, {
       id: 'about-city-overview',
@@ -64,8 +64,8 @@ describe('Phase 44 — Production City Explorer Provider Isolation & Zero-Stall 
       priority: 'P0'
     });
 
-    expect(result.provider).toBe('WEB_SEARCH');
-    expect(result.answer).not.toBe('Ollama answer');
+    expect(result.status).toBe('FAILED');
+    expect(result.answer).toBeUndefined();
   });
 
   it('6. Gemini failure NEVER calls Ollama when CITY_EXPLORER_ALLOW_OLLAMA_FALLBACK=false', async () => {

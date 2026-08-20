@@ -84,13 +84,11 @@ export async function POST(req: NextRequest) {
 
     const durationMs = Date.now() - startTime;
     const allCached = payload.answers.every((a) => a.cached);
-    const anyFallback = payload.answers.some((a) => a.provider === 'WEB_SEARCH');
-
     const res = NextResponse.json(payload, { status: 200 });
     res.headers.set('X-City-Cache', allCached ? 'HIT' : 'MISS');
-    res.headers.set('X-City-Provider', anyFallback ? 'WEB' : 'GEMINI');
+    res.headers.set('X-City-Provider', 'GEMINI');
     res.headers.set('X-City-Latency-Ms', durationMs.toString());
-    res.headers.set('X-City-Fallback', anyFallback.toString());
+    res.headers.set('X-City-Fallback', 'false');
 
     return res;
   } catch (err: any) {

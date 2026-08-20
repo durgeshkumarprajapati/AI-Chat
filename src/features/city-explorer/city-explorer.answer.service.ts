@@ -2,9 +2,7 @@ import { PredefinedQuestionItem, CityInfo, CityExplorerAnswerResult } from './ci
 import { CityExplorerAnswerProvider } from './providers/city-explorer-answer-provider.interface';
 import { WeatherCityAnswerProvider, weatherCityAnswerProvider } from './providers/weather-city-answer.provider';
 import { geminiCityAnswerProvider } from './providers/gemini-city-answer.provider';
-import { WebSearchCityAnswerProvider, webSearchCityAnswerProvider } from './providers/web-search-city-answer.provider';
 import { cityExplorerTelemetryService } from './city-explorer.telemetry.service';
-import { env } from '@/config/env';
 
 export class CityExplorerAnswerService {
   private providers: CityExplorerAnswerProvider[];
@@ -20,27 +18,25 @@ export class CityExplorerAnswerService {
       this.providers = arg1;
     } else if (arg1 || weather) {
       const wProvider = weather ? new WeatherCityAnswerProvider(weather) : weatherCityAnswerProvider;
-      const wsProvider = arg1 ? new WebSearchCityAnswerProvider(arg1) : webSearchCityAnswerProvider;
-      this.providers = [wProvider, geminiCityAnswerProvider, wsProvider];
+      this.providers = [wProvider, geminiCityAnswerProvider];
     } else {
       this.providers = [
         weatherCityAnswerProvider,
-        geminiCityAnswerProvider,
-        webSearchCityAnswerProvider
+        geminiCityAnswerProvider
       ];
     }
   }
 
   /**
-   * Generates a grounded answer for a single city explorer question using provider strategy chain
-   * (Weather -> Gemini Web Grounding -> WebSearch Fallback).
-   * Enforces strict source isolation (sourceMode = "WEB_PUBLIC") so private documents are never touched.
+   * Generates an AI answer exclusively using Gemini for city explorer questions
+   * (or Weather for weather queries).
    */
   public async generateAnswer(
     userId: string,
     city: CityInfo,
     questionItem: PredefinedQuestionItem,
-    signal?: AbortSignal
+    signal?: AbortSignal,
+    context?: { text: string; source?: string }[]
   ): Promise<CityExplorerAnswerResult> {
     const startTime = Date.now();
     const cityStr = city.name.trim();
@@ -53,43 +49,28 @@ export class CityExplorerAnswerService {
       }
     }
 
-    // 2. Gemini Web Grounding Provider Check
-    const isV2Enabled = env.server?.CITY_EXPLORER_V2_ENABLED ?? true;
-    if (isV2Enabled) {
-      const geminiProvider = this.providers.find((p) => p.name === 'GEMINI');
-      if (geminiProvider && geminiProvider.supports(questionItem)) {
-        try {
-          const res = await geminiProvider.generateAnswer(userId, city, questionItem, signal);
-          return res;
-        } catch (err: any) {
-          console.warn(`[CityExplorerAnswerService] Gemini provider failed for ${questionItem.id}, attempting WebSearch fallback:`, err?.message || String(err));
-          cityExplorerTelemetryService.logEvent('city_explorer.answer.fallback_used', cityStr, questionItem.id, userId, {
-            primaryProvider: 'GEMINI',
-            fallbackProvider: 'WEB_SEARCH',
-            reason: err?.message || String(err)
-          });
-        }
-      }
-    }
-
-    // 3. WebSearch Fallback Provider
-    const webSearchProvider = this.providers.find((p) => p.name === 'WEB_SEARCH');
-    if (webSearchProvider && webSearchProvider.supports(questionItem)) {
+    // 2. Gemini Provider Check (Gemini Only)
+    const geminiProvider = this.providers.find((p) => p.name === 'GEMINI') || geminiCityAnswerProvider;
+    if (geminiProvider && geminiProvider.supports(questionItem)) {
       try {
-        const res = await webSearchProvider.generateAnswer(userId, city, questionItem, signal);
+        const res = await (geminiProvider as any).generateAnswer(userId, city, questionItem, signal, context);
         return res;
       } catch (err: any) {
-        console.error(`[CityExplorerAnswerService] WebSearch fallback provider failed for ${questionItem.id}:`, err);
+        console.error(`[CityExplorerAnswerService] Gemini provider failed for ${questionItem.id}:`, err?.message || String(err));
+        cityExplorerTelemetryService.logEvent('explore.ai.generation.failed', cityStr, questionItem.id, userId, {
+          provider: 'GEMINI',
+          reason: err?.message || String(err)
+        });
       }
     }
 
-    // 4. Final Fail-Safe Response
+    // 3. Final Fail-Safe Response if Gemini fails
     return {
       questionId: questionItem.id,
       category: questionItem.category,
       question: questionItem.question,
-      status: 'UNAVAILABLE',
-      error: 'This city information is temporarily unavailable.',
+      status: 'FAILED',
+      error: 'AI answer is temporarily unavailable.',
       cached: false,
       durationMs: Date.now() - startTime,
       generatedAt: new Date().toISOString()

@@ -1,5 +1,5 @@
 import { CityExplorerAnswerProvider } from './city-explorer-answer-provider.interface';
-import { PredefinedQuestionItem, CityInfo, CityExplorerAnswerResult, CitationItem } from '../city-explorer.types';
+import { PredefinedQuestionItem, CityInfo, CityExplorerAnswerResult, CitationItem, ExploreAnswerSchema } from '../city-explorer.types';
 import { llmGateway, LLMGateway } from '@/features/llm/llm-gateway.service';
 import { cityExplorerTelemetryService } from '../city-explorer.telemetry.service';
 import { env } from '@/config/env';
@@ -20,7 +20,8 @@ export class GeminiCityAnswerProvider implements CityExplorerAnswerProvider {
     userId: string,
     city: CityInfo,
     questionItem: PredefinedQuestionItem,
-    signal?: AbortSignal
+    signal?: AbortSignal,
+    context?: { text: string; source?: string }[]
   ): Promise<CityExplorerAnswerResult> {
     const startTime = Date.now();
     const cityStr = city.name.trim();
@@ -32,12 +33,39 @@ export class GeminiCityAnswerProvider implements CityExplorerAnswerProvider {
       throw new Error('Gemini provider is disabled or API key is not configured.');
     }
 
-    const systemPrompt = `You are a public city information assistant. Answer using verified web-grounded information for ${cityStr}. Do not invent facts. Prefer official and authoritative sources. Return concise structured information (2-4 sentences).`;
+    const systemPrompt = `You are the AI assistant for Document AI City Explorer.
 
-    const prompt = `City: ${cityStr}${city.region ? `, Region: ${city.region}` : ''}, Country: ${city.country || 'India'}\nQuestion: ${questionItem.question}`;
-    const timeoutMs = env.server?.CITY_EXPLORER_GEMINI_TIMEOUT_MS || 8000;
+Answer the user's city/travel question clearly and concisely.
 
-    cityExplorerTelemetryService.logEvent('city_explorer.provider.selected', cityStr, questionItem.id, userId, {
+City:
+${cityStr}${city.region ? `, Region: ${city.region}` : ''}${city.country ? `, Country: ${city.country}` : ''}
+
+Category:
+${questionItem.category}
+
+Question:
+${questionItem.question}
+
+Rules:
+- Answer specifically about the requested city.
+- Do not invent businesses, addresses, phone numbers, prices, opening hours, or other precise facts.
+- If information is uncertain, explicitly say so.
+- Prefer concise factual answers.
+- Do not mention that you are an AI unless necessary.
+- Do not return markdown unless requested.
+- Do not include unsupported citations.
+- Return the response using JSON format matching schema: {"answer": "string", "confidence": "high"|"medium"|"low", "highlights": ["string"]}.`;
+
+    let prompt = `City: ${cityStr}${city.region ? `, Region: ${city.region}` : ''}, Country: ${city.country || 'India'}\nQuestion: ${questionItem.question}`;
+    
+    if (context && context.length > 0) {
+      const contextText = context.map((c) => c.text).join('\n---\n');
+      prompt += `\n\nRetrieved Context:\n${contextText}`;
+    }
+
+    const timeoutMs = env.server?.CITY_EXPLORER_GEMINI_TIMEOUT_MS || 30000;
+
+    cityExplorerTelemetryService.logEvent('explore.ai.generation.started', cityStr, questionItem.id, userId, {
       feature: 'CITY_EXPLORER',
       providerRequested: 'gemini',
       providerSelected: 'gemini',
@@ -56,21 +84,55 @@ export class GeminiCityAnswerProvider implements CityExplorerAnswerProvider {
         timeoutMs
       });
 
-      const text = response.text ? response.text.trim() : '';
-      if (!text) {
-        throw new Error('Gemini web grounding returned empty output.');
+      const rawText = response.text ? response.text.trim() : '';
+      if (!rawText) {
+        throw new Error('Gemini returned empty output.');
+      }
+
+      // Strip markdown code fences if present
+      const cleanedJson = rawText
+        .replace(/^```(?:json)?/i, '')
+        .replace(/```$/i, '')
+        .trim();
+
+      let answerText = rawText;
+      let confidence: 'high' | 'medium' | 'low' = 'medium';
+      let highlights: string[] | undefined = undefined;
+
+      try {
+        const parsedObj = JSON.parse(cleanedJson);
+        const validated = ExploreAnswerSchema.safeParse(parsedObj);
+        if (validated.success) {
+          answerText = validated.data.answer;
+          confidence = validated.data.confidence;
+          highlights = validated.data.highlights;
+        } else {
+          cityExplorerTelemetryService.logEvent('explore.ai.validation.failed', cityStr, questionItem.id, userId, {
+            error: validated.error.message,
+            rawText
+          });
+          // Fallback to text if answer property exists in raw JSON object
+          if (typeof parsedObj?.answer === 'string') {
+            answerText = parsedObj.answer;
+          }
+        }
+      } catch {
+        cityExplorerTelemetryService.logEvent('explore.ai.validation.failed', cityStr, questionItem.id, userId, {
+          reason: 'JSON parsing failed, falling back to raw text',
+          rawText
+        });
       }
 
       const durationMs = Date.now() - startTime;
       const citations: CitationItem[] = [
         {
-          title: `${cityStr} Verified Web Knowledge`,
-          domain: 'google.com/search',
-          snippet: `Grounded public web knowledge for ${cityStr}`
+          title: `${cityStr} AI Grounded Insight`,
+          domain: 'gemini.google.com',
+          snippet: `AI Generated information for ${cityStr}`
         }
       ];
 
-      cityExplorerTelemetryService.logEvent('city_explorer.provider.success', cityStr, questionItem.id, userId, {
+      cityExplorerTelemetryService.logEvent('explore.ai.generation.completed', cityStr, questionItem.id, userId, {
         feature: 'CITY_EXPLORER',
         providerRequested: 'gemini',
         providerSelected: 'gemini',
@@ -78,7 +140,7 @@ export class GeminiCityAnswerProvider implements CityExplorerAnswerProvider {
         sourceMode: 'WEB_PUBLIC',
         cacheHit: false,
         latencyMs: durationMs,
-        fallbackUsed: false
+        confidence
       });
 
       return {
@@ -86,7 +148,9 @@ export class GeminiCityAnswerProvider implements CityExplorerAnswerProvider {
         category: questionItem.category,
         question: questionItem.question,
         status: 'READY',
-        answer: text,
+        answer: answerText,
+        confidence,
+        highlights,
         citations,
         provider: this.name,
         cached: false,
@@ -97,7 +161,7 @@ export class GeminiCityAnswerProvider implements CityExplorerAnswerProvider {
       const isTimeout = err?.message?.includes('timed out') || err?.name === 'TimeoutError';
 
       cityExplorerTelemetryService.logEvent(
-        isTimeout ? 'city_explorer.provider.timeout' : 'city_explorer.provider.failure',
+        isTimeout ? 'city_explorer.provider.timeout' : 'explore.ai.generation.failed',
         cityStr,
         questionItem.id,
         userId,

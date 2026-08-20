@@ -57,12 +57,12 @@ export class GoogleAuthService {
   }
 
   /**
-   * Generates Google OAuth 2.0 Auth URL
+   * Generates Google OAuth 2.0 Auth URL specifically for Google Calendar integration
    */
   public getGoogleAuthUrl(userId: string): string {
     const clientId = envConfig.google.clientId || process.env.GOOGLE_CLIENT_ID || 'mock-google-client-id';
-    const redirectUri = envConfig.google.redirectUri || `${process.env.NEXTAUTH_URL || 'http://localhost:3000'}/api/integrations/google/callback`;
-    const scope = encodeURIComponent(`${envConfig.google.calendarScope} openid email profile`);
+    const redirectUri = envConfig.google.calendar.redirectUri;
+    const scope = encodeURIComponent(envConfig.google.calendar.scope);
 
     return `https://accounts.google.com/o/oauth2/v2/auth?response_type=code&client_id=${clientId}&redirect_uri=${encodeURIComponent(
       redirectUri
@@ -75,13 +75,13 @@ export class GoogleAuthService {
   public async exchangeCodeForTokens(code: string, userId: string) {
     const clientId = envConfig.google.clientId || process.env.GOOGLE_CLIENT_ID;
     const clientSecret = envConfig.google.clientSecret || process.env.GOOGLE_CLIENT_SECRET;
-    const redirectUri = envConfig.google.redirectUri || `${process.env.NEXTAUTH_URL || 'http://localhost:3000'}/api/integrations/google/callback`;
+    const redirectUri = envConfig.google.calendar.redirectUri;
 
     let accessToken = `mock_access_token_${Date.now()}`;
     let refreshToken: string | undefined = `mock_refresh_token_${Date.now()}`;
     let googleEmail = 'user@gmail.com';
     let googleUserId: string | undefined = undefined;
-    let scope = envConfig.google.calendarScope;
+    let scope = envConfig.google.calendar.scope;
 
     if (clientId && clientSecret && code && !code.startsWith('mock_')) {
       try {
@@ -283,7 +283,7 @@ export class GoogleAuthService {
         accountEmail: null,
         email: null,
         scopeGranted: false,
-        requiredScope: envConfig.google.calendarScope
+        requiredScope: envConfig.google.calendar.scope
       };
     }
 
@@ -300,7 +300,7 @@ export class GoogleAuthService {
       accountEmail: integration.email || 'user@gmail.com',
       email: integration.email || 'user@gmail.com',
       scopeGranted,
-      requiredScope: envConfig.google.calendarScope
+      requiredScope: envConfig.google.calendar.scope
     };
   }
 }

@@ -2,6 +2,18 @@ import { NextRequest, NextResponse } from 'next/server';
 import { googleAuthService } from '@/features/auth/google-auth.service';
 import { sessionService } from '@/features/auth/session.service';
 
+export async function GET() {
+  try {
+    const authUrl = googleAuthService.getSignInAuthUrl();
+    return NextResponse.redirect(authUrl);
+  } catch (error: any) {
+    return NextResponse.json(
+      { success: false, error: error?.message || 'Failed to initiate Google Sign-In flow' },
+      { status: 400 }
+    );
+  }
+}
+
 export async function POST(req: NextRequest) {
   try {
     const body = await req.json().catch(() => ({}));

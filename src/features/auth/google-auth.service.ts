@@ -1,4 +1,5 @@
 import { prisma } from '@/lib/prisma';
+import { envConfig } from '@/config/env';
 import { SessionUser, sessionService } from './session.service';
 import { UserRole, AuthProvider, UserStatus } from '@prisma/client';
 
@@ -11,6 +12,20 @@ export interface GoogleUserProfile {
 }
 
 export class GoogleAuthService {
+  /**
+   * Generates Google OAuth Authorization URL specifically for Sign-In authentication.
+   * Uses GOOGLE_AUTH_REDIRECT_URI and GOOGLE_AUTH_SCOPES (openid email profile).
+   */
+  public getSignInAuthUrl(state?: string): string {
+    const clientId = envConfig.google.clientId || 'mock-google-client-id';
+    const redirectUri = envConfig.google.auth.redirectUri;
+    const scopes = encodeURIComponent(envConfig.google.auth.scopes);
+
+    return `https://accounts.google.com/o/oauth2/v2/auth?response_type=code&client_id=${clientId}&redirect_uri=${encodeURIComponent(
+      redirectUri
+    )}&scope=${scopes}&access_type=online&prompt=select_account${state ? `&state=${encodeURIComponent(state)}` : ''}`;
+  }
+
   /**
    * Validates a Google OAuth credential payload/token safely and links/creates the user in PostgreSQL.
    */

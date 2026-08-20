@@ -181,6 +181,8 @@ const serverEnvSchema = z
     SESSION_EXPIRY_DAYS: z.coerce.number().int().positive().default(7),
     GOOGLE_CLIENT_ID: z.string().optional(),
     GOOGLE_CLIENT_SECRET: z.string().optional(),
+    GOOGLE_AUTH_REDIRECT_URI: z.string().optional().default('http://localhost:3000/api/auth/google/callback'),
+    GOOGLE_AUTH_SCOPES: z.string().optional().default('openid email profile'),
     GOOGLE_REDIRECT_URI: z.string().optional().default('http://localhost:3000/api/integrations/google/callback'),
     GOOGLE_CALENDAR_SCOPE: z.string().default('https://www.googleapis.com/auth/calendar.events'),
     MOCK_TEST_DEFAULT_QUESTION_COUNT: z.coerce.number().int().positive().default(10),
@@ -520,6 +522,18 @@ export const envConfig = {
   google: {
     clientId: env.server?.GOOGLE_CLIENT_ID,
     clientSecret: env.server?.GOOGLE_CLIENT_SECRET,
+
+    auth: {
+      redirectUri: env.server?.GOOGLE_AUTH_REDIRECT_URI ?? 'http://localhost:3000/api/auth/google/callback',
+      scopes: env.server?.GOOGLE_AUTH_SCOPES ?? 'openid email profile'
+    },
+
+    calendar: {
+      redirectUri: env.server?.GOOGLE_REDIRECT_URI ?? 'http://localhost:3000/api/integrations/google/callback',
+      scope: env.server?.GOOGLE_CALENDAR_SCOPE ?? 'https://www.googleapis.com/auth/calendar.events'
+    },
+
+    // Backward compatibility properties
     redirectUri: env.server?.GOOGLE_REDIRECT_URI ?? 'http://localhost:3000/api/integrations/google/callback',
     calendarScope: env.server?.GOOGLE_CALENDAR_SCOPE ?? 'https://www.googleapis.com/auth/calendar.events',
     maxRetries: 5,

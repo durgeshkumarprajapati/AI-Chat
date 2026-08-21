@@ -2,6 +2,9 @@
 
 import React, { useState } from 'react';
 import Link from 'next/link';
+import { AuthLayoutShell } from '@/components/auth/AuthLayoutShell';
+import { AuthBrandHeader } from '@/components/auth/AuthBrandHeader';
+import { AuthCard } from '@/components/auth/AuthCard';
 
 export default function ForgotPasswordPage() {
   const [email, setEmail] = useState('');
@@ -29,55 +32,56 @@ export default function ForgotPasswordPage() {
   };
 
   return (
-    <div className="min-h-screen bg-slate-950 flex flex-col justify-center py-12 sm:px-6 lg:px-8 text-slate-100">
-      <div className="sm:mx-auto sm:w-full sm:max-w-md">
-        <h2 className="text-center text-xl font-medium text-slate-300">
-          Reset Your Password
-        </h2>
-        <p className="mt-2 text-center text-xs text-slate-400">
-          Enter your account email to receive a password reset link.
+    <AuthLayoutShell>
+      <AuthBrandHeader
+        title="Document AI"
+        subtitle="Reset Your Password"
+      />
+
+      <AuthCard>
+        <p className="text-xs text-[#8c909f] text-center font-sans">
+          Enter your account email below to receive a password reset link.
         </p>
-      </div>
 
-      <div className="mt-8 sm:mx-auto sm:w-full sm:max-w-md">
-        <div className="bg-slate-900/80 backdrop-blur-md py-8 px-4 shadow-xl border border-slate-800 rounded-2xl sm:px-10">
-          {message && (
-            <div className="mb-4 p-3 rounded-lg bg-indigo-950/80 border border-indigo-800 text-xs text-indigo-300">
-              {message}
-            </div>
-          )}
+        {message && (
+          <div className="p-3.5 rounded-xl bg-[#4d8eff]/15 border border-[#4d8eff]/40 text-xs font-semibold text-[#adc6ff]">
+            ℹ️ {message}
+          </div>
+        )}
 
-          <form className="space-y-4" onSubmit={handleSubmit}>
-            <div>
-              <label className="block text-xs font-medium text-slate-300 mb-1">
-                Email Address
-              </label>
+        <form className="space-y-4 font-sans" onSubmit={handleSubmit}>
+          <div className="space-y-1.5">
+            <label className="block text-[10px] font-mono font-bold text-[#adc6ff] uppercase tracking-wider">
+              Email Address
+            </label>
+            <div className="relative">
+              <span className="absolute left-3.5 top-1/2 -translate-y-1/2 text-xs text-[#8c909f]">✉</span>
               <input
                 type="email"
                 required
                 value={email}
                 onChange={(e) => setEmail(e.target.value)}
-                className="w-full px-3 py-2 bg-slate-950 border border-slate-800 rounded-lg text-xs text-white focus:outline-none focus:border-indigo-500"
+                className="w-full h-12 pl-10 pr-4 bg-[#0f131d] border border-[#424754] rounded-xl text-xs text-[#dfe2f1] placeholder-[#8c909f] focus:outline-none focus:border-[#4d8eff] shadow-inner transition"
                 placeholder="you@example.com"
               />
             </div>
-
-            <button
-              type="submit"
-              disabled={loading}
-              className="w-full py-2.5 px-4 bg-indigo-600 hover:bg-indigo-500 text-white rounded-lg text-xs font-medium transition shadow-lg shadow-indigo-600/20 disabled:opacity-50"
-            >
-              {loading ? 'Sending link...' : 'Send Reset Link'}
-            </button>
-          </form>
-
-          <div className="mt-6 text-center text-xs text-slate-400">
-            <Link href="/login" className="text-indigo-400 hover:text-indigo-300 font-medium">
-              Back to Sign In
-            </Link>
           </div>
+
+          <button
+            type="submit"
+            disabled={loading}
+            className="w-full h-12 mt-2 bg-gradient-to-r from-[#4d8eff] via-[#4d8eff] to-[#adc6ff] hover:opacity-95 disabled:opacity-50 text-[#0a0e18] font-extrabold text-xs rounded-xl shadow-lg shadow-[#4d8eff]/20 transition flex items-center justify-center space-x-2"
+          >
+            <span>{loading ? 'Sending link...' : 'Send Reset Link'}</span>
+          </button>
+        </form>
+
+        <div className="pt-2 text-center text-xs text-[#8c909f] font-sans">
+          <Link href="/login" className="text-[#4d8eff] hover:text-[#adc6ff] font-bold transition">
+            ← Back to Sign In
+          </Link>
         </div>
-      </div>
-    </div>
+      </AuthCard>
+    </AuthLayoutShell>
   );
 }

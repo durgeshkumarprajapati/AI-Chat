@@ -3,6 +3,9 @@
 import React, { useState } from 'react';
 import Link from 'next/link';
 import { useRouter } from 'next/navigation';
+import { AuthLayoutShell } from '@/components/auth/AuthLayoutShell';
+import { AuthBrandHeader } from '@/components/auth/AuthBrandHeader';
+import { AuthCard } from '@/components/auth/AuthCard';
 
 export default function RegisterPage() {
   const router = useRouter();
@@ -46,103 +49,105 @@ export default function RegisterPage() {
   };
 
   return (
-    <div className="min-h-screen bg-slate-950 flex flex-col justify-center py-12 sm:px-6 lg:px-8 text-slate-100">
-      <div className="sm:mx-auto sm:w-full sm:max-w-md">
-        <div className="flex justify-center items-center space-x-3">
-          <div className="h-10 w-10 rounded-xl bg-gradient-to-tr from-indigo-600 to-sky-400 flex items-center justify-center font-bold text-white shadow-lg">
-            AI
+    <AuthLayoutShell>
+      <AuthBrandHeader
+        title="Document AI"
+        subtitle="Create your account"
+      />
+
+      <AuthCard>
+        {error && (
+          <div className="p-3.5 rounded-xl bg-rose-950/80 border border-rose-800 text-xs font-semibold text-rose-300">
+            ⚠️ {error}
           </div>
-          <span className="text-2xl font-bold bg-gradient-to-r from-white via-slate-200 to-indigo-300 bg-clip-text text-transparent">
-            Document AI RAG
-          </span>
-        </div>
-        <h2 className="mt-6 text-center text-xl font-medium text-slate-300">
-          Create your account
-        </h2>
-      </div>
+        )}
 
-      <div className="mt-8 sm:mx-auto sm:w-full sm:max-w-md">
-        <div className="bg-slate-900/80 backdrop-blur-md py-8 px-4 shadow-xl border border-slate-800 rounded-2xl sm:px-10">
-          {error && (
-            <div className="mb-4 p-3 rounded-lg bg-rose-950/80 border border-rose-800/80 text-xs text-rose-300">
-              {error}
-            </div>
-          )}
-
-          <form className="space-y-4" onSubmit={handleSubmit}>
-            <div>
-              <label className="block text-xs font-medium text-slate-300 mb-1">
-                Full Name
-              </label>
+        <form className="space-y-4 font-sans" onSubmit={handleSubmit}>
+          <div className="space-y-1.5">
+            <label className="block text-[10px] font-mono font-bold text-[#adc6ff] uppercase tracking-wider">
+              Full Name
+            </label>
+            <div className="relative">
+              <span className="absolute left-3.5 top-1/2 -translate-y-1/2 text-xs text-[#8c909f]">👤</span>
               <input
                 type="text"
                 required
                 value={name}
                 onChange={(e) => setName(e.target.value)}
-                className="w-full px-3 py-2 bg-slate-950 border border-slate-800 rounded-lg text-xs text-white focus:outline-none focus:border-indigo-500"
+                className="w-full h-12 pl-10 pr-4 bg-[#0f131d] border border-[#424754] rounded-xl text-xs text-[#dfe2f1] placeholder-[#8c909f] focus:outline-none focus:border-[#4d8eff] shadow-inner transition"
                 placeholder="John Doe"
               />
             </div>
+          </div>
 
-            <div>
-              <label className="block text-xs font-medium text-slate-300 mb-1">
-                Email Address
-              </label>
+          <div className="space-y-1.5">
+            <label className="block text-[10px] font-mono font-bold text-[#adc6ff] uppercase tracking-wider">
+              Email Address
+            </label>
+            <div className="relative">
+              <span className="absolute left-3.5 top-1/2 -translate-y-1/2 text-xs text-[#8c909f]">✉</span>
               <input
                 type="email"
                 required
                 value={email}
                 onChange={(e) => setEmail(e.target.value)}
-                className="w-full px-3 py-2 bg-slate-950 border border-slate-800 rounded-lg text-xs text-white focus:outline-none focus:border-indigo-500"
+                className="w-full h-12 pl-10 pr-4 bg-[#0f131d] border border-[#424754] rounded-xl text-xs text-[#dfe2f1] placeholder-[#8c909f] focus:outline-none focus:border-[#4d8eff] shadow-inner transition"
                 placeholder="you@example.com"
               />
             </div>
+          </div>
 
-            <div>
-              <label className="block text-xs font-medium text-slate-300 mb-1">
-                Password
-              </label>
+          <div className="space-y-1.5">
+            <label className="block text-[10px] font-mono font-bold text-[#adc6ff] uppercase tracking-wider">
+              Password
+            </label>
+            <div className="relative">
+              <span className="absolute left-3.5 top-1/2 -translate-y-1/2 text-xs text-[#8c909f]">🔒</span>
               <input
                 type="password"
                 required
                 value={password}
                 onChange={(e) => setPassword(e.target.value)}
-                className="w-full px-3 py-2 bg-slate-950 border border-slate-800 rounded-lg text-xs text-white focus:outline-none focus:border-indigo-500"
-                placeholder="At least 8 characters (letters & numbers)"
+                className="w-full h-12 pl-10 pr-4 bg-[#0f131d] border border-[#424754] rounded-xl text-xs text-[#dfe2f1] placeholder-[#8c909f] focus:outline-none focus:border-[#4d8eff] shadow-inner transition"
+                placeholder="At least 8 characters"
               />
             </div>
+          </div>
 
-            <div>
-              <label className="block text-xs font-medium text-slate-300 mb-1">
-                Confirm Password
-              </label>
+          <div className="space-y-1.5">
+            <label className="block text-[10px] font-mono font-bold text-[#adc6ff] uppercase tracking-wider">
+              Confirm Password
+            </label>
+            <div className="relative">
+              <span className="absolute left-3.5 top-1/2 -translate-y-1/2 text-xs text-[#8c909f]">🔒</span>
               <input
                 type="password"
                 required
                 value={confirmPassword}
                 onChange={(e) => setConfirmPassword(e.target.value)}
-                className="w-full px-3 py-2 bg-slate-950 border border-slate-800 rounded-lg text-xs text-white focus:outline-none focus:border-indigo-500"
+                className="w-full h-12 pl-10 pr-4 bg-[#0f131d] border border-[#424754] rounded-xl text-xs text-[#dfe2f1] placeholder-[#8c909f] focus:outline-none focus:border-[#4d8eff] shadow-inner transition"
                 placeholder="Repeat password"
               />
             </div>
-
-            <button
-              type="submit"
-              disabled={loading}
-              className="w-full mt-2 py-2.5 px-4 bg-indigo-600 hover:bg-indigo-500 text-white rounded-lg text-xs font-medium transition shadow-lg shadow-indigo-600/20 disabled:opacity-50"
-            >
-              {loading ? 'Creating Account...' : 'Create Account'}
-            </button>
-          </form>
-
-          <div className="mt-6 text-center text-xs text-slate-400">
-            Already have an account?{' '}
-            <Link href="/login" className="text-indigo-400 hover:text-indigo-300 font-medium">
-              Sign in
-            </Link>
           </div>
+
+          <button
+            type="submit"
+            disabled={loading}
+            className="w-full h-12 mt-2 bg-gradient-to-r from-[#4d8eff] via-[#4d8eff] to-[#adc6ff] hover:opacity-95 disabled:opacity-50 text-[#0a0e18] font-extrabold text-xs rounded-xl shadow-lg shadow-[#4d8eff]/20 transition flex items-center justify-center space-x-2"
+          >
+            <span>{loading ? 'Creating Account...' : 'Create Account'}</span>
+            <span>→</span>
+          </button>
+        </form>
+
+        <div className="pt-2 text-center text-xs text-[#8c909f] font-sans">
+          Already have an account?{' '}
+          <Link href="/login" className="text-[#4d8eff] hover:text-[#adc6ff] font-bold transition">
+            Sign in
+          </Link>
         </div>
-      </div>
-    </div>
+      </AuthCard>
+    </AuthLayoutShell>
   );
 }

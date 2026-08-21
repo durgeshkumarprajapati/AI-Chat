@@ -2,11 +2,11 @@
 
 import React, { useState } from 'react';
 import Link from 'next/link';
-import { AppLayout } from '@/components/layout/AppLayout';
 import { VoiceState, VoiceTutorSessionDTO, VoiceTutorFeedbackDTO } from '@/features/voice-tutor/voice-tutor.types';
 import { VoiceTutorWidget } from '@/components/voice-tutor/VoiceTutorWidget';
 import { VoiceTutorTranscript } from '@/components/voice-tutor/VoiceTutorTranscript';
 import { VoiceTutorSummaryCard } from '@/components/voice-tutor/VoiceTutorSummaryCard';
+import { VoiceOrb } from '@/components/voice-tutor/VoiceOrb';
 
 export default function VoiceTutorPage() {
   const [session, setSession] = useState<VoiceTutorSessionDTO | null>(null);
@@ -19,7 +19,15 @@ export default function VoiceTutorPage() {
   const [audioMimeType, setAudioMimeType] = useState<string>('audio/mp3');
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
 
-  // Auto-create initial session if none active
+  const topicSuggestions = [
+    'Database Sharding & PostgreSQL Indexing',
+    'System Design',
+    'React',
+    'JavaScript',
+    'AI & Machine Learning',
+    'Database Architecture'
+  ];
+
   const createSession = async () => {
     setLoading(true);
     setErrorMessage(null);
@@ -70,7 +78,6 @@ export default function VoiceTutorPage() {
       setAudioBase64(turn.audioBase64 || null);
       setAudioMimeType(turn.audioMimeType || 'audio/mp3');
 
-      // Update local session state with user & assistant messages
       setSession((prev) => {
         if (!prev) return prev;
         return {
@@ -104,7 +111,7 @@ export default function VoiceTutorPage() {
 
       const data = await res.json();
       if (!data.success) {
-        throw new Error(data.error || 'Failed to process text query');
+        throw new Error(data.error || 'Failed to send text message');
       }
 
       const turn = data.data;
@@ -126,7 +133,7 @@ export default function VoiceTutorPage() {
       }
     } catch (err: any) {
       console.error('[VoicePage] Text processing error:', err);
-      setErrorMessage(err.message || 'Failed to process input.');
+      setErrorMessage(err.message || 'Failed to send message.');
       setState('ERROR');
     }
   };
@@ -134,167 +141,291 @@ export default function VoiceTutorPage() {
   const handleEndSession = async () => {
     if (!session) return;
     setLoading(true);
+    setErrorMessage(null);
+
     try {
       const res = await fetch(`/api/study/voice-tutor/sessions/${session.id}/complete`, {
         method: 'POST'
       });
 
       const data = await res.json();
-      if (data.success && data.data) {
-        setSession(data.data.session);
-        setFeedback(data.data.feedback);
+      if (!data.success) {
+        throw new Error(data.error || 'Failed to complete session');
       }
+
+      const feedbackRes = await fetch(`/api/study/voice-tutor/sessions/${session.id}/feedback`);
+      const feedbackData = await feedbackRes.json();
+      if (feedbackData.success && feedbackData.data) {
+        setFeedback(feedbackData.data);
+      }
+
       setState('ENDED');
     } catch (err: any) {
-      console.error('[VoicePage] Error completing session:', err);
+      console.error('[VoicePage] End session error:', err);
+      setErrorMessage(err.message || 'Failed to complete session properly.');
     } finally {
       setLoading(false);
     }
   };
 
   return (
-    <AppLayout>
-      <div className="p-4 sm:p-6 lg:p-8 max-w-[1400px] mx-auto space-y-8 w-full font-sans">
-        {/* Header */}
-        <div data-tour="voice-tutor-header" className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 border-b border-slate-800 pb-5">
-          <div>
-            <div className="flex items-center space-x-3">
-              <span className="text-3xl">🎤</span>
-              <h1 className="text-2xl sm:text-3xl font-bold text-white tracking-tight">AI Voice Tutor</h1>
-              <span className="px-2.5 py-0.5 rounded-full text-[10px] font-bold bg-indigo-500/20 text-indigo-400 border border-indigo-500/30 uppercase tracking-wide">
-                Voice AI
-              </span>
-            </div>
-            <p className="text-xs sm:text-sm text-slate-400 mt-1">
-              Natural voice learning conversation grounded in document evidence and Knowledge Graph context.
+    <div className="p-4 sm:p-6 lg:p-8 max-w-[1200px] mx-auto space-y-8 w-full font-sans selection:bg-[#4d8eff] selection:text-white">
+      {/* Header */}
+      <div data-tour="voice-tutor-header" className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 border-b border-[#424754]/60 pb-5">
+        <div className="space-y-1">
+          <div className="flex items-center space-x-3">
+            <span className="text-3xl">🎤</span>
+            <h1 className="text-2xl sm:text-3xl font-extrabold text-[#dfe2f1] tracking-tight font-sans">
+              AI Voice Tutor
+            </h1>
+            <span className="px-2.5 py-0.5 rounded-full text-[10px] font-mono font-bold bg-[#4d8eff]/20 text-[#adc6ff] border border-[#4d8eff]/30 uppercase tracking-wider">
+              VOICE AI
+            </span>
+          </div>
+          <p className="text-xs sm:text-sm text-[#c2c6d6]">
+            Natural voice learning conversation grounded in document evidence and Knowledge Graph context.
+          </p>
+        </div>
+
+        <div className="flex items-center space-x-3">
+          <Link
+            href="/study/voice-tutor/history"
+            className="px-4 py-2 rounded-xl bg-[#0a0e18] hover:bg-[#0f131d] border border-[#424754] text-xs font-semibold text-[#c2c6d6] hover:text-[#dfe2f1] transition flex items-center space-x-2 shadow-sm"
+          >
+            <span>↶ Session History</span>
+          </Link>
+        </div>
+      </div>
+
+      {/* Start Session Setup Panel if No Active Session */}
+      {!session && (
+        <div className="bg-[#0a0e18] border border-[#424754] rounded-3xl p-6 sm:p-10 space-y-8 max-w-2xl mx-auto shadow-2xl relative overflow-hidden">
+          {/* Central Orb Preview */}
+          <div className="pt-2">
+            <VoiceOrb state="IDLE" size="md" />
+          </div>
+
+          <div className="text-center space-y-1">
+            <h2 className="text-xl font-extrabold text-[#dfe2f1] tracking-tight">
+              Start your learning session
+            </h2>
+            <p className="text-xs text-[#c2c6d6]">
+              Choose what you want to learn and how you want your tutor to teach
             </p>
           </div>
 
-          <div className="flex items-center space-x-3">
-            <Link
-              href="/study/voice-tutor/history"
-              className="px-4 py-2 rounded-xl bg-slate-900 hover:bg-slate-800 border border-slate-800 text-xs font-semibold text-slate-300 hover:text-white transition flex items-center space-x-2"
-            >
-              <span>📜 Session History</span>
-            </Link>
-          </div>
-        </div>
-
-        {/* Start Session Setup Banner if No Active Session */}
-        {!session && (
-          <div className="bg-slate-900 border border-slate-800 rounded-3xl p-6 sm:p-8 space-y-6 text-center max-w-2xl mx-auto shadow-2xl">
-            <span className="text-4xl">🎙️</span>
-            <div className="space-y-1">
-              <h2 className="text-lg font-bold text-white">Start New Voice Tutoring Session</h2>
-              <p className="text-xs text-slate-400">Choose a topic title and mode to begin your conversation.</p>
-            </div>
-
-            <div className="space-y-4 text-left max-w-md mx-auto">
-              <div className="space-y-1">
-                <label className="text-xs font-semibold text-slate-300">Session Topic / Title</label>
+          <div className="space-y-6 text-left max-w-lg mx-auto">
+            {/* Topic Input */}
+            <div className="space-y-2">
+              <label className="text-[10px] font-mono font-bold uppercase tracking-widest text-[#adc6ff]">
+                WHAT WOULD YOU LIKE TO LEARN?
+              </label>
+              <div className="relative">
+                <span className="absolute left-3.5 top-1/2 -translate-y-1/2 text-sm text-[#8c909f]">🔍</span>
                 <input
                   type="text"
                   placeholder="e.g. Database Sharding & PostgreSQL Indexing"
                   value={titleInput}
                   onChange={(e) => setTitleInput(e.target.value)}
-                  className="w-full bg-slate-950 border border-slate-800 rounded-xl px-4 py-2.5 text-xs text-white placeholder-slate-500 focus:outline-none focus:border-indigo-500"
+                  className="w-full bg-[#0f131d] border border-[#424754] rounded-xl pl-10 pr-4 py-3 text-xs text-[#dfe2f1] placeholder-[#8c909f] focus:outline-none focus:border-[#4d8eff] shadow-inner transition"
                 />
               </div>
 
-              <div className="space-y-1">
-                <label className="text-xs font-semibold text-slate-300">Tutoring Mode</label>
-                <select
-                  value={modeInput}
-                  onChange={(e: any) => setModeInput(e.target.value)}
-                  className="w-full bg-slate-950 border border-slate-800 rounded-xl px-4 py-2.5 text-xs text-white focus:outline-none focus:border-indigo-500"
-                >
-                  <option value="FREE_TUTOR">💬 Free Interactive Tutor</option>
-                  <option value="QUIZ_TUTOR">🎯 Quiz & Assessment Tutor</option>
-                  <option value="DOCUMENT_TUTOR">📄 Document Grounded Tutor</option>
-                </select>
+              {/* Lightweight Topic Suggestion Chips */}
+              <div className="flex flex-wrap gap-1.5 pt-1">
+                <span className="text-[10px] font-mono text-[#8c909f] self-center mr-1">Popular:</span>
+                {topicSuggestions.map((item) => (
+                  <button
+                    key={item}
+                    type="button"
+                    onClick={() => setTitleInput(item)}
+                    className="px-2.5 py-1 rounded-lg bg-[#0f131d] hover:bg-[#141926] border border-[#424754]/60 text-[10px] font-mono text-[#c2c6d6] hover:text-[#adc6ff] transition"
+                  >
+                    {item}
+                  </button>
+                ))}
               </div>
-
-              <button
-                onClick={createSession}
-                disabled={loading}
-                className="w-full py-3 bg-indigo-600 hover:bg-indigo-500 disabled:opacity-50 text-white font-bold text-xs rounded-xl shadow-lg shadow-indigo-600/30 transition flex items-center justify-center space-x-2"
-              >
-                <span>{loading ? 'Starting Session...' : '🎤 Begin Voice Session'}</span>
-              </button>
             </div>
-          </div>
-        )}
 
-        {/* Active Session Interface */}
-        {session && (
-          <div className="space-y-8">
-            {/* Top Control Bar */}
-            <div className="bg-slate-900/80 border border-slate-800 rounded-2xl px-5 py-3.5 flex flex-wrap items-center justify-between gap-4">
-              <div className="flex items-center space-x-3">
-                <span className="w-2.5 h-2.5 rounded-full bg-emerald-500 animate-pulse" />
-                <div>
-                  <h3 className="text-xs font-bold text-white">{session.title}</h3>
-                  <p className="text-[10px] font-mono text-slate-400">Mode: {session.mode} • Started {new Date(session.startedAt).toLocaleTimeString()}</p>
-                </div>
-              </div>
+            {/* Tutoring Experience Selectable Cards */}
+            <div className="space-y-2">
+              <label className="text-[10px] font-mono font-bold uppercase tracking-widest text-[#adc6ff]">
+                TUTORING EXPERIENCE
+              </label>
 
-              <div className="flex items-center space-x-2">
-                {state === 'PAUSED' ? (
-                  <button
-                    onClick={() => setState('IDLE')}
-                    className="px-3.5 py-1.5 bg-emerald-950/80 hover:bg-emerald-900 border border-emerald-800 text-emerald-300 text-xs font-semibold rounded-xl transition"
-                  >
-                    ▶ Resume
-                  </button>
-                ) : (
-                  <button
-                    onClick={() => setState('PAUSED')}
-                    disabled={state === 'ENDED'}
-                    className="px-3.5 py-1.5 bg-slate-950 hover:bg-slate-800 border border-slate-800 text-slate-300 text-xs font-semibold rounded-xl transition"
-                  >
-                    ⏸ Pause
-                  </button>
-                )}
-
+              <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
+                {/* Option 1: FREE_TUTOR */}
                 <button
-                  onClick={handleEndSession}
-                  disabled={loading || state === 'ENDED'}
-                  className="px-3.5 py-1.5 bg-rose-950/80 hover:bg-rose-900 border border-rose-800 text-rose-300 text-xs font-semibold rounded-xl transition"
+                  type="button"
+                  onClick={() => setModeInput('FREE_TUTOR')}
+                  className={`p-3.5 rounded-2xl border text-left transition-all duration-300 flex flex-col justify-between ${
+                    modeInput === 'FREE_TUTOR'
+                      ? 'bg-[#4d8eff]/15 border-[#4d8eff] shadow-lg shadow-[#4d8eff]/20 scale-[1.02]'
+                      : 'bg-[#0f131d] hover:bg-[#141926] border-[#424754] text-[#c2c6d6]'
+                  }`}
                 >
-                  ⏹ End Session
+                  <div className="flex items-center justify-between mb-2">
+                    <span className="text-xl">💬</span>
+                    {modeInput === 'FREE_TUTOR' && <span className="text-xs text-[#4edea3] font-bold">✓</span>}
+                  </div>
+                  <div>
+                    <div className="text-xs font-bold text-[#dfe2f1]">Interactive Tutor</div>
+                    <div className="text-[10px] text-[#8c909f] mt-0.5">Natural conversation</div>
+                  </div>
+                </button>
+
+                {/* Option 2: QUIZ_TUTOR */}
+                <button
+                  type="button"
+                  onClick={() => setModeInput('QUIZ_TUTOR')}
+                  className={`p-3.5 rounded-2xl border text-left transition-all duration-300 flex flex-col justify-between ${
+                    modeInput === 'QUIZ_TUTOR'
+                      ? 'bg-[#4d8eff]/15 border-[#4d8eff] shadow-lg shadow-[#4d8eff]/20 scale-[1.02]'
+                      : 'bg-[#0f131d] hover:bg-[#141926] border-[#424754] text-[#c2c6d6]'
+                  }`}
+                >
+                  <div className="flex items-center justify-between mb-2">
+                    <span className="text-xl">🎓</span>
+                    {modeInput === 'QUIZ_TUTOR' && <span className="text-xs text-[#4edea3] font-bold">✓</span>}
+                  </div>
+                  <div>
+                    <div className="text-xs font-bold text-[#dfe2f1]">Guided Learning</div>
+                    <div className="text-[10px] text-[#8c909f] mt-0.5">Structured walkthrough</div>
+                  </div>
+                </button>
+
+                {/* Option 3: DOCUMENT_TUTOR */}
+                <button
+                  type="button"
+                  onClick={() => setModeInput('DOCUMENT_TUTOR')}
+                  className={`p-3.5 rounded-2xl border text-left transition-all duration-300 flex flex-col justify-between ${
+                    modeInput === 'DOCUMENT_TUTOR'
+                      ? 'bg-[#4d8eff]/15 border-[#4d8eff] shadow-lg shadow-[#4d8eff]/20 scale-[1.02]'
+                      : 'bg-[#0f131d] hover:bg-[#141926] border-[#424754] text-[#c2c6d6]'
+                  }`}
+                >
+                  <div className="flex items-center justify-between mb-2">
+                    <span className="text-xl">❓</span>
+                    {modeInput === 'DOCUMENT_TUTOR' && <span className="text-xs text-[#4edea3] font-bold">✓</span>}
+                  </div>
+                  <div>
+                    <div className="text-xs font-bold text-[#dfe2f1]">Q&A Session</div>
+                    <div className="text-[10px] text-[#8c909f] mt-0.5">Targeted assessment</div>
+                  </div>
                 </button>
               </div>
             </div>
 
-            {errorMessage && (
-              <div className="bg-rose-950/80 border border-rose-800 text-rose-300 text-xs p-3.5 rounded-2xl flex items-center justify-between">
-                <span>⚠️ {errorMessage}</span>
-                <button onClick={() => setErrorMessage(null)} className="text-rose-400 font-bold">✕</button>
-              </div>
-            )}
-
-            {/* Live Voice Microphone Widget */}
-            <VoiceTutorWidget
-              sessionId={session.id}
-              state={state}
-              onStateChange={setState}
-              onAudioRecorded={handleAudioRecorded}
-              onTextSubmitted={handleTextSubmitted}
-              audioResponseBase64={audioBase64}
-              audioMimeType={audioMimeType}
-              disabled={state === 'ENDED' || state === 'PAUSED'}
-            />
-
-            {/* Post-Session Summary Card */}
-            {feedback && (
-              <VoiceTutorSummaryCard feedback={feedback} onClose={() => setFeedback(null)} />
-            )}
-
-            {/* Live Transcript View */}
-            <VoiceTutorTranscript messages={session.messages || []} />
+            {/* Primary CTA Button */}
+            <button
+              onClick={createSession}
+              disabled={loading}
+              className="w-full h-12 bg-gradient-to-r from-[#4d8eff] via-[#4d8eff] to-[#adc6ff] hover:opacity-95 disabled:opacity-50 text-[#0a0e18] font-extrabold text-sm rounded-2xl shadow-xl shadow-[#4d8eff]/30 transition-all flex items-center justify-center space-x-2"
+            >
+              <span>{loading ? '◌ Preparing your tutor...' : '🎙 Begin Voice Session'}</span>
+            </button>
           </div>
-        )}
-      </div>
-    </AppLayout>
+
+          {/* Trust / Capability Strip */}
+          <div className="pt-6 border-t border-[#424754]/40 grid grid-cols-1 sm:grid-cols-3 gap-4 text-center text-xs font-mono text-[#c2c6d6]">
+            <div className="space-y-0.5">
+              <div className="text-[#dfe2f1] font-bold flex items-center justify-center space-x-1">
+                <span>📄</span>
+                <span>Grounded Answers</span>
+              </div>
+              <div className="text-[10px] text-[#8c909f]">From your documents</div>
+            </div>
+
+            <div className="space-y-0.5">
+              <div className="text-[#dfe2f1] font-bold flex items-center justify-center space-x-1">
+                <span>🧠</span>
+                <span>Knowledge Graph</span>
+              </div>
+              <div className="text-[10px] text-[#8c909f]">Context-aware learning</div>
+            </div>
+
+            <div className="space-y-0.5">
+              <div className="text-[#dfe2f1] font-bold flex items-center justify-center space-x-1">
+                <span>🔊</span>
+                <span>Voice AI</span>
+              </div>
+              <div className="text-[10px] text-[#8c909f]">Natural conversation</div>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Active Session Interface */}
+      {session && (
+        <div className="space-y-8">
+          {/* Top Session Control Bar */}
+          <div className="bg-[#0a0e18] border border-[#424754] rounded-2xl px-6 py-4 flex flex-wrap items-center justify-between gap-4 shadow-xl">
+            <div className="flex items-center space-x-3">
+              <span className="w-2.5 h-2.5 rounded-full bg-[#4edea3] animate-pulse" />
+              <div>
+                <h3 className="text-sm font-bold text-[#dfe2f1]">{session.title}</h3>
+                <p className="text-[10px] font-mono text-[#8c909f]">
+                  Mode: {session.mode} • Started {new Date(session.startedAt).toLocaleTimeString()}
+                </p>
+              </div>
+            </div>
+
+            <div className="flex items-center space-x-3">
+              {state === 'PAUSED' ? (
+                <button
+                  onClick={() => setState('IDLE')}
+                  className="px-4 py-2 bg-emerald-950/80 hover:bg-emerald-900 border border-emerald-800 text-emerald-300 text-xs font-semibold rounded-xl transition"
+                >
+                  ▶ Resume
+                </button>
+              ) : (
+                <button
+                  onClick={() => setState('PAUSED')}
+                  disabled={state === 'ENDED'}
+                  className="px-4 py-2 bg-[#0f131d] hover:bg-[#141926] border border-[#424754] text-[#c2c6d6] text-xs font-semibold rounded-xl transition"
+                >
+                  ⏸ Pause
+                </button>
+              )}
+
+              <button
+                onClick={handleEndSession}
+                disabled={loading || state === 'ENDED'}
+                className="px-4 py-2 bg-rose-950/80 hover:bg-rose-900 border border-rose-800 text-rose-300 text-xs font-semibold rounded-xl transition"
+              >
+                ⏹ End Session
+              </button>
+            </div>
+          </div>
+
+          {errorMessage && (
+            <div className="bg-rose-950/80 border border-rose-800 text-rose-300 text-xs p-4 rounded-2xl flex items-center justify-between">
+              <span>⚠️ {errorMessage}</span>
+              <button onClick={() => setErrorMessage(null)} className="text-rose-400 font-bold">✕</button>
+            </div>
+          )}
+
+          {/* Live Voice Microphone Widget */}
+          <VoiceTutorWidget
+            sessionId={session.id}
+            state={state}
+            onStateChange={setState}
+            onAudioRecorded={handleAudioRecorded}
+            onTextSubmitted={handleTextSubmitted}
+            audioResponseBase64={audioBase64}
+            audioMimeType={audioMimeType}
+            disabled={state === 'ENDED' || state === 'PAUSED'}
+          />
+
+          {/* Post-Session Summary Card */}
+          {feedback && (
+            <VoiceTutorSummaryCard feedback={feedback} onClose={() => setFeedback(null)} />
+          )}
+
+          {/* Live Transcript View */}
+          <VoiceTutorTranscript messages={session.messages || []} />
+        </div>
+      )}
+    </div>
   );
 }

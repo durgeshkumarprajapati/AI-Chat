@@ -1,7 +1,6 @@
 'use client';
 
 import React, { useState, useEffect } from 'react';
-import { AppLayout } from '@/components/layout/AppLayout';
 import Link from 'next/link';
 
 export default function KnowledgeGraphDashboard() {
@@ -62,8 +61,7 @@ export default function KnowledgeGraphDashboard() {
   const handleResetZoom = () => setZoomScale(1);
 
   return (
-    <AppLayout>
-      <div className="p-4 sm:p-6 lg:p-8 space-y-6 max-w-[1600px] mx-auto w-full font-sans selection:bg-[#4d8eff] selection:text-white">
+    <div className="p-4 sm:p-6 lg:p-8 space-y-6 max-w-[1600px] mx-auto w-full font-sans selection:bg-[#4d8eff] selection:text-[#0a0e18]">
         {/* Enterprise Page Header */}
         <div
           data-tour="knowledge-graph-header"
@@ -430,6 +428,5 @@ export default function KnowledgeGraphDashboard() {
           </div>
         )}
       </div>
-    </AppLayout>
   );
 }

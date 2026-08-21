@@ -2,7 +2,6 @@
 
 import React, { useState, useEffect } from 'react';
 import { useParams } from 'next/navigation';
-import { AppLayout } from '@/components/layout/AppLayout';
 import Link from 'next/link';
 
 export default function EntityDetailPage() {
@@ -34,8 +33,7 @@ export default function EntityDetailPage() {
   }
 
   return (
-    <AppLayout>
-      <div className="p-4 sm:p-6 lg:p-8 space-y-6 max-w-5xl mx-auto w-full font-sans selection:bg-[#4d8eff] selection:text-white">
+    <div className="p-4 sm:p-6 lg:p-8 space-y-6 max-w-5xl mx-auto w-full font-sans selection:bg-[#4d8eff] selection:text-white">
         {/* Navigation Back Link */}
         <div className="flex items-center space-x-3 border-b border-[#424754]/60 pb-4">
           <Link
@@ -112,6 +110,5 @@ export default function EntityDetailPage() {
           </div>
         )}
       </div>
-    </AppLayout>
   );
 }

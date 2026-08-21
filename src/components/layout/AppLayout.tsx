@@ -47,8 +47,24 @@ function InnerAppLayout({ children }: { children: React.ReactNode }) {
       .catch(() => setHealthStatus('degraded'));
   }, []);
 
+  const isMarketingOrStandalone =
+    pathname === '/' ||
+    pathname === '/landing' ||
+    pathname === '/login' ||
+    pathname === '/register' ||
+    pathname === '/study/chill-focus';
+
+  if (isMarketingOrStandalone) {
+    return (
+      <div className="min-h-screen bg-[#0f131d] text-[#dfe2f1] font-sans selection:bg-[#4d8eff] selection:text-white">
+        <main className="min-h-screen">{children}</main>
+        <ProductTour />
+      </div>
+    );
+  }
+
   const sidebarItems = [
-    { name: 'Dashboard', href: '/', icon: '🏠' },
+    { name: 'Dashboard', href: '/dashboard', icon: '🏠' },
     { name: 'AI Copilot', href: '/copilot', icon: '🧠' },
     { name: 'Project Workspaces', href: '/projects', icon: '📁' },
     { name: 'RAG Chat', href: '/chat', icon: '💬' },

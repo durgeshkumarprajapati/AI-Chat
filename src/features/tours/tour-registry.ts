@@ -16,6 +16,7 @@ import { collabChatTour } from './tours/collab-chat.tour';
 import { phase49MockTestCallingTour } from './tours/phase49.tour';
 import { phase50CallHistoryMockLibraryTour } from './tours/phase50.tour';
 import { phase52GoogleCalendarAutoSyncTour } from './tours/phase52.tour';
+import { phase58VoiceTutorTour } from './tours/phase58.tour';
 
 export class TourRegistry {
   private tours: Map<string, TourDefinition> = new Map();
@@ -30,6 +31,7 @@ export class TourRegistry {
       phase49MockTestCallingTour,
       phase50CallHistoryMockLibraryTour,
       phase52GoogleCalendarAutoSyncTour,
+      phase58VoiceTutorTour,
       knowledgeGraphTour,
       knowledgeGraphWorkflowTour,
       dashboardTour,

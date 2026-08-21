@@ -5,7 +5,7 @@ export const documentsTour: TourDefinition = {
   version: 1,
   module: 'Documents',
   title: 'Document Catalog Tour',
-  badge: 'Phase 16',
+  badge: 'Documents',
   description: 'Upload, manage, search, reprocess, and organize PDF documents for vector embeddings and Knowledge Graph extraction.',
   routePattern: '^/documents',
   steps: [

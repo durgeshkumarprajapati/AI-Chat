@@ -5,7 +5,7 @@ export const projectWorkspacesTour: TourDefinition = {
   version: 1,
   module: 'Project Workspaces',
   title: 'Project Workspaces Tour',
-  badge: 'Phase 36',
+  badge: 'Workspaces',
   description: 'Organize documents, research sessions, study sessions, roadmaps, and workflows into isolated project workspaces.',
   routePattern: '^/projects',
   steps: [

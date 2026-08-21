@@ -5,7 +5,7 @@ export const cityExplorerTour: TourDefinition = {
   version: 1,
   module: 'City Explorer',
   title: 'AI City Explorer Tour',
-  badge: 'Phase 43',
+  badge: 'Explorer',
   description: 'Explore grounded city knowledge, tourist spots, local history, weather, and dining powered by Gemini Fast and parallel prefetching.',
   routePattern: '^/explore',
   steps: [

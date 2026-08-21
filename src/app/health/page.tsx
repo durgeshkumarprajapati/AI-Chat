@@ -186,7 +186,7 @@ export default function SystemHealthPage() {
             </div>
             <div>
               <h3 className="text-sm font-bold text-white">RAG Evaluation Engine</h3>
-              <p className="text-[11px] text-slate-400 font-mono mt-0.5">Phase 19 Quality Analytics</p>
+              <p className="text-[11px] text-slate-400 font-mono mt-0.5">Quality Analytics</p>
             </div>
             <div className="pt-2 border-t border-slate-900 text-[10px] font-mono text-slate-400 space-y-0.5">
               <p>• Evaluator: LocalHeuristicEvaluator</p>

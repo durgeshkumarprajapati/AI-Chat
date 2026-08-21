@@ -49,22 +49,22 @@ function InnerAppLayout({ children }: { children: React.ReactNode }) {
 
   const sidebarItems = [
     { name: 'Dashboard', href: '/', icon: '🏠' },
-    { name: 'AI Copilot', href: '/copilot', icon: '🧠', badge: 'Phase 36' },
-    { name: 'Project Workspaces', href: '/projects', icon: '📁', badge: 'Phase 36' },
+    { name: 'AI Copilot', href: '/copilot', icon: '🧠' },
+    { name: 'Project Workspaces', href: '/projects', icon: '📁' },
     { name: 'RAG Chat', href: '/chat', icon: '💬' },
-    { name: 'Collab Chat', href: '/collab-chat', icon: '💬', badge: 'Phase 46' },
-    { name: 'AI Study Mode', href: '/study', icon: '🎓', badge: 'Phase 33' },
-    { name: 'Agentic Research', href: '/research', icon: '🔬', badge: 'Phase 34' },
-    { name: 'Workflows', href: '/workflows', icon: '🧩', badge: 'Phase 35' },
-    { name: 'AI Roadmaps', href: '/roadmaps', icon: '🚀', badge: 'Phase 31' },
+    { name: 'Collab Chat', href: '/collab-chat', icon: '💬' },
+    { name: 'AI Study Mode', href: '/study', icon: '🎓' },
+    { name: 'Agentic Research', href: '/research', icon: '🔬' },
+    { name: 'Workflows', href: '/workflows', icon: '🧩' },
+    { name: 'AI Roadmaps', href: '/roadmaps', icon: '🚀' },
     { name: 'Documents', href: '/documents', icon: '📄' },
     { name: 'Knowledge Bases', href: '/knowledge-bases', icon: '📚' },
-    { name: 'Knowledge Graph', href: '/knowledge-graph', icon: '🕸️', badge: 'Phase 41' },
+    { name: 'Knowledge Graph', href: '/knowledge-graph', icon: '🕸️' },
     {
       name: activeCity ? `Explore ${activeCity}` : 'City Explorer',
       href: '/explore',
       icon: '🌆',
-      badge: activeCity ? `📍 ${activeCity}` : 'Phase 43'
+      badge: activeCity ? `📍 ${activeCity}` : undefined
     },
     { name: 'Copilot Memory', href: '/settings/copilot-memory', icon: '💾' },
     { name: 'My Account', href: '/account', icon: '👤' },

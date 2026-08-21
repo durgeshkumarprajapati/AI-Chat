@@ -5,7 +5,7 @@ export const copilotTour: TourDefinition = {
   version: 1,
   module: 'Copilot',
   title: 'AI Research & Knowledge Copilot Tour',
-  badge: 'Phase 36',
+  badge: 'Copilot',
   description: 'Unified AI assistant orchestrating Documents, Research, Workflows, Study Mode, and Memory into single execution sessions.',
   routePattern: '^/copilot',
   steps: [

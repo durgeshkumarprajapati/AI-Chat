@@ -165,9 +165,6 @@ export default function KnowledgeBasesPage() {
         <div>
           <div className="flex items-center space-x-2">
             <h1 className="text-3xl font-bold text-white tracking-tight">Knowledge Bases & Collections</h1>
-            <span className="px-2.5 py-0.5 rounded bg-indigo-950 text-indigo-300 border border-indigo-800 text-xs font-mono font-bold uppercase">
-              Phase 17
-            </span>
           </div>
           <p className="text-slate-400 text-sm mt-1">
             Organize documents into reusable collections to scope RAG search, citations, and grounded answers.

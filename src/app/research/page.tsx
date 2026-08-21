@@ -42,9 +42,6 @@ export default function ResearchDashboardPage() {
           <div className="flex items-center space-x-2">
             <span className="text-2xl">🤖</span>
             <h1 className="text-2xl font-bold text-white tracking-tight">Agentic Research</h1>
-            <span className="px-2.5 py-0.5 rounded-full text-[10px] font-bold bg-indigo-500/20 text-indigo-400 border border-indigo-500/30 uppercase tracking-wide">
-              Phase 34
-            </span>
           </div>
           <p className="text-xs text-slate-400 mt-1">
             Autonomous multi-source evidence investigation, claim extraction, conflict detection & report synthesis.

@@ -64,9 +64,6 @@ export default function KnowledgeGraphDashboard() {
             <div className="flex items-center space-x-2">
               <span className="text-2xl">🌐</span>
               <h1 className="text-2xl font-bold text-white tracking-tight">AI Knowledge Graph</h1>
-              <span className="text-xs font-semibold px-2 py-0.5 rounded bg-indigo-600/20 text-indigo-400 border border-indigo-500/30">
-                Phase 41
-              </span>
             </div>
             <p className="text-sm text-slate-400 mt-1">
               Structured entity-relationship network automatically extracted from document evidence.

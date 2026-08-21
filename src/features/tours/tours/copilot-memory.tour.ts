@@ -5,7 +5,7 @@ export const copilotMemoryTour: TourDefinition = {
   version: 1,
   module: 'Copilot Memory',
   title: 'Copilot Memory Settings Tour',
-  badge: 'Phase 36',
+  badge: 'Memory',
   description: 'Inspect, edit, or purge user memory items retained by AI Copilot across sessions.',
   routePattern: '^/settings/copilot-memory',
   steps: [

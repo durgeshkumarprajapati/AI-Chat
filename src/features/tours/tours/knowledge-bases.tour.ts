@@ -5,7 +5,7 @@ export const knowledgeBasesTour: TourDefinition = {
   version: 1,
   module: 'Knowledge Bases',
   title: 'Knowledge Bases Collections Tour',
-  badge: 'Phase 17',
+  badge: 'Collections',
   description: 'Organize documents into reusable collections without duplicating files or embeddings.',
   routePattern: '^/knowledge-bases',
   steps: [

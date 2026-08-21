@@ -5,7 +5,7 @@ export const workflowsTour: TourDefinition = {
   version: 1,
   module: 'Workflows',
   title: 'AI Workflow Builder & Automation Engine Tour',
-  badge: 'Phase 35',
+  badge: 'Workflows',
   description: 'Visual drag-and-drop canvas and AI generator for orchestrating Document AI, RAG, Web Search, and Research pipelines.',
   routePattern: '^/workflows',
   steps: [

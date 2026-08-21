@@ -249,9 +249,6 @@ export default function UserDashboardPage() {
           >
             <div className="flex items-center justify-between">
               <div className="text-xs font-bold text-purple-600 dark:text-purple-400 uppercase tracking-wider font-mono">AI Learning Paths</div>
-              <span className="text-[10px] px-2 py-0.5 rounded-full bg-indigo-100 dark:bg-indigo-950 text-indigo-700 dark:text-indigo-300 font-semibold border border-indigo-200 dark:border-indigo-800">
-                Phase 31
-              </span>
             </div>
             <div className="text-sm font-semibold text-slate-900 dark:text-white group-hover:text-purple-600 dark:group-hover:text-purple-300 flex items-center justify-between">
               <span>Create AI Roadmap 🚀</span>

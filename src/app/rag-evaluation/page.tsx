@@ -146,7 +146,7 @@ export default function RAGEvaluationPage() {
         <div>
           <div className="flex items-center space-x-2">
             <span className="px-2.5 py-0.5 rounded-md bg-indigo-950 border border-indigo-800 text-indigo-400 font-mono text-[10px] uppercase font-bold">
-              Phase 19 Quality Analytics
+              Quality Analytics
             </span>
             <h1 className="text-2xl font-bold text-white tracking-tight">RAG Evaluation & Quality Dashboard</h1>
           </div>
@@ -261,12 +261,12 @@ export default function RAGEvaluationPage() {
           <div className="flex items-center space-x-2">
             <span className="text-xl">⚡</span>
             <div>
-              <h3 className="text-sm font-bold text-white">Phase 21 Cache & Latency Optimization Performance</h3>
+              <h3 className="text-sm font-bold text-white">Cache & Latency Optimization Performance</h3>
               <p className="text-[10px] text-slate-400 font-mono">Exact Cache • Embedding Cache • Semantic Cache • Retrieval Recovery</p>
             </div>
           </div>
           <span className="px-2.5 py-0.5 rounded-md bg-sky-950 border border-sky-800 text-sky-400 font-mono text-[10px] uppercase font-bold">
-            Phase 21 Orchestration
+            Orchestration
           </span>
         </div>
 
@@ -297,18 +297,18 @@ export default function RAGEvaluationPage() {
         </div>
       </div>
 
-      {/* Phase 22 Citation Quality & Evidence Metrics */}
+      {/* Citation Quality & Evidence Metrics */}
       <div className="bg-slate-900 border border-indigo-800/80 rounded-2xl p-5 space-y-4 shadow-xl">
         <div className="flex items-center justify-between border-b border-slate-800/80 pb-3">
           <div className="flex items-center space-x-2">
             <span className="text-xl">🔍</span>
             <div>
-              <h3 className="text-sm font-bold text-white">Phase 22 Citation Quality & Evidence Explorer Metrics</h3>
+              <h3 className="text-sm font-bold text-white">Citation Quality & Evidence Explorer Metrics</h3>
               <p className="text-[10px] text-slate-400 font-mono">Grounded Citations • Evidence Snippets • Confidence Metrics • Citation Validation</p>
             </div>
           </div>
           <span className="px-2.5 py-0.5 rounded-md bg-indigo-950 border border-indigo-800 text-indigo-400 font-mono text-[10px] uppercase font-bold">
-            Phase 22 Evidence Metrics
+            Evidence Metrics
           </span>
         </div>
 

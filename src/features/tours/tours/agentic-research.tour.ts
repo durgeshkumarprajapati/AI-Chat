@@ -5,7 +5,7 @@ export const agenticResearchTour: TourDefinition = {
   version: 1,
   module: 'Agentic Research',
   title: 'Autonomous Agentic Research Tour',
-  badge: 'Phase 34',
+  badge: 'Research',
   description: 'Autonomous multi-source evidence investigation, claim extraction, conflict resolution, and structured report synthesis.',
   routePattern: '^/research',
   steps: [

@@ -3,7 +3,8 @@
   "version": "0.1.0",
   "private": true,
   "scripts": {
-    "dev": "next dev",
+    "dev": "concurrently -k -p \"[{name}]\" -n \"NEXT,WORKER\" -c \"cyan.bold,magenta.bold\" \"next dev\" \"npm run worker\"",
+    "dev:web": "next dev",
     "build": "next build",
     "start": "next start",
     "lint": "next lint",
@@ -127,6 +128,7 @@
     "@types/react": "^18.3.3",
     "@types/react-dom": "^18.3.0",
     "autoprefixer": "^10.4.20",
+    "concurrently": "^10.0.5",
     "eslint": "^8.57.0",
     "eslint-config-next": "^14.2.5",
     "eslint-config-prettier": "^9.1.0",

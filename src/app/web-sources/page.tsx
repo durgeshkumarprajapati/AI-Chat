@@ -146,7 +146,7 @@ export default function WebSourcesPage() {
           <div className="flex items-center space-x-2">
             <h1 className="text-2xl font-bold text-white tracking-tight">🌐 Web Knowledge Sources</h1>
             <span className="px-2.5 py-0.5 rounded-full text-[10px] font-mono font-bold bg-indigo-950 text-indigo-300 border border-indigo-800">
-              Phase 23 Web RAG
+              Web RAG
             </span>
           </div>
           <p className="text-xs text-slate-400 mt-1">

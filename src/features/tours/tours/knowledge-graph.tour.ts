@@ -5,7 +5,7 @@ export const knowledgeGraphTour: TourDefinition = {
   version: 1,
   module: 'Knowledge Graph',
   title: 'AI Knowledge Graph Guided Tour',
-  badge: 'Phase 41',
+  badge: 'Graph',
   description: 'Learn how document evidence is converted into connected entities, relationships, claims, and contradictions.',
   routePattern: '^/knowledge-graph',
   steps: [

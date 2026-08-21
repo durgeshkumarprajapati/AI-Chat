@@ -661,7 +661,7 @@ function ChatPageContent() {
               <span>Document AI</span>
             </span>
             <span className="text-[10px] font-mono text-indigo-400 bg-indigo-950/60 px-2 py-0.5 rounded-md border border-indigo-800/60">
-              Phase 18 Memory
+              Memory
             </span>
           </div>
 

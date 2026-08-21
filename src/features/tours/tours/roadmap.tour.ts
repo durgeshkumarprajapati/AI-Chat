@@ -5,7 +5,7 @@ export const roadmapTour: TourDefinition = {
   version: 1,
   module: 'Roadmaps',
   title: 'AI Roadmap Builder Tour',
-  badge: 'Phase 31',
+  badge: 'Roadmaps',
   description: 'Generate personalized learning roadmaps with guided questionnaires, task progress tracking, and phase regeneration.',
   routePattern: '^/roadmaps',
   steps: [

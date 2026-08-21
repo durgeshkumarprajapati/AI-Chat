@@ -5,7 +5,7 @@ export const ragChatTour: TourDefinition = {
   version: 1,
   module: 'RAG Chat',
   title: 'Streaming RAG Chat Tour',
-  badge: 'Phase 13',
+  badge: 'RAG',
   description: 'Ask questions with real-time progressive response streaming, source mode selection, and citation badges.',
   routePattern: '^/chat',
   steps: [

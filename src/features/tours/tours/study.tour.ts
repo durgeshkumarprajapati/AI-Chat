@@ -5,7 +5,7 @@ export const studyTour: TourDefinition = {
   version: 1,
   module: 'AI Study Mode',
   title: 'AI Study Mode & Tutor Workspace Tour',
-  badge: 'Phase 33',
+  badge: 'Study',
   description: 'Interactive AI tutor workspace with Socratic questioning, quizzes, flashcards, practice code exercises, and mastery tracking.',
   routePattern: '^/study',
   steps: [

@@ -119,6 +119,9 @@ model User {
   notificationPreference NotificationPreference?
   voiceTutorSessions     VoiceTutorSession[]
   voiceTutorFeedbacks    VoiceTutorFeedback[]
+  chillFocusSessions     ChillFocusSession[]
+  chillFocusPreference   ChillFocusPreference?
+  chillFocusStreak       ChillFocusStreak?
 
   @@map("users")
 }
@@ -2569,6 +2572,74 @@ model VoiceTutorFeedback {
 
   @@index([userId, createdAt])
   @@map("voice_tutor_feedbacks")
+}
+
+enum ChillFocusMode {
+  CHILL
+  FOCUS
+}
+
+enum ChillFocusStatus {
+  ACTIVE
+  PAUSED
+  COMPLETED
+  CANCELLED
+  EXPIRED
+}
+
+model ChillFocusSession {
+  id                    String           @id @default(uuid())
+  userId                String           @map("user_id")
+  mode                  ChillFocusMode   @default(CHILL)
+  status                ChillFocusStatus @default(ACTIVE)
+  startedAt             DateTime         @default(now()) @map("started_at")
+  pausedAt              DateTime?        @map("paused_at")
+  resumedAt             DateTime?        @map("resumed_at")
+  completedAt           DateTime?        @map("completed_at")
+  plannedDurationSeconds Int              @default(300) @map("planned_duration_seconds")
+  activeDurationSeconds  Int              @default(0) @map("active_duration_seconds")
+  soundscape            String           @default("night_sky")
+  createdAt             DateTime         @default(now()) @map("created_at")
+  updatedAt             DateTime         @updatedAt @map("updated_at")
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId, createdAt])
+  @@index([userId, status])
+  @@index([userId, startedAt])
+  @@map("chill_focus_sessions")
+}
+
+model ChillFocusPreference {
+  id                  String   @id @default(uuid())
+  userId              String   @unique @map("user_id")
+  preferredMode       String   @default("CHILL") @map("preferred_mode")
+  preferredSoundscape String   @default("night_sky") @map("preferred_soundscape")
+  preferredVolume     Float    @default(0.7) @map("preferred_volume")
+  breathingEnabled    Boolean  @default(true) @map("breathing_enabled")
+  interventionEnabled Boolean  @default(true) @map("intervention_enabled")
+  reducedMotion       Boolean  @default(false) @map("reduced_motion")
+  createdAt           DateTime @default(now()) @map("created_at")
+  updatedAt           DateTime @updatedAt @map("updated_at")
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@map("chill_focus_preferences")
+}
+
+model ChillFocusStreak {
+  id                     String    @id @default(uuid())
+  userId                 String    @unique @map("user_id")
+  currentStreakDays      Int       @default(0) @map("current_streak_days")
+  longestStreakDays      Int       @default(0) @map("longest_streak_days")
+  lastActiveDate         DateTime? @map("last_active_date")
+  totalSessionsCompleted Int       @default(0) @map("total_sessions_completed")
+  createdAt              DateTime  @default(now()) @map("created_at")
+  updatedAt              DateTime  @updatedAt @map("updated_at")
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@map("chill_focus_streaks")
 }
 
 

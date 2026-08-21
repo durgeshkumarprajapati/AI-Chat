@@ -1,8 +1,16 @@
 import './globals.css';
 import type { Metadata } from 'next';
+import { Inter } from 'next/font/google';
 import { AppLayout } from '@/components/layout/AppLayout';
 import { WorkspaceProvider } from '@/context/WorkspaceContext';
 import { ThemeProvider } from '@/context/ThemeContext';
+
+const inter = Inter({
+  subsets: ['latin'],
+  variable: '--font-inter',
+  display: 'swap',
+  weight: ['400', '500', '600', '700']
+});
 
 export const metadata: Metadata = {
   title: 'Document AI & RAG Platform',
@@ -15,7 +23,7 @@ export default function RootLayout({
   children: React.ReactNode;
 }) {
   return (
-    <html lang="en" suppressHydrationWarning>
+    <html lang="en" className={`${inter.variable} ${inter.className}`} suppressHydrationWarning>
       <head>
         <script
           dangerouslySetInnerHTML={{
@@ -35,7 +43,7 @@ export default function RootLayout({
           }}
         />
       </head>
-      <body className="min-h-screen bg-slate-950 text-slate-100 antialiased selection:bg-indigo-500 selection:text-white transition-colors duration-150">
+      <body className={`${inter.className} min-h-screen bg-slate-950 text-slate-100 antialiased selection:bg-[#4d8eff] selection:text-white transition-colors duration-150`}>
         <WorkspaceProvider>
           <ThemeProvider>
             <AppLayout>{children}</AppLayout>

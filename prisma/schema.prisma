@@ -117,6 +117,8 @@ model User {
   cancelledScheduledCalls  ScheduledCall[]        @relation("ScheduledCallCanceller")
   scheduledCallParticipations ScheduledCallParticipant[]
   notificationPreference NotificationPreference?
+  voiceTutorSessions     VoiceTutorSession[]
+  voiceTutorFeedbacks    VoiceTutorFeedback[]
 
   @@map("users")
 }
@@ -156,6 +158,7 @@ model Document {
   projects            ProjectDocument[]
   knowledgeEvidences  KnowledgeEvidence[]
   knowledgeGraphJobs  KnowledgeGraphJob[]
+  voiceTutorSessions  VoiceTutorSession[]
 
   @@index([userId])
   @@index([status])
@@ -181,6 +184,7 @@ model KnowledgeBase {
   projects            ProjectKnowledgeBase[]
   knowledgeEntities   KnowledgeEntity[]
   knowledgeGraphJobs  KnowledgeGraphJob[]
+  voiceTutorSessions  VoiceTutorSession[]
 
   @@index([userId])
   @@map("knowledge_bases")
@@ -2475,6 +2479,96 @@ model ScheduledCallParticipant {
   @@index([scheduledCallId])
   @@index([userId, scheduledCallId])
   @@map("scheduled_call_participants")
+}
+
+enum VoiceTutorSessionMode {
+  FREE_TUTOR
+  QUIZ_TUTOR
+  INTERVIEW_TUTOR
+  DOCUMENT_TUTOR
+  KNOWLEDGE_GRAPH_TUTOR
+}
+
+enum VoiceTutorSessionStatus {
+  ACTIVE
+  PAUSED
+  COMPLETED
+  CANCELLED
+  FAILED
+}
+
+enum VoiceTutorRole {
+  USER
+  ASSISTANT
+  SYSTEM
+}
+
+model VoiceTutorSession {
+  id              String                 @id @default(uuid())
+  userId          String                 @map("user_id")
+  title           String                 @default("AI Voice Tutoring Session")
+  mode            VoiceTutorSessionMode   @default(FREE_TUTOR)
+  status          VoiceTutorSessionStatus @default(ACTIVE)
+  knowledgeBaseId String?                @map("knowledge_base_id")
+  documentId      String?                @map("document_id")
+  startedAt       DateTime               @default(now()) @map("started_at")
+  endedAt         DateTime?              @map("ended_at")
+  durationSeconds Int                    @default(0) @map("duration_seconds")
+  totalMessages   Int                    @default(0) @map("total_messages")
+  createdAt       DateTime               @default(now()) @map("created_at")
+  updatedAt       DateTime               @updatedAt @map("updated_at")
+
+  user          User                @relation(fields: [userId], references: [id], onDelete: Cascade)
+  knowledgeBase KnowledgeBase?      @relation(fields: [knowledgeBaseId], references: [id], onDelete: SetNull)
+  document      Document?           @relation(fields: [documentId], references: [id], onDelete: SetNull)
+  messages      VoiceTutorMessage[]
+  feedback      VoiceTutorFeedback?
+
+  @@index([userId, createdAt])
+  @@index([userId, status])
+  @@index([knowledgeBaseId])
+  @@index([documentId])
+  @@map("voice_tutor_sessions")
+}
+
+model VoiceTutorMessage {
+  id           String         @id @default(uuid())
+  sessionId    String         @map("session_id")
+  role         VoiceTutorRole
+  text         String         @db.Text
+  audioUrl     String?        @db.Text @map("audio_url")
+  durationMs   Int?           @map("duration_ms")
+  ragContext   Json?          @map("rag_context")
+  graphContext Json?          @map("graph_context")
+  metadata     Json?          @default("{}")
+  createdAt    DateTime       @default(now()) @map("created_at")
+
+  session VoiceTutorSession @relation(fields: [sessionId], references: [id], onDelete: Cascade)
+
+  @@index([sessionId, createdAt])
+  @@map("voice_tutor_messages")
+}
+
+model VoiceTutorFeedback {
+  id                       String   @id @default(uuid())
+  sessionId                String   @unique @map("session_id")
+  userId                   String   @map("user_id")
+  topic                    String   @default("General Voice Tutoring")
+  durationMinutes          Int      @default(0) @map("duration_minutes")
+  conceptsDiscussed        Json     @default("[]") @map("concepts_discussed")
+  strengths                Json     @default("[]")
+  weaknesses               Json     @default("[]")
+  recommendedTopics        Json     @default("[]") @map("recommended_topics")
+  understandingScore       Int      @default(80) @map("understanding_score")
+  communicationScore       Int      @default(80) @map("communication_score")
+  recommendedMockTestTopic String?  @map("recommended_mock_test_topic")
+  createdAt                DateTime @default(now()) @map("created_at")
+
+  session VoiceTutorSession @relation(fields: [sessionId], references: [id], onDelete: Cascade)
+  user    User              @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId, createdAt])
+  @@map("voice_tutor_feedbacks")
 }
 
 

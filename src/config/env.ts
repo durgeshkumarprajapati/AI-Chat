@@ -177,6 +177,15 @@ const serverEnvSchema = z
     MULTIMODAL_CACHE_ENABLED: z.coerce.boolean().default(true),
     MULTIMODAL_VISION_TIMEOUT_MS: z.coerce.number().int().positive().default(30000),
     AUTH_ENABLED: z.coerce.boolean().default(true),
+    VOICE_TUTOR_ENABLED: z.coerce.boolean().default(true),
+    VOICE_TUTOR_STT_PROVIDER: z.string().default('mock'),
+    VOICE_TUTOR_TTS_PROVIDER: z.string().default('mock'),
+    VOICE_TUTOR_MAX_AUDIO_BYTES: z.coerce.number().int().positive().default(10485760),
+    VOICE_TUTOR_MAX_AUDIO_DURATION_SECONDS: z.coerce.number().int().positive().default(120),
+    VOICE_TUTOR_MAX_CONTEXT_MESSAGES: z.coerce.number().int().positive().default(10),
+    VOICE_TUTOR_MAX_CONTEXT_TOKENS: z.coerce.number().int().positive().default(2000),
+    VOICE_TUTOR_SESSION_TIMEOUT_MINUTES: z.coerce.number().int().positive().default(30),
+    VOICE_TUTOR_REQUESTS_PER_MINUTE: z.coerce.number().int().positive().default(20),
     SESSION_SECRET: z.string().default('rag-platform-super-secret-session-key-32chars!'),
     SESSION_EXPIRY_DAYS: z.coerce.number().int().positive().default(7),
     GOOGLE_CLIENT_ID: z.string().optional(),
@@ -564,6 +573,17 @@ export const envConfig = {
     staticTtlSeconds: env.server?.CITY_EXPLORER_STATIC_TTL_SECONDS ?? 86400,
     dynamicTtlSeconds: env.server?.CITY_EXPLORER_DYNAMIC_TTL_SECONDS ?? 600,
     requestsPerMinute: env.server?.CITY_EXPLORER_REQUESTS_PER_MINUTE ?? 60
+  },
+  voiceTutor: {
+    enabled: env.server?.VOICE_TUTOR_ENABLED ?? true,
+    sttProvider: env.server?.VOICE_TUTOR_STT_PROVIDER ?? 'mock',
+    ttsProvider: env.server?.VOICE_TUTOR_TTS_PROVIDER ?? 'mock',
+    maxAudioBytes: env.server?.VOICE_TUTOR_MAX_AUDIO_BYTES ?? 10485760,
+    maxAudioDurationSeconds: env.server?.VOICE_TUTOR_MAX_AUDIO_DURATION_SECONDS ?? 120,
+    maxContextMessages: env.server?.VOICE_TUTOR_MAX_CONTEXT_MESSAGES ?? 10,
+    maxContextTokens: env.server?.VOICE_TUTOR_MAX_CONTEXT_TOKENS ?? 2000,
+    sessionTimeoutMinutes: env.server?.VOICE_TUTOR_SESSION_TIMEOUT_MINUTES ?? 30,
+    requestsPerMinute: env.server?.VOICE_TUTOR_REQUESTS_PER_MINUTE ?? 20
   }
 };
 

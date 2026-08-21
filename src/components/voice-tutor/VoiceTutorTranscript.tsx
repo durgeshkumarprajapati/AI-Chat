@@ -10,70 +10,82 @@ interface VoiceTutorTranscriptProps {
 export const VoiceTutorTranscript: React.FC<VoiceTutorTranscriptProps> = ({ messages }) => {
   if (!messages || messages.length === 0) {
     return (
-      <div className="bg-slate-950 border border-slate-800 rounded-2xl p-8 text-center space-y-2">
-        <span className="text-3xl">📜</span>
-        <h3 className="text-sm font-bold text-white">Live Voice Transcript</h3>
-        <p className="text-xs text-slate-400">
-          Your spoken messages and AI tutor explanations will appear here in real time.
-        </p>
+      <div className="bg-[#0a0e18] border border-[#424754] rounded-3xl p-8 text-center text-xs font-mono text-[#8c909f] shadow-xl">
+        💬 Conversation history will appear here once you begin speaking.
       </div>
     );
   }
 
   return (
-    <div className="bg-slate-950 border border-slate-800 rounded-2xl p-4 sm:p-6 space-y-4 max-h-[500px] overflow-y-auto font-sans">
-      <div className="flex items-center justify-between border-b border-slate-800 pb-3">
-        <h3 className="text-sm font-bold text-white flex items-center space-x-2">
-          <span>📜</span>
-          <span>Conversation Transcript</span>
+    <div className="bg-[#0a0e18] border border-[#424754] rounded-3xl p-6 sm:p-8 space-y-6 shadow-2xl font-sans">
+      <div className="flex items-center justify-between border-b border-[#424754]/60 pb-4">
+        <h3 className="text-sm font-extrabold text-[#dfe2f1] tracking-tight flex items-center space-x-2">
+          <span>💬</span>
+          <span>Voice Conversation Transcript</span>
         </h3>
-        <span className="text-[10px] font-mono text-slate-400 bg-slate-900 px-2 py-0.5 rounded border border-slate-800">
-          {messages.length} message{messages.length === 1 ? '' : 's'}
+        <span className="text-[10px] font-mono text-[#4d8eff] bg-[#4d8eff]/10 px-2.5 py-1 rounded-full border border-[#4d8eff]/30">
+          {messages.length} Message{messages.length === 1 ? '' : 's'}
         </span>
       </div>
 
-      <div className="space-y-3">
+      <div className="space-y-4 max-h-[500px] overflow-y-auto pr-2">
         {messages.map((msg) => {
           const isUser = msg.role === 'USER';
           return (
             <div
               key={msg.id}
-              className={`flex flex-col space-y-1 ${isUser ? 'items-end' : 'items-start'}`}
+              className={`p-4 rounded-2xl border transition-all duration-300 ${
+                isUser
+                  ? 'bg-[#0f131d] border-[#424754] ml-6'
+                  : 'bg-[#4d8eff]/10 border-[#4d8eff]/40 mr-6'
+              }`}
             >
-              <div className="flex items-center space-x-2 text-[10px] font-mono text-slate-400">
-                <span>{isUser ? '👤 You' : '🤖 AI Tutor'}</span>
-                <span>•</span>
-                <span>{new Date(msg.createdAt).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}</span>
+              {/* Message Header */}
+              <div className="flex items-center justify-between mb-2">
+                <span className={`text-[10px] font-mono font-bold uppercase tracking-wider ${
+                  isUser ? 'text-[#adc6ff]' : 'text-[#4edea3]'
+                }`}>
+                  {isUser ? '👤 YOU' : '🤖 AI TUTOR'}
+                </span>
+                <span className="text-[9px] font-mono text-[#8c909f]">
+                  {new Date(msg.createdAt).toLocaleTimeString()}
+                </span>
               </div>
 
-              <div
-                className={`max-w-[85%] sm:max-w-[75%] rounded-2xl px-4 py-3 text-xs leading-relaxed ${
-                  isUser
-                    ? 'bg-indigo-600 text-white rounded-br-none shadow-md shadow-indigo-600/10'
-                    : 'bg-slate-900 border border-slate-800 text-slate-100 rounded-bl-none shadow-md'
-                }`}
-              >
-                <p className="whitespace-pre-wrap">{msg.text}</p>
+              {/* Message Body Text */}
+              <p className="text-xs text-[#dfe2f1] leading-relaxed font-medium">
+                {msg.text}
+              </p>
 
-                {/* Grounding RAG Context Badges */}
-                {!isUser && msg.ragContext?.isGrounded && (
-                  <div className="mt-2.5 pt-2 border-t border-slate-800 flex items-center flex-wrap gap-1 text-[10px] font-mono text-emerald-400">
-                    <span>🌱 Grounded in Document Evidence</span>
-                  </div>
-                )}
+              {/* RAG Context & Citation Badges */}
+              {msg.ragContext && Array.isArray(msg.ragContext) && msg.ragContext.length > 0 && (
+                <div className="mt-3 pt-2.5 border-t border-[#424754]/40 flex flex-wrap gap-2 text-[10px] font-mono">
+                  <span className="text-[#ffb95f] font-bold">📄 GROUNDED EVIDENCE:</span>
+                  {msg.ragContext.map((item: any, idx: number) => (
+                    <span
+                      key={idx}
+                      className="px-2 py-0.5 rounded bg-[#0a0e18] border border-[#424754] text-[#c2c6d6]"
+                    >
+                      Page {item.pageNumber || 1} • {item.filename || 'Document'}
+                    </span>
+                  ))}
+                </div>
+              )}
 
-                {/* Knowledge Graph Entity Badges */}
-                {!isUser && msg.graphContext?.entities?.length > 0 && (
-                  <div className="mt-1 flex items-center flex-wrap gap-1 text-[10px] font-mono text-sky-400">
-                    <span>🕸 Knowledge Graph Connected:</span>
-                    {msg.graphContext.entities.map((e: any, idx: number) => (
-                      <span key={idx} className="bg-sky-950/80 border border-sky-800 px-1.5 py-0.5 rounded text-[9px]">
-                        {e.name || e.label || 'Entity'}
-                      </span>
-                    ))}
-                  </div>
-                )}
-              </div>
+              {/* Knowledge Graph Badges */}
+              {msg.graphContext && Array.isArray(msg.graphContext) && msg.graphContext.length > 0 && (
+                <div className="mt-2 flex flex-wrap gap-2 text-[10px] font-mono">
+                  <span className="text-[#4edea3] font-bold">🧠 KNOWLEDGE GRAPH:</span>
+                  {msg.graphContext.map((entity: any, idx: number) => (
+                    <span
+                      key={idx}
+                      className="px-2 py-0.5 rounded bg-[#0a0e18] border border-[#4edea3]/30 text-[#4edea3]"
+                    >
+                      {entity.name || entity}
+                    </span>
+                  ))}
+                </div>
+              )}
             </div>
           );
         })}

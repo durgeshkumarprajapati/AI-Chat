@@ -2,7 +2,7 @@
 
 import React, { useState, useEffect, useRef } from 'react';
 import { VoiceState } from '@/features/voice-tutor/voice-tutor.types';
-import { VOICE_STATE_DESCRIPTIONS } from '@/features/voice-tutor/voice-tutor.constants';
+import { VoiceOrb } from './VoiceOrb';
 
 interface VoiceTutorWidgetProps {
   sessionId: string | null;
@@ -71,7 +71,6 @@ export const VoiceTutorWidget: React.FC<VoiceTutorWidgetProps> = ({
   const startRecording = async () => {
     if (!sessionId || disabled) return;
 
-    // Interrupt any active speech playback
     handleInterruptPlayback();
     setPermissionError(null);
 
@@ -105,7 +104,6 @@ export const VoiceTutorWidget: React.FC<VoiceTutorWidgetProps> = ({
 
       recorder.onstop = () => {
         const audioBlob = new Blob(audioChunksRef.current, { type: mimeType });
-        // Stop stream tracks
         stream.getTracks().forEach((track) => track.stop());
 
         if (audioBlob.size > 0) {
@@ -159,69 +157,36 @@ export const VoiceTutorWidget: React.FC<VoiceTutorWidgetProps> = ({
   };
 
   return (
-    <div className="bg-slate-900/90 backdrop-blur-md border border-slate-800 rounded-3xl p-6 sm:p-8 space-y-6 shadow-2xl flex flex-col items-center text-center">
-      {/* Microphone State Visualizer Ring */}
-      <div className="relative flex items-center justify-center my-2">
-        {state === 'LISTENING' && (
-          <div className="absolute inset-0 rounded-full bg-rose-500/20 animate-ping" />
-        )}
-        {state === 'THINKING' && (
-          <div className="absolute inset-0 rounded-full bg-indigo-500/20 animate-pulse" />
-        )}
-        {state === 'SPEAKING' && (
-          <div className="absolute inset-0 rounded-full bg-emerald-500/20 animate-pulse" />
-        )}
+    <div className="bg-[#0a0e18] border border-[#424754] rounded-3xl p-6 sm:p-8 space-y-6 shadow-2xl flex flex-col items-center text-center font-sans">
+      {/* Central Voice Orb Component */}
+      <VoiceOrb
+        state={state}
+        disabled={disabled || !sessionId}
+        onClick={handleMicClick}
+        size="md"
+      />
 
-        <button
-          type="button"
-          onClick={handleMicClick}
-          disabled={disabled || !sessionId || state === 'PROCESSING'}
-          aria-label={state === 'LISTENING' ? 'Stop recording speech' : 'Start speaking to AI Tutor'}
-          className={`w-28 h-28 sm:w-32 sm:h-32 rounded-full flex items-center justify-center text-4xl sm:text-5xl transition-all shadow-xl border-4 ${
-            state === 'LISTENING'
-              ? 'bg-rose-600 hover:bg-rose-500 border-rose-400 text-white scale-105 shadow-rose-500/30'
-              : state === 'SPEAKING'
-              ? 'bg-emerald-600 hover:bg-emerald-500 border-emerald-400 text-white scale-105 shadow-emerald-500/30'
-              : state === 'THINKING' || state === 'PROCESSING'
-              ? 'bg-indigo-600 border-indigo-400 text-white animate-pulse shadow-indigo-500/30'
-              : 'bg-indigo-600/90 hover:bg-indigo-500 border-indigo-400/80 text-white shadow-indigo-600/20 hover:scale-105'
-          } disabled:opacity-50 disabled:cursor-not-allowed`}
-        >
-          {state === 'LISTENING' ? '⏹' : state === 'SPEAKING' ? '🔊' : state === 'THINKING' || state === 'PROCESSING' ? '🧠' : '🎤'}
-        </button>
-      </div>
-
-      {/* State Text & Feedback */}
-      <div className="space-y-1 max-w-md">
-        <div className="text-sm font-bold text-white flex items-center justify-center space-x-2">
-          <span>{VOICE_STATE_DESCRIPTIONS[state] || VOICE_STATE_DESCRIPTIONS.IDLE}</span>
+      {permissionError && (
+        <div className="text-xs font-semibold text-rose-400 bg-rose-950/60 border border-rose-800/80 p-3 rounded-xl max-w-md w-full">
+          ⚠️ {permissionError}
         </div>
-        <p className="text-xs text-slate-400">
-          {state === 'SPEAKING' ? 'Click microphone to interrupt and ask a new question.' : 'Click the microphone button to speak naturally with your AI Tutor.'}
-        </p>
-
-        {permissionError && (
-          <div className="mt-2 text-xs font-semibold text-rose-400 bg-rose-950/60 border border-rose-800/80 p-2.5 rounded-xl">
-            ⚠️ {permissionError}
-          </div>
-        )}
-      </div>
+      )}
 
       {/* Fallback Text Input Form */}
       {onTextSubmitted && (
         <form onSubmit={handleManualTextSubmit} className="w-full max-w-lg flex items-center space-x-2 pt-2">
           <input
             type="text"
-            placeholder="Type a message or topic instead..."
+            placeholder="Type a message or question instead..."
             value={textInput}
             onChange={(e) => setTextInput(e.target.value)}
             disabled={disabled || !sessionId || state === 'LISTENING'}
-            className="flex-1 bg-slate-950 border border-slate-800 rounded-xl px-4 py-2.5 text-xs text-white placeholder-slate-500 focus:outline-none focus:border-indigo-500 transition"
+            className="flex-1 bg-[#0f131d] border border-[#424754] rounded-xl px-4 py-2.5 text-xs text-[#dfe2f1] placeholder-[#8c909f] focus:outline-none focus:border-[#4d8eff] transition"
           />
           <button
             type="submit"
             disabled={!textInput.trim() || disabled || !sessionId}
-            className="px-4 py-2.5 bg-indigo-600 hover:bg-indigo-500 disabled:opacity-50 text-white font-bold text-xs rounded-xl transition shadow-md shadow-indigo-600/20"
+            className="px-4 py-2.5 bg-gradient-to-r from-[#4d8eff] to-[#adc6ff] hover:opacity-90 disabled:opacity-50 text-[#0a0e18] font-bold text-xs rounded-xl transition shadow-md shadow-[#4d8eff]/20"
           >
             Send 🚀
           </button>

@@ -1,6 +1,6 @@
 'use client';
 
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import Link from 'next/link';
 import { useRouter } from 'next/navigation';
 import { useWorkspace } from '@/context/WorkspaceContext';
@@ -10,11 +10,17 @@ import { AuthCard } from '@/components/auth/AuthCard';
 
 export default function LoginPage() {
   const router = useRouter();
-  const { refreshUser } = useWorkspace();
+  const { authStatus, refreshUser } = useWorkspace();
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [error, setError] = useState<string | null>(null);
   const [loading, setLoading] = useState(false);
+
+  useEffect(() => {
+    if (authStatus === 'AUTHENTICATED') {
+      router.replace('/dashboard');
+    }
+  }, [authStatus, router]);
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -45,6 +51,21 @@ export default function LoginPage() {
   const handleGoogleAuth = () => {
     window.location.href = '/api/auth/google';
   };
+
+  if (authStatus === 'LOADING' || authStatus === 'AUTHENTICATED') {
+    return (
+      <AuthLayoutShell>
+        <AuthCard>
+          <div className="flex flex-col items-center justify-center py-12 space-y-3 font-sans">
+            <div className="w-8 h-8 rounded-full border-2 border-[#4d8eff] border-t-transparent animate-spin" />
+            <p className="text-xs text-[#adc6ff] font-mono animate-pulse">
+              {authStatus === 'AUTHENTICATED' ? 'Redirecting to Dashboard...' : 'Verifying Session...'}
+            </p>
+          </div>
+        </AuthCard>
+      </AuthLayoutShell>
+    );
+  }
 
   return (
     <AuthLayoutShell>

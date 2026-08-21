@@ -2,8 +2,12 @@
 
 import React from 'react';
 import Link from 'next/link';
+import { useWorkspace } from '@/context/WorkspaceContext';
 
 export const HeroSection: React.FC = () => {
+  const { authStatus } = useWorkspace();
+  const ctaTarget = authStatus === 'AUTHENTICATED' ? '/dashboard' : '/register';
+
   return (
     <section className="relative pt-32 pb-20 md:pt-40 md:pb-28 overflow-hidden bg-gradient-to-b from-[#0a0e18] via-[#0f131d] to-[#0f131d]">
       {/* Glow Effects */}
@@ -36,10 +40,10 @@ export const HeroSection: React.FC = () => {
             {/* Action Buttons */}
             <div className="pt-4 flex flex-wrap items-center gap-4">
               <Link
-                href="/register"
+                href={ctaTarget}
                 className="px-6 py-3.5 rounded-xl bg-gradient-to-r from-[#4d8eff] via-[#4d8eff] to-[#adc6ff] text-[#0a0e18] font-bold text-sm shadow-xl shadow-[#4d8eff]/30 hover:scale-[1.02] active:scale-[0.98] transition-all flex items-center space-x-2"
               >
-                <span>Start Free Trial</span>
+                <span>{authStatus === 'AUTHENTICATED' ? 'Enter Application' : 'Start Free Trial'}</span>
                 <span>→</span>
               </Link>
 
@@ -88,52 +92,25 @@ export const HeroSection: React.FC = () => {
                       DOCUMENT AI CORE ENGINE
                     </span>
                   </div>
-
-                  <div className="px-3 py-1 rounded-full bg-[#0f131d] border border-[#4edea3]/40 text-[11px] font-mono text-[#4edea3] font-bold flex items-center space-x-1.5 shadow-sm">
-                    <span className="w-1.5 h-1.5 rounded-full bg-[#4edea3] animate-pulse" />
-                    <span>OCR STATUS: 10,492 Docs Parsed</span>
-                  </div>
+                  <span className="text-[10px] font-mono text-[#4d8eff] bg-[#4d8eff]/10 px-2 py-0.5 rounded border border-[#4d8eff]/30">
+                    ONLINE
+                  </span>
                 </div>
 
-                {/* Simulated Neural Data Ingestion Graphics */}
-                <div className="h-56 rounded-xl bg-[#0f131d]/90 border border-[#424754]/60 p-4 relative flex flex-col justify-between overflow-hidden">
-                  {/* Grid Lines Overlay */}
-                  <div className="absolute inset-0 bg-[radial-gradient(#4d8eff_1px,transparent_1px)] [background-size:16px_16px] opacity-20 pointer-events-none" />
-
-                  <div className="flex justify-between items-center z-10">
-                    <div className="px-2.5 py-1 rounded bg-[#4d8eff]/20 border border-[#4d8eff]/40 text-[10px] font-mono text-[#adc6ff]">
-                      INGESTION: ACTIVE
-                    </div>
-                    <div className="text-[10px] font-mono text-[#8c909f]">
-                      LATENCY: 42ms
-                    </div>
+                {/* Processing Nodes Graphic */}
+                <div className="space-y-3 font-mono text-xs">
+                  <div className="p-3 rounded-xl bg-[#0f131d] border border-[#424754]/60 flex items-center justify-between">
+                    <span className="text-[#adc6ff]">📄 Document OCR Pipeline</span>
+                    <span className="text-[#4edea3] text-[10px]">99.8% Accuracy</span>
                   </div>
-
-                  {/* Nodes Flow Animation */}
-                  <div className="flex items-center justify-around my-auto z-10">
-                    <div className="w-12 h-12 rounded-xl bg-[#4d8eff]/20 border border-[#4d8eff] flex items-center justify-center text-lg shadow-lg shadow-[#4d8eff]/30">
-                      📄
-                    </div>
-                    <div className="h-0.5 w-12 bg-gradient-to-r from-[#4d8eff] to-[#4edea3] relative">
-                      <div className="w-2 h-2 rounded-full bg-[#4edea3] absolute -top-0.75 animate-ping" />
-                    </div>
-                    <div className="w-14 h-14 rounded-2xl bg-gradient-to-br from-[#4d8eff] to-[#00a572] flex items-center justify-center text-xl text-[#0a0e18] font-bold shadow-xl shadow-[#4edea3]/20">
-                      🧠
-                    </div>
-                    <div className="h-0.5 w-12 bg-gradient-to-r from-[#4edea3] to-[#ffb95f] relative" />
-                    <div className="w-12 h-12 rounded-xl bg-[#ffb95f]/20 border border-[#ffb95f] flex items-center justify-center text-lg shadow-lg shadow-[#ffb95f]/30">
-                      🕸️
-                    </div>
+                  <div className="p-3 rounded-xl bg-[#0f131d] border border-[#424754]/60 flex items-center justify-between">
+                    <span className="text-[#adc6ff]">🧠 Hybrid RAG Vector Search</span>
+                    <span className="text-[#4edea3] text-[10px]">12ms Latency</span>
                   </div>
-
-                  <div className="flex justify-between items-center z-10 text-[10px] font-mono text-[#c2c6d6]">
-                    <span>Chunking & Vector Embeddings</span>
-                    <span className="text-[#4edea3]">100% Verified Grounding</span>
+                  <div className="p-3 rounded-xl bg-[#0f131d] border border-[#424754]/60 flex items-center justify-between">
+                    <span className="text-[#adc6ff]">🕸️ Graph Entity Resolution</span>
+                    <span className="text-[#4edea3] text-[10px]">Grounded</span>
                   </div>
-                </div>
-
-                <div className="text-[11px] text-[#8c909f] font-mono text-center">
-                  Production-Grade RAG & Knowledge Graph Pipeline
                 </div>
               </div>
             </div>

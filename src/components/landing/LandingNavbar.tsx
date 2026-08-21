@@ -2,10 +2,12 @@
 
 import React, { useState, useEffect, useRef } from 'react';
 import Link from 'next/link';
+import { useWorkspace } from '@/context/WorkspaceContext';
 
 export const LandingNavbar: React.FC = () => {
-  const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
+  const { authStatus } = useWorkspace();
   const [scrolled, setScrolled] = useState(false);
+  const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
   const mobileMenuRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
@@ -16,42 +18,51 @@ export const LandingNavbar: React.FC = () => {
     return () => window.removeEventListener('scroll', handleScroll);
   }, []);
 
+  // Trap focus & Handle Escape key for accessible mobile drawer
   useEffect(() => {
     const handleKeyDown = (e: KeyboardEvent) => {
       if (e.key === 'Escape' && mobileMenuOpen) {
         setMobileMenuOpen(false);
       }
     };
-    window.addEventListener('keydown', handleKeyDown);
-    return () => window.removeEventListener('keydown', handleKeyDown);
+    if (mobileMenuOpen) {
+      document.addEventListener('keydown', handleKeyDown);
+    }
+    return () => document.removeEventListener('keydown', handleKeyDown);
   }, [mobileMenuOpen]);
+
+  const appEntryTarget = authStatus === 'AUTHENTICATED' ? '/dashboard' : '/login';
+  const getStartedTarget = authStatus === 'AUTHENTICATED' ? '/dashboard' : '/register';
 
   return (
     <header
-      className={`fixed top-0 left-0 right-0 z-50 transition-all duration-300 ${
+      className={`fixed top-0 inset-x-0 z-50 transition-all duration-300 ${
         scrolled
-          ? 'bg-[#0f131d]/90 backdrop-blur-md border-b border-[#424754]/50 shadow-xl py-3'
+          ? 'bg-[#0a0e18]/90 backdrop-blur-md border-b border-[#424754] py-3 shadow-xl'
           : 'bg-transparent py-5'
       }`}
     >
       <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 flex items-center justify-between">
-        {/* Brand Logo */}
-        <Link href="/" className="flex items-center space-x-3 group" aria-label="Document AI Homepage">
-          <div className="w-10 h-10 rounded-xl bg-gradient-to-tr from-[#4d8eff] via-[#adc6ff] to-[#4edea3] flex items-center justify-center font-extrabold text-[#0a0e18] shadow-lg shadow-[#4d8eff]/30 group-hover:scale-105 transition-transform">
+        {/* Left Application Brand */}
+        <Link href="/" className="flex items-center space-x-3 group">
+          <div className="w-9 h-9 rounded-xl bg-gradient-to-br from-[#4d8eff] to-[#adc6ff] flex items-center justify-center font-extrabold text-[#0a0e18] shadow-lg shadow-[#4d8eff]/20 group-hover:scale-105 transition-transform text-xs">
             AI
           </div>
           <div className="flex flex-col">
-            <span className="font-extrabold text-lg tracking-tight text-[#dfe2f1] group-hover:text-[#adc6ff] transition-colors">
+            <span className="font-extrabold text-base tracking-tight text-[#dfe2f1] group-hover:text-[#adc6ff] transition-colors font-sans">
               Document AI
             </span>
-            <span className="text-[9px] font-mono tracking-widest text-[#4edea3] uppercase font-bold">
+            <span className="text-[9px] text-[#8c909f] font-mono tracking-widest font-bold">
               ENTERPRISE PLATFORM
             </span>
           </div>
         </Link>
 
-        {/* Desktop Navigation Links */}
-        <nav className="hidden md:flex items-center space-x-8 text-sm font-medium text-[#c2c6d6]" aria-label="Main Navigation">
+        {/* Center Section Links */}
+        <nav
+          aria-label="Main Navigation"
+          className="hidden md:flex items-center space-x-8 text-xs font-semibold text-[#c2c6d6]"
+        >
           <a href="#features" className="hover:text-[#adc6ff] transition-colors">
             Solutions
           </a>
@@ -75,18 +86,18 @@ export const LandingNavbar: React.FC = () => {
         {/* Desktop Right Action Area */}
         <div className="hidden md:flex items-center space-x-4">
           <Link
-            href="/login"
+            href={appEntryTarget}
             className="text-sm font-semibold text-[#c2c6d6] hover:text-[#dfe2f1] transition-colors px-3 py-2"
           >
-            Account
+            {authStatus === 'AUTHENTICATED' ? 'Workspace' : 'Account'}
           </Link>
 
           <Link
-            href="/register"
-            aria-label="Get Started with Document AI"
+            href={getStartedTarget}
+            aria-label="Enter Document AI Platform"
             className="px-5 py-2.5 rounded-xl bg-gradient-to-r from-[#4d8eff] to-[#adc6ff] text-[#0a0e18] font-bold text-xs shadow-lg shadow-[#4d8eff]/25 hover:shadow-[#4d8eff]/40 hover:scale-[1.02] active:scale-[0.98] transition-all"
           >
-            Get Started
+            {authStatus === 'AUTHENTICATED' ? 'Enter App' : 'Get Started'}
           </Link>
         </div>
 
@@ -159,18 +170,18 @@ export const LandingNavbar: React.FC = () => {
 
           <div className="pt-4 border-t border-[#424754] flex flex-col space-y-2">
             <Link
-              href="/login"
+              href={appEntryTarget}
               onClick={() => setMobileMenuOpen(false)}
               className="w-full text-center py-2.5 rounded-xl border border-[#424754] text-xs font-bold text-[#dfe2f1] hover:bg-[#0f131d] transition"
             >
-              Account Login
+              {authStatus === 'AUTHENTICATED' ? 'Enter Workspace' : 'Account Login'}
             </Link>
             <Link
-              href="/register"
+              href={getStartedTarget}
               onClick={() => setMobileMenuOpen(false)}
-              className="w-full text-center py-2.5 rounded-xl bg-[#4d8eff] text-[#0a0e18] text-xs font-bold shadow-lg shadow-[#4d8eff]/30 hover:bg-[#adc6ff] transition"
+              className="w-full text-center py-2.5 rounded-xl bg-gradient-to-r from-[#4d8eff] to-[#adc6ff] text-[#0a0e18] text-xs font-extrabold shadow-lg shadow-[#4d8eff]/20"
             >
-              Get Started Free
+              {authStatus === 'AUTHENTICATED' ? 'Enter Application →' : 'Get Started Free'}
             </Link>
           </div>
         </div>

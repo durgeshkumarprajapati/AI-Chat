@@ -78,6 +78,9 @@ export const LandingNavbar: React.FC = () => {
           <Link href="/documents" className="hover:text-[#adc6ff] transition-colors">
             Docs
           </Link>
+          <Link href="/contact-us" className="hover:text-[#adc6ff] transition-colors">
+            Support
+          </Link>
           <Link href="/dashboard" className="hover:text-[#adc6ff] transition-colors">
             Workspace
           </Link>

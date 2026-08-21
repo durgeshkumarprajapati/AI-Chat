@@ -2,7 +2,7 @@
 
 import React, { useState, useEffect } from 'react';
 import { useParams } from 'next/navigation';
-import { AppLayout } from '@/components/layout/AppLayout';
+import Link from 'next/link';
 
 export default function EntityDetailPage() {
   const params = useParams();
@@ -33,55 +33,82 @@ export default function EntityDetailPage() {
   }
 
   return (
-    <AppLayout>
-      <div className="p-6 space-y-6 max-w-5xl mx-auto w-full">
-        <div className="flex items-center space-x-3 border-b border-slate-800 pb-4">
-          <a href="/knowledge-graph" className="text-slate-400 hover:text-white text-sm">
-            ← Back to Graph
-          </a>
+    <div className="p-4 sm:p-6 lg:p-8 space-y-6 max-w-5xl mx-auto w-full font-sans selection:bg-[#4d8eff] selection:text-white">
+        {/* Navigation Back Link */}
+        <div className="flex items-center space-x-3 border-b border-[#424754]/60 pb-4">
+          <Link
+            href="/knowledge-graph"
+            className="inline-flex items-center space-x-2 px-3 py-1.5 rounded-xl bg-[#0a0e18] hover:bg-[#171b26] border border-[#424754] text-xs font-semibold text-[#c2c6d6] hover:text-[#dfe2f1] transition"
+          >
+            <span>←</span>
+            <span>Back to Knowledge Graph</span>
+          </Link>
         </div>
 
         {loading ? (
-          <div className="flex items-center justify-center p-12 text-slate-400">
-            <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-indigo-500"></div>
+          <div className="bg-[#0a0e18]/80 border border-[#424754] rounded-2xl p-16 flex flex-col items-center justify-center space-y-4 min-h-[320px]">
+            <div className="w-12 h-12 rounded-full border-2 border-[#4d8eff]/20 border-t-[#4d8eff] animate-spin" />
+            <p className="text-xs font-bold text-[#dfe2f1]">Loading Entity Intelligence...</p>
           </div>
         ) : data?.entity ? (
           <div className="space-y-6">
-            <div className="bg-slate-900/60 border border-slate-800 rounded-2xl p-6 space-y-4">
-              <div className="flex justify-between items-start">
-                <div>
-                  <span className="text-xs font-semibold px-2 py-0.5 rounded bg-indigo-600/20 text-indigo-400 border border-indigo-500/30 uppercase">
+            <div className="bg-[#0a0e18]/90 border border-[#424754] rounded-2xl p-6 sm:p-8 space-y-6 shadow-2xl backdrop-blur-md relative overflow-hidden">
+              {/* Subtle ambient glow */}
+              <div className="absolute top-0 right-0 w-80 h-80 bg-[#4d8eff]/10 blur-[100px] pointer-events-none rounded-full" />
+
+              <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 border-b border-[#424754]/60 pb-6 relative z-10">
+                <div className="space-y-2">
+                  <span className="text-[10px] font-mono font-bold px-2.5 py-1 rounded bg-[#4d8eff]/15 text-[#adc6ff] border border-[#4d8eff]/30 uppercase tracking-wider">
                     {data.entity.entityType}
                   </span>
-                  <h1 className="text-3xl font-bold text-white tracking-tight mt-2">{data.entity.canonicalName}</h1>
+                  <h1 className="text-2xl sm:text-3xl font-extrabold text-[#dfe2f1] tracking-tight">
+                    {data.entity.canonicalName}
+                  </h1>
                 </div>
-                <span className="text-sm font-mono text-emerald-400 font-bold">
-                  {(data.entity.confidence * 100).toFixed(0)}% Confidence
-                </span>
+
+                <div className="px-3.5 py-1.5 rounded-xl bg-[#0f131d] border border-[#424754] inline-flex items-center space-x-2 shrink-0">
+                  <span className="w-2 h-2 rounded-full bg-[#4edea3]" />
+                  <span className="text-xs font-mono font-bold text-[#4edea3]">
+                    {(data.entity.confidence * 100).toFixed(0)}% Confidence
+                  </span>
+                </div>
               </div>
 
-              {data.entity.description && <p className="text-slate-300 text-sm">{data.entity.description}</p>}
+              {data.entity.description && (
+                <div className="p-4 rounded-xl bg-[#0f131d] border border-[#424754] space-y-1 relative z-10">
+                  <span className="text-[10px] font-mono text-[#c2c6d6] uppercase font-bold tracking-wider">
+                    Description & Context
+                  </span>
+                  <p className="text-xs text-[#c2c6d6] leading-relaxed">{data.entity.description}</p>
+                </div>
+              )}
 
-              <div className="pt-4 border-t border-slate-800 flex flex-wrap gap-3">
-                <a
+              <div className="pt-2 flex flex-wrap gap-3 relative z-10">
+                <Link
                   href={`/copilot?q=${encodeURIComponent(`Explain concept ${data.entity.canonicalName}`)}`}
-                  className="px-4 py-2 bg-indigo-600 hover:bg-indigo-500 text-white rounded-xl text-xs font-medium transition shadow"
+                  className="px-4 py-2.5 bg-gradient-to-r from-[#4d8eff] to-[#adc6ff] hover:opacity-95 text-[#0a0e18] rounded-xl text-xs font-extrabold transition shadow-lg shadow-[#4d8eff]/20 flex items-center space-x-2"
                 >
-                  🤖 Ask Copilot
-                </a>
-                <a
+                  <span>🤖</span>
+                  <span>Ask Copilot About Concept</span>
+                </Link>
+
+                <Link
                   href={`/research?topic=${encodeURIComponent(data.entity.canonicalName)}`}
-                  className="px-4 py-2 bg-slate-800 hover:bg-slate-700 text-slate-200 rounded-xl text-xs font-medium transition border border-slate-700"
+                  className="px-4 py-2.5 bg-[#0f131d] hover:bg-[#171b26] border border-[#424754] text-[#dfe2f1] hover:border-[#8c909f] rounded-xl text-xs font-bold transition flex items-center space-x-2"
                 >
-                  🔬 Research Concept
-                </a>
+                  <span>🔬</span>
+                  <span>Launch Agentic Research</span>
+                </Link>
               </div>
             </div>
           </div>
         ) : (
-          <p className="text-slate-400">Entity not found.</p>
+          <div className="bg-[#0a0e18]/80 border border-[#424754] rounded-2xl p-10 text-center space-y-2">
+            <span className="text-2xl">⚠️</span>
+            <p className="text-sm font-bold text-[#dfe2f1]">Entity Not Found</p>
+            <p className="text-xs text-[#c2c6d6]">The specified entity record does not exist in the knowledge graph index.</p>
+          </div>
         )}
       </div>
-    </AppLayout>
   );
 }

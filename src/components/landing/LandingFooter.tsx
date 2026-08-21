@@ -93,6 +93,16 @@ export const LandingFooter: React.FC = () => {
             </div>
             <ul className="space-y-2">
               <li>
+                <Link href="/terms-and-conditions" className="hover:text-[#adc6ff] transition">
+                  Terms & Conditions
+                </Link>
+              </li>
+              <li>
+                <Link href="/contact-us" className="hover:text-[#adc6ff] transition">
+                  Contact Support
+                </Link>
+              </li>
+              <li>
                 <Link href="/health" className="hover:text-[#adc6ff] transition">
                   System Health
                 </Link>

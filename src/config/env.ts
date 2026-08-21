@@ -186,6 +186,13 @@ const serverEnvSchema = z
     VOICE_TUTOR_MAX_CONTEXT_TOKENS: z.coerce.number().int().positive().default(2000),
     VOICE_TUTOR_SESSION_TIMEOUT_MINUTES: z.coerce.number().int().positive().default(30),
     VOICE_TUTOR_REQUESTS_PER_MINUTE: z.coerce.number().int().positive().default(20),
+    CHILL_FOCUS_ENABLED: z.coerce.boolean().default(true),
+    CHILL_FOCUS_AUDIO_BASE_URL: z.string().default('/audio/soundscapes/'),
+    CHILL_FOCUS_STREAK_MINUTES: z.coerce.number().int().positive().default(5),
+    CHILL_FOCUS_SUGGESTION_AFTER_MINUTES: z.coerce.number().int().positive().default(50),
+    CHILL_FOCUS_MAX_SESSION_MINUTES: z.coerce.number().int().positive().default(120),
+    CHILL_FOCUS_DEFAULT_MODE: z.string().default('CHILL'),
+    CHILL_FOCUS_AI_INTERVENTION_ENABLED: z.coerce.boolean().default(true),
     SESSION_SECRET: z.string().default('rag-platform-super-secret-session-key-32chars!'),
     SESSION_EXPIRY_DAYS: z.coerce.number().int().positive().default(7),
     GOOGLE_CLIENT_ID: z.string().optional(),
@@ -584,6 +591,15 @@ export const envConfig = {
     maxContextTokens: env.server?.VOICE_TUTOR_MAX_CONTEXT_TOKENS ?? 2000,
     sessionTimeoutMinutes: env.server?.VOICE_TUTOR_SESSION_TIMEOUT_MINUTES ?? 30,
     requestsPerMinute: env.server?.VOICE_TUTOR_REQUESTS_PER_MINUTE ?? 20
+  },
+  chillFocus: {
+    enabled: env.server?.CHILL_FOCUS_ENABLED ?? true,
+    audioBaseUrl: env.server?.CHILL_FOCUS_AUDIO_BASE_URL ?? '/audio/soundscapes/',
+    streakMinutes: env.server?.CHILL_FOCUS_STREAK_MINUTES ?? 5,
+    suggestionAfterMinutes: env.server?.CHILL_FOCUS_SUGGESTION_AFTER_MINUTES ?? 50,
+    maxSessionMinutes: env.server?.CHILL_FOCUS_MAX_SESSION_MINUTES ?? 120,
+    defaultMode: env.server?.CHILL_FOCUS_DEFAULT_MODE ?? 'CHILL',
+    aiInterventionEnabled: env.server?.CHILL_FOCUS_AI_INTERVENTION_ENABLED ?? true
   }
 };
 

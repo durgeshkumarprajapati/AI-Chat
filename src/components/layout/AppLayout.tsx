@@ -55,6 +55,7 @@ function InnerAppLayout({ children }: { children: React.ReactNode }) {
     { name: 'Collab Chat', href: '/collab-chat', icon: '💬' },
     { name: 'AI Study Mode', href: '/study', icon: '🎓' },
     { name: 'AI Voice Tutor', href: '/study/voice-tutor', icon: '🎤' },
+    { name: 'Chill & Focus', href: '/study/chill-focus', icon: '🧘' },
     { name: 'Agentic Research', href: '/research', icon: '🔬' },
     { name: 'Workflows', href: '/workflows', icon: '🧩' },
     { name: 'AI Roadmaps', href: '/roadmaps', icon: '🚀' },

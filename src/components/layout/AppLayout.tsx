@@ -11,6 +11,7 @@ import { TourProvider, useTour } from '@/features/tours/components/TourProvider'
 import { TourHelpButton } from '@/features/tours/components/TourHelpButton';
 import { useContextualTour } from '@/features/tours/hooks/useContextualTour';
 import { UserProfileMenu } from '../auth/UserProfileMenu';
+import { AppFooter } from './AppFooter';
 
 function HeaderTourControls() {
   const { startTour } = useTour();
@@ -407,7 +408,10 @@ function InnerAppLayout({ children }: { children: React.ReactNode }) {
         )}
 
         {/* Main Application Content Area */}
-        <main className="flex-1 min-w-0 overflow-x-hidden">{children}</main>
+        <main className="flex-1 min-w-0 flex flex-col min-h-full overflow-x-hidden">
+          <div className="flex-1 min-w-0">{children}</div>
+          <AppFooter />
+        </main>
       </div>
 
       {/* Universal Product Tour Overlay */}

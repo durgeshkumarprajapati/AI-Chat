@@ -169,22 +169,6 @@ export default function TermsAndConditionsPage() {
           </div>
         </section>
       </div>
-
-      {/* Legal Footer Navigation */}
-      <div className="flex flex-wrap items-center justify-between gap-4 text-xs text-[#8c909f] font-mono border-t border-[#424754]/60 pt-6">
-        <span>© 2026 Document AI Platform. All rights reserved.</span>
-        <div className="flex items-center space-x-4">
-          <Link href="/contact-us" className="hover:text-[#adc6ff] transition">
-            Contact Us
-          </Link>
-          <Link href="/health" className="hover:text-[#adc6ff] transition">
-            System Health
-          </Link>
-          <Link href="/dashboard" className="hover:text-[#adc6ff] transition">
-            Dashboard
-          </Link>
-        </div>
-      </div>
     </div>
   );
 }

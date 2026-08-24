@@ -22,6 +22,13 @@ export class RAGService {
     this.legacyRetrievalService = legacyRetrievalService || new RetrievalService();
   }
 
+  private normalizeSourceMode(mode?: string): 'documents_only' | 'web_only' | 'all_sources' {
+    const m = (mode || '').toLowerCase();
+    if (m === 'web_only' || m === 'web_search' || m === 'web' || m === 'web_discovery') return 'web_only';
+    if (m === 'all' || m === 'all_sources' || m === 'auto' || m === 'documents_and_web') return 'all_sources';
+    return 'documents_only';
+  }
+
   /**
    * Main entry point for RAG execution.
    * Integrates Phase 61 Hybrid RAG with Phase 62 Web Intelligence.
@@ -62,11 +69,13 @@ export class RAGService {
         ? await multiQueryService.generateMultiQueries(question)
         : [question];
 
+      const mappedSourceMode = this.normalizeSourceMode(options?.sourceMode);
+
       // 3. Multi-Engine Concurrent Hybrid Retrieval (Vector + Keyword + Graph)
       const { vectorResults, keywordResults, graphResults } =
         await hybridRetrievalService.retrieveAll(userId, queries, {
           knowledgeBaseId: options?.knowledgeBaseId,
-          sourceMode: options?.sourceMode === 'all' ? 'all_sources' : options?.sourceMode,
+          sourceMode: mappedSourceMode,
           topK: options?.topK || RAGConfigService.getInitialCandidates()
         });
 
@@ -225,9 +234,11 @@ export class RAGService {
     startTime: number,
     reason: string
   ): Promise<HybridRAGResult> {
+    const mappedSourceMode = this.normalizeSourceMode(options?.sourceMode);
+
     const chunks = await this.legacyRetrievalService.retrieveContext(userId, question, {
       knowledgeBaseId: options?.knowledgeBaseId,
-      sourceMode: options?.sourceMode === 'all' ? 'all_sources' : options?.sourceMode,
+      sourceMode: mappedSourceMode,
       topK: options?.topK || 5
     });
 

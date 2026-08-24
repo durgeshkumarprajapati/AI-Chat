@@ -64,7 +64,19 @@ export interface HybridCandidate extends RetrievedChunk {
 export interface HybridRAGOptions {
   knowledgeBaseId?: string;
   documentId?: string;
-  sourceMode?: 'documents_only' | 'web_only' | 'all';
+  sourceMode?:
+    | 'documents_only'
+    | 'web_only'
+    | 'all'
+    | 'all_sources'
+    | 'web_search'
+    | 'web_discovery'
+    | 'auto'
+    | 'DOCUMENTS'
+    | 'WEB_SEARCH'
+    | 'AUTO'
+    | 'DOCUMENTS_AND_WEB'
+    | 'WEB_DISCOVERY';
   topK?: number;
   minSimilarity?: number;
   localOnly?: boolean;

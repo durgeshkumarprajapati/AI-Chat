@@ -57,6 +57,9 @@ describe('Phase 62 — Production Web Intelligence & Tavily Search Integration T
 
     const decision3 = webIntelligenceService.evaluateDecision('What is our internal policy?', 0.9, 'documents_only');
     expect(decision3.shouldSearchWeb).toBe(false);
+
+    const decision4 = webIntelligenceService.evaluateDecision('What is our internal policy?', 0.9, 'DOCUMENTS');
+    expect(decision4.shouldSearchWeb).toBe(false);
   });
 
   it('4. Tavily Provider Execution: Searches web and normalizes results safely', async () => {
@@ -103,5 +106,32 @@ describe('Phase 62 — Production Web Intelligence & Tavily Search Integration T
     expect(res.answer).toBeDefined();
     expect(res.citations.some((c) => c.url === 'https://docs.tavily.com/api')).toBe(true);
     expect(res.retrievalMetadata.strategy).toBe('HYBRID');
+  });
+
+  it('6. Per-Message Retrieval Mode Switching: Allows changing mode per message without affecting conversation history', async () => {
+    const webSpy = jest.spyOn(webIntelligenceService, 'searchWeb').mockResolvedValue({
+      response: { query: 'Raksha Bandhan', results: [], totalMs: 50, provider: 'tavily' },
+      evidence: []
+    });
+
+    // Turn 1: Q1 with DOCUMENTS mode -> Web search NOT triggered
+    await ragService.answerQuestion(mockUserId, 'What is the date of Raksha Bandhan?', {
+      sourceMode: 'documents_only'
+    });
+    expect(webSpy).not.toHaveBeenCalled();
+
+    // Turn 2: Q2 with WEB_SEARCH mode -> Web search triggered
+    await ragService.answerQuestion(mockUserId, 'What is the date of Raksha Bandhan 2026 in India?', {
+      sourceMode: 'web_search'
+    });
+    expect(webSpy).toHaveBeenCalled();
+
+    webSpy.mockClear();
+
+    // Turn 3: Q3 back to DOCUMENTS mode -> Web search NOT triggered
+    await ragService.answerQuestion(mockUserId, 'What did my document say about the festival?', {
+      sourceMode: 'documents_only'
+    });
+    expect(webSpy).not.toHaveBeenCalled();
   });
 });

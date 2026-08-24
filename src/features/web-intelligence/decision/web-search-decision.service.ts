@@ -18,7 +18,9 @@ export class WebSearchDecisionService {
       };
     }
 
-    if (sourceMode === 'documents_only') {
+    const mode = (sourceMode || '').toLowerCase();
+
+    if (mode === 'documents' || mode === 'documents_only') {
       return {
         shouldSearchWeb: false,
         reason: 'User explicitly requested documents-only search mode',
@@ -26,7 +28,7 @@ export class WebSearchDecisionService {
       };
     }
 
-    if (sourceMode === 'web_only' || sourceMode === 'web_search') {
+    if (mode === 'web_search' || mode === 'web_only' || mode === 'web' || mode === 'web_discovery') {
       return {
         shouldSearchWeb: true,
         reason: 'User explicitly requested web search mode',

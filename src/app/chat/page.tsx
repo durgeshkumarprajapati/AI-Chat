@@ -652,28 +652,28 @@ function ChatPageContent() {
       )}
 
       {/* Sidebar - Conversations & Knowledge Base Scope */}
-      <aside className="w-full md:w-72 bg-slate-900 border border-slate-800 rounded-2xl p-4 flex flex-col justify-between shadow-xl flex-shrink-0">
+      <aside className="w-full md:w-72 bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-2xl p-4 flex flex-col justify-between shadow-xl flex-shrink-0 transition-colors">
         <div className="space-y-4 min-h-0 flex flex-col flex-1">
           {/* Header Badge */}
           <div className="flex items-center justify-between px-2">
-            <span className="text-xs font-bold text-white flex items-center space-x-2">
+            <span className="text-xs font-bold text-slate-900 dark:text-white flex items-center space-x-2">
               <span className="w-2 h-2 rounded-full bg-emerald-500 animate-pulse" />
               <span>Document AI</span>
             </span>
-            <span className="text-[10px] font-mono text-indigo-400 bg-indigo-950/60 px-2 py-0.5 rounded-md border border-indigo-800/60">
+            <span className="text-[10px] font-mono text-indigo-600 dark:text-indigo-400 bg-indigo-50 dark:bg-indigo-950/60 px-2 py-0.5 rounded-md border border-indigo-200 dark:border-indigo-800/60">
               Memory
             </span>
           </div>
 
           {/* RAG Retrieval Scope Selector */}
-          <div className="space-y-1.5 border-b border-slate-800 pb-3">
-            <label className="text-[11px] font-bold text-indigo-400 uppercase tracking-wider block px-1">
+          <div className="space-y-1.5 border-b border-slate-200 dark:border-slate-800 pb-3">
+            <label className="text-[11px] font-bold text-indigo-600 dark:text-indigo-400 uppercase tracking-wider block px-1">
               RAG Retrieval Scope:
             </label>
             <select
               value={selectedKbId}
               onChange={(e) => setSelectedKbId(e.target.value)}
-              className="w-full bg-slate-950 border border-slate-800 rounded-xl px-3 py-2 text-xs font-semibold text-slate-200 focus:outline-none focus:border-indigo-500"
+              className="w-full bg-slate-50 dark:bg-slate-950 border border-slate-300 dark:border-slate-800 rounded-xl px-3 py-2 text-xs font-semibold text-slate-800 dark:text-slate-200 focus:outline-none focus:border-indigo-500"
             >
               <option value="">🌐 All Documents (Global)</option>
               {knowledgeBases.map((kb) => (
@@ -703,7 +703,7 @@ function ChatPageContent() {
                 fetchConversations(e.target.value);
               }}
               placeholder="Search chat history..."
-              className="w-full bg-slate-950 border border-slate-800/90 rounded-xl px-3 py-1.5 text-[11px] text-slate-300 placeholder-slate-500 focus:outline-none focus:border-indigo-500"
+              className="w-full bg-slate-50 dark:bg-slate-950 border border-slate-300 dark:border-slate-800/90 rounded-xl px-3 py-1.5 text-[11px] text-slate-900 dark:text-slate-300 placeholder-slate-400 dark:placeholder-slate-500 focus:outline-none focus:border-indigo-500"
             />
           </div>
 
@@ -795,35 +795,35 @@ function ChatPageContent() {
       </aside>
 
       {/* Main Chat Interface */}
-      <main className="flex-1 bg-slate-900 border border-slate-800 rounded-2xl flex flex-col justify-between shadow-xl overflow-hidden min-w-0">
+      <main className="flex-1 bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-2xl flex flex-col justify-between shadow-xl overflow-hidden min-w-0 transition-colors">
         {/* Header Bar */}
-        <div className="px-6 py-3.5 border-b border-slate-800/80 bg-slate-950/60 flex items-center justify-between flex-shrink-0">
-          <div className="flex items-center space-x-3 text-xs font-medium text-slate-300 min-w-0">
-            <span className="font-bold text-white truncate max-w-[200px]">{activeTitle}</span>
-            <span className="text-slate-600">•</span>
-            <span className="text-indigo-400 font-mono truncate">{selectedKbName}</span>
+        <div className="px-6 py-3.5 border-b border-slate-200 dark:border-slate-800/80 bg-slate-50/80 dark:bg-slate-950/60 flex items-center justify-between flex-shrink-0">
+          <div className="flex items-center space-x-3 text-xs font-medium text-slate-700 dark:text-slate-300 min-w-0">
+            <span className="font-bold text-slate-900 dark:text-white truncate max-w-[200px]">{activeTitle}</span>
+            <span className="text-slate-400 dark:text-slate-600">•</span>
+            <span className="text-indigo-600 dark:text-indigo-400 font-mono truncate">{selectedKbName}</span>
 
             {/* Knowledge Source Selector */}
-            <div className="flex items-center space-x-1.5 bg-slate-900 border border-slate-800 rounded-lg px-2.5 py-1">
-              <span className="text-[10px] text-slate-400 font-medium uppercase tracking-wider">Source:</span>
+            <div className="flex items-center space-x-1.5 bg-white dark:bg-slate-900 border border-slate-300 dark:border-slate-800 rounded-lg px-2.5 py-1 shadow-sm">
+              <span className="text-[10px] text-slate-500 dark:text-slate-400 font-medium uppercase tracking-wider">Source:</span>
               <select
                 value={sourceMode}
                 onChange={(e) => setSourceMode(e.target.value as any)}
-                className="bg-transparent text-xs text-indigo-300 font-semibold focus:outline-none cursor-pointer"
+                className="bg-transparent text-xs text-indigo-700 dark:text-indigo-300 font-semibold focus:outline-none cursor-pointer"
               >
-                <option value="auto" className="bg-slate-900 text-slate-200">✨ Auto (Smart Fusion)</option>
-                <option value="documents_only" className="bg-slate-900 text-slate-200">📄 Uploaded Documents</option>
-                <option value="web_only" className="bg-slate-900 text-slate-200">🌐 Web Sources</option>
-                <option value="all_sources" className="bg-slate-900 text-slate-200">🔎 Documents + Web</option>
-                <option value="web_search" className="bg-slate-900 text-slate-200">🌐 Web Search</option>
-                <option value="web_discovery" className="bg-slate-900 text-slate-200">🌍 Web Discovery</option>
+                <option value="auto" className="bg-white dark:bg-slate-900 text-slate-800 dark:text-slate-200">✨ Auto (Smart Fusion)</option>
+                <option value="documents_only" className="bg-white dark:bg-slate-900 text-slate-800 dark:text-slate-200">📄 Uploaded Documents</option>
+                <option value="web_only" className="bg-white dark:bg-slate-900 text-slate-800 dark:text-slate-200">🌐 Web Sources</option>
+                <option value="all_sources" className="bg-white dark:bg-slate-900 text-slate-800 dark:text-slate-200">🔎 Documents + Web</option>
+                <option value="web_search" className="bg-white dark:bg-slate-900 text-slate-800 dark:text-slate-200">🌐 Web Search</option>
+                <option value="web_discovery" className="bg-white dark:bg-slate-900 text-slate-800 dark:text-slate-200">🌍 Web Discovery</option>
               </select>
             </div>
 
             {/* Context Indicator Pill */}
             {messages.length > 0 && (
-              <span className="hidden lg:inline-flex items-center space-x-1.5 px-2.5 py-0.5 rounded-full bg-indigo-950 border border-indigo-800 text-[10px] text-indigo-300 font-mono">
-                <span className="w-1.5 h-1.5 rounded-full bg-emerald-400 animate-pulse" />
+              <span className="hidden lg:inline-flex items-center space-x-1.5 px-2.5 py-0.5 rounded-full bg-indigo-50 dark:bg-indigo-950 border border-indigo-200 dark:border-indigo-800 text-[10px] text-indigo-700 dark:text-indigo-300 font-mono">
+                <span className="w-1.5 h-1.5 rounded-full bg-emerald-500 dark:bg-emerald-400 animate-pulse" />
                 <span>Memory Active ({activeSourcesCount} sources)</span>
               </span>
             )}
@@ -841,19 +841,19 @@ function ChatPageContent() {
 
         {/* Phase 24 Web Discovery Config Toolbar */}
         {sourceMode === 'web_discovery' && (
-          <div className="px-6 py-2.5 bg-slate-950/90 border-b border-slate-800/80 flex flex-wrap items-center justify-between gap-3 text-xs flex-shrink-0">
+          <div className="px-6 py-2.5 bg-slate-50 dark:bg-slate-950/90 border-b border-slate-200 dark:border-slate-800/80 flex flex-wrap items-center justify-between gap-3 text-xs flex-shrink-0">
             <div className="flex items-center space-x-2 min-w-[280px]">
-              <span className="text-slate-400 text-[11px] font-medium">Target Website:</span>
+              <span className="text-slate-500 dark:text-slate-400 text-[11px] font-medium">Target Website:</span>
               <input
                 type="url"
                 value={targetWebsite}
                 onChange={(e) => setTargetWebsite(e.target.value)}
                 placeholder="https://docs.python.org"
-                className="bg-slate-900 border border-slate-800 rounded-lg px-3 py-1 text-xs text-white placeholder-slate-500 font-mono focus:outline-none focus:border-indigo-500 w-64"
+                className="bg-white dark:bg-slate-900 border border-slate-300 dark:border-slate-800 rounded-lg px-3 py-1 text-xs text-slate-900 dark:text-white placeholder-slate-400 dark:placeholder-slate-500 font-mono focus:outline-none focus:border-indigo-500 w-64 shadow-sm"
               />
             </div>
-            <div className="flex items-center space-x-4 text-[11px] text-slate-300">
-              <span className="text-slate-400 font-medium">Trusted Sources:</span>
+            <div className="flex items-center space-x-4 text-[11px] text-slate-700 dark:text-slate-300">
+              <span className="text-slate-500 dark:text-slate-400 font-medium">Trusted Sources:</span>
               <label className="inline-flex items-center space-x-1.5 cursor-pointer">
                 <input
                   type="checkbox"
@@ -862,7 +862,7 @@ function ChatPageContent() {
                     if (e.target.checked) setAllowedSources((prev) => [...prev, 'wikipedia']);
                     else setAllowedSources((prev) => prev.filter((s) => s !== 'wikipedia'));
                   }}
-                  className="rounded bg-slate-900 border-slate-700 text-indigo-500 focus:ring-0"
+                  className="rounded bg-white dark:bg-slate-900 border-slate-300 dark:border-slate-700 text-indigo-600 focus:ring-0"
                 />
                 <span>Wikipedia</span>
               </label>
@@ -874,7 +874,7 @@ function ChatPageContent() {
                     if (e.target.checked) setAllowedSources((prev) => [...prev, 'medium']);
                     else setAllowedSources((prev) => prev.filter((s) => s !== 'medium'));
                   }}
-                  className="rounded bg-slate-900 border-slate-700 text-indigo-500 focus:ring-0"
+                  className="rounded bg-white dark:bg-slate-900 border-slate-300 dark:border-slate-700 text-indigo-600 focus:ring-0"
                 />
                 <span>Medium</span>
               </label>
@@ -883,7 +883,7 @@ function ChatPageContent() {
         )}
 
         {saveSuccessMsg && (
-          <div className="mx-6 mt-2 p-2.5 bg-emerald-950 border border-emerald-800 rounded-xl text-emerald-300 text-xs font-mono flex items-center justify-between">
+          <div className="mx-6 mt-2 p-2.5 bg-emerald-50 dark:bg-emerald-950 border border-emerald-200 dark:border-emerald-800 rounded-xl text-emerald-800 dark:text-emerald-300 text-xs font-mono flex items-center justify-between">
             <span>✅ {saveSuccessMsg}</span>
             <button onClick={() => setSaveSuccessMsg(null)}>✕</button>
           </div>
@@ -895,14 +895,14 @@ function ChatPageContent() {
             <div className="text-center py-12 text-slate-500 font-mono text-xs">Loading conversation history...</div>
           ) : messages.length === 0 ? (
             <div className="text-center py-12 space-y-6 max-w-lg mx-auto">
-              <div className="w-14 h-14 rounded-2xl bg-indigo-950/80 border border-indigo-800 text-indigo-400 text-2xl flex items-center justify-center mx-auto shadow-inner">
+              <div className="w-14 h-14 rounded-2xl bg-indigo-50 dark:bg-indigo-950/80 border border-indigo-200 dark:border-indigo-800 text-indigo-600 dark:text-indigo-400 text-2xl flex items-center justify-center mx-auto shadow-sm">
                 ✨
               </div>
               <div className="space-y-2">
-                <h2 className="text-xl font-bold text-white">Ask questions about your knowledge</h2>
-                <p className="text-xs text-slate-400 leading-relaxed">
+                <h2 className="text-xl font-bold text-slate-900 dark:text-white">Ask questions about your knowledge</h2>
+                <p className="text-xs text-slate-600 dark:text-slate-400 leading-relaxed">
                   Answers are grounded in retrieved chunks from{' '}
-                  <strong className="text-indigo-400 font-mono">{selectedKbName}</strong> with multi-turn conversation memory.
+                  <strong className="text-indigo-600 dark:text-indigo-400 font-mono">{selectedKbName}</strong> with multi-turn conversation memory.
                 </p>
               </div>
 
@@ -912,9 +912,9 @@ function ChatPageContent() {
                   <button
                     key={idx}
                     onClick={() => handleSendMessage(promptText)}
-                    className="p-3 rounded-xl bg-slate-950 border border-slate-800/90 hover:border-indigo-500/80 text-left text-xs font-medium text-slate-300 hover:text-white transition-all shadow-sm group"
+                    className="p-3 rounded-xl bg-slate-50 dark:bg-slate-950 border border-slate-200 dark:border-slate-800/90 hover:border-indigo-500/80 text-left text-xs font-medium text-slate-700 dark:text-slate-300 hover:text-slate-900 dark:hover:text-white transition-all shadow-sm group"
                   >
-                    <span className="text-indigo-400 group-hover:text-indigo-300 block mb-1">💡 Suggested</span>
+                    <span className="text-indigo-600 dark:text-indigo-400 group-hover:text-indigo-700 dark:group-hover:text-indigo-300 block mb-1">💡 Suggested</span>
                     <span>{promptText}</span>
                   </button>
                 ))}
@@ -927,10 +927,10 @@ function ChatPageContent() {
                 className={`flex flex-col ${msg.role === 'USER' ? 'items-end' : 'items-start'} space-y-2`}
               >
                 <div
-                  className={`max-w-3xl rounded-2xl p-4 text-xs leading-relaxed shadow-lg relative group ${
+                  className={`max-w-3xl rounded-2xl p-4 text-xs leading-relaxed shadow-md relative group ${
                     msg.role === 'USER'
                       ? 'bg-indigo-600 text-white rounded-br-none'
-                      : 'bg-slate-950 text-slate-200 border border-slate-800 rounded-bl-none'
+                      : 'bg-slate-50 dark:bg-slate-950 text-slate-900 dark:text-slate-200 border border-slate-200 dark:border-slate-800 rounded-bl-none'
                   }`}
                 >
                   {/* Follow-up Context Pill */}
@@ -1209,18 +1209,18 @@ function ChatPageContent() {
         </div>
 
         {/* Input Bar */}
-        <div className="p-4 border-t border-slate-800 bg-slate-950/60 flex flex-col space-y-2 flex-shrink-0">
+        <div className="p-4 border-t border-slate-200 dark:border-slate-800 bg-white/90 dark:bg-slate-950/60 flex flex-col space-y-2 flex-shrink-0 transition-colors">
           {/* Attachment Preview Badge */}
           {attachment && (
-            <div className="flex items-center justify-between px-3 py-1.5 rounded-lg bg-indigo-950/80 border border-indigo-800 text-xs text-indigo-300">
+            <div className="flex items-center justify-between px-3 py-1.5 rounded-lg bg-indigo-50 dark:bg-indigo-950/80 border border-indigo-200 dark:border-indigo-800 text-xs text-indigo-800 dark:text-indigo-300">
               <div className="flex items-center space-x-2 truncate">
                 <span>📎</span>
                 <span className="font-medium truncate">{attachment.filename}</span>
-                <span className="text-[10px] text-indigo-400">({Math.round(attachment.fileSize / 1024)} KB)</span>
+                <span className="text-[10px] text-indigo-600 dark:text-indigo-400">({Math.round(attachment.fileSize / 1024)} KB)</span>
               </div>
               <button
                 onClick={() => setAttachment(null)}
-                className="text-indigo-400 hover:text-white text-xs px-1"
+                className="text-indigo-600 dark:text-indigo-400 hover:text-indigo-800 dark:hover:text-white text-xs px-1"
               >
                 ✕
               </button>
@@ -1228,7 +1228,7 @@ function ChatPageContent() {
           )}
 
           <div className="flex items-center space-x-3">
-            <label className="cursor-pointer px-3 py-3 rounded-xl bg-slate-900 border border-slate-800 hover:border-slate-700 text-slate-300 hover:text-white text-xs font-medium transition flex items-center space-x-1.5 flex-shrink-0">
+            <label className="cursor-pointer px-3 py-3 rounded-xl bg-slate-100 dark:bg-slate-900 border border-slate-300 dark:border-slate-800 hover:border-indigo-500/50 text-slate-700 dark:text-slate-300 hover:text-slate-900 dark:hover:text-white text-xs font-medium transition flex items-center space-x-1.5 flex-shrink-0 shadow-sm">
               <span>📎</span>
               <span className="hidden sm:inline">Attach</span>
               <input
@@ -1278,7 +1278,7 @@ function ChatPageContent() {
                     ? 'bg-amber-950/90 border-amber-700 text-amber-300 animate-pulse'
                     : voiceState === 'ERROR'
                     ? 'bg-rose-950/40 border-rose-800 text-rose-400'
-                    : 'bg-slate-900 border-slate-800 text-slate-300 hover:border-indigo-500/50 hover:text-white'
+                    : 'bg-slate-100 dark:bg-slate-900 border-slate-300 dark:border-slate-800 text-slate-700 dark:text-slate-300 hover:border-indigo-500/50 hover:text-slate-900 dark:hover:text-white'
                 }`}
                 title={voiceState === 'LISTENING' ? 'Stop Listening' : 'Start Voice Input'}
               >
@@ -1302,7 +1302,7 @@ function ChatPageContent() {
                 }}
                 aria-label="Select voice input language"
                 disabled={loading || streaming || voiceState === 'LISTENING'}
-                className="hidden lg:block bg-slate-900 border border-slate-800 rounded-xl px-2 py-2.5 text-[11px] text-slate-300 focus:outline-none focus:border-indigo-500"
+                className="hidden lg:block bg-slate-100 dark:bg-slate-900 border border-slate-300 dark:border-slate-800 rounded-xl px-2 py-2.5 text-[11px] text-slate-800 dark:text-slate-300 focus:outline-none focus:border-indigo-500"
               >
                 {SUPPORTED_VOICE_LANGUAGES.map((lang) => (
                   <option key={lang.value} value={lang.value}>
@@ -1328,7 +1328,7 @@ function ChatPageContent() {
                 }
                 disabled={loading || streaming || uploading}
                 rows={1}
-                className="w-full rounded-xl bg-slate-900 border border-slate-800 px-4 py-3 text-xs text-white placeholder-slate-500 focus:outline-none focus:border-indigo-500 resize-none disabled:opacity-50"
+                className="w-full rounded-xl bg-white dark:bg-slate-900 border border-slate-300 dark:border-slate-800 px-4 py-3 text-xs text-slate-900 dark:text-white placeholder-slate-400 dark:placeholder-slate-500 focus:outline-none focus:border-indigo-500 resize-none disabled:opacity-50 shadow-sm"
               />
               {interimTranscript && (
                 <div className="px-2 pt-1 text-[11px] font-mono text-indigo-400 animate-pulse italic">

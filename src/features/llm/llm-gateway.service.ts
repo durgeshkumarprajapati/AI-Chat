@@ -248,3 +248,4 @@ export class LLMGateway {
 }
 
 export const llmGateway = new LLMGateway();
+export const llmGatewayService = llmGateway;

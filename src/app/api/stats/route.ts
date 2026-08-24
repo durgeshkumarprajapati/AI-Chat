@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { getAuthUser } from '@/lib/auth';
-import { documentRepository } from '@/features/documents/repositories/document.repository';
+import { documentStatisticsService } from '@/features/documents/services/document-statistics.service';
 import { AppError } from '@/errors';
 
 export const dynamic = 'force-dynamic';
@@ -8,7 +8,7 @@ export const dynamic = 'force-dynamic';
 export async function GET(req: NextRequest) {
   try {
     const authUser = await getAuthUser(req);
-    const stats = await documentRepository.getDashboardStats(authUser.id);
+    const stats = await documentStatisticsService.getUserDocumentStatistics(authUser.id);
 
     return NextResponse.json({
       success: true,

@@ -33,16 +33,28 @@ export default function UserDashboardPage() {
   useEffect(() => {
     async function loadDashboardData() {
       try {
-        const [docsRes, convsRes, kbsRes] = await Promise.all([
-          fetch('/api/documents').then((r) => r.json()).catch(() => ({ data: [] })),
-          fetch('/api/conversations').then((r) => r.json()).catch(() => ({ data: [] })),
-          fetch('/api/knowledge-bases').then((r) => r.json()).catch(() => ({ data: [] }))
+        const [statsRes, convsRes, kbsRes] = await Promise.all([
+          fetch('/api/stats').then((r) => r.json()).catch(() => ({ data: { totalDocuments: 0 } })),
+          fetch('/api/conversations').then((r) => r.json()).catch(() => ({ data: { total: 0 } })),
+          fetch('/api/knowledge-bases').then((r) => r.json()).catch(() => ({ data: { total: 0 } }))
         ]);
 
+        const docCount = typeof statsRes.data?.totalDocuments === 'number'
+          ? statsRes.data.totalDocuments
+          : (Array.isArray(statsRes.data) ? statsRes.data.length : (statsRes.data?.total || 0));
+
+        const convCount = typeof convsRes.data?.total === 'number'
+          ? convsRes.data.total
+          : (Array.isArray(convsRes.data) ? convsRes.data.length : (convsRes.data?.items?.length || 0));
+
+        const kbCount = typeof kbsRes.data?.total === 'number'
+          ? kbsRes.data.total
+          : (Array.isArray(kbsRes.data) ? kbsRes.data.length : (kbsRes.data?.items?.length || 0));
+
         setStats({
-          docCount: docsRes.data?.length || 0,
-          convCount: convsRes.data?.length || 0,
-          kbCount: kbsRes.data?.length || 0
+          docCount,
+          convCount,
+          kbCount
         });
       } catch {
         setStats({ docCount: 0, convCount: 0, kbCount: 0 });

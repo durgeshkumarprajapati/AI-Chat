@@ -293,24 +293,40 @@ export class DocumentRepository {
     totalChunks: number;
     embeddedChunks: number;
   }> {
-    const docs = await prisma.document.findMany({ where: { userId } });
-    let processing = 0;
-    let completed = 0;
-    let failed = 0;
-    let totalPages = 0;
+    const [statusGroups, pageSum, docIdsResult] = await Promise.all([
+      prisma.document.groupBy({
+        by: ['status'],
+        where: { userId },
+        _count: { _all: true }
+      }),
+      prisma.document.aggregate({
+        where: { userId },
+        _sum: { pageCount: true }
+      }),
+      prisma.document.findMany({
+        where: { userId },
+        select: { id: true }
+      })
+    ]);
 
-    for (const doc of docs) {
-      totalPages += doc.pageCount || 0;
-      if (doc.status === DocumentStatus.PROCESSING || doc.status === DocumentStatus.UPLOADING) {
-        processing++;
-      } else if (doc.status === DocumentStatus.COMPLETED) {
-        completed++;
-      } else if (doc.status === DocumentStatus.FAILED) {
-        failed++;
+    let totalDocuments = 0;
+    let processingDocuments = 0;
+    let completedDocuments = 0;
+    let failedDocuments = 0;
+
+    for (const group of statusGroups) {
+      const count = group._count._all;
+      totalDocuments += count;
+      if (group.status === DocumentStatus.PROCESSING || group.status === DocumentStatus.UPLOADING) {
+        processingDocuments += count;
+      } else if (group.status === DocumentStatus.COMPLETED) {
+        completedDocuments += count;
+      } else if (group.status === DocumentStatus.FAILED) {
+        failedDocuments += count;
       }
     }
 
-    const docIds = docs.map((d) => d.id);
+    const docIds = docIdsResult.map((d) => d.id);
     if (docIds.length === 0) {
       return {
         totalDocuments: 0,
@@ -336,11 +352,11 @@ export class DocumentRepository {
     const embeddedChunks = embeddedResult[0]?.count ? Number(embeddedResult[0].count) : 0;
 
     return {
-      totalDocuments: docs.length,
-      processingDocuments: processing,
-      completedDocuments: completed,
-      failedDocuments: failed,
-      totalPages,
+      totalDocuments,
+      processingDocuments,
+      completedDocuments,
+      failedDocuments,
+      totalPages: pageSum._sum.pageCount || 0,
       totalChunks,
       embeddedChunks
     };

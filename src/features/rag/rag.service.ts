@@ -1,5 +1,5 @@
 import { RAGConfigService } from './rag.config';
-import { HybridRAGOptions, HybridRAGResult } from './rag.types';
+import { HybridRAGOptions, HybridRAGResult, RAGCitation } from './rag.types';
 import { queryAnalyzerService } from './query/query-analyzer.service';
 import { multiQueryService } from './query/multi-query.service';
 import { hybridRetrievalService } from './retrieval/hybrid-retrieval.service';
@@ -13,6 +13,7 @@ import { ragCacheService } from './cache/rag-cache.service';
 import { ragTelemetryService } from './telemetry/rag-telemetry.service';
 import { llmGatewayService } from '@/features/llm';
 import { RetrievalService } from './retrieval/retrieval.service';
+import { webIntelligenceService } from '@/features/web-intelligence/web-intelligence.service';
 
 export class RAGService {
   private legacyRetrievalService: RetrievalService;
@@ -23,8 +24,7 @@ export class RAGService {
 
   /**
    * Main entry point for RAG execution.
-   * If RAG_HYBRID_ENABLED=true, executes Hybrid Graph RAG.
-   * If RAG_HYBRID_ENABLED=false or on failure, degrades gracefully to Legacy RAG.
+   * Integrates Phase 61 Hybrid RAG with Phase 62 Web Intelligence.
    */
   public async answerQuestion(
     userId: string,
@@ -97,14 +97,68 @@ export class RAGService {
       const systemPrompt = answerGroundingService.buildSystemPrompt();
 
       // 8. Evidence Confidence & Citations
-      const confidence = confidenceService.evaluateConfidence(selectedCandidates);
-      const citations = citationService.buildCitations(selectedCandidates);
+      let confidence = confidenceService.evaluateConfidence(selectedCandidates);
+      let citations = citationService.buildCitations(selectedCandidates);
 
-      // 9. LLM Gateway Generation (Gemini -> DeepSeek -> Groq -> Kimi -> Ollama)
-      const prompt = `[RETRIEVED CONTEXT]\n${
-        formattedContext || 'No matching context found.'
-      }\n\n[USER QUESTION]\n${question}`;
+      // 9. Web Intelligence Decision Engine (Phase 62)
+      let webContextText = '';
+      const webDecision = webIntelligenceService.evaluateDecision(
+        question,
+        confidence.score,
+        options?.sourceMode
+      );
 
+      if (webDecision.shouldSearchWeb) {
+        try {
+          const { evidence: webEvidences } = await webIntelligenceService.searchWeb({
+            query: question,
+            maxResults: 5
+          });
+
+          if (webEvidences.length > 0) {
+            webContextText = webEvidences
+              .map(
+                (w, idx) =>
+                  `[Web Source ${idx + 1}] Title: ${w.title} | Domain: ${w.sourceDomain} | URL: ${w.sourceUrl}\nContent: ${w.content}`
+              )
+              .join('\n\n');
+
+            const webCitations: RAGCitation[] = webEvidences.map((w) => ({
+              documentId: `web-${w.sourceDomain}`,
+              chunkId: `web-${Buffer.from(w.sourceUrl).toString('base64').substring(0, 16)}`,
+              title: w.title,
+              relevanceScore: w.relevanceScore,
+              sourceType: 'KEYWORD', // mapped backward-compatibly
+              snippet: w.content.substring(0, 180) + '...',
+              url: w.sourceUrl
+            }));
+
+            citations = [...citations, ...webCitations];
+
+            if (confidence.level === 'LOW') {
+              confidence = {
+                score: Math.max(confidence.score, 0.65),
+                level: 'MEDIUM',
+                reason: 'Enhanced with external Tavily web search intelligence'
+              };
+            }
+          }
+        } catch {
+          // Web search failure gracefully falls back to internal Hybrid RAG
+        }
+      }
+
+      // 10. Unified Evidence Prompt Assembly (Internal Priority 1-3 over Web Priority 4)
+      const internalSection = formattedContext
+        ? `[INTERNAL TRUSTED KNOWLEDGE & DOCUMENTS]\n${formattedContext}`
+        : 'No matching internal document context found.';
+      const webSection = webContextText
+        ? `\n\n[EXTERNAL WEB EVIDENCE (UNTRUSTED REFERENCE DATA)]\n${webContextText}`
+        : '';
+
+      const prompt = `${internalSection}${webSection}\n\n[USER QUESTION]\n${question}`;
+
+      // 11. LLM Gateway Generation (Gemini -> DeepSeek -> Groq -> Kimi -> Ollama)
       const llmRes = await llmGatewayService.generate({
         prompt,
         systemPrompt,

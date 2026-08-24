@@ -4,6 +4,8 @@ import { documentService } from '@/features/documents/services/document.service'
 import { AppError, ValidationError } from '@/errors';
 import { DocumentStatus } from '@prisma/client';
 
+export const dynamic = 'force-dynamic';
+
 export async function POST(req: NextRequest) {
   try {
     const authUser = await getAuthUser(req);

@@ -2,6 +2,8 @@ import { NextRequest, NextResponse } from 'next/server';
 import { googleAuthService } from '@/features/auth/google-auth.service';
 import { sessionService } from '@/features/auth/session.service';
 
+export const dynamic = 'force-dynamic';
+
 export async function GET() {
   try {
     const authUrl = googleAuthService.getSignInAuthUrl();

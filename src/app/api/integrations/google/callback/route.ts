@@ -4,6 +4,8 @@ import { googleAuthService as appAuthService } from '@/features/auth/google-auth
 import { sessionService } from '@/features/auth/session.service';
 import { envConfig } from '@/config/env';
 
+export const dynamic = 'force-dynamic';
+
 export async function GET(req: NextRequest) {
   try {
     const url = new URL(req.url);

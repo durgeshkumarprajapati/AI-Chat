@@ -71,18 +71,18 @@ export default function RoadmapsDashboardPage() {
   };
 
   return (
-    <div className="min-h-screen bg-slate-950 text-slate-100 p-6 sm:p-10">
+    <div className="min-h-screen p-6 sm:p-10 font-sans selection:bg-[#4d8eff] selection:text-white text-slate-900 dark:text-slate-100">
       <div className="w-full max-w-[1600px] mx-auto space-y-8">
         {/* Header */}
-        <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 border-b border-slate-800 pb-6">
+        <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 border-b border-slate-200 dark:border-slate-800 pb-6">
           <div>
             <div className="flex items-center space-x-3">
               <span className="text-3xl">🚀</span>
-              <h1 className="text-3xl font-bold bg-gradient-to-r from-white via-indigo-200 to-indigo-400 bg-clip-text text-transparent">
+              <h1 className="text-3xl font-bold bg-gradient-to-r from-slate-900 via-indigo-800 to-indigo-600 dark:from-white dark:via-indigo-200 dark:to-indigo-400 bg-clip-text text-transparent">
                 AI Roadmap Builder & Personal Workspace
               </h1>
             </div>
-            <p className="text-xs text-slate-400 mt-2">
+            <p className="text-xs text-slate-600 dark:text-slate-400 mt-2">
               Generate personalized learning paths, track progress, master new skills, and share roadmaps with peers.
             </p>
           </div>
@@ -96,13 +96,13 @@ export default function RoadmapsDashboardPage() {
         </div>
 
         {/* Navigation Tabs */}
-        <div className="flex items-center space-x-3 border-b border-slate-800/80 pb-2">
+        <div className="flex items-center space-x-3 border-b border-slate-200 dark:border-slate-800/80 pb-2">
           <button
             onClick={() => setActiveTab('owned')}
             className={`px-4 py-2 rounded-xl text-xs font-semibold transition ${
               activeTab === 'owned'
-                ? 'bg-indigo-600/20 text-indigo-400 border border-indigo-500/30'
-                : 'text-slate-400 hover:text-white'
+                ? 'bg-indigo-100 dark:bg-indigo-600/20 text-indigo-700 dark:text-indigo-400 border border-indigo-300 dark:border-indigo-500/30'
+                : 'text-slate-600 dark:text-slate-400 hover:text-slate-900 dark:hover:text-white'
             }`}
           >
             My Roadmaps ({owned.length})
@@ -111,8 +111,8 @@ export default function RoadmapsDashboardPage() {
             onClick={() => setActiveTab('shared')}
             className={`px-4 py-2 rounded-xl text-xs font-semibold transition ${
               activeTab === 'shared'
-                ? 'bg-indigo-600/20 text-indigo-400 border border-indigo-500/30'
-                : 'text-slate-400 hover:text-white'
+                ? 'bg-indigo-100 dark:bg-indigo-600/20 text-indigo-700 dark:text-indigo-400 border border-indigo-300 dark:border-indigo-500/30'
+                : 'text-slate-600 dark:text-slate-400 hover:text-slate-900 dark:hover:text-white'
             }`}
           >
             Shared With Me ({shared.length})
@@ -121,15 +121,15 @@ export default function RoadmapsDashboardPage() {
 
         {/* Content Section */}
         {loading ? (
-          <div className="py-20 text-center text-xs text-indigo-400 font-mono animate-pulse">
+          <div className="py-20 text-center text-xs text-indigo-600 dark:text-indigo-400 font-mono animate-pulse">
             Loading Roadmaps...
           </div>
         ) : activeTab === 'owned' ? (
           owned.length === 0 ? (
-            <div className="bg-slate-900/60 border border-slate-800 rounded-2xl p-12 text-center space-y-4">
+            <div className="bg-white dark:bg-slate-900/60 border border-slate-200 dark:border-slate-800 rounded-2xl p-12 text-center space-y-4 shadow-sm">
               <div className="text-4xl">🗺️</div>
-              <h3 className="text-base font-bold text-white">No Roadmaps Yet</h3>
-              <p className="text-xs text-slate-400 max-w-md mx-auto">
+              <h3 className="text-base font-bold text-slate-900 dark:text-white">No Roadmaps Yet</h3>
+              <p className="text-xs text-slate-600 dark:text-slate-400 max-w-md mx-auto">
                 Build your first AI-guided learning roadmap with custom phase breakdowns and task tracking.
               </p>
               <Link
@@ -145,32 +145,32 @@ export default function RoadmapsDashboardPage() {
                 <div
                   key={item.id}
                   onClick={() => router.push(`/roadmaps/${item.id}`)}
-                  className="bg-slate-900/80 border border-slate-800 hover:border-indigo-500/50 rounded-2xl p-6 shadow-xl space-y-4 transition cursor-pointer group flex flex-col justify-between"
+                  className="bg-white dark:bg-slate-900/80 border border-slate-200 dark:border-slate-800 hover:border-indigo-400 dark:hover:border-indigo-500/50 rounded-2xl p-6 shadow-sm dark:shadow-xl space-y-4 transition cursor-pointer group flex flex-col justify-between"
                 >
                   <div className="space-y-2">
                     <div className="flex items-center justify-between">
-                      <span className="px-2.5 py-0.5 rounded-full bg-indigo-950 text-indigo-300 border border-indigo-800 text-[10px] font-mono">
+                      <span className="px-2.5 py-0.5 rounded-full bg-indigo-50 dark:bg-indigo-950 text-indigo-700 dark:text-indigo-300 border border-indigo-200 dark:border-indigo-800 text-[10px] font-mono">
                         {item.targetSkill}
                       </span>
-                      <span className="text-[11px] text-slate-400 font-mono">
+                      <span className="text-[11px] text-slate-500 dark:text-slate-400 font-mono">
                         {item.targetDurationWeeks} Weeks
                       </span>
                     </div>
 
-                    <h2 className="text-base font-bold text-white group-hover:text-indigo-300 transition">
+                    <h2 className="text-base font-bold text-slate-900 dark:text-white group-hover:text-indigo-600 dark:group-hover:text-indigo-300 transition">
                       {item.title}
                     </h2>
-                    <p className="text-xs text-slate-400 line-clamp-2">{item.description}</p>
+                    <p className="text-xs text-slate-600 dark:text-slate-400 line-clamp-2">{item.description}</p>
                   </div>
 
                   {/* Progress Bar */}
                   <div className="space-y-3 pt-2">
                     <div>
-                      <div className="flex justify-between text-[11px] font-mono text-slate-400 mb-1">
+                      <div className="flex justify-between text-[11px] font-mono text-slate-500 dark:text-slate-400 mb-1">
                         <span>Progress</span>
-                        <span className="text-indigo-300 font-bold">{Math.round(item.currentProgress)}%</span>
+                        <span className="text-indigo-600 dark:text-indigo-300 font-bold">{Math.round(item.currentProgress)}%</span>
                       </div>
-                      <div className="w-full h-2 bg-slate-950 rounded-full overflow-hidden border border-slate-800">
+                      <div className="w-full h-2 bg-slate-100 dark:bg-slate-950 rounded-full overflow-hidden border border-slate-200 dark:border-slate-800">
                         <div
                           className="h-full bg-gradient-to-r from-indigo-600 to-sky-400 transition-all duration-500"
                           style={{ width: `${item.currentProgress}%` }}
@@ -178,20 +178,20 @@ export default function RoadmapsDashboardPage() {
                       </div>
                     </div>
 
-                    <div className="flex items-center justify-between pt-2 border-t border-slate-800/80 text-xs">
-                      <span className="text-slate-400 text-[11px]">
+                    <div className="flex items-center justify-between pt-2 border-t border-slate-100 dark:border-slate-800/80 text-xs">
+                      <span className="text-slate-500 dark:text-slate-400 text-[11px]">
                         Goal: {item.goal}
                       </span>
                       <div className="flex items-center space-x-2">
                         <button
                           onClick={(e) => handleDuplicate(item.id, e)}
-                          className="px-2.5 py-1 bg-slate-800 hover:bg-slate-700 text-slate-300 text-[11px] rounded-lg transition"
+                          className="px-2.5 py-1 bg-slate-100 dark:bg-slate-800 hover:bg-slate-200 dark:hover:bg-slate-700 text-slate-700 dark:text-slate-300 text-[11px] rounded-lg transition"
                         >
                           Duplicate
                         </button>
                         <button
                           onClick={(e) => handleDelete(item.id, e)}
-                          className="px-2.5 py-1 bg-rose-950/60 hover:bg-rose-900/60 text-rose-300 border border-rose-800/50 text-[11px] rounded-lg transition"
+                          className="px-2.5 py-1 bg-rose-50 dark:bg-rose-950/60 hover:bg-rose-100 dark:hover:bg-rose-900/60 text-rose-700 dark:text-rose-300 border border-rose-200 dark:border-rose-800/50 text-[11px] rounded-lg transition"
                         >
                           Delete
                         </button>
@@ -203,10 +203,10 @@ export default function RoadmapsDashboardPage() {
             </div>
           )
         ) : shared.length === 0 ? (
-          <div className="bg-slate-900/60 border border-slate-800 rounded-2xl p-12 text-center space-y-4">
+          <div className="bg-white dark:bg-slate-900/60 border border-slate-200 dark:border-slate-800 rounded-2xl p-12 text-center space-y-4 shadow-sm">
             <div className="text-4xl">🤝</div>
-            <h3 className="text-base font-bold text-white">No Shared Roadmaps</h3>
-            <p className="text-xs text-slate-400 max-w-md mx-auto">
+            <h3 className="text-base font-bold text-slate-900 dark:text-white">No Shared Roadmaps</h3>
+            <p className="text-xs text-slate-600 dark:text-slate-400 max-w-md mx-auto">
               When peers or mentors share learning roadmaps with you, they will appear here.
             </p>
           </div>
@@ -216,31 +216,31 @@ export default function RoadmapsDashboardPage() {
               <div
                 key={item.shareId}
                 onClick={() => router.push(`/roadmaps/${item.roadmap.id}`)}
-                className="bg-slate-900/80 border border-slate-800 hover:border-indigo-500/50 rounded-2xl p-6 shadow-xl space-y-4 transition cursor-pointer group flex flex-col justify-between"
+                className="bg-white dark:bg-slate-900/80 border border-slate-200 dark:border-slate-800 hover:border-indigo-400 dark:hover:border-indigo-500/50 rounded-2xl p-6 shadow-sm dark:shadow-xl space-y-4 transition cursor-pointer group flex flex-col justify-between"
               >
                 <div className="space-y-2">
                   <div className="flex items-center justify-between">
-                    <span className="px-2.5 py-0.5 rounded-full bg-emerald-950 text-emerald-300 border border-emerald-800 text-[10px] font-mono">
+                    <span className="px-2.5 py-0.5 rounded-full bg-emerald-50 dark:bg-emerald-950 text-emerald-700 dark:text-emerald-300 border border-emerald-200 dark:border-emerald-800 text-[10px] font-mono">
                       Shared by {item.sharedBy.name || item.sharedBy.email}
                     </span>
-                    <span className="px-2 py-0.5 rounded bg-slate-800 text-indigo-300 text-[10px] font-bold">
+                    <span className="px-2 py-0.5 rounded bg-slate-100 dark:bg-slate-800 text-indigo-700 dark:text-indigo-300 text-[10px] font-bold">
                       {item.permission} PERMISSION
                     </span>
                   </div>
 
-                  <h2 className="text-base font-bold text-white group-hover:text-indigo-300 transition">
+                  <h2 className="text-base font-bold text-slate-900 dark:text-white group-hover:text-indigo-600 dark:group-hover:text-indigo-300 transition">
                     {item.roadmap.title}
                   </h2>
-                  <p className="text-xs text-slate-400 line-clamp-2">{item.roadmap.description}</p>
+                  <p className="text-xs text-slate-600 dark:text-slate-400 line-clamp-2">{item.roadmap.description}</p>
                 </div>
 
                 <div className="space-y-3 pt-2">
                   <div>
-                    <div className="flex justify-between text-[11px] font-mono text-slate-400 mb-1">
+                    <div className="flex justify-between text-[11px] font-mono text-slate-500 dark:text-slate-400 mb-1">
                       <span>Progress</span>
-                      <span className="text-emerald-400 font-bold">{Math.round(item.roadmap.currentProgress)}%</span>
+                      <span className="text-emerald-600 dark:text-emerald-400 font-bold">{Math.round(item.roadmap.currentProgress)}%</span>
                     </div>
-                    <div className="w-full h-2 bg-slate-950 rounded-full overflow-hidden border border-slate-800">
+                    <div className="w-full h-2 bg-slate-100 dark:bg-slate-950 rounded-full overflow-hidden border border-slate-200 dark:border-slate-800">
                       <div
                         className="h-full bg-emerald-500 transition-all duration-500"
                         style={{ width: `${item.roadmap.currentProgress}%` }}

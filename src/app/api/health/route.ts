@@ -5,6 +5,8 @@ import { rabbitmq } from '@/lib/rabbitmq';
 import { getStorageProvider } from '@/lib/storage';
 import { S3StorageProvider } from '@/lib/s3';
 
+export const dynamic = 'force-dynamic';
+
 export async function GET() {
   const providerType = process.env.AWS_STORAGE_PROVIDER || process.env.STORAGE_PROVIDER || 'local';
 

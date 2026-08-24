@@ -22,7 +22,7 @@ function HeaderTourControls() {
       <TourHelpButton />
       <button
         onClick={() => startTour(activeTour.id)}
-        className="flex items-center space-x-1.5 px-3 py-1.5 rounded-xl bg-[#0f131d] hover:bg-[#141926] text-[#adc6ff] border border-[#424754] text-xs font-semibold transition-all shadow-sm"
+        className="flex items-center space-x-1.5 px-3 py-1.5 rounded-xl bg-white dark:bg-[#0f131d] hover:bg-slate-100 dark:hover:bg-[#141926] text-indigo-700 dark:text-[#adc6ff] border border-slate-300 dark:border-[#424754] text-xs font-semibold transition-all shadow-sm"
         title={`Take ${buttonTitle}`}
       >
         <span>{buttonTitle}</span>
@@ -126,7 +126,7 @@ function InnerAppLayout({ children }: { children: React.ReactNode }) {
     {
       id: 'explore',
       title: 'EXPLORE',
-      icon: '<ctrl42>',
+      icon: '🏙️',
       items: [
         {
           name: activeCity ? `Explore ${activeCity}` : 'City Explorer',
@@ -187,7 +187,7 @@ function InnerAppLayout({ children }: { children: React.ReactNode }) {
 
   if (isMarketingOrStandalone) {
     return (
-      <div className="min-h-screen bg-[#0f131d] text-[#dfe2f1] font-sans selection:bg-[#4d8eff] selection:text-white">
+      <div className="min-h-screen bg-slate-50 dark:bg-[#0f131d] text-slate-900 dark:text-[#dfe2f1] font-sans selection:bg-[#4d8eff] selection:text-white">
         <main className="min-h-screen">{children}</main>
         <ProductTour />
       </div>
@@ -195,14 +195,14 @@ function InnerAppLayout({ children }: { children: React.ReactNode }) {
   }
 
   return (
-    <div className="min-h-screen bg-[#0f131d] text-[#dfe2f1] flex flex-col font-sans selection:bg-[#4d8eff] selection:text-white transition-colors">
+    <div className="min-h-screen bg-slate-50 dark:bg-[#0f131d] text-slate-900 dark:text-[#dfe2f1] flex flex-col font-sans selection:bg-[#4d8eff] selection:text-white transition-colors">
       {/* Premium Enterprise Header */}
-      <header className="sticky top-0 z-40 bg-[#0a0e18]/90 backdrop-blur-md border-b border-[#424754]/60 px-4 lg:px-8 py-3 flex items-center justify-between shadow-lg">
+      <header className="sticky top-0 z-40 bg-white/90 dark:bg-[#0a0e18]/90 backdrop-blur-md border-b border-slate-200 dark:border-[#424754]/60 px-4 lg:px-8 py-3 flex items-center justify-between shadow-sm dark:shadow-lg">
         <div className="flex items-center space-x-4">
           {/* Mobile Drawer Toggle */}
           <button
             onClick={() => setIsMobileMenuOpen((prev) => !prev)}
-            className="lg:hidden p-2 rounded-xl text-[#c2c6d6] hover:text-[#dfe2f1] bg-[#0f131d] hover:bg-[#141926] border border-[#424754] transition"
+            className="lg:hidden p-2 rounded-xl text-slate-700 dark:text-[#c2c6d6] hover:text-slate-900 dark:hover:text-[#dfe2f1] bg-slate-100 dark:bg-[#0f131d] hover:bg-slate-200 dark:hover:bg-[#141926] border border-slate-300 dark:border-[#424754] transition"
             aria-label="Toggle Navigation Menu"
           >
             {isMobileMenuOpen ? '✕' : '☰'}
@@ -214,10 +214,10 @@ function InnerAppLayout({ children }: { children: React.ReactNode }) {
               AI
             </div>
             <div className="flex flex-col">
-              <span className="font-extrabold text-base tracking-tight text-[#dfe2f1] group-hover:text-[#adc6ff] transition-colors font-sans">
+              <span className="font-extrabold text-base tracking-tight text-slate-900 dark:text-[#dfe2f1] group-hover:text-indigo-600 dark:group-hover:text-[#adc6ff] transition-colors font-sans">
                 Document AI
               </span>
-              <span className="text-[9px] text-[#8c909f] font-mono tracking-widest font-bold">ENTERPRISE PLATFORM</span>
+              <span className="text-[9px] text-slate-500 dark:text-[#8c909f] font-mono tracking-widest font-bold">ENTERPRISE PLATFORM</span>
             </div>
           </Link>
         </div>
@@ -227,18 +227,18 @@ function InnerAppLayout({ children }: { children: React.ReactNode }) {
           {/* Services Health Indicator */}
           <Link
             href="/health"
-            className="hidden sm:flex items-center space-x-2 px-3.5 py-1.5 rounded-full bg-[#0f131d] hover:bg-[#141926] border border-[#424754] text-xs font-mono transition-colors shadow-sm"
+            className="hidden sm:flex items-center space-x-2 px-3.5 py-1.5 rounded-full bg-slate-100 dark:bg-[#0f131d] hover:bg-slate-200 dark:hover:bg-[#141926] border border-slate-300 dark:border-[#424754] text-xs font-mono transition-colors shadow-sm"
           >
             <span
               className={`w-2 h-2 rounded-full ${
                 healthStatus === 'ok'
-                  ? 'bg-[#4edea3] shadow-sm shadow-[#4edea3]/50 animate-pulse'
+                  ? 'bg-emerald-500 dark:bg-[#4edea3] shadow-sm shadow-emerald-500/50 animate-pulse'
                   : healthStatus === 'degraded'
-                  ? 'bg-[#ffb95f]'
-                  : 'bg-[#8c909f]'
+                  ? 'bg-amber-500 dark:bg-[#ffb95f]'
+                  : 'bg-slate-400 dark:bg-[#8c909f]'
               }`}
             />
-            <span className="text-[#dfe2f1] font-bold">
+            <span className="text-slate-800 dark:text-[#dfe2f1] font-bold">
               {healthStatus === 'ok' ? 'Services Healthy' : healthStatus === 'degraded' ? 'Degraded Status' : 'Checking Health...'}
             </span>
           </Link>
@@ -260,7 +260,7 @@ function InnerAppLayout({ children }: { children: React.ReactNode }) {
       {/* Main Body Shell: Left Sidebar + Main Content */}
       <div className="flex-1 flex min-h-[calc(100vh-61px)]">
         {/* Desktop Left Collapsible Sidebar Navigation */}
-        <aside className="hidden lg:flex flex-col w-64 shrink-0 bg-[#0a0e18] border-r border-[#424754]/60 sticky top-[61px] h-[calc(100vh-61px)] overflow-y-auto p-4 space-y-3 z-30 select-none">
+        <aside className="hidden lg:flex flex-col w-64 shrink-0 bg-white dark:bg-[#0a0e18] border-r border-slate-200 dark:border-[#424754]/60 sticky top-[61px] h-[calc(100vh-61px)] overflow-y-auto p-4 space-y-3 z-30 select-none transition-colors">
           {navigationGroups.map((group) => {
             const hasActiveChild = groupContainsActiveRoute(group);
             const isExpanded = expandedGroups[group.id] ?? hasActiveChild;
@@ -275,8 +275,8 @@ function InnerAppLayout({ children }: { children: React.ReactNode }) {
                   aria-controls={`submenu-${group.id}`}
                   className={`w-full px-3 py-2 rounded-xl text-[10px] font-mono font-bold tracking-widest uppercase transition-all flex items-center justify-between group ${
                     hasActiveChild
-                      ? 'text-[#4d8eff] bg-[#4d8eff]/10 border border-[#4d8eff]/20'
-                      : 'text-[#adc6ff]/80 hover:text-[#dfe2f1] hover:bg-[#171b26]'
+                      ? 'text-indigo-700 dark:text-[#4d8eff] bg-indigo-50 dark:bg-[#4d8eff]/10 border border-indigo-200 dark:border-[#4d8eff]/20'
+                      : 'text-slate-700 dark:text-[#adc6ff]/80 hover:text-slate-900 dark:hover:text-[#dfe2f1] hover:bg-slate-100 dark:hover:bg-[#171b26]'
                   }`}
                 >
                   <div className="flex items-center space-x-2 truncate">
@@ -285,7 +285,7 @@ function InnerAppLayout({ children }: { children: React.ReactNode }) {
                   </div>
                   <span
                     className={`text-[10px] transform transition-transform duration-200 ${
-                      isExpanded ? 'rotate-180 text-[#4d8eff]' : 'text-[#8c909f]'
+                      isExpanded ? 'rotate-180 text-indigo-600 dark:text-[#4d8eff]' : 'text-slate-400 dark:text-[#8c909f]'
                     }`}
                   >
                     ▼
@@ -307,17 +307,17 @@ function InnerAppLayout({ children }: { children: React.ReactNode }) {
                           href={item.href}
                           className={`px-3 py-2 rounded-xl text-xs font-semibold transition-all flex items-center justify-between ${
                             isActive
-                              ? 'bg-[#4d8eff]/15 text-[#adc6ff] border border-[#4d8eff]/40 font-bold shadow-md shadow-[#4d8eff]/10'
-                              : 'text-[#c2c6d6] hover:text-[#dfe2f1] hover:bg-[#1c1f2a] border border-transparent'
+                              ? 'bg-indigo-100/70 dark:bg-[#4d8eff]/15 text-indigo-800 dark:text-[#adc6ff] border border-indigo-300/70 dark:border-[#4d8eff]/40 font-bold shadow-sm'
+                              : 'text-slate-700 dark:text-[#c2c6d6] hover:text-slate-900 dark:hover:text-[#dfe2f1] hover:bg-slate-100 dark:hover:bg-[#1c1f2a] border border-transparent'
                           }`}
                         >
                           <div className="flex items-center space-x-2.5 truncate">
-                            {isActive && <div className="w-1 h-3.5 rounded-full bg-[#4d8eff] shrink-0" />}
+                            {isActive && <div className="w-1 h-3.5 rounded-full bg-indigo-600 dark:bg-[#4d8eff] shrink-0" />}
                             <span className="text-sm leading-none">{item.icon}</span>
                             <span className="truncate">{item.name}</span>
                           </div>
                           {item.badge && (
-                            <span className="text-[9px] px-2 py-0.5 rounded-md bg-[#4d8eff]/10 text-[#adc6ff] border border-[#4d8eff]/30 font-mono font-bold whitespace-nowrap">
+                            <span className="text-[9px] px-2 py-0.5 rounded-md bg-indigo-50 dark:bg-[#4d8eff]/10 text-indigo-700 dark:text-[#adc6ff] border border-indigo-200 dark:border-[#4d8eff]/30 font-mono font-bold whitespace-nowrap">
                               {item.badge}
                             </span>
                           )}
@@ -333,13 +333,13 @@ function InnerAppLayout({ children }: { children: React.ReactNode }) {
 
         {/* Mobile Navigation Menu Drawer */}
         {isMobileMenuOpen && (
-          <div className="lg:hidden fixed inset-0 z-50 bg-[#0f131d]/80 backdrop-blur-md flex font-sans">
-            <div className="w-72 max-w-[80vw] bg-[#0a0e18] border-r border-[#424754] h-full p-4 overflow-y-auto space-y-4 shadow-2xl">
-              <div className="flex items-center justify-between border-b border-[#424754]/60 pb-3">
-                <span className="font-bold text-sm text-[#dfe2f1]">Navigation</span>
+          <div className="lg:hidden fixed inset-0 z-50 bg-slate-900/60 dark:bg-[#0f131d]/80 backdrop-blur-md flex font-sans">
+            <div className="w-72 max-w-[80vw] bg-white dark:bg-[#0a0e18] border-r border-slate-200 dark:border-[#424754] h-full p-4 overflow-y-auto space-y-4 shadow-2xl">
+              <div className="flex items-center justify-between border-b border-slate-200 dark:border-[#424754]/60 pb-3">
+                <span className="font-bold text-sm text-slate-900 dark:text-[#dfe2f1]">Navigation</span>
                 <button
                   onClick={() => setIsMobileMenuOpen(false)}
-                  className="p-1 rounded-lg text-[#8c909f] hover:text-[#dfe2f1]"
+                  className="p-1 rounded-lg text-slate-500 dark:text-[#8c909f] hover:text-slate-900 dark:hover:text-[#dfe2f1]"
                 >
                   ✕
                 </button>
@@ -354,7 +354,7 @@ function InnerAppLayout({ children }: { children: React.ReactNode }) {
                     <button
                       type="button"
                       onClick={() => toggleGroup(group.id)}
-                      className="w-full px-3 py-2 rounded-xl text-[10px] font-mono font-bold tracking-widest uppercase flex items-center justify-between text-[#adc6ff]"
+                      className="w-full px-3 py-2 rounded-xl text-[10px] font-mono font-bold tracking-widest uppercase flex items-center justify-between text-indigo-600 dark:text-[#adc6ff]"
                     >
                       <div className="flex items-center space-x-2">
                         <span className="text-xs">{group.icon}</span>
@@ -380,17 +380,17 @@ function InnerAppLayout({ children }: { children: React.ReactNode }) {
                               onClick={() => setIsMobileMenuOpen(false)}
                               className={`px-3 py-2.5 rounded-xl text-xs font-semibold transition-all flex items-center justify-between ${
                                 isActive
-                                  ? 'bg-[#4d8eff]/15 text-[#adc6ff] border border-[#4d8eff]/40 font-bold'
-                                  : 'text-[#c2c6d6] hover:text-[#dfe2f1] hover:bg-[#1c1f2a]'
+                                  ? 'bg-indigo-100/70 dark:bg-[#4d8eff]/15 text-indigo-800 dark:text-[#adc6ff] border border-indigo-300/70 dark:border-[#4d8eff]/40 font-bold'
+                                  : 'text-slate-700 dark:text-[#c2c6d6] hover:text-slate-900 dark:hover:text-[#dfe2f1] hover:bg-slate-100 dark:hover:bg-[#1c1f2a]'
                               }`}
                             >
                               <div className="flex items-center space-x-2.5 truncate">
-                                {isActive && <div className="w-1 h-3.5 rounded-full bg-[#4d8eff] shrink-0" />}
+                                {isActive && <div className="w-1 h-3.5 rounded-full bg-indigo-600 dark:bg-[#4d8eff] shrink-0" />}
                                 <span className="text-base leading-none">{item.icon}</span>
                                 <span className="truncate">{item.name}</span>
                               </div>
                               {item.badge && (
-                                <span className="text-[9px] px-2 py-0.5 rounded-md bg-[#4d8eff]/10 text-[#adc6ff] border border-[#4d8eff]/30 font-mono font-bold whitespace-nowrap">
+                                <span className="text-[9px] px-2 py-0.5 rounded-md bg-indigo-50 dark:bg-[#4d8eff]/10 text-indigo-700 dark:text-[#adc6ff] border border-indigo-200 dark:border-[#4d8eff]/30 font-mono font-bold whitespace-nowrap">
                                   {item.badge}
                                 </span>
                               )}

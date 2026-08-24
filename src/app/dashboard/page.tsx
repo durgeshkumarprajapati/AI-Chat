@@ -76,7 +76,7 @@ export default function UserDashboardPage() {
   };
 
   return (
-    <div className="relative min-h-screen p-4 sm:p-6 lg:p-8 font-sans selection:bg-[#4d8eff] selection:text-white text-[#dfe2f1]">
+    <div className="relative min-h-screen p-4 sm:p-6 lg:p-8 font-sans selection:bg-[#4d8eff] selection:text-white text-slate-900 dark:text-[#dfe2f1]">
       {/* Subtle Animated Ambient Background */}
       <AmbientBackground />
 
@@ -129,7 +129,7 @@ export default function UserDashboardPage() {
 
         {/* Quick Actions Section */}
         <div className="space-y-4 pt-2">
-          <h2 className="text-lg font-extrabold text-[#dfe2f1] tracking-tight font-sans">
+          <h2 className="text-lg font-extrabold text-slate-900 dark:text-[#dfe2f1] tracking-tight font-sans">
             Quick Actions
           </h2>
 

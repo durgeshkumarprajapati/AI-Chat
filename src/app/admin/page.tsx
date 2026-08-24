@@ -1,5 +1,7 @@
 'use client';
 
+export const dynamic = 'force-dynamic';
+
 import React, { useEffect, useState } from 'react';
 import Link from 'next/link';
 
@@ -70,19 +72,19 @@ export default function AdminDashboardPage() {
 
   if (loading) {
     return (
-      <div className="min-h-screen bg-slate-950 text-slate-100 flex items-center justify-center p-6">
-        <div className="text-xs text-indigo-400 font-mono animate-pulse">Loading Admin Dashboard...</div>
+      <div className="min-h-screen p-6 flex items-center justify-center font-sans text-slate-900 dark:text-slate-100">
+        <div className="text-xs text-indigo-600 dark:text-indigo-400 font-mono animate-pulse">Loading Admin Dashboard...</div>
       </div>
     );
   }
 
   if (error) {
     return (
-      <div className="min-h-screen bg-slate-950 text-slate-100 flex flex-col items-center justify-center p-6">
-        <div className="bg-rose-950/80 border border-rose-800 text-rose-300 p-6 rounded-2xl max-w-md text-center">
+      <div className="min-h-screen p-6 flex flex-col items-center justify-center font-sans text-slate-900 dark:text-slate-100">
+        <div className="bg-rose-50 dark:bg-rose-950/80 border border-rose-200 dark:border-rose-800 text-rose-800 dark:text-rose-300 p-6 rounded-2xl max-w-md text-center shadow-sm">
           <h2 className="text-lg font-bold mb-2">Access Denied</h2>
           <p className="text-xs mb-4">{error}</p>
-          <Link href="/dashboard" className="inline-block py-2 px-4 bg-slate-800 hover:bg-slate-700 text-white text-xs rounded-lg">
+          <Link href="/dashboard" className="inline-block py-2 px-4 bg-slate-100 dark:bg-slate-800 hover:bg-slate-200 dark:hover:bg-slate-700 text-slate-800 dark:text-white text-xs rounded-lg font-semibold transition">
             Back to User Workspace
           </Link>
         </div>
@@ -91,28 +93,28 @@ export default function AdminDashboardPage() {
   }
 
   return (
-    <div className="min-h-screen bg-slate-950 text-slate-100 p-6 sm:p-10">
+    <div className="min-h-screen p-6 sm:p-10 font-sans selection:bg-[#4d8eff] selection:text-white text-slate-900 dark:text-slate-100">
       <div className="w-full max-w-[1600px] mx-auto space-y-8">
         <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
           <div>
             <div className="flex items-center space-x-2">
-              <h1 className="text-2xl font-bold bg-gradient-to-r from-white to-rose-300 bg-clip-text text-transparent">
+              <h1 className="text-2xl font-bold bg-gradient-to-r from-slate-900 via-rose-800 to-rose-600 dark:from-white dark:to-rose-300 bg-clip-text text-transparent">
                 Admin Diagnostics & Platform Control
               </h1>
-              <span className="px-2.5 py-0.5 rounded-full bg-rose-950 text-rose-300 border border-rose-800 text-[10px] font-mono font-bold">
+              <span className="px-2.5 py-0.5 rounded-full bg-rose-100 dark:bg-rose-950 text-rose-700 dark:text-rose-300 border border-rose-200 dark:border-rose-800 text-[10px] font-mono font-bold">
                 ADMIN ONLY
               </span>
             </div>
-            <p className="text-xs text-slate-400 mt-1">
+            <p className="text-xs text-slate-600 dark:text-slate-400 mt-1">
               System health, user management, RAG quality inspection, cache analytics, and worker diagnostics.
             </p>
           </div>
 
-          <div className="flex items-center space-x-3 text-xs">
-            <Link href="/api/rag/debug" target="_blank" className="px-3 py-1.5 bg-slate-900 hover:bg-slate-800 border border-slate-800 rounded-lg text-slate-300">
+          <div className="flex items-center space-x-3 text-xs font-semibold">
+            <Link href="/api/rag/debug" target="_blank" className="px-3 py-1.5 bg-white dark:bg-slate-900 hover:bg-slate-100 dark:hover:bg-slate-800 border border-slate-200 dark:border-slate-800 rounded-lg text-slate-700 dark:text-slate-300 shadow-sm">
               RAG Inspector ↗
             </Link>
-            <Link href="/api/health" target="_blank" className="px-3 py-1.5 bg-slate-900 hover:bg-slate-800 border border-slate-800 rounded-lg text-slate-300">
+            <Link href="/api/health" target="_blank" className="px-3 py-1.5 bg-white dark:bg-slate-900 hover:bg-slate-100 dark:hover:bg-slate-800 border border-slate-200 dark:border-slate-800 rounded-lg text-slate-700 dark:text-slate-300 shadow-sm">
               System Health ↗
             </Link>
           </div>
@@ -121,34 +123,34 @@ export default function AdminDashboardPage() {
         {/* Platform Metrics */}
         {metrics && (
           <div className="grid grid-cols-2 sm:grid-cols-4 gap-4">
-            <div className="bg-slate-900/80 border border-slate-800 rounded-2xl p-4">
-              <div className="text-xs text-slate-400 font-medium">Total Users</div>
-              <div className="text-2xl font-bold text-white mt-1">{metrics.platform.userCount}</div>
+            <div className="bg-white dark:bg-slate-900/80 border border-slate-200 dark:border-slate-800 rounded-2xl p-4 shadow-sm">
+              <div className="text-xs text-slate-500 dark:text-slate-400 font-medium">Total Users</div>
+              <div className="text-2xl font-bold text-slate-900 dark:text-white mt-1">{metrics.platform.userCount}</div>
             </div>
-            <div className="bg-slate-900/80 border border-slate-800 rounded-2xl p-4">
-              <div className="text-xs text-slate-400 font-medium">Active Sessions</div>
-              <div className="text-2xl font-bold text-emerald-400 mt-1">{metrics.platform.activeSessions}</div>
+            <div className="bg-white dark:bg-slate-900/80 border border-slate-200 dark:border-slate-800 rounded-2xl p-4 shadow-sm">
+              <div className="text-xs text-slate-500 dark:text-slate-400 font-medium">Active Sessions</div>
+              <div className="text-2xl font-bold text-emerald-600 dark:text-emerald-400 mt-1">{metrics.platform.activeSessions}</div>
             </div>
-            <div className="bg-slate-900/80 border border-slate-800 rounded-2xl p-4">
-              <div className="text-xs text-slate-400 font-medium">Avg Groundedness</div>
-              <div className="text-2xl font-bold text-sky-400 mt-1">{metrics.ragMetrics.avgGroundednessScore}</div>
+            <div className="bg-white dark:bg-slate-900/80 border border-slate-200 dark:border-slate-800 rounded-2xl p-4 shadow-sm">
+              <div className="text-xs text-slate-500 dark:text-slate-400 font-medium">Avg Groundedness</div>
+              <div className="text-2xl font-bold text-sky-600 dark:text-sky-400 mt-1">{metrics.ragMetrics.avgGroundednessScore}</div>
             </div>
-            <div className="bg-slate-900/80 border border-slate-800 rounded-2xl p-4">
-              <div className="text-xs text-slate-400 font-medium">Avg Latency</div>
-              <div className="text-2xl font-bold text-indigo-400 mt-1">{metrics.ragMetrics.avgLatencyMs}ms</div>
+            <div className="bg-white dark:bg-slate-900/80 border border-slate-200 dark:border-slate-800 rounded-2xl p-4 shadow-sm">
+              <div className="text-xs text-slate-500 dark:text-slate-400 font-medium">Avg Latency</div>
+              <div className="text-2xl font-bold text-indigo-600 dark:text-indigo-400 mt-1">{metrics.ragMetrics.avgLatencyMs}ms</div>
             </div>
           </div>
         )}
 
         {/* User Management Table */}
-        <div className="bg-slate-900/80 border border-slate-800 rounded-2xl p-6 shadow-xl space-y-4">
-          <h3 className="text-sm font-semibold text-white border-b border-slate-800 pb-3">
+        <div className="bg-white dark:bg-slate-900/80 border border-slate-200 dark:border-slate-800 rounded-2xl p-6 shadow-sm dark:shadow-xl space-y-4">
+          <h3 className="text-sm font-semibold text-slate-900 dark:text-white border-b border-slate-200 dark:border-slate-800 pb-3">
             User Workspace Accounts & Role Assignments
           </h3>
 
           <div className="overflow-x-auto">
-            <table className="w-full text-left text-xs text-slate-300">
-              <thead className="bg-slate-950 text-slate-400 uppercase font-mono text-[10px]">
+            <table className="w-full text-left text-xs text-slate-700 dark:text-slate-300">
+              <thead className="bg-slate-50 dark:bg-slate-950 text-slate-500 dark:text-slate-400 uppercase font-mono text-[10px]">
                 <tr>
                   <th className="py-3 px-4">User Email</th>
                   <th className="py-3 px-4">Name</th>
@@ -157,21 +159,21 @@ export default function AdminDashboardPage() {
                   <th className="py-3 px-4 text-right">Actions</th>
                 </tr>
               </thead>
-              <tbody className="divide-y divide-slate-800">
+              <tbody className="divide-y divide-slate-200 dark:divide-slate-800">
                 {users.map((u) => (
-                  <tr key={u.id} className="hover:bg-slate-950/40">
+                  <tr key={u.id} className="hover:bg-slate-50 dark:hover:bg-slate-950/40">
                     <td className="py-3 px-4 font-mono">{u.email}</td>
                     <td className="py-3 px-4">{u.name || '—'}</td>
                     <td className="py-3 px-4">
-                      <span className={`px-2 py-0.5 rounded text-[10px] font-mono font-bold ${u.role === 'ADMIN' ? 'bg-rose-950 text-rose-300 border border-rose-800' : 'bg-slate-800 text-slate-300'}`}>
+                      <span className={`px-2 py-0.5 rounded text-[10px] font-mono font-bold ${u.role === 'ADMIN' ? 'bg-rose-100 dark:bg-rose-950 text-rose-800 dark:text-rose-300 border border-rose-200 dark:border-rose-800' : 'bg-slate-100 dark:bg-slate-800 text-slate-700 dark:text-slate-300'}`}>
                         {u.role}
                       </span>
                     </td>
-                    <td className="py-3 px-4 text-slate-400">{new Date(u.createdAt).toLocaleDateString()}</td>
+                    <td className="py-3 px-4 text-slate-500 dark:text-slate-400">{new Date(u.createdAt).toLocaleDateString()}</td>
                     <td className="py-3 px-4 text-right">
                       <button
                         onClick={() => handleRoleChange(u.id, u.role)}
-                        className="px-2.5 py-1 bg-slate-800 hover:bg-slate-700 text-slate-200 rounded text-[11px] font-medium transition"
+                        className="px-2.5 py-1 bg-slate-100 dark:bg-slate-800 hover:bg-slate-200 dark:hover:bg-slate-700 text-slate-800 dark:text-slate-200 rounded text-[11px] font-medium transition"
                       >
                         Set to {u.role === 'ADMIN' ? 'USER' : 'ADMIN'}
                       </button>

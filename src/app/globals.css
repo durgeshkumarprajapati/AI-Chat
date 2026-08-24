@@ -5,11 +5,11 @@
 :root,
 [data-theme='dark'],
 .dark {
-  --background: #020617;
-  --foreground: #f8fafc;
+  --background: #0b1120;
+  --foreground: #dfe2f1;
   --surface: #0f172a;
   --surface-hover: #1e293b;
-  --border: #1e293b;
+  --border: #334155;
   --text-muted: #94a3b8;
   --card-bg: rgba(15, 23, 42, 0.85);
   color-scheme: dark;
@@ -21,8 +21,8 @@
   --foreground: #0f172a;
   --surface: #ffffff;
   --surface-hover: #f1f5f9;
-  --border: #cbd5e1;
-  --text-muted: #475569;
+  --border: #e2e8f0;
+  --text-muted: #64748b;
   --card-bg: #ffffff;
   color-scheme: light;
 }
@@ -38,87 +38,32 @@ button, input, textarea, select, option {
   font-family: inherit;
 }
 
-/* Light theme overrides for default dark slate utility classes across legacy pages */
-.light {
-  color: #0f172a;
-  background-color: #f8fafc;
+/* Custom Theme-Aware Scrollbars */
+::-webkit-scrollbar {
+  width: 8px;
+  height: 8px;
 }
 
-.light .bg-slate-950 {
-  background-color: #f8fafc;
+.dark ::-webkit-scrollbar-track {
+  background: #0f172a;
 }
-.light .bg-slate-900 {
-  background-color: #ffffff;
+.dark ::-webkit-scrollbar-thumb {
+  background: #334155;
+  border-radius: 4px;
 }
-.light .bg-slate-900\/90,
-.light .bg-slate-900\/80,
-.light .bg-slate-900\/70,
-.light .bg-slate-900\/60,
-.light .bg-slate-900\/50,
-.light .bg-slate-900\/40 {
-  background-color: #ffffff;
-}
-.light .bg-slate-950\/90,
-.light .bg-slate-950\/80,
-.light .bg-slate-950\/70,
-.light .bg-slate-950\/60 {
-  background-color: #f1f5f9;
-}
-.light .bg-slate-800,
-.light .bg-slate-800\/80,
-.light .bg-slate-800\/60 {
-  background-color: #e2e8f0;
+.dark ::-webkit-scrollbar-thumb:hover {
+  background: #475569;
 }
 
-.light .border-slate-800,
-.light .border-slate-800\/90,
-.light .border-slate-800\/80,
-.light .border-slate-800\/50,
-.light .border-slate-700,
-.light .border-slate-700\/80 {
-  border-color: #cbd5e1;
+.light ::-webkit-scrollbar-track {
+  background: #f1f5f9;
 }
-
-/* Text color mappings in light mode */
-.light .text-slate-100 {
-  color: #0f172a;
+.light ::-webkit-scrollbar-thumb {
+  background: #cbd5e1;
+  border-radius: 4px;
 }
-.light .text-slate-200 {
-  color: #1e293b;
-}
-.light .text-slate-300 {
-  color: #334155;
-}
-.light .text-slate-400 {
-  color: #475569;
-}
-.light .text-slate-500 {
-  color: #64748b;
-}
-
-/* Heading color mapping in light mode */
-.light h1.text-white,
-.light h2.text-white,
-.light h3.text-white,
-.light h4.text-white,
-.light p.text-white,
-.light span.text-white {
-  color: #0f172a;
-}
-
-/* Ensure gradient clipped text remains transparent for gradient fills */
-.light .bg-clip-text {
-  color: transparent !important;
-}
-
-/* Preserve button white text inside primary actions */
-.light button.bg-indigo-600,
-.light button.bg-indigo-500,
-.light a.bg-indigo-600,
-.light a.bg-indigo-500,
-.light .bg-indigo-600 *,
-.light .bg-indigo-500 * {
-  color: #ffffff;
+.light ::-webkit-scrollbar-thumb:hover {
+  background: #94a3b8;
 }
 
 /* Custom scrollbar utility */

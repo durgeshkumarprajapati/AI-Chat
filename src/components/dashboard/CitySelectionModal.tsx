@@ -24,14 +24,14 @@ export const CitySelectionModal: React.FC<CitySelectionModalProps> = ({
   if (!isOpen) return null;
 
   return (
-    <div className="fixed inset-0 z-50 bg-[#0f131d]/80 backdrop-blur-md flex items-center justify-center p-4 font-sans select-none">
-      <div className="bg-[#0a0e18] border border-[#424754] rounded-2xl p-6 max-w-md w-full space-y-5 shadow-2xl">
-        <div className="flex items-center justify-between border-b border-[#424754]/60 pb-3">
-          <h3 className="text-sm font-bold text-[#dfe2f1]">Choose City Manually</h3>
+    <div className="fixed inset-0 z-50 bg-slate-900/60 dark:bg-[#0f131d]/80 backdrop-blur-md flex items-center justify-center p-4 font-sans select-none">
+      <div className="bg-white dark:bg-[#0a0e18] border border-slate-200 dark:border-[#424754] rounded-2xl p-6 max-w-md w-full space-y-5 shadow-2xl">
+        <div className="flex items-center justify-between border-b border-slate-200 dark:border-[#424754]/60 pb-3">
+          <h3 className="text-sm font-bold text-slate-900 dark:text-[#dfe2f1]">Choose City Manually</h3>
           <button
             type="button"
             onClick={onClose}
-            className="text-[#8c909f] hover:text-[#dfe2f1] text-xs p-1 rounded-lg bg-[#0f131d] border border-[#424754]"
+            className="text-slate-500 dark:text-[#8c909f] hover:text-slate-900 dark:hover:text-[#dfe2f1] text-xs p-1 rounded-lg bg-slate-100 dark:bg-[#0f131d] border border-slate-200 dark:border-[#424754]"
             aria-label="Close modal"
           >
             ✕
@@ -40,7 +40,7 @@ export const CitySelectionModal: React.FC<CitySelectionModalProps> = ({
 
         <div className="space-y-4">
           <div className="space-y-1">
-            <label className="text-[10px] font-mono font-bold uppercase tracking-wider text-[#adc6ff]">
+            <label className="text-[10px] font-mono font-bold uppercase tracking-wider text-indigo-600 dark:text-[#adc6ff]">
               SEARCH CITY
             </label>
             <input
@@ -53,31 +53,44 @@ export const CitySelectionModal: React.FC<CitySelectionModalProps> = ({
                   onSelectCity(manualCityInput.trim());
                 }
               }}
-              className="w-full bg-[#0f131d] border border-[#424754] rounded-xl px-3.5 py-2.5 text-xs text-[#dfe2f1] placeholder-[#8c909f] focus:outline-none focus:border-[#4d8eff] shadow-inner transition font-sans"
+              className="w-full bg-slate-50 dark:bg-[#0f131d] border border-slate-300 dark:border-[#424754] rounded-xl px-3.5 py-2.5 text-xs text-slate-900 dark:text-[#dfe2f1] placeholder-slate-400 dark:placeholder-[#8c909f] focus:outline-none focus:border-indigo-600 dark:focus:border-[#4d8eff] shadow-inner transition font-sans"
             />
           </div>
 
           <div className="space-y-2">
-            <div className="text-[10px] font-mono text-[#8c909f] font-bold uppercase tracking-wider">
+            <label className="text-[10px] font-mono font-bold uppercase tracking-wider text-slate-500 dark:text-[#8c909f]">
               POPULAR CITIES
-            </div>
+            </label>
             <div className="flex flex-wrap gap-2">
-              {popularCities.map((c) => (
-                <button
-                  key={c}
-                  type="button"
-                  onClick={() => onSelectCity(c)}
-                  className={`px-3 py-1.5 rounded-xl text-xs font-semibold transition ${
-                    activeCity === c
-                      ? 'bg-gradient-to-r from-[#4d8eff] to-[#adc6ff] text-[#0a0e18] font-bold shadow-md shadow-[#4d8eff]/20'
-                      : 'bg-[#0f131d] text-[#c2c6d6] hover:text-[#dfe2f1] border border-[#424754]'
-                  }`}
-                >
-                  {c}
-                </button>
-              ))}
+              {popularCities.map((city) => {
+                const isSelected = city === activeCity;
+                return (
+                  <button
+                    key={city}
+                    type="button"
+                    onClick={() => onSelectCity(city)}
+                    className={`px-3 py-1.5 rounded-xl text-xs font-semibold transition ${
+                      isSelected
+                        ? 'bg-indigo-600 dark:bg-[#4d8eff] text-white dark:text-[#0a0e18] shadow-md shadow-indigo-600/20 dark:shadow-[#4d8eff]/20 font-extrabold'
+                        : 'bg-slate-100 dark:bg-[#0f131d] text-slate-700 dark:text-[#c2c6d6] border border-slate-200 dark:border-[#424754] hover:border-indigo-400 dark:hover:border-[#4d8eff] hover:text-slate-900 dark:hover:text-[#dfe2f1]'
+                    }`}
+                  >
+                    📍 {city}
+                  </button>
+                );
+              })}
             </div>
           </div>
+        </div>
+
+        <div className="pt-2 flex justify-end">
+          <button
+            type="button"
+            onClick={onClose}
+            className="px-4 py-2 bg-slate-100 dark:bg-[#0f131d] hover:bg-slate-200 dark:hover:bg-[#141926] text-slate-700 dark:text-[#dfe2f1] border border-slate-300 dark:border-[#424754] rounded-xl text-xs font-semibold transition"
+          >
+            Cancel
+          </button>
         </div>
       </div>
     </div>

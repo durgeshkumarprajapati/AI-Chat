@@ -2,6 +2,8 @@ import { NextRequest, NextResponse } from 'next/server';
 import { webSourceService } from '@/features/rag/web/web-source.service';
 import { AppError } from '@/errors';
 
+export const dynamic = 'force-dynamic';
+
 const DEFAULT_USER_ID = '00000000-0000-0000-0000-000000000000';
 
 function getUserId(req: NextRequest): string {

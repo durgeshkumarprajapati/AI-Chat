@@ -290,21 +290,21 @@ export default function DocumentsPage() {
   return (
     <div className="w-full max-w-[1600px] mx-auto space-y-8">
       {/* Header */}
-      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 border-b border-slate-800 pb-6">
+      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 border-b border-slate-200 dark:border-slate-800 pb-6">
         <div>
           <div className="flex items-center space-x-3">
-            <h1 className="text-3xl font-bold text-white tracking-tight">Document Management & Knowledge Base</h1>
+            <h1 className="text-3xl font-bold text-slate-900 dark:text-white tracking-tight">Document Management & Knowledge Base</h1>
             <span
               className={`px-3 py-1 rounded-full text-xs font-mono font-semibold uppercase ${
                 storageProvider.toLowerCase() === 's3'
-                  ? 'bg-amber-950 text-amber-300 border border-amber-800'
-                  : 'bg-indigo-950 text-indigo-300 border border-indigo-800'
+                  ? 'bg-amber-100 dark:bg-amber-950 text-amber-800 dark:text-amber-300 border border-amber-300 dark:border-amber-800'
+                  : 'bg-indigo-100 dark:bg-indigo-950 text-indigo-800 dark:text-indigo-300 border border-indigo-300 dark:border-indigo-800'
               }`}
             >
               Storage: {storageProvider}
             </span>
           </div>
-          <p className="text-slate-400 text-sm mt-1">
+          <p className="text-slate-600 dark:text-slate-400 text-sm mt-1">
             Manage your document knowledge base, monitor processing pipelines, retry/reprocess documents, and query RAG.
           </p>
         </div>
@@ -312,14 +312,14 @@ export default function DocumentsPage() {
           {selectedIds.length > 0 && (
             <button
               onClick={() => setIsBulkDeleteModalOpen(true)}
-              className="px-3.5 py-2 rounded-xl bg-rose-950/80 border border-rose-800 text-xs font-semibold text-rose-300 hover:bg-rose-900 transition-colors"
+              className="px-3.5 py-2 rounded-xl bg-rose-600 hover:bg-rose-500 text-xs font-semibold text-white transition-colors"
             >
               🗑 Delete Selected ({selectedIds.length})
             </button>
           )}
           <button
             onClick={() => fetchDocuments()}
-            className="inline-flex items-center space-x-2 px-4 py-2 rounded-xl bg-slate-900 border border-slate-800 text-xs font-semibold text-slate-300 hover:bg-slate-800 transition-colors"
+            className="inline-flex items-center space-x-2 px-4 py-2 rounded-xl bg-slate-100 dark:bg-slate-900 border border-slate-300 dark:border-slate-800 text-xs font-semibold text-slate-700 dark:text-slate-300 hover:bg-slate-200 dark:hover:bg-slate-800 transition-colors shadow-sm"
           >
             <span>↻ Refresh</span>
           </button>
@@ -328,33 +328,33 @@ export default function DocumentsPage() {
 
       {/* Knowledge Base Summary Stats Cards */}
       <div className="grid grid-cols-2 sm:grid-cols-4 lg:grid-cols-7 gap-3">
-        <div className="p-4 rounded-2xl bg-slate-900 border border-slate-800 space-y-1">
-          <span className="text-[11px] text-slate-400 font-mono block">Total Docs</span>
-          <span className="text-2xl font-bold text-white font-mono">{stats.totalDocuments}</span>
+        <div className="p-4 rounded-2xl bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 space-y-1 shadow-sm">
+          <span className="text-[11px] text-slate-500 dark:text-slate-400 font-mono block">Total Docs</span>
+          <span className="text-2xl font-bold text-slate-900 dark:text-white font-mono">{stats.totalDocuments}</span>
         </div>
-        <div className="p-4 rounded-2xl bg-slate-900 border border-slate-800 space-y-1">
-          <span className="text-[11px] text-amber-400 font-mono block">Processing</span>
-          <span className="text-2xl font-bold text-amber-400 font-mono">{stats.processingDocuments}</span>
+        <div className="p-4 rounded-2xl bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 space-y-1 shadow-sm">
+          <span className="text-[11px] text-amber-600 dark:text-amber-400 font-mono block">Processing</span>
+          <span className="text-2xl font-bold text-amber-600 dark:text-amber-400 font-mono">{stats.processingDocuments}</span>
         </div>
-        <div className="p-4 rounded-2xl bg-slate-900 border border-slate-800 space-y-1">
-          <span className="text-[11px] text-emerald-400 font-mono block">Completed</span>
-          <span className="text-2xl font-bold text-emerald-400 font-mono">{stats.completedDocuments}</span>
+        <div className="p-4 rounded-2xl bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 space-y-1 shadow-sm">
+          <span className="text-[11px] text-emerald-600 dark:text-emerald-400 font-mono block">Completed</span>
+          <span className="text-2xl font-bold text-emerald-600 dark:text-emerald-400 font-mono">{stats.completedDocuments}</span>
         </div>
-        <div className="p-4 rounded-2xl bg-slate-900 border border-slate-800 space-y-1">
-          <span className="text-[11px] text-rose-400 font-mono block">Failed</span>
-          <span className="text-2xl font-bold text-rose-400 font-mono">{stats.failedDocuments}</span>
+        <div className="p-4 rounded-2xl bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 space-y-1 shadow-sm">
+          <span className="text-[11px] text-rose-600 dark:text-rose-400 font-mono block">Failed</span>
+          <span className="text-2xl font-bold text-rose-600 dark:text-rose-400 font-mono">{stats.failedDocuments}</span>
         </div>
-        <div className="p-4 rounded-2xl bg-slate-900 border border-slate-800 space-y-1">
-          <span className="text-[11px] text-slate-400 font-mono block">Total Pages</span>
-          <span className="text-2xl font-bold text-slate-200 font-mono">{stats.totalPages}</span>
+        <div className="p-4 rounded-2xl bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 space-y-1 shadow-sm">
+          <span className="text-[11px] text-slate-500 dark:text-slate-400 font-mono block">Total Pages</span>
+          <span className="text-2xl font-bold text-slate-900 dark:text-slate-200 font-mono">{stats.totalPages}</span>
         </div>
-        <div className="p-4 rounded-2xl bg-slate-900 border border-slate-800 space-y-1">
-          <span className="text-[11px] text-indigo-400 font-mono block">Total Chunks</span>
-          <span className="text-2xl font-bold text-indigo-400 font-mono">{stats.totalChunks}</span>
+        <div className="p-4 rounded-2xl bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 space-y-1 shadow-sm">
+          <span className="text-[11px] text-indigo-600 dark:text-indigo-400 font-mono block">Total Chunks</span>
+          <span className="text-2xl font-bold text-indigo-600 dark:text-indigo-400 font-mono">{stats.totalChunks}</span>
         </div>
-        <div className="p-4 rounded-2xl bg-slate-900 border border-slate-800 space-y-1">
-          <span className="text-[11px] text-teal-400 font-mono block">768d Vectors</span>
-          <span className="text-2xl font-bold text-teal-400 font-mono">{stats.embeddedChunks}</span>
+        <div className="p-4 rounded-2xl bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 space-y-1 shadow-sm">
+          <span className="text-[11px] text-teal-600 dark:text-teal-400 font-mono block">768d Vectors</span>
+          <span className="text-2xl font-bold text-teal-600 dark:text-teal-400 font-mono">{stats.embeddedChunks}</span>
         </div>
       </div>
 
@@ -369,8 +369,8 @@ export default function DocumentsPage() {
         onClick={() => fileInputRef.current?.click()}
         className={`relative border-2 border-dashed rounded-2xl p-6 text-center cursor-pointer transition-all ${
           isDragOver
-            ? 'border-indigo-500 bg-indigo-950/20'
-            : 'border-slate-800 bg-slate-900/50 hover:border-slate-700 hover:bg-slate-900'
+            ? 'border-indigo-500 bg-indigo-50 dark:bg-indigo-950/20'
+            : 'border-slate-300 dark:border-slate-800 bg-slate-50 dark:bg-slate-900/50 hover:border-indigo-400 dark:hover:border-slate-700 hover:bg-slate-100 dark:hover:bg-slate-900'
         }`}
       >
         <input
@@ -386,28 +386,28 @@ export default function DocumentsPage() {
         />
 
         <div className="max-w-md mx-auto space-y-2 pointer-events-none">
-          <div className="w-12 h-12 rounded-2xl bg-indigo-950/80 border border-indigo-800/60 text-indigo-400 text-xl flex items-center justify-center mx-auto shadow-inner">
+          <div className="w-12 h-12 rounded-2xl bg-indigo-100 dark:bg-indigo-950/80 border border-indigo-200 dark:border-indigo-800/60 text-indigo-600 dark:text-indigo-400 text-xl flex items-center justify-center mx-auto shadow-sm">
             📄
           </div>
           <div>
-            <p className="text-sm font-semibold text-white">
-              <span className="text-indigo-400">Click to upload</span> or drag and drop PDF file
+            <p className="text-sm font-semibold text-slate-900 dark:text-white">
+              <span className="text-indigo-600 dark:text-indigo-400">Click to upload</span> or drag and drop PDF file
             </p>
-            <p className="text-[11px] text-slate-400 mt-0.5 font-mono">
+            <p className="text-[11px] text-slate-500 dark:text-slate-400 mt-0.5 font-mono">
               Supported format: PDF • Maximum size: 25 MB • Driver: {storageProvider}
             </p>
           </div>
         </div>
 
         {isUploading && (
-          <div className="absolute inset-x-0 bottom-0 p-3 bg-slate-900/90 backdrop-blur-sm rounded-b-2xl border-t border-slate-800">
-            <div className="flex items-center justify-between text-xs text-slate-300 mb-1 font-mono">
+          <div className="absolute inset-x-0 bottom-0 p-3 bg-white/90 dark:bg-slate-900/90 backdrop-blur-sm rounded-b-2xl border-t border-slate-200 dark:border-slate-800">
+            <div className="flex items-center justify-between text-xs text-slate-700 dark:text-slate-300 mb-1 font-mono">
               <span>Uploading file to {storageProvider.toUpperCase()} Storage...</span>
               <span>{uploadProgress}%</span>
             </div>
-            <div className="w-full bg-slate-800 rounded-full h-1.5 overflow-hidden">
+            <div className="w-full bg-slate-200 dark:bg-slate-800 rounded-full h-1.5 overflow-hidden">
               <div
-                className="bg-indigo-500 h-1.5 rounded-full transition-all duration-300"
+                className="bg-indigo-600 dark:bg-indigo-500 h-1.5 rounded-full transition-all duration-300"
                 style={{ width: `${uploadProgress}%` }}
               />
             </div>
@@ -420,8 +420,8 @@ export default function DocumentsPage() {
         <div
           className={`p-4 rounded-xl border text-xs flex items-center justify-between ${
             bannerMessage.type === 'error'
-              ? 'bg-rose-950/80 border-rose-800 text-rose-300'
-              : 'bg-emerald-950/80 border-emerald-800 text-emerald-300'
+              ? 'bg-rose-50 dark:bg-rose-950/80 border-rose-200 dark:border-rose-800 text-rose-800 dark:text-rose-300'
+              : 'bg-emerald-50 dark:bg-emerald-950/80 border-emerald-200 dark:border-emerald-800 text-emerald-800 dark:text-emerald-300'
           }`}
         >
           <div className="flex items-center space-x-2">
@@ -435,10 +435,10 @@ export default function DocumentsPage() {
       )}
 
       {/* Search & Filter Toolbar */}
-      <div className="rounded-2xl bg-slate-900 border border-slate-800 p-4 flex flex-col md:flex-row gap-3 items-stretch md:items-center justify-between shadow-xl">
+      <div className="rounded-2xl bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 p-4 flex flex-col md:flex-row gap-3 items-stretch md:items-center justify-between shadow-sm dark:shadow-xl">
         {/* Search */}
         <div className="relative flex-1">
-          <span className="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none text-slate-500 text-xs">
+          <span className="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none text-slate-400 text-xs">
             🔍
           </span>
           <input
@@ -446,7 +446,7 @@ export default function DocumentsPage() {
             placeholder="Search documents by filename..."
             value={search}
             onChange={(e) => setSearch(e.target.value)}
-            className="w-full pl-9 pr-4 py-2 rounded-xl bg-slate-950 border border-slate-800 text-xs text-white placeholder-slate-500 focus:outline-none focus:border-indigo-500"
+            className="w-full pl-9 pr-4 py-2 rounded-xl bg-slate-50 dark:bg-slate-950 border border-slate-300 dark:border-slate-800 text-xs text-slate-900 dark:text-white placeholder-slate-400 dark:placeholder-slate-500 focus:outline-none focus:border-indigo-500"
           />
           {search && (
             <button
@@ -467,7 +467,7 @@ export default function DocumentsPage() {
               setStatusFilter(e.target.value);
               setPage(1);
             }}
-            className="px-3 py-2 rounded-xl bg-slate-950 border border-slate-800 text-slate-300 font-semibold focus:outline-none focus:border-indigo-500"
+            className="px-3 py-2 rounded-xl bg-slate-50 dark:bg-slate-950 border border-slate-300 dark:border-slate-800 text-slate-800 dark:text-slate-300 font-semibold focus:outline-none focus:border-indigo-500"
           >
             <option value="ALL">All Statuses</option>
             <option value="PROCESSING">Processing</option>
@@ -485,7 +485,7 @@ export default function DocumentsPage() {
               if (parts[1]) setSortOrder(parts[1] as 'asc' | 'desc');
               setPage(1);
             }}
-            className="px-3 py-2 rounded-xl bg-slate-950 border border-slate-800 text-slate-300 font-semibold focus:outline-none focus:border-indigo-500"
+            className="px-3 py-2 rounded-xl bg-slate-50 dark:bg-slate-950 border border-slate-300 dark:border-slate-800 text-slate-800 dark:text-slate-300 font-semibold focus:outline-none focus:border-indigo-500"
           >
             <option value="createdAt:desc">Newest First</option>
             <option value="createdAt:asc">Oldest First</option>
@@ -502,7 +502,7 @@ export default function DocumentsPage() {
               setPageSize(parseInt(e.target.value, 10));
               setPage(1);
             }}
-            className="px-3 py-2 rounded-xl bg-slate-950 border border-slate-800 text-slate-300 font-semibold focus:outline-none focus:border-indigo-500"
+            className="px-3 py-2 rounded-xl bg-slate-50 dark:bg-slate-950 border border-slate-300 dark:border-slate-800 text-slate-800 dark:text-slate-300 font-semibold focus:outline-none focus:border-indigo-500"
           >
             <option value="10">10 per page</option>
             <option value="20">20 per page</option>
@@ -512,11 +512,11 @@ export default function DocumentsPage() {
       </div>
 
       {/* Documents Table */}
-      <div className="rounded-2xl bg-slate-900 border border-slate-800 p-6 space-y-4 shadow-xl">
-        <div className="flex items-center justify-between border-b border-slate-800 pb-4">
+      <div className="rounded-2xl bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 p-6 space-y-4 shadow-sm dark:shadow-xl">
+        <div className="flex items-center justify-between border-b border-slate-200 dark:border-slate-800 pb-4">
           <div className="flex items-center space-x-3">
-            <h2 className="text-xl font-bold text-white">Knowledge Base Documents</h2>
-            <span className="text-xs font-mono text-slate-400">
+            <h2 className="text-xl font-bold text-slate-900 dark:text-white">Knowledge Base Documents</h2>
+            <span className="text-xs font-mono text-slate-500 dark:text-slate-400">
               Showing {documents.length} of {totalItems} total
             </span>
           </div>
@@ -527,7 +527,7 @@ export default function DocumentsPage() {
                 setStatusFilter('ALL');
                 setPage(1);
               }}
-              className="text-xs text-indigo-400 hover:underline font-mono"
+              className="text-xs text-indigo-600 dark:text-indigo-400 hover:underline font-mono"
             >
               Clear filters ✕
             </button>
@@ -541,20 +541,20 @@ export default function DocumentsPage() {
             <div className="text-3xl">📭</div>
             {debouncedSearch || statusFilter !== 'ALL' ? (
               <>
-                <p className="text-slate-400 text-sm">No documents match your search filter.</p>
+                <p className="text-slate-600 dark:text-slate-400 text-sm">No documents match your search filter.</p>
                 <button
                   onClick={() => {
                     setSearch('');
                     setStatusFilter('ALL');
                   }}
-                  className="px-4 py-2 rounded-xl bg-slate-800 text-indigo-400 text-xs font-semibold hover:bg-slate-700"
+                  className="px-4 py-2 rounded-xl bg-slate-100 dark:bg-slate-800 text-indigo-600 dark:text-indigo-400 text-xs font-semibold hover:bg-slate-200 dark:hover:bg-slate-700"
                 >
                   Reset Filters
                 </button>
               </>
             ) : (
               <>
-                <p className="text-slate-400 text-sm">Your knowledge base is currently empty.</p>
+                <p className="text-slate-600 dark:text-slate-400 text-sm">Your knowledge base is currently empty.</p>
                 <p className="text-xs text-slate-500">Upload a PDF above to trigger the extraction & pgvector pipeline.</p>
               </>
             )}
@@ -563,13 +563,13 @@ export default function DocumentsPage() {
           <div className="overflow-x-auto">
             <table className="w-full text-left text-xs">
               <thead>
-                <tr className="text-slate-400 border-b border-slate-800 font-mono uppercase">
+                <tr className="text-slate-600 dark:text-slate-400 border-b border-slate-200 dark:border-slate-800 font-mono uppercase">
                   <th className="pb-3 w-10">
                     <input
                       type="checkbox"
                       checked={documents.length > 0 && selectedIds.length === documents.length}
                       onChange={toggleSelectAll}
-                      className="rounded border-slate-800 bg-slate-950 text-indigo-500 focus:ring-0"
+                      className="rounded border-slate-300 dark:border-slate-800 bg-slate-50 dark:bg-slate-950 text-indigo-600 focus:ring-0"
                     />
                   </th>
                   <th className="pb-3 font-semibold">Document</th>
@@ -581,15 +581,15 @@ export default function DocumentsPage() {
                   <th className="pb-3 text-right font-semibold">Actions</th>
                 </tr>
               </thead>
-              <tbody className="divide-y divide-slate-800/60">
+              <tbody className="divide-y divide-slate-200 dark:divide-slate-800/60">
                 {documents.map((doc) => {
                   const isSelected = selectedIds.includes(doc.id);
                   const isBusy = actionLoading === doc.id;
                   return (
                     <tr
                       key={doc.id}
-                      className={`hover:bg-slate-950/40 group transition-colors ${
-                        isSelected ? 'bg-indigo-950/20' : ''
+                      className={`hover:bg-slate-50 dark:hover:bg-slate-950/40 group transition-colors ${
+                        isSelected ? 'bg-indigo-50/70 dark:bg-indigo-950/20' : ''
                       }`}
                     >
                       <td className="py-4">
@@ -597,22 +597,22 @@ export default function DocumentsPage() {
                           type="checkbox"
                           checked={isSelected}
                           onChange={() => toggleSelectOne(doc.id)}
-                          className="rounded border-slate-800 bg-slate-950 text-indigo-500 focus:ring-0"
+                          className="rounded border-slate-300 dark:border-slate-800 bg-slate-50 dark:bg-slate-950 text-indigo-600 focus:ring-0"
                         />
                       </td>
                       <td className="py-4">
                         <div>
                           <Link
                             href={`/documents/${doc.id}`}
-                            className="font-semibold text-white group-hover:text-indigo-400 transition-colors block break-all"
+                            className="font-semibold text-slate-900 dark:text-white group-hover:text-indigo-600 dark:group-hover:text-indigo-400 transition-colors block break-all"
                           >
                             {doc.filename}
                           </Link>
                           <span className="text-[10px] text-slate-500 font-mono block">{doc.id}</span>
                         </div>
                       </td>
-                      <td className="py-4 text-slate-300 font-mono">{(doc.fileSize / 1024 / 1024).toFixed(2)} MB</td>
-                      <td className="py-4 text-slate-300 font-mono">
+                      <td className="py-4 text-slate-700 dark:text-slate-300 font-mono">{(doc.fileSize / 1024 / 1024).toFixed(2)} MB</td>
+                      <td className="py-4 text-slate-700 dark:text-slate-300 font-mono">
                         {doc.pageCount ? `${doc.pageCount} pages` : 'Pending'}
                       </td>
                       <td className="py-4">
@@ -620,23 +620,23 @@ export default function DocumentsPage() {
                           <span
                             className={`inline-flex items-center space-x-1.5 px-3 py-1 rounded-full text-[11px] font-semibold ${
                               doc.status === 'PROCESSING'
-                                ? 'bg-amber-950 text-amber-300 border border-amber-800'
+                                ? 'bg-amber-50 dark:bg-amber-950 text-amber-800 dark:text-amber-300 border border-amber-200 dark:border-amber-800'
                                 : doc.status === 'COMPLETED'
-                                ? 'bg-emerald-950 text-emerald-300 border border-emerald-800'
+                                ? 'bg-emerald-50 dark:bg-emerald-950 text-emerald-800 dark:text-emerald-300 border border-emerald-200 dark:border-emerald-800'
                                 : doc.status === 'FAILED'
-                                ? 'bg-rose-950 text-rose-300 border border-rose-800'
-                                : 'bg-slate-800 text-slate-300'
+                                ? 'bg-rose-50 dark:bg-rose-950 text-rose-800 dark:text-rose-300 border border-rose-200 dark:border-rose-800'
+                                : 'bg-slate-100 dark:bg-slate-800 text-slate-700 dark:text-slate-300'
                             }`}
                           >
                             {doc.status === 'PROCESSING' && (
-                              <span className="w-1.5 h-1.5 rounded-full bg-amber-400 animate-pulse" />
+                              <span className="w-1.5 h-1.5 rounded-full bg-amber-500 dark:bg-amber-400 animate-pulse" />
                             )}
                             <span>{doc.status}</span>
                           </span>
 
                           {doc.errorMessage && (
                             <p
-                              className="text-[10px] text-rose-400 font-mono max-w-xs truncate"
+                              className="text-[10px] text-rose-600 dark:text-rose-400 font-mono max-w-xs truncate"
                               title={doc.errorMessage}
                             >
                               Error: {doc.errorMessage}
@@ -645,11 +645,11 @@ export default function DocumentsPage() {
                         </div>
                       </td>
                       <td className="py-4">
-                        <span className="px-2 py-0.5 rounded bg-slate-950 text-slate-400 font-mono text-[10px] uppercase border border-slate-800">
+                        <span className="px-2 py-0.5 rounded bg-slate-100 dark:bg-slate-950 text-slate-600 dark:text-slate-400 font-mono text-[10px] uppercase border border-slate-200 dark:border-slate-800">
                           {storageProvider}
                         </span>
                       </td>
-                      <td className="py-4 text-slate-400 font-mono text-[11px]">
+                      <td className="py-4 text-slate-500 dark:text-slate-400 font-mono text-[11px]">
                         {new Date(doc.createdAt).toLocaleDateString()}{' '}
                         {new Date(doc.createdAt).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
                       </td>
@@ -658,7 +658,7 @@ export default function DocumentsPage() {
                         {doc.status === 'COMPLETED' && (
                           <Link
                             href="/chat"
-                            className="px-2.5 py-1 rounded bg-indigo-950 text-indigo-300 border border-indigo-800 hover:bg-indigo-900 text-[11px] font-semibold transition-colors"
+                            className="px-2.5 py-1 rounded bg-indigo-50 dark:bg-indigo-950 text-indigo-700 dark:text-indigo-300 border border-indigo-200 dark:border-indigo-800 hover:bg-indigo-100 dark:hover:bg-indigo-900 text-[11px] font-semibold transition-colors"
                           >
                             💬 Chat
                           </Link>
@@ -669,7 +669,7 @@ export default function DocumentsPage() {
                           href={`/api/documents/${doc.id}/download`}
                           target="_blank"
                           rel="noopener noreferrer"
-                          className="px-2 py-1 rounded bg-slate-800 hover:bg-slate-700 text-slate-300 text-[11px] font-semibold transition-colors"
+                          className="px-2 py-1 rounded bg-slate-100 dark:bg-slate-800 hover:bg-slate-200 dark:hover:bg-slate-700 text-slate-700 dark:text-slate-300 text-[11px] font-semibold transition-colors"
                         >
                           ⬇ PDF
                         </a>
@@ -679,7 +679,7 @@ export default function DocumentsPage() {
                           <button
                             disabled={isBusy}
                             onClick={() => handleRetry(doc.id, doc.filename)}
-                            className="px-2 py-1 rounded bg-amber-950 text-amber-300 border border-amber-800 hover:bg-amber-900 text-[11px] font-semibold transition-colors disabled:opacity-50"
+                            className="px-2 py-1 rounded bg-amber-50 dark:bg-amber-950 text-amber-800 dark:text-amber-300 border border-amber-200 dark:border-amber-800 hover:bg-amber-100 dark:hover:bg-amber-900 text-[11px] font-semibold transition-colors disabled:opacity-50"
                           >
                             {isBusy ? 'Retrying...' : '↻ Retry'}
                           </button>
@@ -690,7 +690,7 @@ export default function DocumentsPage() {
                           <button
                             disabled={isBusy}
                             onClick={() => handleReprocess(doc.id, doc.filename)}
-                            className="px-2 py-1 rounded bg-slate-800 hover:bg-slate-700 text-slate-300 text-[11px] font-semibold transition-colors disabled:opacity-50"
+                            className="px-2 py-1 rounded bg-slate-100 dark:bg-slate-800 hover:bg-slate-200 dark:hover:bg-slate-700 text-slate-700 dark:text-slate-300 text-[11px] font-semibold transition-colors disabled:opacity-50"
                             title="Clear chunks and re-run worker extraction pipeline"
                           >
                             ⚡ Reprocess
@@ -700,7 +700,7 @@ export default function DocumentsPage() {
                         {/* Detail */}
                         <Link
                           href={`/documents/${doc.id}`}
-                          className="px-2 py-1 rounded bg-slate-800 hover:bg-slate-700 text-indigo-400 text-[11px] font-semibold transition-colors"
+                          className="px-2 py-1 rounded bg-slate-100 dark:bg-slate-800 hover:bg-slate-200 dark:hover:bg-slate-700 text-indigo-600 dark:text-indigo-400 text-[11px] font-semibold transition-colors"
                         >
                           Inspect →
                         </Link>
@@ -709,7 +709,7 @@ export default function DocumentsPage() {
                         <button
                           disabled={isBusy}
                           onClick={() => setDeleteModalTarget({ id: doc.id, filename: doc.filename })}
-                          className="px-2 py-1 rounded bg-rose-950/60 hover:bg-rose-900 text-rose-300 border border-rose-900 text-[11px] font-semibold transition-colors disabled:opacity-50"
+                          className="px-2 py-1 rounded bg-rose-50 dark:bg-rose-950/60 hover:bg-rose-100 dark:hover:bg-rose-900 text-rose-700 dark:text-rose-300 border border-rose-200 dark:border-rose-900 text-[11px] font-semibold transition-colors disabled:opacity-50"
                         >
                           🗑
                         </button>
@@ -724,7 +724,7 @@ export default function DocumentsPage() {
 
         {/* Pagination Controls */}
         {totalPages > 1 && (
-          <div className="flex items-center justify-between pt-4 border-t border-slate-800 text-xs font-mono text-slate-400">
+          <div className="flex items-center justify-between pt-4 border-t border-slate-200 dark:border-slate-800 text-xs font-mono text-slate-600 dark:text-slate-400">
             <div>
               Page {page} of {totalPages} ({totalItems} total documents)
             </div>
@@ -732,14 +732,14 @@ export default function DocumentsPage() {
               <button
                 disabled={page <= 1}
                 onClick={() => setPage((p) => Math.max(1, p - 1))}
-                className="px-3 py-1.5 rounded-lg bg-slate-800 hover:bg-slate-700 text-slate-200 disabled:opacity-40 disabled:hover:bg-slate-800"
+                className="px-3 py-1.5 rounded-lg bg-slate-100 dark:bg-slate-800 hover:bg-slate-200 dark:hover:bg-slate-700 text-slate-800 dark:text-slate-200 disabled:opacity-40"
               >
                 ← Previous
               </button>
               <button
                 disabled={page >= totalPages}
                 onClick={() => setPage((p) => Math.min(totalPages, p + 1))}
-                className="px-3 py-1.5 rounded-lg bg-slate-800 hover:bg-slate-700 text-slate-200 disabled:opacity-40 disabled:hover:bg-slate-800"
+                className="px-3 py-1.5 rounded-lg bg-slate-100 dark:bg-slate-800 hover:bg-slate-200 dark:hover:bg-slate-700 text-slate-800 dark:text-slate-200 disabled:opacity-40"
               >
                 Next →
               </button>
@@ -750,20 +750,20 @@ export default function DocumentsPage() {
 
       {/* Single Delete Confirmation Modal */}
       {deleteModalTarget && (
-        <div className="fixed inset-0 z-50 bg-black/80 backdrop-blur-sm flex items-center justify-center p-4">
-          <div className="max-w-md w-full rounded-2xl bg-slate-900 border border-slate-800 p-6 space-y-4 shadow-2xl">
-            <div className="flex items-center space-x-3 text-rose-400">
+        <div className="fixed inset-0 z-50 bg-slate-900/60 dark:bg-black/80 backdrop-blur-sm flex items-center justify-center p-4">
+          <div className="max-w-md w-full rounded-2xl bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 p-6 space-y-4 shadow-2xl">
+            <div className="flex items-center space-x-3 text-rose-600 dark:text-rose-400">
               <span className="text-2xl">⚠️</span>
-              <h3 className="text-lg font-bold text-white">Delete Document?</h3>
+              <h3 className="text-lg font-bold text-slate-900 dark:text-white">Delete Document?</h3>
             </div>
-            <p className="text-xs text-slate-300 leading-relaxed font-sans">
-              Are you sure you want to delete <strong className="text-white">&quot;{deleteModalTarget.filename}&quot;</strong>?
-              This will permanently remove the document from <span className="font-mono text-indigo-400">{storageProvider.toUpperCase()} Storage</span> and delete all associated page chunks and vector embeddings.
+            <p className="text-xs text-slate-600 dark:text-slate-300 leading-relaxed font-sans">
+              Are you sure you want to delete <strong className="text-slate-900 dark:text-white">&quot;{deleteModalTarget.filename}&quot;</strong>?
+              This will permanently remove the document from <span className="font-mono text-indigo-600 dark:text-indigo-400">{storageProvider.toUpperCase()} Storage</span> and delete all associated page chunks and vector embeddings.
             </p>
             <div className="flex items-center justify-end space-x-3 pt-2">
               <button
                 onClick={() => setDeleteModalTarget(null)}
-                className="px-4 py-2 rounded-xl bg-slate-800 hover:bg-slate-700 text-slate-300 text-xs font-semibold"
+                className="px-4 py-2 rounded-xl bg-slate-100 dark:bg-slate-800 hover:bg-slate-200 dark:hover:bg-slate-700 text-slate-700 dark:text-slate-300 text-xs font-semibold"
               >
                 Cancel
               </button>
@@ -781,19 +781,19 @@ export default function DocumentsPage() {
 
       {/* Bulk Delete Confirmation Modal */}
       {isBulkDeleteModalOpen && (
-        <div className="fixed inset-0 z-50 bg-black/80 backdrop-blur-sm flex items-center justify-center p-4">
-          <div className="max-w-md w-full rounded-2xl bg-slate-900 border border-slate-800 p-6 space-y-4 shadow-2xl">
-            <div className="flex items-center space-x-3 text-rose-400">
+        <div className="fixed inset-0 z-50 bg-slate-900/60 dark:bg-black/80 backdrop-blur-sm flex items-center justify-center p-4">
+          <div className="max-w-md w-full rounded-2xl bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 p-6 space-y-4 shadow-2xl">
+            <div className="flex items-center space-x-3 text-rose-600 dark:text-rose-400">
               <span className="text-2xl">🚨</span>
-              <h3 className="text-lg font-bold text-white">Delete {selectedIds.length} Selected Documents?</h3>
+              <h3 className="text-lg font-bold text-slate-900 dark:text-white">Delete {selectedIds.length} Selected Documents?</h3>
             </div>
-            <p className="text-xs text-slate-300 leading-relaxed font-sans">
-              This action will permanently delete <strong className="text-white">{selectedIds.length} documents</strong> and all their stored chunks and vector embeddings from storage and database.
+            <p className="text-xs text-slate-600 dark:text-slate-300 leading-relaxed font-sans">
+              This action will permanently delete <strong className="text-slate-900 dark:text-white">{selectedIds.length} documents</strong> and all their stored chunks and vector embeddings from storage and database.
             </p>
             <div className="flex items-center justify-end space-x-3 pt-2">
               <button
                 onClick={() => setIsBulkDeleteModalOpen(false)}
-                className="px-4 py-2 rounded-xl bg-slate-800 hover:bg-slate-700 text-slate-300 text-xs font-semibold"
+                className="px-4 py-2 rounded-xl bg-slate-100 dark:bg-slate-800 hover:bg-slate-200 dark:hover:bg-slate-700 text-slate-700 dark:text-slate-300 text-xs font-semibold"
               >
                 Cancel
               </button>
@@ -811,3 +811,4 @@ export default function DocumentsPage() {
     </div>
   );
 }
+

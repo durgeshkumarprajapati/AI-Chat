@@ -3,6 +3,8 @@ import { getAuthUser } from '@/lib/auth';
 import { scheduledMockTestService } from '@/features/study/scheduled-mock-test.service';
 import { googleCalendarService } from '@/features/calendar/google-calendar.service';
 
+export const dynamic = 'force-dynamic';
+
 export async function GET(req: NextRequest, { params }: { params: { id: string } }) {
   try {
     const user = await getAuthUser(req);

@@ -3,6 +3,8 @@ import { getAuthUser } from '@/lib/auth';
 import { chatService } from '@/features/rag/chat/chat.service';
 import { AppError } from '@/errors';
 
+export const dynamic = 'force-dynamic';
+
 export async function GET(req: NextRequest) {
   try {
     const authUser = await getAuthUser(req);

@@ -35,15 +35,15 @@ export default function ResearchDashboardPage() {
   });
 
   return (
-    <div className="w-full max-w-[1600px] mx-auto p-4 sm:p-6 lg:p-8 space-y-8">
+    <div className="w-full max-w-[1600px] mx-auto p-4 sm:p-6 lg:p-8 space-y-8 font-sans selection:bg-[#4d8eff] selection:text-white text-slate-900 dark:text-[#dfe2f1]">
       {/* Header */}
-      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 border-b border-slate-800 pb-6">
+      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 border-b border-slate-200 dark:border-slate-800 pb-6">
         <div>
           <div className="flex items-center space-x-2">
             <span className="text-2xl">🤖</span>
-            <h1 className="text-2xl font-bold text-white tracking-tight">Agentic Research</h1>
+            <h1 className="text-2xl font-bold text-slate-900 dark:text-white tracking-tight">Agentic Research</h1>
           </div>
-          <p className="text-xs text-slate-400 mt-1">
+          <p className="text-xs text-slate-600 dark:text-slate-400 mt-1">
             Autonomous multi-source evidence investigation, claim extraction, conflict detection & report synthesis.
           </p>
         </div>
@@ -57,15 +57,15 @@ export default function ResearchDashboardPage() {
       </div>
 
       {/* Filter Tabs */}
-      <div className="flex space-x-2 border-b border-slate-800 pb-3">
+      <div className="flex space-x-2 border-b border-slate-200 dark:border-slate-800 pb-3">
         {['ALL', 'COMPLETED', 'IN_PROGRESS', 'PARTIAL'].map((tab) => (
           <button
             key={tab}
             onClick={() => setFilter(tab)}
             className={`px-3 py-1.5 rounded-lg text-xs font-semibold transition ${
               filter === tab
-                ? 'bg-slate-800 text-white border border-slate-700'
-                : 'text-slate-400 hover:text-slate-200'
+                ? 'bg-indigo-100 dark:bg-slate-800 text-indigo-900 dark:text-white border border-indigo-300 dark:border-slate-700'
+                : 'text-slate-600 dark:text-slate-400 hover:text-slate-900 dark:hover:text-slate-200 hover:bg-slate-100 dark:hover:bg-slate-800/40'
             }`}
           >
             {tab.replace('_', ' ')}
@@ -75,12 +75,12 @@ export default function ResearchDashboardPage() {
 
       {/* Sessions Grid */}
       {loading ? (
-        <div className="text-center py-12 text-xs text-slate-400">Loading research investigations...</div>
+        <div className="text-center py-12 text-xs text-slate-500 font-mono">Loading research investigations...</div>
       ) : filteredSessions.length === 0 ? (
-        <div className="text-center py-12 border border-dashed border-slate-800 rounded-2xl bg-slate-900/40 p-8 space-y-4">
+        <div className="text-center py-12 border border-dashed border-slate-300 dark:border-slate-800 rounded-2xl bg-white dark:bg-slate-900/40 p-8 space-y-4 shadow-sm">
           <span className="text-3xl">🔍</span>
-          <h3 className="text-sm font-semibold text-white">No Research Investigations Found</h3>
-          <p className="text-xs text-slate-400 max-w-sm mx-auto">
+          <h3 className="text-sm font-semibold text-slate-900 dark:text-white">No Research Investigations Found</h3>
+          <p className="text-xs text-slate-600 dark:text-slate-400 max-w-sm mx-auto">
             Start an autonomous research session with your documents, Knowledge Base, or live web evidence.
           </p>
           <Link
@@ -96,33 +96,33 @@ export default function ResearchDashboardPage() {
             <Link
               key={s.id}
               href={`/research/${s.id}`}
-              className="group block p-5 rounded-2xl bg-slate-900/80 border border-slate-800 hover:border-indigo-500/50 transition hover:shadow-xl space-y-4"
+              className="group block p-5 rounded-2xl bg-white dark:bg-slate-900/80 border border-slate-200 dark:border-slate-800 hover:border-indigo-400 dark:hover:border-indigo-500/50 transition hover:shadow-md dark:hover:shadow-xl space-y-4 shadow-sm"
             >
               <div className="flex items-start justify-between gap-2">
-                <h3 className="text-sm font-semibold text-white group-hover:text-indigo-400 transition line-clamp-2">
+                <h3 className="text-sm font-semibold text-slate-900 dark:text-white group-hover:text-indigo-600 dark:group-hover:text-indigo-400 transition line-clamp-2">
                   {s.title}
                 </h3>
                 <span
                   className={`px-2 py-0.5 rounded text-[10px] font-bold uppercase shrink-0 ${
                     s.status === 'COMPLETED'
-                      ? 'bg-emerald-500/20 text-emerald-400 border border-emerald-500/30'
+                      ? 'bg-emerald-50 dark:bg-emerald-500/20 text-emerald-700 dark:text-emerald-400 border border-emerald-200 dark:border-emerald-500/30'
                       : s.status === 'CANCELLED'
-                      ? 'bg-rose-500/20 text-rose-400 border border-rose-500/30'
-                      : 'bg-amber-500/20 text-amber-400 border border-amber-500/30'
+                      ? 'bg-rose-50 dark:bg-rose-500/20 text-rose-700 dark:text-rose-400 border border-rose-200 dark:border-rose-500/30'
+                      : 'bg-amber-50 dark:bg-amber-500/20 text-amber-700 dark:text-amber-400 border border-amber-200 dark:border-amber-500/30'
                   }`}
                 >
                   {s.status}
                 </span>
               </div>
 
-              <p className="text-xs text-slate-400 line-clamp-2">{s.question}</p>
+              <p className="text-xs text-slate-600 dark:text-slate-400 line-clamp-2">{s.question}</p>
 
-              <div className="flex items-center justify-between text-[11px] text-slate-400 border-t border-slate-800/80 pt-3">
-                <div className="flex items-center space-x-3">
+              <div className="flex items-center justify-between text-[11px] text-slate-500 dark:text-slate-400 border-t border-slate-100 dark:border-slate-800/80 pt-3">
+                <div className="flex items-center space-x-3 font-mono">
                   <span>🌐 {s._count?.sources || s.sourceCount || 0} sources</span>
                   <span>📌 {s._count?.claims || s.claimCount || 0} claims</span>
                 </div>
-                <span className="text-indigo-400 font-semibold">{s.researchMode}</span>
+                <span className="text-indigo-600 dark:text-indigo-400 font-semibold">{s.researchMode}</span>
               </div>
             </Link>
           ))}

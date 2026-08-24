@@ -4,6 +4,8 @@ import { evaluationService } from '@/features/rag/evaluation/evaluation.service'
 import { AppError } from '@/errors';
 import { FeedbackRating } from '@prisma/client';
 
+export const dynamic = 'force-dynamic';
+
 export async function GET(req: NextRequest) {
   try {
     const authUser = await getAuthUser(req);

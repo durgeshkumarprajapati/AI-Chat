@@ -1,5 +1,7 @@
 'use client';
 
+export const dynamic = 'force-dynamic';
+
 import React, { useEffect, useState } from 'react';
 import Link from 'next/link';
 
@@ -42,35 +44,35 @@ export default function AdminAuditLogsPage() {
   }, [filterAction]);
 
   return (
-    <div className="min-h-screen bg-slate-950 text-slate-100 p-6 sm:p-10">
+    <div className="min-h-screen p-6 sm:p-10 font-sans selection:bg-[#4d8eff] selection:text-white text-slate-900 dark:text-slate-100">
       <div className="w-full max-w-[1600px] mx-auto space-y-8">
         <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
           <div>
             <div className="flex items-center space-x-2">
-              <h1 className="text-2xl font-bold bg-gradient-to-r from-white to-rose-300 bg-clip-text text-transparent">
+              <h1 className="text-2xl font-bold bg-gradient-to-r from-slate-900 via-rose-800 to-rose-600 dark:from-white dark:to-rose-300 bg-clip-text text-transparent">
                 Security Audit Log Inspection
               </h1>
-              <span className="px-2.5 py-0.5 rounded-full bg-rose-950 text-rose-300 border border-rose-800 text-[10px] font-mono font-bold">
+              <span className="px-2.5 py-0.5 rounded-full bg-rose-100 dark:bg-rose-950 text-rose-700 dark:text-rose-300 border border-rose-200 dark:border-rose-800 text-[10px] font-mono font-bold">
                 ADMIN ONLY
               </span>
             </div>
-            <p className="text-xs text-slate-400 mt-1">
+            <p className="text-xs text-slate-600 dark:text-slate-400 mt-1">
               Immutable audit trial of authentication events, privilege changes, and administrative actions.
             </p>
           </div>
 
-          <Link href="/admin" className="px-3 py-1.5 bg-slate-900 hover:bg-slate-800 border border-slate-800 rounded-lg text-xs text-slate-300">
+          <Link href="/admin" className="px-3 py-1.5 bg-white dark:bg-slate-900 hover:bg-slate-100 dark:hover:bg-slate-800 border border-slate-200 dark:border-slate-800 rounded-lg text-xs text-slate-700 dark:text-slate-300 font-semibold shadow-sm">
             ← Back to Admin Dashboard
           </Link>
         </div>
 
         {/* Filter Controls */}
-        <div className="bg-slate-900/80 border border-slate-800 rounded-2xl p-4 flex items-center space-x-3 text-xs">
-          <span className="text-slate-400 font-medium">Filter Action:</span>
+        <div className="bg-white dark:bg-slate-900/80 border border-slate-200 dark:border-slate-800 rounded-2xl p-4 flex items-center space-x-3 text-xs shadow-sm">
+          <span className="text-slate-600 dark:text-slate-400 font-medium">Filter Action:</span>
           <select
             value={filterAction}
             onChange={(e) => setFilterAction(e.target.value)}
-            className="bg-slate-950 border border-slate-800 rounded-lg px-3 py-1.5 text-xs text-white focus:outline-none focus:border-indigo-500"
+            className="bg-slate-50 dark:bg-slate-950 border border-slate-200 dark:border-slate-800 rounded-lg px-3 py-1.5 text-xs text-slate-900 dark:text-white focus:outline-none focus:border-indigo-500"
           >
             <option value="">All Security Events</option>
             <option value="LOGIN_SUCCESS">LOGIN_SUCCESS</option>
@@ -84,13 +86,13 @@ export default function AdminAuditLogsPage() {
         </div>
 
         {/* Audit Log Table */}
-        <div className="bg-slate-900/80 border border-slate-800 rounded-2xl p-6 shadow-xl space-y-4">
+        <div className="bg-white dark:bg-slate-900/80 border border-slate-200 dark:border-slate-800 rounded-2xl p-6 shadow-sm dark:shadow-xl space-y-4">
           {loading ? (
-            <div className="text-xs text-indigo-400 font-mono animate-pulse py-8 text-center">Loading audit logs...</div>
+            <div className="text-xs text-indigo-600 dark:text-indigo-400 font-mono animate-pulse py-8 text-center">Loading audit logs...</div>
           ) : (
             <div className="overflow-x-auto">
-              <table className="w-full text-left text-xs text-slate-300">
-                <thead className="bg-slate-950 text-slate-400 uppercase font-mono text-[10px]">
+              <table className="w-full text-left text-xs text-slate-700 dark:text-slate-300">
+                <thead className="bg-slate-50 dark:bg-slate-950 text-slate-500 dark:text-slate-400 uppercase font-mono text-[10px]">
                   <tr>
                     <th className="py-3 px-4">Timestamp</th>
                     <th className="py-3 px-4">Security Event</th>
@@ -100,15 +102,15 @@ export default function AdminAuditLogsPage() {
                     <th className="py-3 px-4">Details</th>
                   </tr>
                 </thead>
-                <tbody className="divide-y divide-slate-800">
+                <tbody className="divide-y divide-slate-200 dark:divide-slate-800">
                   {logs.map((log) => (
-                    <tr key={log.id} className="hover:bg-slate-950/40">
-                      <td className="py-3 px-4 text-slate-400 font-mono">{new Date(log.createdAt).toLocaleString()}</td>
-                      <td className="py-3 px-4 font-mono font-bold text-indigo-400">{log.action}</td>
+                    <tr key={log.id} className="hover:bg-slate-50 dark:hover:bg-slate-950/40">
+                      <td className="py-3 px-4 text-slate-500 dark:text-slate-400 font-mono">{new Date(log.createdAt).toLocaleString()}</td>
+                      <td className="py-3 px-4 font-mono font-bold text-indigo-600 dark:text-indigo-400">{log.action}</td>
                       <td className="py-3 px-4">{log.actor?.email || log.actor?.name || 'System'}</td>
-                      <td className="py-3 px-4 font-mono text-slate-400">{log.targetType}</td>
-                      <td className="py-3 px-4 font-mono text-slate-400">{log.targetId ? log.targetId.slice(0, 12) + '...' : '—'}</td>
-                      <td className="py-3 px-4 font-mono text-[11px] text-slate-400 max-w-xs truncate">
+                      <td className="py-3 px-4 font-mono text-slate-500 dark:text-slate-400">{log.targetType}</td>
+                      <td className="py-3 px-4 font-mono text-slate-500 dark:text-slate-400">{log.targetId ? log.targetId.slice(0, 12) + '...' : '—'}</td>
+                      <td className="py-3 px-4 font-mono text-[11px] text-slate-500 dark:text-slate-400 max-w-xs truncate">
                         {log.details ? JSON.stringify(log.details) : '{}'}
                       </td>
                     </tr>

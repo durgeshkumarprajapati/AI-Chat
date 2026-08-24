@@ -56,22 +56,22 @@ export const StatCard: React.FC<StatCardProps> = ({
 
   const colorStyles = {
     blue: {
-      bg: 'bg-[#4d8eff]/10 border-[#4d8eff]/30 text-[#4d8eff]',
-      glow: 'hover:border-[#4d8eff]/60 hover:shadow-[#4d8eff]/10'
+      bg: 'bg-indigo-50 dark:bg-[#4d8eff]/10 border-indigo-200 dark:border-[#4d8eff]/30 text-indigo-600 dark:text-[#4d8eff]',
+      glow: 'hover:border-indigo-400 dark:hover:border-[#4d8eff]/60 hover:shadow-indigo-500/10 dark:hover:shadow-[#4d8eff]/10'
     },
     emerald: {
-      bg: 'bg-[#4edea3]/10 border-[#4edea3]/30 text-[#4edea3]',
-      glow: 'hover:border-[#4edea3]/60 hover:shadow-[#4edea3]/10'
+      bg: 'bg-emerald-50 dark:bg-[#4edea3]/10 border-emerald-200 dark:border-[#4edea3]/30 text-emerald-600 dark:text-[#4edea3]',
+      glow: 'hover:border-emerald-400 dark:hover:border-[#4edea3]/60 hover:shadow-emerald-500/10 dark:hover:shadow-[#4edea3]/10'
     },
     amber: {
-      bg: 'bg-[#ffb95f]/10 border-[#ffb95f]/30 text-[#ffb95f]',
-      glow: 'hover:border-[#ffb95f]/60 hover:shadow-[#ffb95f]/10'
+      bg: 'bg-amber-50 dark:bg-[#ffb95f]/10 border-amber-200 dark:border-[#ffb95f]/30 text-amber-600 dark:text-[#ffb95f]',
+      glow: 'hover:border-amber-400 dark:hover:border-[#ffb95f]/60 hover:shadow-amber-500/10 dark:hover:shadow-[#ffb95f]/10'
     }
   }[accentColor];
 
   return (
     <div
-      className={`bg-[#0a0e18]/90 backdrop-blur-md border border-[#424754] rounded-2xl p-6 shadow-xl transition-all duration-500 hover:-translate-y-1 ${
+      className={`bg-white dark:bg-[#0a0e18]/90 backdrop-blur-md border border-slate-200 dark:border-[#424754] rounded-2xl p-6 shadow-sm dark:shadow-xl transition-all duration-500 hover:-translate-y-1 ${
         colorStyles.glow
       } ${isVisible ? 'opacity-100 translate-y-0' : 'opacity-0 translate-y-4'}`}
       style={{ transitionDelay: `${delayMs}ms` }}
@@ -80,14 +80,14 @@ export const StatCard: React.FC<StatCardProps> = ({
         <div className={`w-12 h-12 rounded-xl border flex items-center justify-center text-xl font-bold ${colorStyles.bg}`}>
           {icon}
         </div>
-        <span className="text-xs text-[#8c909f] font-mono">⋯</span>
+        <span className="text-xs text-slate-400 dark:text-[#8c909f] font-mono">⋯</span>
       </div>
 
       <div className="space-y-1">
-        <div className="text-3xl font-extrabold text-[#dfe2f1] font-sans tracking-tight">
+        <div className="text-3xl font-extrabold text-slate-900 dark:text-[#dfe2f1] font-sans tracking-tight">
           {loading ? '...' : displayValue}
         </div>
-        <div className="text-xs font-semibold text-[#8c909f]">{title}</div>
+        <div className="text-xs font-semibold text-slate-500 dark:text-[#8c909f]">{title}</div>
       </div>
     </div>
   );

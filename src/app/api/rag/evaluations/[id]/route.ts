@@ -3,6 +3,8 @@ import { getAuthUser } from '@/lib/auth';
 import { evaluationService } from '@/features/rag/evaluation/evaluation.service';
 import { AppError } from '@/errors';
 
+export const dynamic = 'force-dynamic';
+
 export async function GET(
   req: NextRequest,
   { params }: { params: { id: string } }

@@ -5,6 +5,8 @@ import { documentRepository } from '@/features/documents/repositories/document.r
 import { AppError } from '@/errors';
 import { env } from '@/config/env';
 
+export const dynamic = 'force-dynamic';
+
 export async function GET(
   req: NextRequest,
   { params }: { params: { id: string } }

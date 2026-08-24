@@ -21,7 +21,7 @@ export function UserProfileMenu() {
 
   if (authStatus === 'LOADING') {
     return (
-      <div className="h-8 w-24 bg-[#0a0e18] border border-[#424754] rounded-xl animate-pulse" aria-hidden="true" />
+      <div className="h-8 w-24 bg-slate-100 dark:bg-[#0a0e18] border border-slate-300 dark:border-[#424754] rounded-xl animate-pulse" aria-hidden="true" />
     );
   }
 
@@ -30,13 +30,13 @@ export function UserProfileMenu() {
       <div className="flex items-center space-x-2 font-sans">
         <Link
           href="/login"
-          className="px-3.5 py-1.5 rounded-xl text-xs font-semibold text-[#dfe2f1] bg-[#0f131d] hover:bg-[#141926] border border-[#424754] transition shadow-sm"
+          className="px-3.5 py-1.5 rounded-xl text-xs font-semibold text-slate-800 dark:text-[#dfe2f1] bg-white dark:bg-[#0f131d] hover:bg-slate-100 dark:hover:bg-[#141926] border border-slate-300 dark:border-[#424754] transition shadow-sm"
         >
           🔑 Log In
         </Link>
         <Link
           href="/register"
-          className="px-3.5 py-1.5 rounded-xl text-xs font-bold text-[#0a0e18] bg-gradient-to-r from-[#4d8eff] to-[#adc6ff] hover:opacity-90 transition shadow-md shadow-[#4d8eff]/20"
+          className="px-3.5 py-1.5 rounded-xl text-xs font-bold text-white dark:text-[#0a0e18] bg-indigo-600 dark:bg-gradient-to-r dark:from-[#4d8eff] dark:to-[#adc6ff] hover:opacity-90 transition shadow-md shadow-indigo-600/20 dark:shadow-[#4d8eff]/20"
         >
           Sign Up ✨
         </Link>
@@ -61,31 +61,31 @@ export function UserProfileMenu() {
         aria-label="User account menu"
         aria-haspopup="true"
         aria-expanded={isOpen}
-        className="flex items-center space-x-2 rounded-xl border border-[#424754] bg-[#0a0e18] px-3 py-1.5 text-xs font-medium text-[#dfe2f1] hover:border-[#4d8eff] transition shadow-sm"
+        className="flex items-center space-x-2 rounded-xl border border-slate-300 dark:border-[#424754] bg-white dark:bg-[#0a0e18] px-3 py-1.5 text-xs font-medium text-slate-900 dark:text-[#dfe2f1] hover:border-indigo-500 dark:hover:border-[#4d8eff] transition shadow-sm"
       >
-        <div className="w-6 h-6 rounded-lg bg-gradient-to-br from-[#4d8eff] to-[#adc6ff] text-[#0a0e18] font-extrabold flex items-center justify-center text-[10px]">
+        <div className="w-6 h-6 rounded-lg bg-gradient-to-br from-indigo-600 to-indigo-400 dark:from-[#4d8eff] dark:to-[#adc6ff] text-white dark:text-[#0a0e18] font-extrabold flex items-center justify-center text-[10px]">
           {initials}
         </div>
         <span className="font-bold max-w-[100px] truncate">{currentUser.name}</span>
-        <span className="text-[9px] px-1.5 py-0.5 rounded bg-[#4d8eff]/15 text-[#adc6ff] font-mono font-bold border border-[#4d8eff]/30 uppercase">
+        <span className="text-[9px] px-1.5 py-0.5 rounded bg-indigo-50 dark:bg-[#4d8eff]/15 text-indigo-700 dark:text-[#adc6ff] font-mono font-bold border border-indigo-200 dark:border-[#4d8eff]/30 uppercase">
           {currentUser.role}
         </span>
-        <span className="text-[10px] opacity-60 text-[#8c909f]">▼</span>
+        <span className="text-[10px] opacity-60 text-slate-400 dark:text-[#8c909f]">▼</span>
       </button>
 
       {isOpen && (
-        <div className="absolute right-0 mt-2 w-56 rounded-2xl bg-[#0a0e18] border border-[#424754] shadow-2xl py-2 z-50 animate-in fade-in zoom-in-95 duration-100 space-y-1 font-sans">
+        <div className="absolute right-0 mt-2 w-56 rounded-2xl bg-white dark:bg-[#0a0e18] border border-slate-200 dark:border-[#424754] shadow-2xl py-2 z-50 animate-in fade-in zoom-in-95 duration-100 space-y-1 font-sans">
           {/* User Info Header */}
-          <div className="px-4 py-2 border-b border-[#424754]/60 space-y-0.5">
-            <p className="text-xs font-bold text-[#dfe2f1] truncate">{currentUser.name}</p>
-            <p className="text-[11px] text-[#8c909f] font-mono truncate">{currentUser.email}</p>
+          <div className="px-4 py-2 border-b border-slate-100 dark:border-[#424754]/60 space-y-0.5">
+            <p className="text-xs font-bold text-slate-900 dark:text-[#dfe2f1] truncate">{currentUser.name}</p>
+            <p className="text-[11px] text-slate-500 dark:text-[#8c909f] font-mono truncate">{currentUser.email}</p>
           </div>
 
           {/* Account Settings Link */}
           <Link
             href="/account"
             onClick={() => setIsOpen(false)}
-            className="flex items-center space-x-2 px-4 py-2 text-xs font-semibold text-[#c2c6d6] hover:text-[#dfe2f1] hover:bg-[#1c1f2a] transition"
+            className="flex items-center space-x-2 px-4 py-2 text-xs font-semibold text-slate-700 dark:text-[#c2c6d6] hover:text-slate-900 dark:hover:text-[#dfe2f1] hover:bg-slate-100 dark:hover:bg-[#1c1f2a] transition"
           >
             <span>👤</span>
             <span>Account Settings</span>
@@ -98,7 +98,7 @@ export function UserProfileMenu() {
               setIsOpen(false);
               await logout();
             }}
-            className="w-full text-left flex items-center space-x-2 px-4 py-2 text-xs font-semibold text-rose-400 hover:bg-rose-950/40 transition"
+            className="w-full text-left flex items-center space-x-2 px-4 py-2 text-xs font-semibold text-rose-600 dark:text-rose-400 hover:bg-rose-50 dark:hover:bg-rose-950/40 transition"
           >
             <span>🚪</span>
             <span>Log Out</span>

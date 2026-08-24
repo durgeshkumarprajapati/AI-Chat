@@ -4,6 +4,8 @@ import { prisma } from '@/lib/prisma';
 import { voiceMessageStorageService } from '@/features/collaboration/voice-storage.service';
 import fs from 'fs';
 
+export const dynamic = 'force-dynamic';
+
 export async function GET(req: NextRequest, { params }: { params: { messageId: string } }) {
   try {
     const user = await getAuthUser(req);

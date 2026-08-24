@@ -3,6 +3,8 @@ import { envConfig } from '@/config/env';
 import { googleAuthService } from '@/features/auth/google-auth.service';
 import { sessionService } from '@/features/auth/session.service';
 
+export const dynamic = 'force-dynamic';
+
 export async function GET(req: NextRequest) {
   try {
     const url = new URL(req.url);

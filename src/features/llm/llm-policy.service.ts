@@ -25,16 +25,28 @@ export class LLMPolicyService {
     const isGeminiEnabled =
       (env.server?.GEMINI_ENABLED ?? (process.env.GEMINI_ENABLED !== 'false')) &&
       !!(env.server?.GEMINI_API_KEY || process.env.GEMINI_API_KEY || process.env.NODE_ENV === 'test');
+    const isDeepSeekEnabled =
+      (env.server?.DEEPSEEK_ENABLED ?? (process.env.DEEPSEEK_ENABLED !== 'false')) &&
+      !!(env.server?.DEEPSEEK_API_KEY || process.env.DEEPSEEK_API_KEY || process.env.NODE_ENV === 'test');
+    const isGroqEnabled =
+      (env.server?.GROQ_ENABLED ?? (process.env.GROQ_ENABLED !== 'false')) &&
+      !!(env.server?.GROQ_API_KEY || process.env.GROQ_API_KEY || process.env.NODE_ENV === 'test');
     const isKimiEnabled =
       (env.server?.LLM_KIMI_ENABLED ?? (process.env.LLM_KIMI_ENABLED === 'true')) &&
       !!(env.server?.LLM_KIMI_API_KEY || process.env.LLM_KIMI_API_KEY);
 
     const isGeminiAvailable = isGeminiEnabled && llmCircuitBreakerService.isAvailable('gemini');
+    const isDeepSeekAvailable = isDeepSeekEnabled && llmCircuitBreakerService.isAvailable('deepseek');
+    const isGroqAvailable = isGroqEnabled && llmCircuitBreakerService.isAvailable('groq');
     const isKimiAvailable = isKimiEnabled && llmCircuitBreakerService.isAvailable('kimi');
     const isOllamaAvailable = llmCircuitBreakerService.isAvailable('ollama');
 
     const geminiFastModel = env.server?.GEMINI_FAST_MODEL || process.env.GEMINI_FAST_MODEL || 'gemini-2.5-flash';
     const geminiReasoningModel = env.server?.GEMINI_REASONING_MODEL || process.env.GEMINI_REASONING_MODEL || 'gemini-2.5-pro';
+    const deepseekDefaultModel = env.server?.DEEPSEEK_DEFAULT_MODEL || process.env.DEEPSEEK_DEFAULT_MODEL || 'deepseek-chat';
+    const deepseekReasoningModel = env.server?.DEEPSEEK_REASONING_MODEL || process.env.DEEPSEEK_REASONING_MODEL || 'deepseek-reasoner';
+    const groqDefaultModel = env.server?.GROQ_DEFAULT_MODEL || process.env.GROQ_DEFAULT_MODEL || 'llama-3.3-70b-versatile';
+    const groqReasoningModel = env.server?.GROQ_REASONING_MODEL || process.env.GROQ_REASONING_MODEL || 'deepseek-r1-distill-llama-70b';
     const ollamaFastModel = env.server?.LLM_OLLAMA_FAST_MODEL || 'llama3.2';
     const ollamaChatModel = env.server?.OLLAMA_CHAT_MODEL || 'llama3.2';
     const kimiModel = env.server?.LLM_KIMI_DEFAULT_MODEL || 'kimi-k3';
@@ -49,6 +61,24 @@ export class LLMPolicyService {
           modelName: request.modelOverride || geminiFastModel,
           complexity,
           reason: 'Explicit feature policy for CITY_EXPLORER routed to Gemini Fast'
+        };
+      }
+
+      if (isDeepSeekAvailable) {
+        return {
+          providerName: 'deepseek',
+          modelName: request.modelOverride || deepseekDefaultModel,
+          complexity,
+          reason: 'CITY_EXPLORER fallback routed to DeepSeek'
+        };
+      }
+
+      if (isGroqAvailable) {
+        return {
+          providerName: 'groq',
+          modelName: request.modelOverride || groqDefaultModel,
+          complexity,
+          reason: 'CITY_EXPLORER fallback routed to Groq'
         };
       }
 
@@ -73,7 +103,7 @@ export class LLMPolicyService {
     }
 
     // 2. Explicit Overrides & Local-Only Constraints (ZERO CLOUD LEAKAGE)
-    if (request.localOnly || (!isGeminiAvailable && !isKimiAvailable && isOllamaAvailable)) {
+    if (request.localOnly || (!isGeminiAvailable && !isDeepSeekAvailable && !isGroqAvailable && !isKimiAvailable && isOllamaAvailable)) {
       this.assertCityExplorerProviderAllowed('ollama', request);
       return {
         providerName: 'ollama',
@@ -92,6 +122,22 @@ export class LLMPolicyService {
           modelName: request.modelOverride || (complexity === 'HIGH' ? geminiReasoningModel : geminiFastModel),
           complexity,
           reason: 'Explicit provider override to Gemini'
+        };
+      }
+      if (pName === 'deepseek' && isDeepSeekAvailable) {
+        return {
+          providerName: 'deepseek',
+          modelName: request.modelOverride || (complexity === 'HIGH' ? deepseekReasoningModel : deepseekDefaultModel),
+          complexity,
+          reason: 'Explicit provider override to DeepSeek'
+        };
+      }
+      if (pName === 'groq' && isGroqAvailable) {
+        return {
+          providerName: 'groq',
+          modelName: request.modelOverride || (complexity === 'HIGH' ? groqReasoningModel : groqDefaultModel),
+          complexity,
+          reason: 'Explicit provider override to Groq'
         };
       }
       if (pName === 'kimi' && isKimiAvailable) {

@@ -11,4 +11,7 @@ export * from './llm-telemetry.service';
 export * from './utils/token-budget';
 export * from './providers/ollama.provider';
 export * from './providers/kimi.provider';
+export * from './providers/gemini.provider';
+export * from './providers/deepseek.provider';
+export * from './providers/groq.provider';
 export * from './llm-gateway.service';

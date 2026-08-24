@@ -1,157 +1,161 @@
-import { LLMRequest, LLMResponse, LLMStreamChunk, StructuredLLMRequest } from './llm.types';
 import { LLMProvider } from './llm-provider.interface';
-import { llmModelRegistry, LLMModelRegistry } from './llm-model-registry';
+import { LLMRequest, LLMResponse, LLMStreamChunk, StructuredLLMRequest } from './llm.types';
+import { LLMModelRegistry, llmModelRegistry } from './llm-model-registry';
 import { llmCircuitBreakerService } from './llm-circuit-breaker.service';
 
 export class LLMFallbackService {
   private registry: LLMModelRegistry;
 
-  constructor(registry?: LLMModelRegistry) {
-    this.registry = registry || llmModelRegistry;
-  }
-
-  private checkCityExplorerOllamaForbidden(request: LLMRequest, candidateProviderName: string): void {
-    if (request.feature === 'CITY_EXPLORER') {
-      const allowOllama = process.env.CITY_EXPLORER_ALLOW_OLLAMA_FALLBACK === 'true';
-      if (candidateProviderName.toLowerCase() === 'ollama' && !allowOllama && !request.localOnly) {
-        throw new Error(
-          `[LLMFallbackService] Architecture Violation Guard: Ollama fallback is forbidden for CITY_EXPLORER when CITY_EXPLORER_ALLOW_OLLAMA_FALLBACK=false.`
-        );
-      }
-    }
+  constructor(registry: LLMModelRegistry = llmModelRegistry) {
+    this.registry = registry;
   }
 
   /**
-   * Executes LLM generate call with circuit breaker reporting and fallback if primary provider fails.
+   * Resolves the next candidate fallback provider based on configured priority and availability.
+   * Priority: Gemini (1) -> DeepSeek (2) -> Groq (3) -> Kimi (4) -> Ollama (5)
+   */
+  private getNextFallbackProvider(attempted: Set<string>, request: LLMRequest): LLMProvider | null {
+    const candidates: { name: string; isConfigured: () => boolean }[] = [
+      { name: 'gemini', isConfigured: () => !!(process.env.GEMINI_API_KEY || process.env.NODE_ENV === 'test') },
+      { name: 'deepseek', isConfigured: () => !!process.env.DEEPSEEK_API_KEY },
+      { name: 'groq', isConfigured: () => !!process.env.GROQ_API_KEY },
+      { name: 'kimi', isConfigured: () => !!process.env.LLM_KIMI_API_KEY },
+      {
+        name: 'ollama',
+        isConfigured: () => {
+          if (request.feature === 'CITY_EXPLORER') {
+            return process.env.CITY_EXPLORER_ALLOW_OLLAMA_FALLBACK === 'true';
+          }
+          return true;
+        }
+      }
+    ];
+
+    for (const candidate of candidates) {
+      if (!attempted.has(candidate.name) && candidate.isConfigured()) {
+        const provider = this.registry.getProvider(candidate.name);
+        if (provider && llmCircuitBreakerService.isAvailable(candidate.name)) {
+          return provider;
+        }
+      }
+    }
+
+    return null;
+  }
+
+  /**
+   * Executes LLM call with dynamic fallback across prioritized providers.
    */
   public async executeWithFallback(
     primaryProvider: LLMProvider,
     request: LLMRequest,
     modelOverride?: string
   ): Promise<{ response: LLMResponse; usedFallback: boolean }> {
-    const req: LLMRequest = modelOverride ? { ...request, modelOverride } : request;
+    let currentProvider: LLMProvider | null = primaryProvider;
+    let usedFallback = false;
+    const attemptedProviders = new Set<string>();
+    const req = modelOverride ? { ...request, modelOverride } : request;
 
-    try {
-      const res = await primaryProvider.generate(req);
-      llmCircuitBreakerService.recordSuccess(primaryProvider.name);
-      return { response: res, usedFallback: false };
-    } catch (err) {
-      console.warn(`[LLMFallbackService] Primary provider "${primaryProvider.name}" failed:`, err);
-      llmCircuitBreakerService.recordFailure(primaryProvider.name, err);
+    while (currentProvider) {
+      attemptedProviders.add(currentProvider.name.toLowerCase());
+      try {
+        const response = await currentProvider.generate(req);
+        llmCircuitBreakerService.recordSuccess(currentProvider.name);
+        return { response, usedFallback };
+      } catch (err) {
+        console.warn(`[LLMFallbackService] Provider "${currentProvider.name}" failed:`, err);
+        llmCircuitBreakerService.recordFailure(currentProvider.name, err);
 
-      if (primaryProvider.name === 'ollama' || request.localOnly) {
-        throw err;
-      }
-
-      // For CITY_EXPLORER, if Ollama fallback is not allowed, rethrow primary provider error directly
-      if (request.feature === 'CITY_EXPLORER' && process.env.CITY_EXPLORER_ALLOW_OLLAMA_FALLBACK !== 'true') {
-        throw err;
-      }
-
-      // Check if Ollama fallback is disallowed for CITY_EXPLORER
-      this.checkCityExplorerOllamaForbidden(request, 'ollama');
-
-      let fallbackProvider = this.registry.getProvider('ollama');
-
-      // If Gemini Reasoning failed, try Kimi if available and configured before Ollama
-      if (primaryProvider.name === 'gemini') {
-        const kimi = this.registry.getProvider('kimi');
-        const isKimiConfigured = !!process.env.LLM_KIMI_API_KEY;
-        if (kimi && isKimiConfigured && llmCircuitBreakerService.isAvailable('kimi')) {
-          fallbackProvider = kimi;
+        if (currentProvider.name === 'ollama' || request.localOnly) {
+          throw err;
         }
+
+        const nextProvider = this.getNextFallbackProvider(attemptedProviders, request);
+        if (!nextProvider) {
+          throw err;
+        }
+
+        console.warn(`[LLMFallbackService] Falling back from "${currentProvider.name}" to "${nextProvider.name}" provider...`);
+        currentProvider = nextProvider;
+        usedFallback = true;
       }
-
-      if (!fallbackProvider) {
-        throw err;
-      }
-
-      console.warn(`[LLMFallbackService] Falling back to "${fallbackProvider.name}" provider...`);
-      const fallbackRes = await fallbackProvider.generate({ ...req, providerOverride: fallbackProvider.name });
-      llmCircuitBreakerService.recordSuccess(fallbackProvider.name);
-
-      return {
-        response: {
-          ...fallbackRes,
-          provider: fallbackProvider.name
-        },
-        usedFallback: true
-      };
     }
+
+    throw new Error('[LLMFallbackService] All available LLM providers failed.');
   }
 
   /**
-   * Executes streaming LLM call with fallback if primary fails to initialize.
+   * Executes streaming LLM call with fallback if primary or intermediate provider fails.
    */
   public async *streamWithFallback(
     primaryProvider: LLMProvider,
     request: LLMRequest
   ): AsyncIterable<LLMStreamChunk> {
-    try {
-      for await (const chunk of primaryProvider.stream(request)) {
-        yield chunk;
-      }
-      llmCircuitBreakerService.recordSuccess(primaryProvider.name);
-    } catch (err) {
-      console.warn(`[LLMFallbackService] Primary stream provider "${primaryProvider.name}" failed:`, err);
-      llmCircuitBreakerService.recordFailure(primaryProvider.name, err);
+    let currentProvider: LLMProvider | null = primaryProvider;
+    const attemptedProviders = new Set<string>();
 
-      if (primaryProvider.name === 'ollama' || request.localOnly) {
-        throw err;
-      }
-
-      this.checkCityExplorerOllamaForbidden(request, 'ollama');
-
-      let fallbackProvider = this.registry.getProvider('ollama');
-      if (primaryProvider.name === 'gemini') {
-        const kimi = this.registry.getProvider('kimi');
-        if (kimi && llmCircuitBreakerService.isAvailable('kimi')) {
-          fallbackProvider = kimi;
+    while (currentProvider) {
+      attemptedProviders.add(currentProvider.name.toLowerCase());
+      try {
+        for await (const chunk of currentProvider.stream(request)) {
+          yield chunk;
         }
-      }
+        llmCircuitBreakerService.recordSuccess(currentProvider.name);
+        return;
+      } catch (err) {
+        console.warn(`[LLMFallbackService] Stream provider "${currentProvider.name}" failed:`, err);
+        llmCircuitBreakerService.recordFailure(currentProvider.name, err);
 
-      if (!fallbackProvider) {
-        throw err;
-      }
+        if (currentProvider.name === 'ollama' || request.localOnly) {
+          throw err;
+        }
 
-      console.warn(`[LLMFallbackService] Streaming falling back to "${fallbackProvider.name}" provider...`);
-      for await (const chunk of fallbackProvider.stream({ ...request, providerOverride: fallbackProvider.name })) {
-        yield chunk;
+        currentProvider = this.getNextFallbackProvider(attemptedProviders, request);
+        if (!currentProvider) {
+          throw err;
+        }
+
+        console.warn(`[LLMFallbackService] Streaming falling back to "${currentProvider.name}" provider...`);
       }
-      llmCircuitBreakerService.recordSuccess(fallbackProvider.name);
     }
   }
 
   /**
-   * Executes structured LLM call with fallback.
+   * Executes structured LLM call with fallback across prioritized providers.
    */
   public async generateStructuredWithFallback<T>(
     primaryProvider: LLMProvider,
     request: StructuredLLMRequest<T>
   ): Promise<{ data: T; usedFallback: boolean }> {
-    try {
-      const data = await primaryProvider.generateStructured(request);
-      llmCircuitBreakerService.recordSuccess(primaryProvider.name);
-      return { data, usedFallback: false };
-    } catch (err) {
-      console.warn(`[LLMFallbackService] Structured primary provider "${primaryProvider.name}" failed:`, err);
-      llmCircuitBreakerService.recordFailure(primaryProvider.name, err);
+    let currentProvider: LLMProvider | null = primaryProvider;
+    let usedFallback = false;
+    const attemptedProviders = new Set<string>();
 
-      if (primaryProvider.name === 'ollama' || request.localOnly) {
-        throw err;
+    while (currentProvider) {
+      attemptedProviders.add(currentProvider.name.toLowerCase());
+      try {
+        const data = await currentProvider.generateStructured(request);
+        llmCircuitBreakerService.recordSuccess(currentProvider.name);
+        return { data, usedFallback };
+      } catch (err) {
+        console.warn(`[LLMFallbackService] Structured provider "${currentProvider.name}" failed:`, err);
+        llmCircuitBreakerService.recordFailure(currentProvider.name, err);
+
+        if (currentProvider.name === 'ollama' || request.localOnly) {
+          throw err;
+        }
+
+        currentProvider = this.getNextFallbackProvider(attemptedProviders, request);
+        if (!currentProvider) {
+          throw err;
+        }
+
+        console.warn(`[LLMFallbackService] Structured falling back to "${currentProvider.name}" provider...`);
+        usedFallback = true;
       }
-
-      this.checkCityExplorerOllamaForbidden(request, 'ollama');
-
-      const fallbackProvider = this.registry.getProvider('ollama');
-      if (!fallbackProvider) {
-        throw err;
-      }
-
-      const data = await fallbackProvider.generateStructured({ ...request, providerOverride: 'ollama' });
-      llmCircuitBreakerService.recordSuccess(fallbackProvider.name);
-      return { data, usedFallback: true };
     }
+
+    throw new Error('[LLMFallbackService] All available LLM providers failed for structured output.');
   }
 }
 

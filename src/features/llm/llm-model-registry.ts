@@ -3,6 +3,8 @@ import { LLMCapability } from './llm.types';
 import { ollamaProvider } from './providers/ollama.provider';
 import { kimiProvider } from './providers/kimi.provider';
 import { geminiProvider } from './providers/gemini.provider';
+import { deepseekProvider } from './providers/deepseek.provider';
+import { groqProvider } from './providers/groq.provider';
 
 export interface ProviderRegistration {
   provider: LLMProvider;
@@ -17,25 +19,41 @@ export class LLMModelRegistry {
 
   constructor() {
     this.registerProvider({
-      provider: ollamaProvider,
-      defaultModel: process.env.OLLAMA_CHAT_MODEL || 'llama3.2',
-      fastModel: process.env.LLM_OLLAMA_FAST_MODEL || 'llama3.2',
-      priority: 1
-    });
-
-    this.registerProvider({
       provider: geminiProvider,
       defaultModel: process.env.GEMINI_FAST_MODEL || 'gemini-2.5-flash',
       fastModel: process.env.GEMINI_FAST_MODEL || 'gemini-2.5-flash',
       reasoningModel: process.env.GEMINI_REASONING_MODEL || 'gemini-2.5-pro',
+      priority: 1
+    });
+
+    this.registerProvider({
+      provider: deepseekProvider,
+      defaultModel: process.env.DEEPSEEK_DEFAULT_MODEL || 'deepseek-chat',
+      fastModel: process.env.DEEPSEEK_DEFAULT_MODEL || 'deepseek-chat',
+      reasoningModel: process.env.DEEPSEEK_REASONING_MODEL || 'deepseek-reasoner',
       priority: 2
+    });
+
+    this.registerProvider({
+      provider: groqProvider,
+      defaultModel: process.env.GROQ_DEFAULT_MODEL || 'llama-3.3-70b-versatile',
+      fastModel: process.env.GROQ_DEFAULT_MODEL || 'llama-3.3-70b-versatile',
+      reasoningModel: process.env.GROQ_REASONING_MODEL || 'deepseek-r1-distill-llama-70b',
+      priority: 3
     });
 
     this.registerProvider({
       provider: kimiProvider,
       defaultModel: process.env.LLM_KIMI_DEFAULT_MODEL || 'kimi-k3',
       reasoningModel: 'kimi-k3',
-      priority: 3
+      priority: 4
+    });
+
+    this.registerProvider({
+      provider: ollamaProvider,
+      defaultModel: process.env.OLLAMA_CHAT_MODEL || 'llama3.2',
+      fastModel: process.env.LLM_OLLAMA_FAST_MODEL || 'llama3.2',
+      priority: 5
     });
   }
 

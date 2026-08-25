@@ -64,4 +64,11 @@ export interface OrchestrationInput {
   searchAllKbs?: boolean;
   model?: string;
   skipCache?: boolean;
+  /**
+   * Optional Phase 69A metadata-aware filter (see RetrievalOptions.documentTypeFilter). No caller
+   * sets this yet — it's a ready extension point. Whenever set, the RAG cache is bypassed
+   * entirely for this request (read and write) to avoid a filtered answer bleeding into an
+   * unfiltered cache scope, since this filter is intentionally not part of the cache key.
+   */
+  documentTypeFilter?: string[];
 }

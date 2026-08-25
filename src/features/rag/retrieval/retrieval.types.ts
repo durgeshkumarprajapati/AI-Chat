@@ -32,6 +32,14 @@ export interface RetrievalOptions {
   forceRerank?: boolean;
   /** An already cached query embedding, used to avoid a second model invocation. */
   queryVector?: number[];
+  /**
+   * Optional Phase 69A metadata-aware filter: keeps only chunks whose denormalized
+   * `metadata.documentType` (set at ingestion by the Document Intelligence pipeline) matches one
+   * of these values. Legacy/undocumented chunks (no `documentType` in metadata) are always kept,
+   * and the filter never zeroes out a non-empty candidate set. Undefined (the default) is a
+   * complete no-op — no caller sets this yet, so existing retrieval behavior is unaffected.
+   */
+  documentTypeFilter?: string[];
 }
 
 export interface RetrievalMetrics {

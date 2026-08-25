@@ -122,6 +122,7 @@ model User {
   chillFocusSessions     ChillFocusSession[]
   chillFocusPreference   ChillFocusPreference?
   chillFocusStreak       ChillFocusStreak?
+  documentIntelligenceRuns DocumentIntelligence[]
 
   @@map("users")
 }
@@ -162,6 +163,7 @@ model Document {
   knowledgeEvidences  KnowledgeEvidence[]
   knowledgeGraphJobs  KnowledgeGraphJob[]
   voiceTutorSessions  VoiceTutorSession[]
+  intelligence        DocumentIntelligence?
 
   @@index([userId])
   @@index([status])
@@ -348,6 +350,71 @@ model DocumentVisual {
   @@index([pageNumber])
   @@index([type])
   @@map("document_visuals")
+}
+
+// PHASE 69 — DOCUMENT INTELLIGENCE PIPELINE (69A: layout-aware/semantic chunking, metadata extraction, classification)
+
+enum DocumentIntelligenceStatus {
+  PENDING
+  PROCESSING
+  COMPLETED
+  FAILED
+  SKIPPED
+}
+
+enum DocumentIntelligenceStage {
+  LAYOUT_ANALYSIS
+  SEMANTIC_CHUNKING
+  METADATA_EXTRACTION
+  CLASSIFICATION
+  DONE
+}
+
+enum DocumentType {
+  CONTRACT
+  INVOICE
+  REPORT
+  ACADEMIC_PAPER
+  RESUME
+  EMAIL
+  MANUAL
+  PRESENTATION
+  SPREADSHEET_EXPORT
+  LEGAL_FILING
+  OTHER
+}
+
+model DocumentIntelligence {
+  id                        String                     @id @default(uuid())
+  documentId                String                     @unique @map("document_id")
+  userId                    String                     @map("user_id")
+  status                    DocumentIntelligenceStatus @default(PENDING)
+  stage                     DocumentIntelligenceStage?
+  legacyFallbackUsed        Boolean                    @default(false) @map("legacy_fallback_used")
+  layoutAnalysisEnabled     Boolean                    @default(false) @map("layout_analysis_enabled")
+  semanticChunkingEnabled   Boolean                    @default(false) @map("semantic_chunking_enabled")
+  metadataExtractionEnabled Boolean                    @default(false) @map("metadata_extraction_enabled")
+  classificationEnabled     Boolean                    @default(false) @map("classification_enabled")
+  documentType              DocumentType?              @map("document_type")
+  classificationConfidence  Float?                     @map("classification_confidence")
+  extractedMetadata         Json?                      @default("{}") @map("extracted_metadata")
+  chunkingStrategy          String?                    @map("chunking_strategy")
+  attempts                  Int                        @default(0)
+  startedAt                 DateTime?                  @map("started_at")
+  completedAt               DateTime?                  @map("completed_at")
+  errorCode                 String?                    @map("error_code")
+  errorMessage              String?                    @db.Text @map("error_message")
+  metadata                  Json?                      @default("{}")
+  createdAt                 DateTime                   @default(now()) @map("created_at")
+  updatedAt                 DateTime                   @updatedAt @map("updated_at")
+
+  document Document @relation(fields: [documentId], references: [id], onDelete: Cascade)
+  user     User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId])
+  @@index([status])
+  @@index([documentType])
+  @@map("document_intelligence")
 }
 
 model Session {

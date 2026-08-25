@@ -504,7 +504,19 @@ const serverEnvSchema = z
     KNOWLEDGE_GRAPH_MAX_NODES: z.coerce.number().int().positive().default(200),
     KNOWLEDGE_GRAPH_MIN_CONFIDENCE: z.coerce.number().min(0).max(1).default(0.70),
     KNOWLEDGE_GRAPH_BATCH_SIZE: z.coerce.number().int().positive().default(5),
-    KNOWLEDGE_GRAPH_EXTRACTION_TIMEOUT_MS: z.coerce.number().int().positive().default(60000)
+    KNOWLEDGE_GRAPH_EXTRACTION_TIMEOUT_MS: z.coerce.number().int().positive().default(60000),
+
+    // PHASE 69 — DOCUMENT INTELLIGENCE PIPELINE (69A: layout-aware/semantic chunking, metadata extraction, classification)
+    DOCUMENT_INTELLIGENCE_ENABLED: z.coerce.boolean().default(false),
+    DOCUMENT_LAYOUT_ANALYSIS_ENABLED: z.coerce.boolean().default(false),
+    DOCUMENT_SEMANTIC_CHUNKING_ENABLED: z.coerce.boolean().default(false),
+    DOCUMENT_METADATA_EXTRACTION_ENABLED: z.coerce.boolean().default(false),
+    DOCUMENT_CLASSIFICATION_ENABLED: z.coerce.boolean().default(false),
+    DOCUMENT_INTELLIGENCE_LEGACY_FALLBACK_ENABLED: z.coerce.boolean().default(true),
+    DOCUMENT_INTELLIGENCE_TIMEOUT_MS: z.coerce.number().int().positive().default(120000),
+    DOCUMENT_MAX_PROCESSING_RETRIES: z.coerce.number().int().positive().default(3),
+    SEMANTIC_CHUNK_MAX_TOKENS: z.coerce.number().int().positive().default(1000),
+    SEMANTIC_CHUNK_OVERLAP_TOKENS: z.coerce.number().int().nonnegative().default(150)
   })
   .refine(
     (data) => {
@@ -521,6 +533,10 @@ const serverEnvSchema = z
   .refine((data) => data.DOCUMENT_CHUNK_OVERLAP < data.DOCUMENT_CHUNK_SIZE, {
     message: 'DOCUMENT_CHUNK_OVERLAP must be strictly smaller than DOCUMENT_CHUNK_SIZE',
     path: ['DOCUMENT_CHUNK_OVERLAP']
+  })
+  .refine((data) => data.SEMANTIC_CHUNK_OVERLAP_TOKENS < data.SEMANTIC_CHUNK_MAX_TOKENS, {
+    message: 'SEMANTIC_CHUNK_OVERLAP_TOKENS must be strictly smaller than SEMANTIC_CHUNK_MAX_TOKENS',
+    path: ['SEMANTIC_CHUNK_OVERLAP_TOKENS']
   });
 
 const clientEnvSchema = z.object({

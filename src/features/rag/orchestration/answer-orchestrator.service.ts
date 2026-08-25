@@ -34,11 +34,21 @@ export class AnswerOrchestratorService {
   }
 
   /**
+   * Phase 69A: a metadata-aware `documentTypeFilter` is intentionally not part of the RAG cache
+   * key (see RetrievalOptions.documentTypeFilter), so any request using it must bypass the cache
+   * entirely — otherwise a filtered answer could be served from (or written into) an unfiltered
+   * cache scope. No caller sets this yet, so this is a no-op for every existing request.
+   */
+  private shouldBypassCache(input: OrchestrationInput): boolean {
+    return Boolean(input.skipCache || input.documentTypeFilter?.length);
+  }
+
+  /**
    * Cheap cache-only preflight for chat endpoints. Calling this before loading
    * conversation context lets a semantic hit avoid an LLM query rewrite.
    */
   public async findCachedAnswer(input: OrchestrationInput): Promise<OrchestratedAnswer | null> {
-    if (input.skipCache) return null;
+    if (this.shouldBypassCache(input)) return null;
     if (input.requestedAnswerMode === 'GENERAL_KNOWLEDGE' || (input.allowGeneralKnowledge && !input.knowledgeBaseId)) return null;
     const start = Date.now();
     const latencyTrace: Record<string, number> = {};
@@ -155,7 +165,7 @@ export class AnswerOrchestratorService {
       contextSummary
     };
 
-    const cachedExact = input.skipCache ? null : await this.cacheProvider.getExact(cacheOptions);
+    const cachedExact = this.shouldBypassCache(input) ? null : await this.cacheProvider.getExact(cacheOptions);
     const cacheLookupMs = Date.now() - cacheStart;
     latencyTrace.cacheLookupMs = cacheLookupMs;
 
@@ -189,7 +199,7 @@ export class AnswerOrchestratorService {
     const queryEmbedding = await this.retrievalService.getQueryEmbedding(effectiveQuery);
     latencyTrace.embeddingCacheHit = queryEmbedding.cacheHit ? 1 : 0;
     latencyTrace.embeddingGenerationMs = queryEmbedding.generationMs;
-    const semanticLookup = input.skipCache
+    const semanticLookup = this.shouldBypassCache(input)
       ? { item: null, similarity: null, candidateCount: 0 }
       : await this.cacheProvider.getSemanticWithDiagnostics(cacheOptions, queryEmbedding.vector);
     const cachedSemantic = semanticLookup.item;
@@ -248,7 +258,8 @@ export class AnswerOrchestratorService {
         const retResult = await this.retrievalService.retrieveContextWithTrace(input.userId, effectiveQuery, {
           knowledgeBaseId: input.searchAllKbs ? undefined : input.knowledgeBaseId,
           sourceMode: 'all_sources',
-          queryVector: queryEmbedding.vector
+          queryVector: queryEmbedding.vector,
+          documentTypeFilter: input.documentTypeFilter
         });
         if (retResult.trace && retResult.trace.metrics) {
           latencyTrace.embeddingMs = retResult.trace.metrics.embeddingMs;
@@ -291,7 +302,8 @@ export class AnswerOrchestratorService {
       const retResult = await this.retrievalService.retrieveContextWithTrace(input.userId, effectiveQuery, {
         knowledgeBaseId: input.searchAllKbs ? undefined : input.knowledgeBaseId,
         sourceMode,
-        queryVector: queryEmbedding.vector
+        queryVector: queryEmbedding.vector,
+        documentTypeFilter: input.documentTypeFilter
       });
 
       if (retResult.trace && retResult.trace.metrics) {
@@ -355,7 +367,8 @@ export class AnswerOrchestratorService {
       if (cleanRecoveryQuery && cleanRecoveryQuery !== effectiveQuery.toLowerCase()) {
         const recResult = await this.retrievalService.retrieveContextWithTrace(input.userId, cleanRecoveryQuery, {
           knowledgeBaseId: input.searchAllKbs ? undefined : input.knowledgeBaseId,
-          sourceMode: (sourceMode === 'web_search' || sourceMode === 'auto') ? 'all_sources' : sourceMode
+          sourceMode: (sourceMode === 'web_search' || sourceMode === 'auto') ? 'all_sources' : sourceMode,
+          documentTypeFilter: input.documentTypeFilter
         });
         latencyTrace.recoveryLatencyMs = Date.now() - recStart;
 
@@ -472,7 +485,7 @@ export class AnswerOrchestratorService {
     contextSummary?: string | null,
     contextMessagesCount = 0
   ): Promise<void> {
-    if (input.skipCache) return;
+    if (this.shouldBypassCache(input)) return;
     const isGroundedMode =
       mode === 'GROUNDED' ||
       mode === 'DOCUMENT_GROUNDED' ||

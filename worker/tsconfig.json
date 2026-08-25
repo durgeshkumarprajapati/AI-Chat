@@ -22,6 +22,7 @@
     "../src/lib/s3.ts",
     "../src/config/env.ts",
     "../src/errors/**/*",
-    "../src/features/rag/multimodal/**/*"
+    "../src/features/rag/multimodal/**/*",
+    "../src/features/document-intelligence/**/*"
   ]
 }

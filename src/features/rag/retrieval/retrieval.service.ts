@@ -409,8 +409,22 @@ export class RetrievalService {
     }
     const rerankMs = Date.now() - rerankStart;
 
+    // 4.5 Optional metadata-aware filter (Phase 69A) — no-op unless a caller opts in.
+    // Legacy/undocumented chunks (no `documentType` in metadata) are always kept, and the filter
+    // never zeroes out a non-empty candidate set, so a pre-69A/flag-disabled document never loses
+    // retrieval results because of this. No caller passes `documentTypeFilter` yet — this is a
+    // ready extension point, not a behavior change.
+    let scopedCandidates = rerankedCandidates;
+    if (options?.documentTypeFilter?.length) {
+      const filtered = scopedCandidates.filter((chunk) => {
+        const chunkDocumentType = chunk.metadata?.documentType;
+        return !chunkDocumentType || options.documentTypeFilter!.includes(chunkDocumentType as string);
+      });
+      scopedCandidates = filtered.length > 0 ? filtered : scopedCandidates;
+    }
+
     // 5. Apply minSimilarity Threshold & Top-K Slicing
-    const finalChunks = rerankedCandidates
+    const finalChunks = scopedCandidates
       .filter((chunk) => {
         const effectiveScore = chunk.rerankScore ?? chunk.hybridScore ?? chunk.similarity;
         return effectiveScore >= minSimilarity;

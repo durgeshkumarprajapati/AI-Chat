@@ -34,6 +34,25 @@ type ChunkDetail = {
   hasEmbedding: boolean;
 };
 
+// Phase 69A — Document Intelligence. Old/pre-69A/flag-disabled documents have no row for this at
+// all, so every field is treated as absent-by-default rather than required.
+type DocumentIntelligenceData = {
+  status: 'PENDING' | 'PROCESSING' | 'COMPLETED' | 'FAILED' | 'SKIPPED';
+  stage?: string | null;
+  documentType?: string | null;
+  classificationConfidence?: number | null;
+  extractedMetadata?: {
+    title?: string;
+    author?: string;
+    createdDate?: string;
+    keywords?: string[];
+    summary?: string;
+    language?: string;
+  } | null;
+  chunkingStrategy?: string | null;
+  legacyFallbackUsed: boolean;
+} | null;
+
 export default function DocumentDetailPage() {
   const params = useParams();
   const router = useRouter();
@@ -45,6 +64,7 @@ export default function DocumentDetailPage() {
   const [chunkStats, setChunkStats] = useState<ChunkStats>({ totalChunks: 0, embeddedChunks: 0 });
   const [chunks, setChunks] = useState<ChunkDetail[]>([]);
   const [storageProvider, setStorageProvider] = useState<string>('local');
+  const [intelligence, setIntelligence] = useState<DocumentIntelligenceData>(null);
   const [loading, setLoading] = useState(true);
   const [actionLoading, setActionLoading] = useState(false);
   const [isDeleteModalOpen, setIsDeleteModalOpen] = useState(false);
@@ -72,6 +92,23 @@ export default function DocumentDetailPage() {
   useEffect(() => {
     fetchDetail();
   }, [fetchDetail]);
+
+  // Decoupled from fetchDetail: intelligence data is optional and must never block or delay the
+  // core document/chunks view (old documents will simply get `intelligence: null` back).
+  useEffect(() => {
+    let cancelled = false;
+    fetch(`/api/documents/${documentId}/intelligence`)
+      .then((res) => res.json())
+      .then((json) => {
+        if (!cancelled && json.success) {
+          setIntelligence(json.data.intelligence);
+        }
+      })
+      .catch((err) => console.error('Failed to fetch document intelligence:', err));
+    return () => {
+      cancelled = true;
+    };
+  }, [documentId]);
 
   // Auto-polling for active processing status
   useEffect(() => {
@@ -361,6 +398,61 @@ export default function DocumentDetailPage() {
               </div>
             </div>
           </div>
+
+          {/* Document Intelligence Card (Phase 69A) — renders nothing but a "not available" hint
+              for documents with no intelligence data (pre-69A, disabled flag, or still pending). */}
+          {intelligence && intelligence.status === 'COMPLETED' ? (
+            <div className="rounded-2xl bg-slate-900 border border-slate-800 p-6 space-y-4 shadow-xl">
+              <div className="flex items-center justify-between border-b border-slate-800 pb-3">
+                <h2 className="text-lg font-bold text-white">Document Intelligence</h2>
+                <span className="text-[11px] font-mono px-2 py-0.5 rounded-full bg-emerald-950 text-emerald-300 border border-emerald-800">
+                  {intelligence.chunkingStrategy === 'semantic' ? 'Semantic Chunking' : 'Legacy Chunking'}
+                </span>
+              </div>
+
+              {intelligence.documentType && (
+                <div className="flex items-center justify-between text-xs">
+                  <span className="text-slate-500 font-mono">Classification:</span>
+                  <span className="px-2.5 py-0.5 rounded bg-indigo-950 text-indigo-300 border border-indigo-800 font-mono font-semibold uppercase">
+                    {intelligence.documentType}
+                    {typeof intelligence.classificationConfidence === 'number' &&
+                      ` · ${Math.round(intelligence.classificationConfidence * 100)}%`}
+                  </span>
+                </div>
+              )}
+
+              {intelligence.extractedMetadata?.title && (
+                <div>
+                  <span className="text-slate-500 font-mono block text-xs">Title:</span>
+                  <span className="text-slate-200 text-xs font-medium">{intelligence.extractedMetadata.title}</span>
+                </div>
+              )}
+
+              {intelligence.extractedMetadata?.author && (
+                <div>
+                  <span className="text-slate-500 font-mono block text-xs">Author:</span>
+                  <span className="text-slate-200 text-xs">{intelligence.extractedMetadata.author}</span>
+                </div>
+              )}
+
+              {intelligence.extractedMetadata?.summary && (
+                <div>
+                  <span className="text-slate-500 font-mono block text-xs">Summary:</span>
+                  <p className="text-slate-300 text-xs leading-relaxed">{intelligence.extractedMetadata.summary}</p>
+                </div>
+              )}
+
+              {intelligence.extractedMetadata?.keywords && intelligence.extractedMetadata.keywords.length > 0 && (
+                <div className="flex flex-wrap gap-1.5">
+                  {intelligence.extractedMetadata.keywords.map((kw) => (
+                    <span key={kw} className="px-2 py-0.5 rounded-full bg-slate-950 border border-slate-800 text-[11px] text-slate-300">
+                      {kw}
+                    </span>
+                  ))}
+                </div>
+              )}
+            </div>
+          ) : null}
         </div>
 
         {/* Right Column: Live Pipeline Steps & Developer Panel */}

@@ -2,7 +2,9 @@ import { workerDocumentRepository } from '../repositories/document.repository.js
 import { workerStorage } from '../lib/storage.js';
 import { workerPdfParser } from '../parsers/pdf.parser.js';
 import { workerDocumentChunker } from '../chunking/document.chunker.js';
+import type { Chunk } from '../chunking/document.chunker.js';
 import { workerEmbeddingService } from '../embeddings/embedding.service.js';
+import type { DocumentIntelligenceRunResult } from '@/features/document-intelligence/document-intelligence.types.js';
 
 export interface DocumentProcessingJob {
   jobType: string;
@@ -71,9 +73,33 @@ export class DocumentProcessor {
         pageCount: parsedDoc.pageCount
       });
 
-      // 7. Token-aware, page-aware text chunking
-      console.log(`[Worker] Generating chunks for document ID: ${document.id}...`);
-      const chunks = workerDocumentChunker.chunk(parsedDoc);
+      // 7. Document Intelligence (layout-aware + semantic chunking, metadata, classification) — feature-flagged, inline
+      console.log(`[Worker] Running document intelligence pipeline for document ID: ${document.id}...`);
+      let intelligenceResult: DocumentIntelligenceRunResult = { handled: false };
+      try {
+        const { documentIntelligenceOrchestratorService } = await import('@/features/document-intelligence/index.js');
+        intelligenceResult = await documentIntelligenceOrchestratorService.process({
+          documentId: job.documentId,
+          userId: job.userId,
+          parsedDocument: parsedDoc
+        });
+      } catch (diErr) {
+        console.warn(`[Worker] Document intelligence pipeline threw unexpectedly (falling back to legacy chunking) for doc ${job.documentId}:`, diErr);
+      }
+
+      let chunks: Chunk[];
+      if (intelligenceResult.handled && intelligenceResult.chunks && intelligenceResult.chunks.length > 0) {
+        console.log(`[Worker] Using Document Intelligence chunks (${intelligenceResult.chunks.length}) for document ID: ${document.id}.`);
+        chunks = intelligenceResult.chunks;
+        if (intelligenceResult.documentType) {
+          for (const c of chunks) {
+            c.metadata = { ...c.metadata, documentType: intelligenceResult.documentType };
+          }
+        }
+      } else {
+        console.log(`[Worker] Generating legacy chunks for document ID: ${document.id}...`);
+        chunks = workerDocumentChunker.chunk(parsedDoc);
+      }
 
       // 7.5 Process Multimodal Visuals (Tables, Figures, OCR, Images)
       try {

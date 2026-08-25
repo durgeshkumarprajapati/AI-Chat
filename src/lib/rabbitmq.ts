@@ -4,7 +4,8 @@ import { InfrastructureError } from '@/errors';
 
 export const QUEUES = {
   DOCUMENT_PROCESSING: 'document-processing',
-  KNOWLEDGE_GRAPH_EXTRACTION: 'knowledge-graph-extraction'
+  KNOWLEDGE_GRAPH_EXTRACTION: 'knowledge-graph-extraction',
+  DOCUMENT_MULTIMODAL_EXTRACTION: 'document-multimodal-extraction'
 } as const;
 
 export type QueueName = typeof QUEUES[keyof typeof QUEUES];
@@ -30,6 +31,29 @@ export interface KnowledgeGraphJobPayload {
   knowledgeBaseId?: string | null;
   attempt: number;
   createdAt: string;
+}
+
+/**
+ * Phase 69C + 69D — shared queue for multimodal extraction (OCR/table/image/chart) and 69D
+ * re-index jobs, discriminated by `jobType`. Kept as one queue (rather than four) so worker
+ * wiring stays minimal; both job kinds share the same worker/src/processors/multimodal.processor.ts.
+ */
+export interface MultimodalJobPayload {
+  jobType: 'DOCUMENT_MULTIMODAL_EXTRACTION' | 'DOCUMENT_REINDEX';
+  version: number;
+  jobId: string;
+  documentId: string;
+  userId: string;
+  attempt: number;
+  createdAt: string;
+  reindexOptions?: {
+    reembed?: boolean;
+    reocr?: boolean;
+    remetadata?: boolean;
+    reclassify?: boolean;
+    remultimodal?: boolean;
+    rekg?: boolean;
+  };
 }
 
 class RabbitMQService {

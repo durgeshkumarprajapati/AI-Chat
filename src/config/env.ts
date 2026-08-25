@@ -516,7 +516,72 @@ const serverEnvSchema = z
     DOCUMENT_INTELLIGENCE_TIMEOUT_MS: z.coerce.number().int().positive().default(120000),
     DOCUMENT_MAX_PROCESSING_RETRIES: z.coerce.number().int().positive().default(3),
     SEMANTIC_CHUNK_MAX_TOKENS: z.coerce.number().int().positive().default(1000),
-    SEMANTIC_CHUNK_OVERLAP_TOKENS: z.coerce.number().int().nonnegative().default(150)
+    SEMANTIC_CHUNK_OVERLAP_TOKENS: z.coerce.number().int().nonnegative().default(150),
+
+    // PHASE 69B — INTELLIGENCE-AWARE ADAPTIVE RETRIEVAL
+    RAG_INTELLIGENCE_RETRIEVAL_ENABLED: z.coerce.boolean().default(false),
+    RAG_QUERY_INTELLIGENCE_ENABLED: z.coerce.boolean().default(false),
+    RAG_QUERY_ROUTING_ENABLED: z.coerce.boolean().default(false),
+    RAG_METADATA_RETRIEVAL_ENABLED: z.coerce.boolean().default(false),
+    RAG_SECTION_AWARE_RETRIEVAL_ENABLED: z.coerce.boolean().default(false),
+    RAG_ADAPTIVE_STRATEGY_ENABLED: z.coerce.boolean().default(false),
+    RAG_DYNAMIC_TOP_K_ENABLED: z.coerce.boolean().default(false),
+    RAG_ADVANCED_RERANKING_ENABLED: z.coerce.boolean().default(false),
+    RAG_QUERY_INTELLIGENCE_TIMEOUT_MS: z.coerce.number().int().positive().default(3000),
+    RAG_MIN_CANDIDATE_K: z.coerce.number().int().positive().default(10),
+    RAG_MAX_CANDIDATE_K: z.coerce.number().int().positive().default(40),
+    RAG_MIN_FINAL_K: z.coerce.number().int().positive().default(5),
+    RAG_MAX_FINAL_K: z.coerce.number().int().positive().default(15),
+    // Renamed with a RAG_RERANK_ prefix to avoid colliding with the pre-existing RAG_KEYWORD_WEIGHT
+    // (base score fusion, retrieval.service.ts) and RAG_GRAPH_WEIGHT (dead rag.config.ts) env vars.
+    RAG_RERANK_SEMANTIC_WEIGHT: z.coerce.number().min(0).max(1).default(0.35),
+    RAG_RERANK_KEYWORD_WEIGHT: z.coerce.number().min(0).max(1).default(0.20),
+    RAG_RERANK_GRAPH_WEIGHT: z.coerce.number().min(0).max(1).default(0.15),
+    RAG_RERANK_METADATA_WEIGHT: z.coerce.number().min(0).max(1).default(0.10),
+    RAG_RERANK_SECTION_WEIGHT: z.coerce.number().min(0).max(1).default(0.10),
+    RAG_RERANK_DOCUMENT_TYPE_WEIGHT: z.coerce.number().min(0).max(1).default(0.05),
+    RAG_RERANK_FRESHNESS_WEIGHT: z.coerce.number().min(0).max(1).default(0.03),
+    RAG_RERANK_MULTIMODAL_WEIGHT: z.coerce.number().min(0).max(1).default(0.02),
+
+    // PHASE 69C — ADVANCED MULTIMODAL DOCUMENT INTELLIGENCE
+    DOCUMENT_MULTIMODAL_ENABLED: z.coerce.boolean().default(false),
+    DOCUMENT_OCR_ENABLED: z.coerce.boolean().default(false),
+    DOCUMENT_OCR_PROVIDER: z.enum(['mock', 'tesseract', 'google', 'aws', 'azure']).default('mock'),
+    DOCUMENT_TABLE_EXTRACTION_ENABLED: z.coerce.boolean().default(false),
+    DOCUMENT_TABLE_PROVIDER: z.enum(['mock', 'heuristic', 'google', 'aws', 'azure']).default('mock'),
+    DOCUMENT_IMAGE_ANALYSIS_ENABLED: z.coerce.boolean().default(false),
+    DOCUMENT_VISION_PROVIDER: z.enum(['mock', 'gemini']).default('mock'),
+    DOCUMENT_CHART_EXTRACTION_ENABLED: z.coerce.boolean().default(false),
+    DOCUMENT_MULTIMODAL_TIMEOUT_MS: z.coerce.number().int().positive().default(60000),
+    DOCUMENT_MAX_IMAGES_PER_DOCUMENT: z.coerce.number().int().positive().default(50),
+    DOCUMENT_MAX_TABLES_PER_DOCUMENT: z.coerce.number().int().positive().default(100),
+    DOCUMENT_MULTIMODAL_MAX_RETRIES: z.coerce.number().int().positive().default(3),
+
+    // Reserved cloud-provider configuration surface — validated but NOT implemented this pass
+    // (no provider classes exist for these yet; kept so a future pass can wire one in without
+    // another schema change).
+    GOOGLE_CLOUD_PROJECT_ID: z.string().optional(),
+    GOOGLE_APPLICATION_CREDENTIALS: z.string().optional(),
+    GOOGLE_VISION_ENABLED: z.coerce.boolean().default(false),
+    GOOGLE_DOCUMENT_AI_ENABLED: z.coerce.boolean().default(false),
+    GOOGLE_DOCUMENT_AI_PROCESSOR_ID: z.string().optional(),
+    GOOGLE_DOCUMENT_AI_LOCATION: z.string().optional(),
+    AWS_TEXTRACT_ENABLED: z.coerce.boolean().default(false),
+    AZURE_DOCUMENT_INTELLIGENCE_ENDPOINT: z.string().optional(),
+    AZURE_DOCUMENT_INTELLIGENCE_API_KEY: z.string().optional(),
+    AZURE_DOCUMENT_INTELLIGENCE_ENABLED: z.coerce.boolean().default(false),
+    TESSERACT_ENABLED: z.coerce.boolean().default(false),
+    TESSERACT_LANGUAGE: z.string().default('eng'),
+
+    // PHASE 69D — ENTERPRISE DOCUMENT MANAGEMENT
+    DOCUMENT_DUPLICATE_DETECTION_ENABLED: z.coerce.boolean().default(false),
+    DOCUMENT_SEMANTIC_DUPLICATE_DETECTION_ENABLED: z.coerce.boolean().default(false),
+    DOCUMENT_VERSIONING_ENABLED: z.coerce.boolean().default(false),
+    DOCUMENT_LINEAGE_ENABLED: z.coerce.boolean().default(false),
+    DOCUMENT_VERSION_COMPARISON_ENABLED: z.coerce.boolean().default(false),
+    DOCUMENT_REINDEX_ENABLED: z.coerce.boolean().default(false),
+    DOCUMENT_REINDEX_MAX_RETRIES: z.coerce.number().int().positive().default(3),
+    DOCUMENT_DUPLICATE_SIMILARITY_THRESHOLD: z.coerce.number().min(0).max(1).default(0.95)
   })
   .refine(
     (data) => {
@@ -537,6 +602,14 @@ const serverEnvSchema = z
   .refine((data) => data.SEMANTIC_CHUNK_OVERLAP_TOKENS < data.SEMANTIC_CHUNK_MAX_TOKENS, {
     message: 'SEMANTIC_CHUNK_OVERLAP_TOKENS must be strictly smaller than SEMANTIC_CHUNK_MAX_TOKENS',
     path: ['SEMANTIC_CHUNK_OVERLAP_TOKENS']
+  })
+  .refine((data) => data.RAG_MIN_CANDIDATE_K <= data.RAG_MAX_CANDIDATE_K, {
+    message: 'RAG_MIN_CANDIDATE_K must be less than or equal to RAG_MAX_CANDIDATE_K',
+    path: ['RAG_MIN_CANDIDATE_K']
+  })
+  .refine((data) => data.RAG_MIN_FINAL_K <= data.RAG_MAX_FINAL_K, {
+    message: 'RAG_MIN_FINAL_K must be less than or equal to RAG_MAX_FINAL_K',
+    path: ['RAG_MIN_FINAL_K']
   });
 
 const clientEnvSchema = z.object({

@@ -147,9 +147,10 @@ export class RetrievalService {
             sourceType: 'DOCUMENT' | 'WEB';
             webUrl?: string;
             canonicalUrl?: string;
+            documentCreatedAt?: Date;
           }>
         >`
-          SELECT 
+          SELECT
             dc.id,
             dc.document_id as "documentId",
             d.filename,
@@ -161,6 +162,7 @@ export class RetrievalService {
             d.source_type as "sourceType",
             d.web_url as "webUrl",
             d.canonical_url as "canonicalUrl",
+            d.created_at as "documentCreatedAt",
             (1 - (dc.embedding <=> ${vectorStr}::vector)) as similarity
           FROM document_chunks dc
           INNER JOIN documents d ON d.id = dc.document_id
@@ -189,9 +191,10 @@ export class RetrievalService {
             sourceType: 'DOCUMENT' | 'WEB';
             webUrl?: string;
             canonicalUrl?: string;
+            documentCreatedAt?: Date;
           }>
         >`
-          SELECT 
+          SELECT
             dc.id,
             dc.document_id as "documentId",
             d.filename,
@@ -203,6 +206,7 @@ export class RetrievalService {
             d.source_type as "sourceType",
             d.web_url as "webUrl",
             d.canonical_url as "canonicalUrl",
+            d.created_at as "documentCreatedAt",
             (1 - (dc.embedding <=> ${vectorStr}::vector)) as similarity
           FROM document_chunks dc
           INNER JOIN documents d ON d.id = dc.document_id
@@ -230,6 +234,7 @@ export class RetrievalService {
       sourceType: 'DOCUMENT' | 'WEB';
       webUrl?: string;
       canonicalUrl?: string;
+      documentCreatedAt?: Date;
     }>> = (async () => {
       try {
         return options?.knowledgeBaseId
@@ -247,9 +252,10 @@ export class RetrievalService {
               sourceType: 'DOCUMENT' | 'WEB';
               webUrl?: string;
               canonicalUrl?: string;
+              documentCreatedAt?: Date;
             }>
           >`
-            SELECT 
+            SELECT
               dc.id,
               dc.document_id as "documentId",
               d.filename,
@@ -261,6 +267,7 @@ export class RetrievalService {
               d.source_type as "sourceType",
               d.web_url as "webUrl",
               d.canonical_url as "canonicalUrl",
+              d.created_at as "documentCreatedAt",
               ts_rank_cd(to_tsvector('english', dc.content), plainto_tsquery('english', ${question})) as rank
             FROM document_chunks dc
             INNER JOIN documents d ON d.id = dc.document_id
@@ -289,9 +296,10 @@ export class RetrievalService {
               sourceType: 'DOCUMENT' | 'WEB';
               webUrl?: string;
               canonicalUrl?: string;
+              documentCreatedAt?: Date;
             }>
           >`
-            SELECT 
+            SELECT
               dc.id,
               dc.document_id as "documentId",
               d.filename,
@@ -303,6 +311,7 @@ export class RetrievalService {
               d.source_type as "sourceType",
               d.web_url as "webUrl",
               d.canonical_url as "canonicalUrl",
+              d.created_at as "documentCreatedAt",
               ts_rank_cd(to_tsvector('english', dc.content), plainto_tsquery('english', ${question})) as rank
             FROM document_chunks dc
             INNER JOIN documents d ON d.id = dc.document_id
@@ -354,6 +363,7 @@ export class RetrievalService {
         sourceType: (v as any).sourceType || 'DOCUMENT',
         webUrl: (v as any).webUrl,
         canonicalUrl: (v as any).canonicalUrl,
+        documentCreatedAt: v.documentCreatedAt ? new Date(v.documentCreatedAt).toISOString() : undefined,
         metadata: v.metadata || {}
       });
     }
@@ -389,6 +399,7 @@ export class RetrievalService {
           sourceType: (k as any).sourceType || 'DOCUMENT',
           webUrl: (k as any).webUrl,
           canonicalUrl: (k as any).canonicalUrl,
+          documentCreatedAt: k.documentCreatedAt ? new Date(k.documentCreatedAt).toISOString() : undefined,
           metadata: k.metadata || {}
         });
       }
@@ -421,6 +432,26 @@ export class RetrievalService {
         return !chunkDocumentType || options.documentTypeFilter!.includes(chunkDocumentType as string);
       });
       scopedCandidates = filtered.length > 0 ? filtered : scopedCandidates;
+    }
+
+    // 4.55 Optional document-routing filter (Phase 69B) — same no-op/never-zeroing contract as
+    // documentTypeFilter above; composes with it. No caller sets this yet except the orchestrator's
+    // internal HIGH-confidence document-routing step.
+    if (options?.documentIdFilter?.length) {
+      const filteredById = scopedCandidates.filter((chunk) => options.documentIdFilter!.includes(chunk.documentId));
+      scopedCandidates = filteredById.length > 0 ? filteredById : scopedCandidates;
+    }
+
+    // 4.6 Optional content-type boost (Phase 69C.5) — no-op unless DOCUMENT_MULTIMODAL_ENABLED and
+    // the question contains a table/chart-style keyword. Purely additive score boost, never
+    // filters/drops candidates.
+    if (env.server?.DOCUMENT_MULTIMODAL_ENABLED && /\b(chart|graph|table|figure|diagram)\b/i.test(question)) {
+      const boostType = /\b(chart|graph|diagram)\b/i.test(question) ? 'CHART' : 'TABLE';
+      scopedCandidates = scopedCandidates.map((chunk) =>
+        chunk.metadata?.contentType === boostType
+          ? { ...chunk, hybridScore: (chunk.hybridScore ?? chunk.similarity) * 1.15 }
+          : chunk
+      );
     }
 
     // 5. Apply minSimilarity Threshold & Top-K Slicing

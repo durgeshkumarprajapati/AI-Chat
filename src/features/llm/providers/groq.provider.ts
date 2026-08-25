@@ -108,6 +108,9 @@ export class GroqProvider implements LLMProvider {
     if (!this.isEnabled || !apiKey) {
       throw new Error('Groq provider is not enabled or GROQ_API_KEY is missing.');
     }
+    if (request.images?.length) {
+      throw new Error(`${this.name} provider does not support multimodal image input.`);
+    }
 
     const model =
       request.modelOverride ||

@@ -68,6 +68,9 @@ export class KimiProvider implements LLMProvider {
     if (!this.isEnabled || !this.apiKey) {
       throw new Error('Kimi provider is not enabled or missing API key.');
     }
+    if (request.images?.length) {
+      throw new Error(`${this.name} provider does not support multimodal image input.`);
+    }
 
     const model = request.modelOverride || this.defaultModel;
     const systemPrompt = request.systemPrompt || 'You are an advanced AI reasoning assistant.';

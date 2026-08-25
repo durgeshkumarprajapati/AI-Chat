@@ -123,6 +123,9 @@ model User {
   chillFocusPreference   ChillFocusPreference?
   chillFocusStreak       ChillFocusStreak?
   documentIntelligenceRuns DocumentIntelligence[]
+  documentMultimodalRuns DocumentMultimodalRun[]
+  documentVersionsUploaded DocumentVersion[]
+  documentDuplicateFingerprints DocumentDuplicateFingerprint[]
 
   @@map("users")
 }
@@ -164,6 +167,12 @@ model Document {
   knowledgeGraphJobs  KnowledgeGraphJob[]
   voiceTutorSessions  VoiceTutorSession[]
   intelligence        DocumentIntelligence?
+  multimodalRun       DocumentMultimodalRun?
+  extractedTables     ExtractedTable[]
+  images              DocumentImage[]
+  charts              DocumentChart[]
+  versions            DocumentVersion[]
+  duplicateFingerprint DocumentDuplicateFingerprint?
 
   @@index([userId])
   @@index([status])
@@ -222,6 +231,9 @@ model DocumentChunk {
 
   document Document @relation(fields: [documentId], references: [id], onDelete: Cascade)
   knowledgeEvidences KnowledgeEvidence[]
+  extractedTables    ExtractedTable[]
+  documentImages     DocumentImage[]
+  documentCharts     DocumentChart[]
 
   @@index([documentId])
   @@index([documentId, chunkIndex])
@@ -415,6 +427,167 @@ model DocumentIntelligence {
   @@index([status])
   @@index([documentType])
   @@map("document_intelligence")
+}
+
+// PHASE 69C — ADVANCED MULTIMODAL DOCUMENT INTELLIGENCE (OCR / table / image / chart)
+
+enum DocumentMultimodalStatus {
+  PENDING
+  PROCESSING
+  COMPLETED
+  FAILED
+  SKIPPED
+}
+
+enum DocumentMultimodalStage {
+  OCR
+  TABLE_EXTRACTION
+  IMAGE_ANALYSIS
+  CHART_EXTRACTION
+  DONE
+}
+
+model DocumentMultimodalRun {
+  id                     String                    @id @default(uuid())
+  documentId             String                    @unique @map("document_id")
+  userId                 String                    @map("user_id")
+  status                 DocumentMultimodalStatus  @default(PENDING)
+  stage                  DocumentMultimodalStage?
+  ocrEnabled             Boolean                   @default(false) @map("ocr_enabled")
+  tableExtractionEnabled Boolean                   @default(false) @map("table_extraction_enabled")
+  imageAnalysisEnabled   Boolean                   @default(false) @map("image_analysis_enabled")
+  chartExtractionEnabled Boolean                   @default(false) @map("chart_extraction_enabled")
+  tablesExtracted        Int                       @default(0) @map("tables_extracted")
+  imagesFound            Int                       @default(0) @map("images_found")
+  imagesAnalyzed         Int                       @default(0) @map("images_analyzed")
+  chartsExtracted        Int                       @default(0) @map("charts_extracted")
+  attempts               Int                       @default(0)
+  startedAt              DateTime?                 @map("started_at")
+  completedAt            DateTime?                 @map("completed_at")
+  errorCode              String?                   @map("error_code")
+  errorMessage           String?                   @db.Text @map("error_message")
+  metadata               Json?                     @default("{}")
+  createdAt              DateTime                  @default(now()) @map("created_at")
+  updatedAt              DateTime                  @updatedAt @map("updated_at")
+
+  document Document @relation(fields: [documentId], references: [id], onDelete: Cascade)
+  user     User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId])
+  @@index([status])
+  @@map("document_multimodal_runs")
+}
+
+model ExtractedTable {
+  id                     String   @id @default(uuid())
+  documentId             String   @map("document_id")
+  pageNumber             Int      @map("page_number")
+  tableIndex             Int      @map("table_index")
+  title                  String?
+  headers                Json
+  rows                   Json
+  markdownRepresentation String   @db.Text @map("markdown_representation")
+  extractionConfidence   Float    @default(1.0) @map("extraction_confidence")
+  extractionProvider     String   @default("mock") @map("extraction_provider")
+  chunkId                String?  @map("chunk_id")
+  createdAt              DateTime @default(now()) @map("created_at")
+
+  document Document       @relation(fields: [documentId], references: [id], onDelete: Cascade)
+  chunk    DocumentChunk? @relation(fields: [chunkId], references: [id], onDelete: SetNull)
+
+  @@index([documentId])
+  @@index([documentId, pageNumber])
+  @@index([chunkId])
+  @@map("extracted_tables")
+}
+
+model DocumentImage {
+  id                String   @id @default(uuid())
+  documentId        String   @map("document_id")
+  pageNumber        Int      @map("page_number")
+  imageIndex        Int      @map("image_index")
+  storageKey        String?  @map("storage_key")
+  mimeType          String?  @map("mime_type")
+  ocrText           String?  @db.Text @map("ocr_text")
+  ocrProvider       String?  @map("ocr_provider")
+  visionDescription String?  @db.Text @map("vision_description")
+  visionEntities    Json?    @default("[]") @map("vision_entities")
+  visionProvider    String?  @map("vision_provider")
+  visionConfidence  Float?   @map("vision_confidence")
+  chunkId           String?  @map("chunk_id")
+  createdAt         DateTime @default(now()) @map("created_at")
+
+  document Document       @relation(fields: [documentId], references: [id], onDelete: Cascade)
+  chunk    DocumentChunk? @relation(fields: [chunkId], references: [id], onDelete: SetNull)
+
+  @@index([documentId])
+  @@index([documentId, pageNumber])
+  @@index([chunkId])
+  @@map("document_images")
+}
+
+model DocumentChart {
+  id                  String   @id @default(uuid())
+  documentId          String   @map("document_id")
+  pageNumber          Int      @map("page_number")
+  chartIndex          Int      @map("chart_index")
+  storageKey          String?  @map("storage_key")
+  chartType           String?  @map("chart_type")
+  description         String?  @db.Text
+  extractedDataPoints Json?    @default("[]") @map("extracted_data_points")
+  confidence          Float?
+  provider            String?
+  chunkId             String?  @map("chunk_id")
+  createdAt           DateTime @default(now()) @map("created_at")
+
+  document Document       @relation(fields: [documentId], references: [id], onDelete: Cascade)
+  chunk    DocumentChunk? @relation(fields: [chunkId], references: [id], onDelete: SetNull)
+
+  @@index([documentId])
+  @@index([documentId, pageNumber])
+  @@index([chunkId])
+  @@map("document_charts")
+}
+
+// PHASE 69D — ENTERPRISE DOCUMENT MANAGEMENT (versioning, duplicate detection, re-indexing)
+
+model DocumentVersion {
+  id               String         @id @default(uuid())
+  documentId       String         @map("document_id")
+  versionNumber    Int            @map("version_number")
+  storageKey       String         @map("storage_key")
+  contentHash      String         @map("content_hash")
+  fileSize         Int            @map("file_size")
+  pageCount        Int            @default(0) @map("page_count")
+  uploadedByUserId String         @map("uploaded_by_user_id")
+  status           DocumentStatus @default(UPLOADING)
+  isActive         Boolean        @default(false) @map("is_active")
+  errorMessage     String?        @map("error_message")
+  createdAt        DateTime       @default(now()) @map("created_at")
+
+  document   Document @relation(fields: [documentId], references: [id], onDelete: Cascade)
+  uploadedBy User     @relation(fields: [uploadedByUserId], references: [id], onDelete: Cascade)
+
+  @@unique([documentId, versionNumber])
+  @@index([documentId])
+  @@index([documentId, isActive])
+  @@map("document_versions")
+}
+
+model DocumentDuplicateFingerprint {
+  id                        String   @id @default(uuid())
+  userId                    String   @map("user_id")
+  documentId                String   @unique @map("document_id")
+  contentHash               String   @map("content_hash")
+  normalizedTextFingerprint String?  @map("normalized_text_fingerprint")
+  createdAt                 DateTime @default(now()) @map("created_at")
+
+  user     User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  document Document @relation(fields: [documentId], references: [id], onDelete: Cascade)
+
+  @@index([userId, contentHash])
+  @@index([userId, normalizedTextFingerprint])
+  @@map("document_duplicate_fingerprints")
 }
 
 model Session {

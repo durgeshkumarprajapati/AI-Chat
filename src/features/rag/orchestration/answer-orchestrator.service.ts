@@ -2,7 +2,8 @@ import { env } from '@/config/env';
 import { getRAGCacheProvider } from '../cache/rag-cache.factory';
 import { RAGCacheProvider } from '../cache/rag-cache.provider';
 import { RetrievalService } from '../retrieval/retrieval.service';
-import { RetrievedChunk } from '../retrieval/retrieval.types';
+import { RetrievedChunk, RetrievalOptions } from '../retrieval/retrieval.types';
+import { Reranker } from '../retrieval/reranker';
 import { evidenceAssessmentService, EvidenceAssessmentService } from './evidence-assessment.service';
 import { webDiscoveryService } from '../web-discovery/web-discovery.service';
 import { AnswerMode, OrchestrationInput, OrchestratedAnswer, UserAction } from './answer-orchestrator.types';
@@ -14,6 +15,22 @@ import { webSearchDecisionService } from '../web-search/web-search-decision.serv
 import { webSearchService } from '../web-search/web-search.service';
 import { visualQueryClassifier } from '../multimodal/visual-query-classifier';
 import { createHash } from 'crypto';
+import {
+  queryIntelligenceService,
+  documentRoutingService,
+  strategySelectorService,
+  dynamicTopKService,
+  IntelligenceAwareReranker,
+  getQueryIntelligenceConfig,
+  queryIntelligenceTelemetryService,
+  QueryIntelligenceResult
+} from '../query-intelligence';
+
+interface IntelligentRetrievalPlan {
+  retrievalOverrides: Partial<RetrievalOptions>;
+  rerankerOverride?: Reranker;
+  analysis?: QueryIntelligenceResult;
+}
 
 export class AnswerOrchestratorService {
   private cacheProvider: RAGCacheProvider;
@@ -40,7 +57,119 @@ export class AnswerOrchestratorService {
    * cache scope. No caller sets this yet, so this is a no-op for every existing request.
    */
   private shouldBypassCache(input: OrchestrationInput): boolean {
-    return Boolean(input.skipCache || input.documentTypeFilter?.length);
+    return Boolean(input.skipCache || input.documentTypeFilter?.length || input.documentIdFilter?.length);
+  }
+
+  /**
+   * Phase 69B — Intelligence-Aware Adaptive Retrieval. Master-gated: when
+   * RAG_INTELLIGENCE_RETRIEVAL_ENABLED is false, returns `{ retrievalOverrides: {} }` immediately
+   * before any heuristic/LLM/Redis/DB work runs — zero cost, not just zero effect. Each capability
+   * underneath the master switch is independently gated by its own sub-flag. NEVER throws — any
+   * internal failure falls back to the empty-overrides result, which is byte-identical to pre-69B
+   * behavior at every one of the 3 retrieveContextWithTrace call sites.
+   */
+  private async computeIntelligentRetrievalOptions(
+    input: OrchestrationInput,
+    effectiveQuery: string
+  ): Promise<IntelligentRetrievalPlan> {
+    const config = getQueryIntelligenceConfig();
+    if (!config.masterEnabled) {
+      return { retrievalOverrides: {} };
+    }
+
+    try {
+      let analysis: QueryIntelligenceResult | undefined;
+      if (config.queryIntelligenceEnabled) {
+        analysis = await queryIntelligenceService.analyze(input.userId, effectiveQuery, {
+          knowledgeBaseId: input.knowledgeBaseId,
+          useLLMEnhancement: true,
+          timeoutMs: config.queryIntelligenceTimeoutMs
+        });
+      }
+
+      if (!analysis) {
+        return { retrievalOverrides: {} };
+      }
+
+      const retrievalOverrides: Partial<RetrievalOptions> = {};
+      let rerankerOverride: Reranker | undefined;
+      let boostDocumentIds: string[] = [];
+
+      if (config.queryRoutingEnabled) {
+        const routing = await documentRoutingService.route(input.userId, analysis, input.knowledgeBaseId);
+        boostDocumentIds = routing.boostDocumentIds;
+        queryIntelligenceTelemetryService.logEvent({
+          event: 'rag.routing.completed',
+          userId: input.userId,
+          routingConfidence: routing.confidence
+        });
+
+        if (config.metadataRetrievalEnabled) {
+          if (routing.confidence === 'HIGH' && routing.candidateDocumentIds.length) {
+            retrievalOverrides.documentIdFilter = routing.candidateDocumentIds;
+          }
+          if (analysis.expectedDocumentTypes.length) {
+            retrievalOverrides.documentTypeFilter = analysis.expectedDocumentTypes;
+          }
+        }
+      }
+
+      if (config.advancedRerankingEnabled) {
+        rerankerOverride = new IntelligenceAwareReranker(undefined, {
+          expectedDocumentTypes: analysis.expectedDocumentTypes,
+          expectedSections: config.sectionAwareRetrievalEnabled ? analysis.expectedSections : [],
+          boostDocumentIds,
+          isTableOrChartQuery: analysis.isTableOrChartQuery
+        });
+      }
+
+      if (config.adaptiveStrategyEnabled) {
+        const baseVectorWeight = env.server?.RAG_VECTOR_WEIGHT ?? 0.70;
+        const baseKeywordWeight = env.server?.RAG_KEYWORD_WEIGHT ?? 0.30;
+        const strategy = strategySelectorService.selectStrategy(analysis.intent, baseVectorWeight, baseKeywordWeight);
+        retrievalOverrides.vectorWeight = strategy.vectorWeight;
+        retrievalOverrides.keywordWeight = strategy.keywordWeight;
+        queryIntelligenceTelemetryService.logEvent({
+          event: 'rag.strategy.selected',
+          userId: input.userId,
+          strategy: analysis.retrievalStrategy
+        });
+      }
+
+      if (config.dynamicTopKEnabled) {
+        const baseVectorK = env.server?.RAG_VECTOR_CANDIDATE_K ?? 20;
+        const baseKeywordK = env.server?.RAG_KEYWORD_CANDIDATE_K ?? 20;
+        const baseTopK = env.server?.RAG_TOP_K ?? 5;
+        const dynK = dynamicTopKService.compute(
+          analysis.complexity,
+          analysis.isBroad,
+          analysis.isAmbiguous,
+          {
+            minCandidateK: config.minCandidateK,
+            maxCandidateK: config.maxCandidateK,
+            minFinalK: config.minFinalK,
+            maxFinalK: config.maxFinalK
+          },
+          baseVectorK,
+          baseKeywordK,
+          baseTopK
+        );
+        retrievalOverrides.vectorK = dynK.candidateK;
+        retrievalOverrides.keywordK = dynK.candidateK;
+        retrievalOverrides.topK = dynK.finalK;
+        queryIntelligenceTelemetryService.logEvent({
+          event: 'rag.dynamic_topk.selected',
+          userId: input.userId,
+          candidateK: dynK.candidateK,
+          finalK: dynK.finalK
+        });
+      }
+
+      return { retrievalOverrides, rerankerOverride, analysis };
+    } catch (err) {
+      console.warn('[AnswerOrchestratorService] computeIntelligentRetrievalOptions failed (falling back to existing behavior):', err);
+      return { retrievalOverrides: {} };
+    }
   }
 
   /**
@@ -222,6 +351,12 @@ export class AnswerOrchestratorService {
 
     const sourceMode = input.sourceMode || 'documents_only';
 
+    // 3.5 Phase 69B — Intelligence-Aware Adaptive Retrieval (master-gated, computed once).
+    const intelligentPlan = await this.computeIntelligentRetrievalOptions(input, effectiveQuery);
+    const effectiveRetrievalService = intelligentPlan.rerankerOverride
+      ? new RetrievalService(undefined, intelligentPlan.rerankerOverride)
+      : this.retrievalService;
+
     // 4. Primary Retrieval & Evidence Assessment
     let chunks: RetrievedChunk[] = [];
 
@@ -255,11 +390,12 @@ export class AnswerOrchestratorService {
       let hasStrongDoc = false;
 
       if (decision.shouldSearchDocs) {
-        const retResult = await this.retrievalService.retrieveContextWithTrace(input.userId, effectiveQuery, {
+        const retResult = await effectiveRetrievalService.retrieveContextWithTrace(input.userId, effectiveQuery, {
           knowledgeBaseId: input.searchAllKbs ? undefined : input.knowledgeBaseId,
           sourceMode: 'all_sources',
           queryVector: queryEmbedding.vector,
-          documentTypeFilter: input.documentTypeFilter
+          documentTypeFilter: input.documentTypeFilter,
+          ...intelligentPlan.retrievalOverrides
         });
         if (retResult.trace && retResult.trace.metrics) {
           latencyTrace.embeddingMs = retResult.trace.metrics.embeddingMs;
@@ -299,11 +435,12 @@ export class AnswerOrchestratorService {
       chunks = [...docChunks, ...webChunks];
       latencyTrace.evidenceFusionMs = Date.now() - fusionStart;
     } else {
-      const retResult = await this.retrievalService.retrieveContextWithTrace(input.userId, effectiveQuery, {
+      const retResult = await effectiveRetrievalService.retrieveContextWithTrace(input.userId, effectiveQuery, {
         knowledgeBaseId: input.searchAllKbs ? undefined : input.knowledgeBaseId,
         sourceMode,
         queryVector: queryEmbedding.vector,
-        documentTypeFilter: input.documentTypeFilter
+        documentTypeFilter: input.documentTypeFilter,
+        ...intelligentPlan.retrievalOverrides
       });
 
       if (retResult.trace && retResult.trace.metrics) {
@@ -365,10 +502,11 @@ export class AnswerOrchestratorService {
       const cleanRecoveryQuery = this.buildRecoveryQuery(input.question);
 
       if (cleanRecoveryQuery && cleanRecoveryQuery !== effectiveQuery.toLowerCase()) {
-        const recResult = await this.retrievalService.retrieveContextWithTrace(input.userId, cleanRecoveryQuery, {
+        const recResult = await effectiveRetrievalService.retrieveContextWithTrace(input.userId, cleanRecoveryQuery, {
           knowledgeBaseId: input.searchAllKbs ? undefined : input.knowledgeBaseId,
           sourceMode: (sourceMode === 'web_search' || sourceMode === 'auto') ? 'all_sources' : sourceMode,
-          documentTypeFilter: input.documentTypeFilter
+          documentTypeFilter: input.documentTypeFilter,
+          ...intelligentPlan.retrievalOverrides
         });
         latencyTrace.recoveryLatencyMs = Date.now() - recStart;
 

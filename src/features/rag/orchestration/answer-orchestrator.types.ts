@@ -71,4 +71,11 @@ export interface OrchestrationInput {
    * unfiltered cache scope, since this filter is intentionally not part of the cache key.
    */
   documentTypeFilter?: string[];
+  /**
+   * Optional Phase 69B document-routing filter (see RetrievalOptions.documentIdFilter). Populated
+   * only internally by the orchestrator's own document-routing step when confidence is HIGH —
+   * never set by an external caller. Bypasses the cache for the same reason as
+   * `documentTypeFilter` (intentionally not part of the cache key).
+   */
+  documentIdFilter?: string[];
 }

@@ -57,6 +57,9 @@ export class OllamaProvider implements LLMProvider {
 
   public async generate(request: LLMRequest): Promise<LLMResponse> {
     const startTime = Date.now();
+    if (request.images?.length) {
+      throw new Error(`${this.name} provider does not support multimodal image input.`);
+    }
     const model = request.modelOverride || (request.feature === 'CITY_EXPLORER' ? this.fastModel : this.defaultModel);
     const systemPrompt = request.systemPrompt || 'You are an authoritative AI assistant. Provide concise, accurate responses.';
 

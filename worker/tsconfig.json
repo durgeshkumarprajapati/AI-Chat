@@ -20,9 +20,11 @@
     "src/**/*",
     "../src/lib/storage.ts",
     "../src/lib/s3.ts",
+    "../src/lib/rabbitmq.ts",
     "../src/config/env.ts",
     "../src/errors/**/*",
     "../src/features/rag/multimodal/**/*",
-    "../src/features/document-intelligence/**/*"
+    "../src/features/document-intelligence/**/*",
+    "../src/features/document-management/**/*"
   ]
 }

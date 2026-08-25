@@ -108,6 +108,9 @@ export class DeepSeekProvider implements LLMProvider {
     if (!this.isEnabled || !apiKey) {
       throw new Error('DeepSeek provider is not enabled or DEEPSEEK_API_KEY is missing.');
     }
+    if (request.images?.length) {
+      throw new Error(`${this.name} provider does not support multimodal image input.`);
+    }
 
     const model =
       request.modelOverride ||

@@ -16,6 +16,8 @@ export interface RetrievedChunk {
   webUrl?: string;
   canonicalUrl?: string;
   metadata: Record<string, unknown>;
+  /** Phase 69B: the source document's createdAt, additively selected for freshness reranking signals. Optional — unused unless the intelligence-aware reranker is active. */
+  documentCreatedAt?: string;
 }
 
 export interface RetrievalOptions {
@@ -40,6 +42,13 @@ export interface RetrievalOptions {
    * complete no-op — no caller sets this yet, so existing retrieval behavior is unaffected.
    */
   documentTypeFilter?: string[];
+  /**
+   * Optional Phase 69B routing filter: keeps only chunks whose `documentId` is in this set.
+   * Same never-zeroing, no-op-by-default contract as `documentTypeFilter`; composes with it.
+   * Populated only internally by the orchestrator's document-routing step when confidence is
+   * HIGH — never set by an external caller directly.
+   */
+  documentIdFilter?: string[];
 }
 
 export interface RetrievalMetrics {

@@ -40,6 +40,13 @@ export interface LLMRequest {
   localOnly?: boolean;
   tools?: any[];
   responseFormat?: { type: string };
+  /**
+   * Phase 69C — optional multimodal image input (base64-encoded). Only the Gemini provider
+   * implements real handling of this field (calls Gemini's multimodal API); every other provider
+   * throws a clear "does not support multimodal image input" error rather than silently answering
+   * text-only. Absent (the default) is a complete no-op for every existing text-only call site.
+   */
+  images?: Array<{ mimeType: string; data: string }>;
 }
 
 export interface LLMResponse {

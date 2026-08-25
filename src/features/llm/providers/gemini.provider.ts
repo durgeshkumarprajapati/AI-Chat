@@ -109,11 +109,28 @@ export class GeminiProvider implements LLMProvider {
 
     const systemPrompt = request.systemPrompt || 'You are an intelligent AI assistant powered by Google Gemini.';
 
-    const messages = [{ role: 'system', content: systemPrompt }];
+    type MessagePart = { role: string; content: string | Array<Record<string, unknown>> };
+    const messages: MessagePart[] = [{ role: 'system', content: systemPrompt }];
     if (request.context) {
       messages.push({ role: 'user', content: `CONTEXT:\n${request.context}` });
     }
-    messages.push({ role: 'user', content: request.prompt });
+    // Phase 69C: when images are attached, send a multimodal content-parts array (Gemini's
+    // OpenAI-compatibility endpoint accepts image_url parts natively) instead of a plain string.
+    // Absent (the overwhelming majority of calls), this is byte-identical to today.
+    if (request.images?.length) {
+      messages.push({
+        role: 'user',
+        content: [
+          { type: 'text', text: request.prompt },
+          ...request.images.map((img) => ({
+            type: 'image_url',
+            image_url: { url: `data:${img.mimeType};base64,${img.data}` }
+          }))
+        ]
+      });
+    } else {
+      messages.push({ role: 'user', content: request.prompt });
+    }
 
     const endpoint = `${this.baseUrl}/chat/completions`;
     const controller = new AbortController();

@@ -8,6 +8,7 @@ import {
   LLMCapability
 } from '../llm.types';
 import { env } from '@/config/env';
+import { resolveModelForProvider } from '../utils/model-validator';
 
 export class DeepSeekProvider implements LLMProvider {
   public readonly name = 'deepseek';
@@ -71,11 +72,31 @@ export class DeepSeekProvider implements LLMProvider {
   public async healthCheck(): Promise<ProviderHealthStatus> {
     const start = Date.now();
     const apiKey = this.getApiKey();
+    const isConfigured = !!apiKey;
+
     if (!this.isEnabled) {
-      return { name: this.name, status: 'disabled', message: 'DeepSeek provider is disabled in configuration' };
+      return {
+        name: this.name,
+        provider: this.name,
+        status: 'disabled',
+        configured: isConfigured,
+        enabled: false,
+        available: false,
+        model: this.defaultModel,
+        message: 'DeepSeek provider is disabled in configuration'
+      };
     }
     if (!apiKey) {
-      return { name: this.name, status: 'unhealthy', message: 'DEEPSEEK_API_KEY is missing' };
+      return {
+        name: this.name,
+        provider: this.name,
+        status: 'unhealthy',
+        configured: false,
+        enabled: true,
+        available: false,
+        model: this.defaultModel,
+        message: 'DEEPSEEK_API_KEY is missing'
+      };
     }
 
     try {
@@ -85,13 +106,37 @@ export class DeepSeekProvider implements LLMProvider {
       });
       const latencyMs = Date.now() - start;
       if (res.ok) {
-        return { name: this.name, status: 'healthy', latencyMs };
+        return {
+          name: this.name,
+          provider: this.name,
+          status: 'healthy',
+          configured: true,
+          enabled: true,
+          available: true,
+          model: this.defaultModel,
+          latencyMs
+        };
       }
-      return { name: this.name, status: 'unhealthy', latencyMs, message: `HTTP ${res.status}` };
+      return {
+        name: this.name,
+        provider: this.name,
+        status: 'unhealthy',
+        configured: true,
+        enabled: true,
+        available: false,
+        model: this.defaultModel,
+        latencyMs,
+        message: `HTTP ${res.status}`
+      };
     } catch (err) {
       return {
         name: this.name,
+        provider: this.name,
         status: 'unhealthy',
+        configured: true,
+        enabled: true,
+        available: false,
+        model: this.defaultModel,
         latencyMs: Date.now() - start,
         message: err instanceof Error ? err.message : String(err)
       };
@@ -99,7 +144,7 @@ export class DeepSeekProvider implements LLMProvider {
   }
 
   private getApiKey(): string | undefined {
-    return this.apiKey || env.server?.DEEPSEEK_API_KEY || process.env.DEEPSEEK_API_KEY;
+    return this.apiKey !== undefined ? this.apiKey : (env.server?.DEEPSEEK_API_KEY || process.env.DEEPSEEK_API_KEY);
   }
 
   public async generate(request: LLMRequest): Promise<LLMResponse> {
@@ -112,11 +157,10 @@ export class DeepSeekProvider implements LLMProvider {
       throw new Error(`${this.name} provider does not support multimodal image input.`);
     }
 
-    const model =
-      request.modelOverride ||
-      (request.capabilitiesRequired?.includes(LLMCapability.REASONING)
-        ? this.reasoningModel
-        : this.defaultModel);
+    const fallbackModel = request.capabilitiesRequired?.includes(LLMCapability.REASONING)
+      ? this.reasoningModel
+      : this.defaultModel;
+    const model = resolveModelForProvider(this.name, request.modelOverride, fallbackModel);
 
     const systemPrompt = request.systemPrompt || 'You are an intelligent AI assistant powered by DeepSeek.';
 
@@ -190,11 +234,10 @@ export class DeepSeekProvider implements LLMProvider {
       throw new Error('DeepSeek provider is not enabled or DEEPSEEK_API_KEY is missing.');
     }
 
-    const model =
-      request.modelOverride ||
-      (request.capabilitiesRequired?.includes(LLMCapability.REASONING)
-        ? this.reasoningModel
-        : this.defaultModel);
+    const fallbackModel = request.capabilitiesRequired?.includes(LLMCapability.REASONING)
+      ? this.reasoningModel
+      : this.defaultModel;
+    const model = resolveModelForProvider(this.name, request.modelOverride, fallbackModel);
 
     const systemPrompt = request.systemPrompt || 'You are an intelligent AI assistant powered by DeepSeek.';
     const messages = [{ role: 'system', content: systemPrompt }];

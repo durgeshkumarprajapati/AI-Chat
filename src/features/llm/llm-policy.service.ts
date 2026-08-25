@@ -1,6 +1,7 @@
 import { FeatureScope, ComplexityLevel, RoutingDecision, LLMRequest } from './llm.types';
 import { env } from '@/config/env';
 import { llmCircuitBreakerService } from './llm-circuit-breaker.service';
+import { resolveModelForProvider } from './utils/model-validator';
 
 export class LLMPolicyService {
   /**
@@ -43,7 +44,7 @@ export class LLMPolicyService {
 
     const geminiFastModel = env.server?.GEMINI_FAST_MODEL || process.env.GEMINI_FAST_MODEL || 'gemini-2.5-flash';
     const geminiReasoningModel = env.server?.GEMINI_REASONING_MODEL || process.env.GEMINI_REASONING_MODEL || 'gemini-2.5-pro';
-    const deepseekDefaultModel = env.server?.DEEPSEEK_DEFAULT_MODEL || process.env.DEEPSEEK_DEFAULT_MODEL || 'deepseek-chat';
+    const deepseekDefaultModel = env.server?.DEEPSEEK_DEFAULT_MODEL || process.env.DEEPSEEK_DEFAULT_MODEL || 'deepseek-v4-flash';
     const deepseekReasoningModel = env.server?.DEEPSEEK_REASONING_MODEL || process.env.DEEPSEEK_REASONING_MODEL || 'deepseek-reasoner';
     const groqDefaultModel = env.server?.GROQ_DEFAULT_MODEL || process.env.GROQ_DEFAULT_MODEL || 'llama-3.3-70b-versatile';
     const groqReasoningModel = env.server?.GROQ_REASONING_MODEL || process.env.GROQ_REASONING_MODEL || 'deepseek-r1-distill-llama-70b';
@@ -58,7 +59,7 @@ export class LLMPolicyService {
       if (isGeminiAvailable) {
         return {
           providerName: 'gemini',
-          modelName: request.modelOverride || geminiFastModel,
+          modelName: resolveModelForProvider('gemini', request.modelOverride, geminiFastModel),
           complexity,
           reason: 'Explicit feature policy for CITY_EXPLORER routed to Gemini Fast'
         };
@@ -67,7 +68,7 @@ export class LLMPolicyService {
       if (isDeepSeekAvailable) {
         return {
           providerName: 'deepseek',
-          modelName: request.modelOverride || deepseekDefaultModel,
+          modelName: resolveModelForProvider('deepseek', request.modelOverride, deepseekDefaultModel),
           complexity,
           reason: 'CITY_EXPLORER fallback routed to DeepSeek'
         };
@@ -76,7 +77,7 @@ export class LLMPolicyService {
       if (isGroqAvailable) {
         return {
           providerName: 'groq',
-          modelName: request.modelOverride || groqDefaultModel,
+          modelName: resolveModelForProvider('groq', request.modelOverride, groqDefaultModel),
           complexity,
           reason: 'CITY_EXPLORER fallback routed to Groq'
         };
@@ -87,7 +88,7 @@ export class LLMPolicyService {
         if (isKimiAvailable) {
           return {
             providerName: 'kimi',
-            modelName: kimiModel,
+            modelName: resolveModelForProvider('kimi', request.modelOverride, kimiModel),
             complexity,
             reason: 'CITY_EXPLORER fallback to Kimi (Ollama fallback disabled)'
           };
@@ -95,7 +96,7 @@ export class LLMPolicyService {
         // If Gemini and Kimi are unavailable, return Gemini decision so gateway falls back to WebSearch, NOT Ollama
         return {
           providerName: 'gemini',
-          modelName: request.modelOverride || geminiFastModel,
+          modelName: resolveModelForProvider('gemini', request.modelOverride, geminiFastModel),
           complexity,
           reason: 'Explicit feature policy for CITY_EXPLORER requiring Gemini'
         };
@@ -105,9 +106,10 @@ export class LLMPolicyService {
     // 2. Explicit Overrides & Local-Only Constraints (ZERO CLOUD LEAKAGE)
     if (request.localOnly || (!isGeminiAvailable && !isDeepSeekAvailable && !isGroqAvailable && !isKimiAvailable && isOllamaAvailable)) {
       this.assertCityExplorerProviderAllowed('ollama', request);
+      const defaultOllamaModel = complexity === 'LOW' ? ollamaFastModel : ollamaChatModel;
       return {
         providerName: 'ollama',
-        modelName: request.modelOverride || (complexity === 'LOW' ? ollamaFastModel : ollamaChatModel),
+        modelName: resolveModelForProvider('ollama', request.modelOverride, defaultOllamaModel),
         complexity,
         reason: request.localOnly ? 'Enforced LOCAL_ONLY policy' : 'Local Ollama model selected'
       };
@@ -117,25 +119,28 @@ export class LLMPolicyService {
       const pName = request.providerOverride.toLowerCase();
       this.assertCityExplorerProviderAllowed(pName, request);
       if (pName === 'gemini' && isGeminiAvailable) {
+        const fallbackGeminiModel = complexity === 'HIGH' ? geminiReasoningModel : geminiFastModel;
         return {
           providerName: 'gemini',
-          modelName: request.modelOverride || (complexity === 'HIGH' ? geminiReasoningModel : geminiFastModel),
+          modelName: resolveModelForProvider('gemini', request.modelOverride, fallbackGeminiModel),
           complexity,
           reason: 'Explicit provider override to Gemini'
         };
       }
       if (pName === 'deepseek' && isDeepSeekAvailable) {
+        const fallbackDeepSeekModel = complexity === 'HIGH' ? deepseekReasoningModel : deepseekDefaultModel;
         return {
           providerName: 'deepseek',
-          modelName: request.modelOverride || (complexity === 'HIGH' ? deepseekReasoningModel : deepseekDefaultModel),
+          modelName: resolveModelForProvider('deepseek', request.modelOverride, fallbackDeepSeekModel),
           complexity,
           reason: 'Explicit provider override to DeepSeek'
         };
       }
       if (pName === 'groq' && isGroqAvailable) {
+        const fallbackGroqModel = complexity === 'HIGH' ? groqReasoningModel : groqDefaultModel;
         return {
           providerName: 'groq',
-          modelName: request.modelOverride || (complexity === 'HIGH' ? groqReasoningModel : groqDefaultModel),
+          modelName: resolveModelForProvider('groq', request.modelOverride, fallbackGroqModel),
           complexity,
           reason: 'Explicit provider override to Groq'
         };
@@ -143,14 +148,14 @@ export class LLMPolicyService {
       if (pName === 'kimi' && isKimiAvailable) {
         return {
           providerName: 'kimi',
-          modelName: request.modelOverride || kimiModel,
+          modelName: resolveModelForProvider('kimi', request.modelOverride, kimiModel),
           complexity,
           reason: 'Explicit provider override to Kimi'
         };
       }
       return {
         providerName: 'ollama',
-        modelName: request.modelOverride || ollamaChatModel,
+        modelName: resolveModelForProvider('ollama', request.modelOverride, ollamaChatModel),
         complexity,
         reason: 'Explicit provider override to Ollama'
       };

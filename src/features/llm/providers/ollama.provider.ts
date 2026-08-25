@@ -9,6 +9,7 @@ import {
 } from '../llm.types';
 import { env } from '@/config/env';
 import { DocumentProcessingError } from '@/errors';
+import { resolveModelForProvider } from '../utils/model-validator';
 
 export class OllamaProvider implements LLMProvider {
   public readonly name = 'ollama';
@@ -42,13 +43,37 @@ export class OllamaProvider implements LLMProvider {
       });
       const latencyMs = Date.now() - start;
       if (res.ok) {
-        return { name: this.name, status: 'healthy', latencyMs };
+        return {
+          name: this.name,
+          provider: this.name,
+          status: 'healthy',
+          configured: true,
+          enabled: true,
+          available: true,
+          model: this.defaultModel,
+          latencyMs
+        };
       }
-      return { name: this.name, status: 'unhealthy', latencyMs, message: `HTTP ${res.status}` };
+      return {
+        name: this.name,
+        provider: this.name,
+        status: 'unhealthy',
+        configured: true,
+        enabled: true,
+        available: false,
+        model: this.defaultModel,
+        latencyMs,
+        message: `HTTP ${res.status}`
+      };
     } catch (err) {
       return {
         name: this.name,
+        provider: this.name,
         status: 'unhealthy',
+        configured: true,
+        enabled: true,
+        available: false,
+        model: this.defaultModel,
         latencyMs: Date.now() - start,
         message: err instanceof Error ? err.message : String(err)
       };
@@ -60,7 +85,8 @@ export class OllamaProvider implements LLMProvider {
     if (request.images?.length) {
       throw new Error(`${this.name} provider does not support multimodal image input.`);
     }
-    const model = request.modelOverride || (request.feature === 'CITY_EXPLORER' ? this.fastModel : this.defaultModel);
+    const fallbackModel = request.feature === 'CITY_EXPLORER' ? this.fastModel : this.defaultModel;
+    const model = resolveModelForProvider(this.name, request.modelOverride, fallbackModel);
     const systemPrompt = request.systemPrompt || 'You are an authoritative AI assistant. Provide concise, accurate responses.';
 
     let promptText = request.prompt;
@@ -127,7 +153,8 @@ export class OllamaProvider implements LLMProvider {
   }
 
   public async *stream(request: LLMRequest): AsyncIterable<LLMStreamChunk> {
-    const model = request.modelOverride || (request.feature === 'CITY_EXPLORER' ? this.fastModel : this.defaultModel);
+    const fallbackModel = request.feature === 'CITY_EXPLORER' ? this.fastModel : this.defaultModel;
+    const model = resolveModelForProvider(this.name, request.modelOverride, fallbackModel);
     const systemPrompt = request.systemPrompt || 'You are an authoritative AI assistant. Provide concise, accurate responses.';
 
     let promptText = request.prompt;

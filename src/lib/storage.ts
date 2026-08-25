@@ -107,10 +107,10 @@ export function getStorageProvider(): StorageProvider {
   if (storageInstance) return storageInstance;
 
   const providerType =
-    process.env.AWS_STORAGE_PROVIDER ||
     process.env.STORAGE_PROVIDER ||
-    env.server?.AWS_STORAGE_PROVIDER ||
     env.server?.STORAGE_PROVIDER ||
+    process.env.AWS_STORAGE_PROVIDER ||
+    env.server?.AWS_STORAGE_PROVIDER ||
     'local';
 
   if (providerType === 's3') {
@@ -123,4 +123,10 @@ export function getStorageProvider(): StorageProvider {
   return storageInstance!;
 }
 
-export const storage = getStorageProvider();
+export const storage: StorageProvider = new Proxy({} as StorageProvider, {
+  get(_target, prop, receiver) {
+    const instance = getStorageProvider();
+    const value = Reflect.get(instance, prop, receiver);
+    return typeof value === 'function' ? value.bind(instance) : value;
+  },
+});

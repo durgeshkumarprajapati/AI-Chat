@@ -214,42 +214,50 @@ export default function KnowledgeBaseDetailPage() {
 
   return (
     <div className="w-full max-w-[1600px] mx-auto space-y-8">
-      {/* Header & Navigation */}
-      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 border-b border-slate-800 pb-6">
-        <div>
-          <div className="flex items-center space-x-3">
-            <Link href="/knowledge-bases" className="text-slate-400 hover:text-white text-sm">
-              ← Knowledge Bases
-            </Link>
-            <span className="text-slate-600">/</span>
-            <span className="text-xs font-mono text-slate-400">{kb.id}</span>
-          </div>
-          <h1 className="text-2xl font-bold text-white tracking-tight mt-1">{kb.name}</h1>
-          {kb.description && <p className="text-xs text-slate-400 mt-1">{kb.description}</p>}
-        </div>
-
-        {/* Action Toolbar */}
-        <div className="flex flex-wrap items-center gap-2">
+      {/* Back Link & Header */}
+      <div className="flex flex-col md:flex-row md:items-center justify-between gap-4 pb-6 border-b border-slate-200 dark:border-slate-800">
+        <div className="space-y-2">
           <Link
-            href={`/chat?knowledgeBaseId=${kb.id}`}
-            className="px-4 py-2 rounded-xl bg-indigo-600 hover:bg-indigo-500 text-white text-xs font-semibold shadow-lg shadow-indigo-900/30 transition-all flex items-center space-x-1.5"
+            href="/knowledge-bases"
+            className="inline-flex items-center space-x-1.5 text-xs text-slate-500 hover:text-slate-900 dark:hover:text-white transition-colors"
           >
-            <span>💬 Chat in Scope</span>
+            <span>←</span>
+            <span>Back to Knowledge Bases</span>
           </Link>
 
+          <div className="flex items-center space-x-3">
+            <h1 className="text-2xl sm:text-3xl font-extrabold text-slate-900 dark:text-white tracking-tight">{kb.name}</h1>
+            <span
+              className={`px-3 py-1 rounded-full text-xs font-mono font-semibold border ${
+                kb.type === 'HYBRID_COLLECTION'
+                  ? 'bg-indigo-50 dark:bg-indigo-950/60 text-indigo-700 dark:text-indigo-300 border-indigo-200 dark:border-indigo-800'
+                  : 'bg-emerald-50 dark:bg-emerald-950/60 text-emerald-700 dark:text-emerald-300 border-emerald-200 dark:border-emerald-800'
+              }`}
+            >
+              {kb.type}
+            </span>
+          </div>
+
+          <p className="text-xs text-slate-600 dark:text-slate-400 max-w-2xl">
+            {kb.description || 'Dedicated document collection for domain-specific RAG vector retrieval.'}
+          </p>
+        </div>
+
+        {/* Header Action Buttons */}
+        <div className="flex items-center space-x-2">
           <button
             onClick={() => {
               fetchUserDocumentsForPicker();
               setIsAddModalOpen(true);
             }}
-            className="px-3.5 py-2 rounded-xl bg-slate-900 border border-slate-800 text-xs font-semibold text-slate-200 hover:bg-slate-800 transition-colors"
+            className="px-3.5 py-2 rounded-xl bg-indigo-600 hover:bg-indigo-500 text-white text-xs font-semibold shadow-sm transition-colors"
           >
-            + Add Existing Docs
+            + Add Existing Document
           </button>
 
           <Link
             href="/web-sources"
-            className="px-3.5 py-2 rounded-xl bg-slate-900 border border-slate-800 text-xs font-semibold text-indigo-300 hover:bg-slate-800 transition-colors"
+            className="px-3.5 py-2 rounded-xl bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 text-xs font-semibold text-indigo-600 dark:text-indigo-300 hover:bg-slate-50 dark:hover:bg-slate-800 transition-colors shadow-sm"
           >
             🌐 Add Web Source
           </Link>
@@ -264,7 +272,7 @@ export default function KnowledgeBaseDetailPage() {
           <button
             disabled={isUploading}
             onClick={() => fileInputRef.current?.click()}
-            className="px-3.5 py-2 rounded-xl bg-slate-900 border border-slate-800 text-xs font-semibold text-indigo-300 hover:bg-slate-800 transition-colors disabled:opacity-50"
+            className="px-3.5 py-2 rounded-xl bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 text-xs font-semibold text-indigo-600 dark:text-indigo-300 hover:bg-slate-50 dark:hover:bg-slate-800 transition-colors disabled:opacity-50 shadow-sm"
           >
             {isUploading ? 'Uploading...' : '📤 Upload PDF to KB'}
           </button>
@@ -276,8 +284,8 @@ export default function KnowledgeBaseDetailPage() {
         <div
           className={`p-4 rounded-xl border text-xs flex items-center justify-between ${
             bannerMessage.type === 'error'
-              ? 'bg-rose-950/80 border-rose-800 text-rose-300'
-              : 'bg-emerald-950/80 border-emerald-800 text-emerald-300'
+              ? 'bg-rose-50 dark:bg-rose-950/80 border-rose-200 dark:border-rose-800 text-rose-800 dark:text-rose-300'
+              : 'bg-emerald-50 dark:bg-emerald-950/80 border-emerald-200 dark:border-emerald-800 text-emerald-800 dark:text-emerald-300'
           }`}
         >
           <div className="flex items-center space-x-2">
@@ -292,52 +300,52 @@ export default function KnowledgeBaseDetailPage() {
 
       {/* Overview Statistics Cards */}
       <div className="grid grid-cols-2 sm:grid-cols-4 gap-4 text-xs font-mono">
-        <div className="p-4 rounded-2xl bg-slate-900 border border-slate-800 shadow-xl space-y-1">
-          <span className="text-slate-500 block text-[11px]">Total Documents</span>
-          <span className="text-2xl font-bold text-white">{kb.documentCount}</span>
+        <div className="p-4 rounded-2xl bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 shadow-sm dark:shadow-xl space-y-1">
+          <span className="text-slate-500 dark:text-slate-400 block text-[11px]">Total Documents</span>
+          <span className="text-2xl font-bold text-slate-900 dark:text-white">{kb.documentCount}</span>
         </div>
-        <div className="p-4 rounded-2xl bg-slate-900 border border-slate-800 shadow-xl space-y-1">
-          <span className="text-slate-500 block text-[11px]">Completed & Ready</span>
-          <span className="text-2xl font-bold text-emerald-400">{kb.completedDocuments}</span>
+        <div className="p-4 rounded-2xl bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 shadow-sm dark:shadow-xl space-y-1">
+          <span className="text-slate-500 dark:text-slate-400 block text-[11px]">Completed & Ready</span>
+          <span className="text-2xl font-bold text-emerald-600 dark:text-emerald-400">{kb.completedDocuments}</span>
         </div>
-        <div className="p-4 rounded-2xl bg-slate-900 border border-slate-800 shadow-xl space-y-1">
-          <span className="text-slate-500 block text-[11px]">Processing / Failed</span>
+        <div className="p-4 rounded-2xl bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 shadow-sm dark:shadow-xl space-y-1">
+          <span className="text-slate-500 dark:text-slate-400 block text-[11px]">Processing / Failed</span>
           <div className="flex items-center space-x-2">
-            <span className="text-2xl font-bold text-amber-400">{kb.processingDocuments}</span>
+            <span className="text-2xl font-bold text-amber-600 dark:text-amber-400">{kb.processingDocuments}</span>
             {kb.failedDocuments > 0 && (
-              <span className="text-xs text-rose-400">({kb.failedDocuments} failed)</span>
+              <span className="text-xs text-rose-600 dark:text-rose-400">({kb.failedDocuments} failed)</span>
             )}
           </div>
         </div>
-        <div className="p-4 rounded-2xl bg-slate-900 border border-slate-800 shadow-xl space-y-1">
-          <span className="text-slate-500 block text-[11px]">Vector Chunks</span>
-          <span className="text-2xl font-bold text-indigo-400">{kb.totalChunks}</span>
+        <div className="p-4 rounded-2xl bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 shadow-sm dark:shadow-xl space-y-1">
+          <span className="text-slate-500 dark:text-slate-400 block text-[11px]">Vector Chunks</span>
+          <span className="text-2xl font-bold text-indigo-600 dark:text-indigo-400">{kb.totalChunks}</span>
         </div>
       </div>
 
       {/* Member Documents Table */}
-      <div className="rounded-2xl bg-slate-900 border border-slate-800 p-6 space-y-4 shadow-xl">
-        <div className="flex items-center justify-between border-b border-slate-800 pb-4">
+      <div className="rounded-2xl bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 p-6 space-y-4 shadow-sm dark:shadow-xl">
+        <div className="flex items-center justify-between border-b border-slate-200 dark:border-slate-800 pb-4">
           <div>
-            <h2 className="text-lg font-bold text-white">Member Documents</h2>
-            <p className="text-xs text-slate-400 mt-0.5">
+            <h2 className="text-lg font-bold text-slate-900 dark:text-white">Member Documents</h2>
+            <p className="text-xs text-slate-500 dark:text-slate-400 mt-0.5">
               Documents currently associated with this collection for scoped hybrid vector retrieval.
             </p>
           </div>
-          <span className="text-xs font-mono text-slate-400 bg-slate-950 px-3 py-1 rounded-full border border-slate-800">
+          <span className="text-xs font-mono text-slate-600 dark:text-slate-400 bg-slate-100 dark:bg-slate-950 px-3 py-1 rounded-full border border-slate-200 dark:border-slate-800">
             {memberDocs.length} Members
           </span>
         </div>
 
         {memberDocs.length === 0 ? (
-          <div className="text-center py-12 text-slate-500 text-xs font-mono space-y-3">
+          <div className="text-center py-12 text-slate-500 dark:text-slate-400 text-xs font-mono space-y-3">
             <p>No documents added to this Knowledge Base yet.</p>
             <button
               onClick={() => {
                 fetchUserDocumentsForPicker();
                 setIsAddModalOpen(true);
               }}
-              className="px-4 py-2 rounded-xl bg-slate-800 hover:bg-slate-700 text-indigo-400 text-xs font-semibold"
+              className="px-4 py-2 rounded-xl bg-slate-100 dark:bg-slate-800 hover:bg-slate-200 dark:hover:bg-slate-700 text-indigo-600 dark:text-indigo-400 text-xs font-semibold transition-colors"
             >
               + Add Existing Documents
             </button>
@@ -346,7 +354,7 @@ export default function KnowledgeBaseDetailPage() {
           <div className="overflow-x-auto">
             <table className="w-full text-left text-xs">
               <thead>
-                <tr className="text-slate-400 border-b border-slate-800 font-mono uppercase">
+                <tr className="text-slate-500 dark:text-slate-400 border-b border-slate-200 dark:border-slate-800 font-mono uppercase">
                   <th className="pb-3 font-semibold">Filename</th>
                   <th className="pb-3 font-semibold">Size</th>
                   <th className="pb-3 font-semibold">Pages</th>
@@ -355,43 +363,43 @@ export default function KnowledgeBaseDetailPage() {
                   <th className="pb-3 text-right font-semibold">Actions</th>
                 </tr>
               </thead>
-              <tbody className="divide-y divide-slate-800/60">
+              <tbody className="divide-y divide-slate-100 dark:divide-slate-800/60">
                 {memberDocs.map((doc) => (
-                  <tr key={doc.id} className="hover:bg-slate-950/40">
-                    <td className="py-3 font-medium text-white max-w-[220px] truncate">
-                      <Link href={`/documents/${doc.id}`} className="hover:text-indigo-400 transition-colors">
+                  <tr key={doc.id} className="hover:bg-slate-50 dark:hover:bg-slate-950/40 transition-colors">
+                    <td className="py-3 font-medium text-slate-900 dark:text-white max-w-[220px] truncate">
+                      <Link href={`/documents/${doc.id}`} className="hover:text-indigo-600 dark:hover:text-indigo-400 transition-colors">
                         {doc.filename}
                       </Link>
                     </td>
-                    <td className="py-3 text-slate-400 font-mono">{(doc.fileSize / 1024 / 1024).toFixed(2)} MB</td>
-                    <td className="py-3 text-slate-300 font-mono">{doc.pageCount || '-'}</td>
+                    <td className="py-3 text-slate-500 dark:text-slate-400 font-mono">{(doc.fileSize / 1024 / 1024).toFixed(2)} MB</td>
+                    <td className="py-3 text-slate-700 dark:text-slate-300 font-mono">{doc.pageCount || '-'}</td>
                     <td className="py-3">
                       <span
                         className={`px-2.5 py-0.5 rounded-full text-[11px] font-semibold ${
                           doc.status === 'PROCESSING'
-                            ? 'bg-amber-950 text-amber-300 border border-amber-800'
+                            ? 'bg-amber-50 dark:bg-amber-950 text-amber-700 dark:text-amber-300 border border-amber-200 dark:border-amber-800'
                             : doc.status === 'COMPLETED'
-                            ? 'bg-emerald-950 text-emerald-300 border border-emerald-800'
+                            ? 'bg-emerald-50 dark:bg-emerald-950 text-emerald-700 dark:text-emerald-300 border border-emerald-200 dark:border-emerald-800'
                             : doc.status === 'FAILED'
-                            ? 'bg-rose-950 text-rose-300 border border-rose-800'
-                            : 'bg-slate-800 text-slate-300'
+                            ? 'bg-rose-50 dark:bg-rose-950 text-rose-700 dark:text-rose-300 border border-rose-200 dark:border-rose-800'
+                            : 'bg-slate-100 dark:bg-slate-800 text-slate-700 dark:text-slate-300'
                         }`}
                       >
                         {doc.status}
                       </span>
                     </td>
-                    <td className="py-3 text-slate-400 font-mono">{new Date(doc.addedAt).toLocaleDateString()}</td>
+                    <td className="py-3 text-slate-500 dark:text-slate-400 font-mono">{new Date(doc.addedAt).toLocaleDateString()}</td>
                     <td className="py-3 text-right space-x-2">
                       <Link
                         href={`/documents/${doc.id}`}
-                        className="text-slate-400 hover:text-white font-medium"
+                        className="text-slate-500 hover:text-slate-900 dark:text-slate-400 dark:hover:text-white font-medium"
                       >
                         Inspect
                       </Link>
                       <button
                         disabled={actionLoading}
                         onClick={() => handleRemoveMember(doc.id, doc.filename)}
-                        className="text-rose-400 hover:text-rose-300 font-medium"
+                        className="text-rose-600 hover:text-rose-700 dark:text-rose-400 dark:hover:text-rose-300 font-medium"
                       >
                         Remove
                       </button>
@@ -406,19 +414,19 @@ export default function KnowledgeBaseDetailPage() {
 
       {/* Add Document Picker Modal */}
       {isAddModalOpen && (
-        <div className="fixed inset-0 z-50 bg-black/80 backdrop-blur-sm flex items-center justify-center p-4">
-          <div className="max-w-lg w-full rounded-2xl bg-slate-900 border border-slate-800 p-6 space-y-4 shadow-2xl">
-            <div className="flex items-center justify-between border-b border-slate-800 pb-3">
-              <h3 className="text-lg font-bold text-white">Add Documents to Collection</h3>
-              <button onClick={() => setIsAddModalOpen(false)} className="text-slate-500 hover:text-white">
+        <div className="fixed inset-0 z-50 bg-slate-900/60 dark:bg-black/80 backdrop-blur-sm flex items-center justify-center p-4">
+          <div className="max-w-lg w-full rounded-2xl bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 p-6 space-y-4 shadow-2xl">
+            <div className="flex items-center justify-between border-b border-slate-200 dark:border-slate-800 pb-3">
+              <h3 className="text-lg font-bold text-slate-900 dark:text-white">Add Documents to Collection</h3>
+              <button onClick={() => setIsAddModalOpen(false)} className="text-slate-400 hover:text-slate-600 dark:hover:text-white">
                 ✕
               </button>
             </div>
 
             {modalLoading ? (
-              <div className="py-8 text-center text-slate-500 font-mono text-xs">Loading available documents...</div>
+              <div className="py-8 text-center text-slate-500 dark:text-slate-400 font-mono text-xs">Loading available documents...</div>
             ) : userDocOptions.length === 0 ? (
-              <div className="py-8 text-center text-slate-500 text-xs">No documents available in your account.</div>
+              <div className="py-8 text-center text-slate-500 dark:text-slate-400 text-xs">No documents available in your account.</div>
             ) : (
               <div className="max-h-60 overflow-y-auto space-y-2 pr-1">
                 {userDocOptions.map((doc) => (
@@ -426,10 +434,10 @@ export default function KnowledgeBaseDetailPage() {
                     key={doc.id}
                     className={`flex items-center justify-between p-3 rounded-xl border text-xs cursor-pointer transition-colors ${
                       doc.isMember
-                        ? 'bg-slate-950/40 border-slate-800/40 opacity-60 cursor-not-allowed'
+                        ? 'bg-slate-50 dark:bg-slate-950/40 border-slate-200 dark:border-slate-800/40 opacity-60 cursor-not-allowed'
                         : selectedDocIds.includes(doc.id)
-                        ? 'bg-indigo-950/60 border-indigo-500 text-white'
-                        : 'bg-slate-950 border-slate-800 hover:border-slate-700 text-slate-200'
+                        ? 'bg-indigo-50 dark:bg-indigo-950/60 border-indigo-500 text-indigo-950 dark:text-white'
+                        : 'bg-white dark:bg-slate-950 border-slate-200 dark:border-slate-800 hover:border-slate-300 dark:hover:border-slate-700 text-slate-800 dark:text-slate-200'
                     }`}
                   >
                     <div className="flex items-center space-x-3 max-w-[300px] truncate">
@@ -445,7 +453,7 @@ export default function KnowledgeBaseDetailPage() {
                             setSelectedDocIds((prev) => prev.filter((id) => id !== doc.id));
                           }
                         }}
-                        className="rounded border-slate-700 bg-slate-900 text-indigo-600 focus:ring-0"
+                        className="rounded border-slate-300 dark:border-slate-700 bg-slate-50 dark:bg-slate-900 text-indigo-600 focus:ring-0"
                       />
                       <span className="truncate font-medium">{doc.filename}</span>
                     </div>
@@ -454,25 +462,25 @@ export default function KnowledgeBaseDetailPage() {
                       <span
                         className={`px-2 py-0.5 rounded text-[10px] font-mono ${
                           doc.status === 'COMPLETED'
-                            ? 'bg-emerald-950 text-emerald-400 border border-emerald-800'
-                            : 'bg-amber-950 text-amber-400 border border-amber-800'
+                            ? 'bg-emerald-50 dark:bg-emerald-950 text-emerald-700 dark:text-emerald-400 border border-emerald-200 dark:border-emerald-800'
+                            : 'bg-amber-50 dark:bg-amber-950 text-amber-700 dark:text-amber-400 border border-amber-200 dark:border-amber-800'
                         }`}
                       >
                         {doc.status}
                       </span>
-                      {doc.isMember && <span className="text-[10px] font-mono text-slate-500">Already Added</span>}
+                      {doc.isMember && <span className="text-[10px] font-mono text-slate-400 dark:text-slate-500">Already Added</span>}
                     </div>
                   </label>
                 ))}
               </div>
             )}
 
-            <div className="flex items-center justify-between pt-2 border-t border-slate-800 text-xs">
-              <span className="text-slate-400">{selectedDocIds.length} document(s) selected</span>
+            <div className="flex items-center justify-between pt-2 border-t border-slate-200 dark:border-slate-800 text-xs">
+              <span className="text-slate-500 dark:text-slate-400">{selectedDocIds.length} document(s) selected</span>
               <div className="flex items-center space-x-3">
                 <button
                   onClick={() => setIsAddModalOpen(false)}
-                  className="px-4 py-2 rounded-xl bg-slate-800 text-slate-300 text-xs font-semibold hover:bg-slate-700"
+                  className="px-4 py-2 rounded-xl bg-slate-100 dark:bg-slate-800 text-slate-700 dark:text-slate-300 text-xs font-semibold hover:bg-slate-200 dark:hover:bg-slate-700 transition-colors"
                 >
                   Cancel
                 </button>

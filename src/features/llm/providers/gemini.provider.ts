@@ -8,6 +8,7 @@ import {
   LLMCapability
 } from '../llm.types';
 import { env } from '@/config/env';
+import { resolveModelForProvider } from '../utils/model-validator';
 
 export class GeminiProvider implements LLMProvider {
   public readonly name = 'gemini';
@@ -22,8 +23,8 @@ export class GeminiProvider implements LLMProvider {
   constructor(options?: {
     baseUrl?: string;
     apiKey?: string;
-    fastModel?: string;
-    reasoningModel?: string;
+    defaultFastModel?: string;
+    defaultReasoningModel?: string;
     enabled?: boolean;
     timeoutMs?: number;
     maxOutputTokens?: number;
@@ -33,18 +34,26 @@ export class GeminiProvider implements LLMProvider {
       process.env.GEMINI_BASE_URL ||
       'https://generativelanguage.googleapis.com/v1beta/openai'
     ).replace(/\/+$/, '');
-    this.apiKey = options?.apiKey || env.server?.GEMINI_API_KEY || process.env.GEMINI_API_KEY;
+    this.apiKey =
+      options?.apiKey !== undefined
+        ? options.apiKey
+        : env.server?.GEMINI_API_KEY ||
+          process.env.GEMINI_API_KEY ||
+          (process.env.NODE_ENV === 'test' ? 'mock-gemini-key' : undefined);
     this.defaultFastModel =
-      options?.fastModel || env.server?.GEMINI_FAST_MODEL || process.env.GEMINI_FAST_MODEL || 'gemini-2.5-flash';
+      options?.defaultFastModel ||
+      env.server?.GEMINI_FAST_MODEL ||
+      process.env.GEMINI_FAST_MODEL ||
+      'gemini-2.5-flash';
     this.defaultReasoningModel =
-      options?.reasoningModel ||
+      options?.defaultReasoningModel ||
       env.server?.GEMINI_REASONING_MODEL ||
       process.env.GEMINI_REASONING_MODEL ||
       'gemini-2.5-pro';
     this.isEnabled =
       options?.enabled ??
       (env.server?.GEMINI_ENABLED ?? (process.env.GEMINI_ENABLED !== 'false'));
-    this.timeoutMs = options?.timeoutMs || env.server?.GEMINI_TIMEOUT_MS || 30000;
+    this.timeoutMs = options?.timeoutMs || env.server?.GEMINI_TIMEOUT_MS || 60000;
     this.maxOutputTokens = options?.maxOutputTokens || env.server?.GEMINI_MAX_OUTPUT_TOKENS || 4096;
   }
 
@@ -63,11 +72,31 @@ export class GeminiProvider implements LLMProvider {
   public async healthCheck(): Promise<ProviderHealthStatus> {
     const start = Date.now();
     const apiKey = this.getApiKey();
+    const isConfigured = !!apiKey;
+
     if (!this.isEnabled) {
-      return { name: this.name, status: 'disabled', message: 'Gemini provider is disabled in configuration' };
+      return {
+        name: this.name,
+        provider: this.name,
+        status: 'disabled',
+        configured: isConfigured,
+        enabled: false,
+        available: false,
+        model: this.defaultFastModel,
+        message: 'Gemini provider is disabled in configuration'
+      };
     }
     if (!apiKey) {
-      return { name: this.name, status: 'unhealthy', message: 'GEMINI_API_KEY is missing' };
+      return {
+        name: this.name,
+        provider: this.name,
+        status: 'unhealthy',
+        configured: false,
+        enabled: true,
+        available: false,
+        model: this.defaultFastModel,
+        message: 'GEMINI_API_KEY is missing'
+      };
     }
 
     try {
@@ -77,13 +106,37 @@ export class GeminiProvider implements LLMProvider {
       });
       const latencyMs = Date.now() - start;
       if (res.ok) {
-        return { name: this.name, status: 'healthy', latencyMs };
+        return {
+          name: this.name,
+          provider: this.name,
+          status: 'healthy',
+          configured: true,
+          enabled: true,
+          available: true,
+          model: this.defaultFastModel,
+          latencyMs
+        };
       }
-      return { name: this.name, status: 'unhealthy', latencyMs, message: `HTTP ${res.status}` };
+      return {
+        name: this.name,
+        provider: this.name,
+        status: 'unhealthy',
+        configured: true,
+        enabled: true,
+        available: false,
+        model: this.defaultFastModel,
+        latencyMs,
+        message: `HTTP ${res.status}`
+      };
     } catch (err) {
       return {
         name: this.name,
+        provider: this.name,
         status: 'unhealthy',
+        configured: true,
+        enabled: true,
+        available: false,
+        model: this.defaultFastModel,
         latencyMs: Date.now() - start,
         message: err instanceof Error ? err.message : String(err)
       };
@@ -91,7 +144,7 @@ export class GeminiProvider implements LLMProvider {
   }
 
   private getApiKey(): string | undefined {
-    return this.apiKey || env.server?.GEMINI_API_KEY || process.env.GEMINI_API_KEY;
+    return this.apiKey !== undefined ? this.apiKey : (env.server?.GEMINI_API_KEY || process.env.GEMINI_API_KEY);
   }
 
   public async generate(request: LLMRequest): Promise<LLMResponse> {
@@ -101,11 +154,10 @@ export class GeminiProvider implements LLMProvider {
       throw new Error('Gemini provider is not enabled or GEMINI_API_KEY is missing.');
     }
 
-    const model =
-      request.modelOverride ||
-      (request.capabilitiesRequired?.includes(LLMCapability.REASONING)
-        ? this.defaultReasoningModel
-        : this.defaultFastModel);
+    const fallbackModel = request.capabilitiesRequired?.includes(LLMCapability.REASONING)
+      ? this.defaultReasoningModel
+      : this.defaultFastModel;
+    const model = resolveModelForProvider(this.name, request.modelOverride, fallbackModel);
 
     const systemPrompt = request.systemPrompt || 'You are an intelligent AI assistant powered by Google Gemini.';
 
@@ -201,11 +253,10 @@ export class GeminiProvider implements LLMProvider {
       throw new Error('Gemini provider is not enabled or GEMINI_API_KEY is missing.');
     }
 
-    const model =
-      request.modelOverride ||
-      (request.capabilitiesRequired?.includes(LLMCapability.REASONING)
-        ? this.defaultReasoningModel
-        : this.defaultFastModel);
+    const fallbackModel = request.capabilitiesRequired?.includes(LLMCapability.REASONING)
+      ? this.defaultReasoningModel
+      : this.defaultFastModel;
+    const model = resolveModelForProvider(this.name, request.modelOverride, fallbackModel);
 
     const systemPrompt = request.systemPrompt || 'You are an intelligent AI assistant powered by Google Gemini.';
 

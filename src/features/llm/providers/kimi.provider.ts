@@ -8,6 +8,7 @@ import {
   LLMCapability
 } from '../llm.types';
 import { env } from '@/config/env';
+import { resolveModelForProvider } from '../utils/model-validator';
 
 export class KimiProvider implements LLMProvider {
   public readonly name = 'kimi';
@@ -36,11 +37,31 @@ export class KimiProvider implements LLMProvider {
 
   public async healthCheck(): Promise<ProviderHealthStatus> {
     const start = Date.now();
+    const isConfigured = !!this.apiKey;
+
     if (!this.isEnabled) {
-      return { name: this.name, status: 'disabled', message: 'Kimi provider is disabled in environment config' };
+      return {
+        name: this.name,
+        provider: this.name,
+        status: 'disabled',
+        configured: isConfigured,
+        enabled: false,
+        available: false,
+        model: this.defaultModel,
+        message: 'Kimi provider is disabled in environment config'
+      };
     }
     if (!this.apiKey) {
-      return { name: this.name, status: 'unhealthy', message: 'LLM_KIMI_API_KEY is not configured' };
+      return {
+        name: this.name,
+        provider: this.name,
+        status: 'unhealthy',
+        configured: false,
+        enabled: true,
+        available: false,
+        model: this.defaultModel,
+        message: 'LLM_KIMI_API_KEY is not configured'
+      };
     }
 
     try {
@@ -50,13 +71,37 @@ export class KimiProvider implements LLMProvider {
       });
       const latencyMs = Date.now() - start;
       if (res.ok) {
-        return { name: this.name, status: 'healthy', latencyMs };
+        return {
+          name: this.name,
+          provider: this.name,
+          status: 'healthy',
+          configured: true,
+          enabled: true,
+          available: true,
+          model: this.defaultModel,
+          latencyMs
+        };
       }
-      return { name: this.name, status: 'unhealthy', latencyMs, message: `HTTP ${res.status}` };
+      return {
+        name: this.name,
+        provider: this.name,
+        status: 'unhealthy',
+        configured: true,
+        enabled: true,
+        available: false,
+        model: this.defaultModel,
+        latencyMs,
+        message: `HTTP ${res.status}`
+      };
     } catch (err) {
       return {
         name: this.name,
+        provider: this.name,
         status: 'unhealthy',
+        configured: true,
+        enabled: true,
+        available: false,
+        model: this.defaultModel,
         latencyMs: Date.now() - start,
         message: err instanceof Error ? err.message : String(err)
       };
@@ -72,7 +117,7 @@ export class KimiProvider implements LLMProvider {
       throw new Error(`${this.name} provider does not support multimodal image input.`);
     }
 
-    const model = request.modelOverride || this.defaultModel;
+    const model = resolveModelForProvider(this.name, request.modelOverride, this.defaultModel);
     const systemPrompt = request.systemPrompt || 'You are an advanced AI reasoning assistant.';
 
     const messages = [
@@ -142,7 +187,7 @@ export class KimiProvider implements LLMProvider {
       throw new Error('Kimi provider is not enabled or missing API key.');
     }
 
-    const model = request.modelOverride || this.defaultModel;
+    const model = resolveModelForProvider(this.name, request.modelOverride, this.defaultModel);
     const systemPrompt = request.systemPrompt || 'You are an advanced AI reasoning assistant.';
 
     const messages = [

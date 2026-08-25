@@ -233,9 +233,22 @@ export class LLMGateway {
     let overallHealthy = true;
 
     for (const p of providers) {
-      const h = await p.healthCheck();
-      results[p.name] = h;
-      if (h.status === 'unhealthy') {
+      try {
+        const h = await p.healthCheck();
+        results[p.name] = h;
+        if (h.status === 'unhealthy') {
+          overallHealthy = false;
+        }
+      } catch (err) {
+        results[p.name] = {
+          name: p.name,
+          provider: p.name,
+          status: 'unhealthy',
+          configured: false,
+          enabled: false,
+          available: false,
+          message: err instanceof Error ? err.message : String(err)
+        };
         overallHealthy = false;
       }
     }

@@ -79,7 +79,12 @@ export interface StructuredLLMRequest<T = any> extends LLMRequest {
 
 export interface ProviderHealthStatus {
   name: string;
+  provider?: string;
   status: 'healthy' | 'unhealthy' | 'disabled';
+  configured?: boolean;
+  enabled?: boolean;
+  available?: boolean;
+  model?: string;
   latencyMs?: number;
   message?: string;
 }

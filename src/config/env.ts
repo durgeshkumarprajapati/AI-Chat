@@ -296,7 +296,7 @@ const serverEnvSchema = z
     DEEPSEEK_ENABLED: z.coerce.boolean().default(true),
     DEEPSEEK_API_KEY: z.string().optional(),
     DEEPSEEK_BASE_URL: z.string().default('https://api.deepseek.com/v1'),
-    DEEPSEEK_DEFAULT_MODEL: z.string().default('deepseek-chat'),
+    DEEPSEEK_DEFAULT_MODEL: z.string().default('deepseek-v4-flash'),
     DEEPSEEK_REASONING_MODEL: z.string().default('deepseek-reasoner'),
     DEEPSEEK_TIMEOUT_MS: z.coerce.number().int().positive().default(60000),
     DEEPSEEK_MAX_OUTPUT_TOKENS: z.coerce.number().int().positive().default(4096),
@@ -664,7 +664,7 @@ export const envConfig = {
       enabled: env.server?.DEEPSEEK_ENABLED ?? true,
       apiKey: env.server?.DEEPSEEK_API_KEY,
       baseUrl: env.server?.DEEPSEEK_BASE_URL ?? 'https://api.deepseek.com/v1',
-      defaultModel: env.server?.DEEPSEEK_DEFAULT_MODEL ?? 'deepseek-chat',
+      defaultModel: env.server?.DEEPSEEK_DEFAULT_MODEL ?? 'deepseek-v4-flash',
       reasoningModel: env.server?.DEEPSEEK_REASONING_MODEL ?? 'deepseek-reasoner',
       timeoutMs: env.server?.DEEPSEEK_TIMEOUT_MS ?? 60000,
       maxOutputTokens: env.server?.DEEPSEEK_MAX_OUTPUT_TOKENS ?? 4096

@@ -28,8 +28,8 @@ export class LLMModelRegistry {
 
     this.registerProvider({
       provider: deepseekProvider,
-      defaultModel: process.env.DEEPSEEK_DEFAULT_MODEL || 'deepseek-chat',
-      fastModel: process.env.DEEPSEEK_DEFAULT_MODEL || 'deepseek-chat',
+      defaultModel: process.env.DEEPSEEK_DEFAULT_MODEL || 'deepseek-v4-flash',
+      fastModel: process.env.DEEPSEEK_DEFAULT_MODEL || 'deepseek-v4-flash',
       reasoningModel: process.env.DEEPSEEK_REASONING_MODEL || 'deepseek-reasoner',
       priority: 2
     });

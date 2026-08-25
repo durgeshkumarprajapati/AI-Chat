@@ -1,4 +1,4 @@
-import { knowledgeGraphIngestionService } from './ingestion/knowledge-graph-ingestion.service';
+import { knowledgeGraphJobService } from './ingestion/knowledge-graph-job.service';
 import { graphRetrievalService } from './retrieval/graph-retrieval.service';
 import { contradictionService } from './reasoning/contradiction.service';
 import { knowledgeGapService } from './reasoning/knowledge-gap.service';
@@ -6,6 +6,7 @@ import { knowledgeReasoningService } from './reasoning/knowledge-reasoning.servi
 import { knowledgeGraphCacheService } from './cache/knowledge-graph-cache.service';
 import { knowledgeGraphTelemetryService } from './telemetry/knowledge-graph-telemetry.service';
 import { GraphQueryOptions, GraphSubgraph } from './knowledge-graph.types';
+import { prisma } from '@/lib/prisma';
 
 export class KnowledgeGraphService {
   public async getGraph(options: GraphQueryOptions): Promise<GraphSubgraph> {
@@ -37,9 +38,41 @@ export class KnowledgeGraphService {
   }
 
   public async indexDocument(documentId: string, userId: string, projectId?: string | null) {
-    const stats = await knowledgeGraphIngestionService.ingestDocumentChunks(documentId, userId, projectId);
+    const job = await knowledgeGraphJobService.queueDocumentGraphJob(userId, documentId, projectId);
     await knowledgeGraphCacheService.clearUserCache(userId);
-    return stats;
+    return job;
+  }
+
+  public async triggerDocumentExtraction(documentId: string, userId: string, projectId?: string | null) {
+    const job = await knowledgeGraphJobService.queueDocumentGraphJob(userId, documentId, projectId);
+    await knowledgeGraphCacheService.clearUserCache(userId);
+    return job;
+  }
+
+  public async backfillUserDocuments(userId: string) {
+    const res = await knowledgeGraphJobService.backfillUserDocuments(userId);
+    await knowledgeGraphCacheService.clearUserCache(userId);
+    return res;
+  }
+
+  public async getGraphStatus(userId: string) {
+    const [entitiesCount, relationshipsCount, completedDocsCount, pendingJobsCount] = await Promise.all([
+      prisma.knowledgeEntity.count({ where: { userId, status: 'ACTIVE' } }),
+      prisma.knowledgeRelationship.count({ where: { userId, status: 'ACTIVE' } }),
+      prisma.document.count({ where: { userId, status: 'COMPLETED' } }),
+      prisma.knowledgeGraphJob.count({
+        where: { userId, status: { in: ['PENDING', 'PROCESSING'] } }
+      })
+    ]);
+
+    return {
+      entitiesCount,
+      relationshipsCount,
+      completedDocsCount,
+      pendingJobsCount,
+      hasGraphData: entitiesCount > 0 || relationshipsCount > 0,
+      isExtracting: pendingJobsCount > 0
+    };
   }
 
   public async searchGraph(query: string, options: GraphQueryOptions) {

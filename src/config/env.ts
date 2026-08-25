@@ -498,7 +498,13 @@ const serverEnvSchema = z
     COPILOT_MAX_EXECUTION_TIME_MS: z.coerce.number().int().positive().default(300000),
     COPILOT_CACHE_ENABLED: z.coerce.boolean().default(true),
     COPILOT_MEMORY_ENABLED: z.coerce.boolean().default(true),
-    COPILOT_REQUIRE_CONFIRMATION: z.coerce.boolean().default(true)
+    COPILOT_REQUIRE_CONFIRMATION: z.coerce.boolean().default(true),
+    KNOWLEDGE_GRAPH_EXTRACTION_ENABLED: z.coerce.boolean().default(true),
+    KNOWLEDGE_GRAPH_MAX_TRAVERSAL_DEPTH: z.coerce.number().int().positive().default(2),
+    KNOWLEDGE_GRAPH_MAX_NODES: z.coerce.number().int().positive().default(200),
+    KNOWLEDGE_GRAPH_MIN_CONFIDENCE: z.coerce.number().min(0).max(1).default(0.70),
+    KNOWLEDGE_GRAPH_BATCH_SIZE: z.coerce.number().int().positive().default(5),
+    KNOWLEDGE_GRAPH_EXTRACTION_TIMEOUT_MS: z.coerce.number().int().positive().default(60000)
   })
   .refine(
     (data) => {

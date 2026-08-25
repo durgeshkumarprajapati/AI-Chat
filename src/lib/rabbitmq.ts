@@ -3,7 +3,8 @@ import { env } from '@/config/env';
 import { InfrastructureError } from '@/errors';
 
 export const QUEUES = {
-  DOCUMENT_PROCESSING: 'document-processing'
+  DOCUMENT_PROCESSING: 'document-processing',
+  KNOWLEDGE_GRAPH_EXTRACTION: 'knowledge-graph-extraction'
 } as const;
 
 export type QueueName = typeof QUEUES[keyof typeof QUEUES];
@@ -15,6 +16,18 @@ export interface DocumentProcessingJob {
   documentId: string;
   userId: string;
   storageKey: string;
+  attempt: number;
+  createdAt: string;
+}
+
+export interface KnowledgeGraphJobPayload {
+  jobType: 'KNOWLEDGE_GRAPH_EXTRACTION';
+  version: number;
+  jobId: string;
+  documentId: string;
+  userId: string;
+  projectId?: string | null;
+  knowledgeBaseId?: string | null;
   attempt: number;
   createdAt: string;
 }

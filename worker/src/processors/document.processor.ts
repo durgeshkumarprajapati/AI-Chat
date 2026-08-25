@@ -111,6 +111,14 @@ export class DocumentProcessor {
       // 10. Mark Document status as COMPLETED in PostgreSQL after full pipeline succeeds
       await workerDocumentRepository.updateStatus(job.documentId, 'COMPLETED');
 
+      // 11. Asynchronously queue Knowledge Graph extraction (non-blocking)
+      try {
+        const { knowledgeGraphJobService } = await import('@/features/knowledge-graph/ingestion/knowledge-graph-job.service.js');
+        await knowledgeGraphJobService.queueDocumentGraphJob(job.userId, job.documentId);
+      } catch (kgErr) {
+        console.warn(`[Worker] Non-fatal Knowledge Graph trigger warning for doc ${job.documentId}:`, kgErr);
+      }
+
       const durationMs = Date.now() - startTime;
 
       console.log(`[Worker] Document processing completed successfully:`);

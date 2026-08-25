@@ -275,6 +275,42 @@ export default function DocumentsPage() {
     }
   };
 
+  const handleExtractGraph = async (id: string, filename: string) => {
+    setActionLoading(id);
+    try {
+      const res = await fetch(`/api/knowledge-graph/documents/${id}/extract`, { method: 'POST' });
+      const json = await res.json();
+      if (!res.ok || !json.success) throw new Error(json.error || 'Failed to queue graph extraction');
+      setBannerMessage({ type: 'success', text: `Queued Knowledge Graph extraction for "${filename}".` });
+      fetchDocuments();
+    } catch (err) {
+      setBannerMessage({
+        type: 'error',
+        text: err instanceof Error ? err.message : 'Failed to trigger Knowledge Graph extraction.'
+      });
+    } finally {
+      setActionLoading(null);
+    }
+  };
+
+  const handleBackfillGraph = async () => {
+    setActionLoading('backfill');
+    try {
+      const res = await fetch('/api/knowledge-graph/backfill', { method: 'POST' });
+      const json = await res.json();
+      if (!res.ok || !json.success) throw new Error(json.error || 'Failed backfill');
+      setBannerMessage({ type: 'success', text: json.message || 'Backfill queued successfully.' });
+      fetchDocuments();
+    } catch (err) {
+      setBannerMessage({
+        type: 'error',
+        text: err instanceof Error ? err.message : 'Failed Knowledge Graph backfill.'
+      });
+    } finally {
+      setActionLoading(null);
+    }
+  };
+
   const toggleSelectAll = () => {
     if (selectedIds.length === documents.length) {
       setSelectedIds([]);
@@ -317,6 +353,14 @@ export default function DocumentsPage() {
               🗑 Delete Selected ({selectedIds.length})
             </button>
           )}
+          <button
+            onClick={handleBackfillGraph}
+            disabled={actionLoading === 'backfill'}
+            className="inline-flex items-center space-x-2 px-4 py-2 rounded-xl bg-indigo-600 hover:bg-indigo-500 text-xs font-bold text-white transition-colors shadow-sm disabled:opacity-50"
+            title="Queue Knowledge Graph extraction for all completed documents"
+          >
+            <span>🕸 Build Knowledge Graph</span>
+          </button>
           <button
             onClick={() => fetchDocuments()}
             className="inline-flex items-center space-x-2 px-4 py-2 rounded-xl bg-slate-100 dark:bg-slate-900 border border-slate-300 dark:border-slate-800 text-xs font-semibold text-slate-700 dark:text-slate-300 hover:bg-slate-200 dark:hover:bg-slate-800 transition-colors shadow-sm"
@@ -656,12 +700,22 @@ export default function DocumentsPage() {
                       <td className="py-4 text-right space-x-1 font-mono">
                         {/* Ask in Chat */}
                         {doc.status === 'COMPLETED' && (
-                          <Link
-                            href="/chat"
-                            className="px-2.5 py-1 rounded bg-indigo-50 dark:bg-indigo-950 text-indigo-700 dark:text-indigo-300 border border-indigo-200 dark:border-indigo-800 hover:bg-indigo-100 dark:hover:bg-indigo-900 text-[11px] font-semibold transition-colors"
-                          >
-                            💬 Chat
-                          </Link>
+                          <>
+                            <button
+                              disabled={isBusy}
+                              onClick={() => handleExtractGraph(doc.id, doc.filename)}
+                              className="px-2.5 py-1 rounded bg-indigo-500/10 dark:bg-[#4d8eff]/10 text-indigo-700 dark:text-[#adc6ff] border border-indigo-200 dark:border-[#4d8eff]/30 hover:bg-indigo-500/20 text-[11px] font-semibold transition-colors disabled:opacity-50"
+                              title="Extract Knowledge Graph entities & relationships"
+                            >
+                              🕸 Extract Graph
+                            </button>
+                            <Link
+                              href="/chat"
+                              className="px-2.5 py-1 rounded bg-indigo-50 dark:bg-indigo-950 text-indigo-700 dark:text-indigo-300 border border-indigo-200 dark:border-indigo-800 hover:bg-indigo-100 dark:hover:bg-indigo-900 text-[11px] font-semibold transition-colors"
+                            >
+                              💬 Chat
+                            </Link>
+                          </>
                         )}
 
                         {/* Download */}

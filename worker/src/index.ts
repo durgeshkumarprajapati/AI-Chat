@@ -1,6 +1,7 @@
 import amqp, { Channel, ConsumeMessage } from 'amqplib';
 import dotenv from 'dotenv';
 import { documentProcessor, DocumentProcessingJob } from './processors/document.processor.js';
+import { knowledgeGraphProcessor, KnowledgeGraphJobPayload } from './processors/knowledge-graph.processor.js';
 import { workerDocumentRepository } from './repositories/document.repository.js';
 import { workerCalendarSyncProcessor } from './processors/calendar-sync.processor.js';
 import { prisma } from './lib/prisma.js';
@@ -9,6 +10,7 @@ dotenv.config({ path: '../.env' });
 dotenv.config();
 
 const QUEUE_NAME = 'document-processing';
+const KG_QUEUE_NAME = 'knowledge-graph-extraction';
 const RABBITMQ_URL = process.env.RABBITMQ_URL || 'amqp://guest:guest@localhost:5672';
 const MAX_RETRIES = 3;
 const TIMEOUT_MINUTES = process.env.DOCUMENT_PROCESSING_TIMEOUT_MINUTES
@@ -18,20 +20,22 @@ const TIMEOUT_MINUTES = process.env.DOCUMENT_PROCESSING_TIMEOUT_MINUTES
 let connection: amqp.ChannelModel | null = null;
 let channel: Channel | null = null;
 let consumerTag: string | null = null;
+let kgConsumerTag: string | null = null;
 let isShuttingDown = false;
 let activeInFlightJobs = 0;
 
 export async function startWorker() {
-  console.log('[Worker] Starting Document Processing Worker...');
+  console.log('[Worker] Starting Document & Knowledge Graph Worker...');
 
   try {
     connection = await amqp.connect(RABBITMQ_URL);
     channel = await connection.createChannel();
 
     await channel.assertQueue(QUEUE_NAME, { durable: true });
+    await channel.assertQueue(KG_QUEUE_NAME, { durable: true });
     await channel.prefetch(1);
 
-    console.log(`[Worker] Connected to RabbitMQ. Listening on queue: "${QUEUE_NAME}"`);
+    console.log(`[Worker] Connected to RabbitMQ. Listening on queues: "${QUEUE_NAME}", "${KG_QUEUE_NAME}"`);
 
     // Recover stale PROCESSING documents left over from previous worker crashes
     console.log('[Worker] Recovering stale PROCESSING documents...');
@@ -40,6 +44,7 @@ export async function startWorker() {
       console.log(`[Worker] Stale PROCESSING document recovery complete. Checked/recovered ${recoveredCount} documents.`);
     }
 
+    // 1. Consume document-processing
     const consumeResult = await channel.consume(
       QUEUE_NAME,
       async (msg: ConsumeMessage | null) => {
@@ -87,8 +92,46 @@ export async function startWorker() {
       },
       { noAck: false }
     );
-
     consumerTag = consumeResult.consumerTag;
+
+    // 2. Consume knowledge-graph-extraction
+    const kgConsumeResult = await channel.consume(
+      KG_QUEUE_NAME,
+      async (msg: ConsumeMessage | null) => {
+        if (!msg || isShuttingDown) return;
+
+        activeInFlightJobs++;
+        let payload: KnowledgeGraphJobPayload | null = null;
+
+        try {
+          payload = JSON.parse(msg.content.toString()) as KnowledgeGraphJobPayload;
+          console.log(`[Worker-KG] Job received for document ID: ${payload.documentId} (Job ID: ${payload.jobId})`);
+
+          const result = await knowledgeGraphProcessor.process(payload);
+
+          if (result.status === 'SUCCESS' || result.status === 'STALE_DISCARD' || result.action === 'PERMANENT_ERROR') {
+            channel?.ack(msg);
+          } else if (result.action === 'TRANSIENT_ERROR') {
+            const attemptCount = payload.attempt || 1;
+            if (attemptCount >= MAX_RETRIES) {
+              console.error(`[Worker-KG] Max retries (${MAX_RETRIES}) reached for KG job: ${payload.jobId}`);
+              channel?.ack(msg);
+            } else {
+              channel?.nack(msg, false, true);
+            }
+          }
+        } catch (error) {
+          console.error('[Worker-KG] Unexpected KG job execution error:', error instanceof Error ? error.message : error);
+          if (msg && channel) {
+            channel.ack(msg);
+          }
+        } finally {
+          activeInFlightJobs--;
+        }
+      },
+      { noAck: false }
+    );
+    kgConsumerTag = kgConsumeResult.consumerTag;
 
     // Start periodic Google Calendar Sync Retry loop
     const syncInterval = setInterval(async () => {
@@ -116,8 +159,12 @@ export async function shutdownWorker(signal?: string) {
     if (consumerTag && channel) {
       await channel.cancel(consumerTag).catch(() => {});
       consumerTag = null;
-      console.log('[Worker] RabbitMQ consumer stopped.');
     }
+    if (kgConsumerTag && channel) {
+      await channel.cancel(kgConsumerTag).catch(() => {});
+      kgConsumerTag = null;
+    }
+    console.log('[Worker] RabbitMQ consumers stopped.');
 
     // Wait for active in-flight jobs to complete (max 5 seconds)
     const waitStart = Date.now();

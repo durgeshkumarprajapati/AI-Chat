@@ -142,6 +142,8 @@ model User {
   documentFamilies              DocumentFamily[]
   documentLifecycleEvents       DocumentLifecycleEvent[]
   documentRetentionJobs         DocumentRetentionJob[]
+  meetings                      Meeting[]
+  clickUpIntegrations           ClickUpIntegration[]
 
   @@map("users")
 }
@@ -1943,6 +1945,7 @@ model Project {
   knowledgeGraphJobs     KnowledgeGraphJob[]
   knowledgeGraphVersions KnowledgeGraphVersion[]
   ragConversations       RagConversation[]
+  meetings               Meeting[]
 
   @@index([ownerId])
   @@index([status])
@@ -3112,6 +3115,168 @@ model ChillFocusStreak {
 
   @@map("chill_focus_streaks")
 }
+
+// ==========================================
+// PHASE 74 — AI MEETING INTELLIGENCE + CLICKUP INTEGRATION
+// ==========================================
+
+enum MeetingStatus {
+  PENDING
+  PROCESSING
+  COMPLETED
+  FAILED
+}
+
+enum MeetingSourceProvider {
+  GOOGLE_MEET
+  MANUAL_PASTE
+  UPLOAD_FILE
+  CONNECTED_SOURCE
+}
+
+enum TaskSuggestionStatus {
+  PENDING
+  APPROVED
+  CREATING
+  CREATED
+  FAILED
+}
+
+enum ClickUpIntegrationStatus {
+  ACTIVE
+  DISCONNECTED
+}
+
+model Meeting {
+  id             String                @id @default(uuid())
+  userId         String                @map("user_id")
+  projectId      String?               @map("project_id")
+  title          String
+  description    String?               @db.Text
+  meetingDate    DateTime              @default(now()) @map("meeting_date")
+  sourceProvider MeetingSourceProvider @default(MANUAL_PASTE) @map("source_provider")
+  status         MeetingStatus         @default(PENDING)
+  errorMessage   String?               @map("error_message") @db.Text
+  createdAt      DateTime              @default(now()) @map("created_at")
+  updatedAt      DateTime              @updatedAt @map("updated_at")
+
+  user    User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  project Project? @relation(fields: [projectId], references: [id], onDelete: SetNull)
+
+  participants    MeetingParticipant[]
+  transcript      MeetingTranscript?
+  analysis        MeetingAnalysis?
+  taskSuggestions MeetingTaskSuggestion[]
+
+  @@index([userId, status])
+  @@index([projectId])
+  @@map("meetings")
+}
+
+model MeetingParticipant {
+  id        String   @id @default(uuid())
+  meetingId String   @map("meeting_id")
+  name      String
+  email     String?
+  role      String?  @default("ATTENDEE")
+  createdAt DateTime @default(now()) @map("created_at")
+
+  meeting Meeting @relation(fields: [meetingId], references: [id], onDelete: Cascade)
+
+  @@index([meetingId])
+  @@map("meeting_participants")
+}
+
+model MeetingTranscript {
+  id                String   @id @default(uuid())
+  meetingId         String   @unique @map("meeting_id")
+  rawContent        String   @db.Text @map("raw_content")
+  normalizedContent String   @db.Text @map("normalized_content")
+  language          String   @default("en")
+  wordCount         Int      @default(0) @map("word_count")
+  createdAt         DateTime @default(now()) @map("created_at")
+
+  meeting Meeting @relation(fields: [meetingId], references: [id], onDelete: Cascade)
+
+  @@map("meeting_transcripts")
+}
+
+model MeetingAnalysis {
+  id            String   @id @default(uuid())
+  meetingId     String   @unique @map("meeting_id")
+  summary       String   @db.Text
+  discussion    Json?    @default("[]")
+  decisions     Json     @default("[]")
+  actionItems   Json     @default("[]")
+  risks         Json     @default("[]")
+  blockers      Json     @default("[]")
+  openQuestions Json     @default("[]")
+  confidence    Float    @default(0.9)
+  createdAt     DateTime @default(now()) @map("created_at")
+  updatedAt     DateTime @updatedAt @map("updated_at")
+
+  meeting Meeting @relation(fields: [meetingId], references: [id], onDelete: Cascade)
+
+  @@map("meeting_analyses")
+}
+
+model MeetingTaskSuggestion {
+  id                String               @id @default(uuid())
+  meetingId         String               @map("meeting_id")
+  userId            String               @map("user_id")
+  title             String
+  description       String?              @db.Text
+  suggestedAssignee String?              @map("suggested_assignee")
+  suggestedDueDate  DateTime?            @map("suggested_due_date")
+  confidence        Float                @default(0.9)
+  status            TaskSuggestionStatus @default(PENDING)
+  clickUpTaskId     String?              @map("clickup_task_id")
+  clickUpUrl        String?              @map("clickup_url")
+  createdAt         DateTime             @default(now()) @map("created_at")
+  updatedAt         DateTime             @updatedAt @map("updated_at")
+
+  meeting Meeting          @relation(fields: [meetingId], references: [id], onDelete: Cascade)
+  link    ClickUpTaskLink?
+
+  @@index([meetingId, status])
+  @@index([userId])
+  @@map("meeting_task_suggestions")
+}
+
+model ClickUpTaskLink {
+  id                 String   @id @default(uuid())
+  suggestionId       String   @unique @map("suggestion_id")
+  clickUpTaskId      String   @map("clickup_task_id")
+  clickUpUrl         String?  @map("clickup_url")
+  clickUpWorkspaceId String?  @map("clickup_workspace_id")
+  clickUpListId      String?  @map("clickup_list_id")
+  status             String   @default("CREATED")
+  lastError          String?  @map("last_error") @db.Text
+  createdAt          DateTime @default(now()) @map("created_at")
+  updatedAt          DateTime @updatedAt @map("updated_at")
+
+  suggestion MeetingTaskSuggestion @relation(fields: [suggestionId], references: [id], onDelete: Cascade)
+
+  @@map("clickup_task_links")
+}
+
+model ClickUpIntegration {
+  id            String                   @id @default(uuid())
+  userId        String                   @map("user_id")
+  accessToken   String                   @map("access_token")
+  tokenType     String                   @default("Bearer") @map("token_type")
+  workspaceId   String?                  @map("workspace_id")
+  workspaceName String?                  @map("workspace_name")
+  status        ClickUpIntegrationStatus @default(ACTIVE)
+  createdAt     DateTime                 @default(now()) @map("created_at")
+  updatedAt     DateTime                 @updatedAt @map("updated_at")
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId, status])
+  @@map("clickup_integrations")
+}
+
 
 
 

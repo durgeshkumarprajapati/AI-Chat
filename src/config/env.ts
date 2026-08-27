@@ -673,7 +673,25 @@ const serverEnvSchema = z
     RAG_FAST_PATH_CONFIDENCE_THRESHOLD: z.coerce.number().min(0).max(1).default(0.90),
     RAG_GRACEFUL_DEGRADATION_ENABLED: z.coerce.boolean().default(true),
     RAG_GRAPH_RETRIEVAL_ENABLED: z.coerce.boolean().default(true),
-    RAG_GRAPH_RETRIEVAL_ALWAYS_ON: z.coerce.boolean().default(false)
+    RAG_GRAPH_RETRIEVAL_ALWAYS_ON: z.coerce.boolean().default(false),
+
+    // PHASE 74 — AI MEETING INTELLIGENCE + CLICKUP INTEGRATION + SYSTEM ARCHITECTURE EXPLORER
+    MEETING_INTELLIGENCE_ENABLED: z.coerce.boolean().default(true),
+    MEETING_ANALYSIS_ENABLED: z.coerce.boolean().default(true),
+    MEETING_PROJECT_CONTEXT_ENABLED: z.coerce.boolean().default(true),
+    MEETING_ANALYSIS_TIMEOUT_MS: z.coerce.number().int().positive().default(120000),
+    MEETING_TRANSCRIPT_MAX_LENGTH: z.coerce.number().int().positive().default(200000),
+    MEETING_MAX_PROJECT_CONTEXT_TOKENS: z.coerce.number().int().positive().default(8000),
+
+    CLICKUP_ENABLED: z.coerce.boolean().default(true),
+    CLICKUP_CLIENT_ID: z.string().optional(),
+    CLICKUP_CLIENT_SECRET: z.string().optional(),
+    CLICKUP_REDIRECT_URI: z.string().default('http://localhost:3000/api/integrations/clickup/callback'),
+    CLICKUP_API_BASE_URL: z.string().default('https://api.clickup.com/api/v2'),
+    CLICKUP_TIMEOUT_MS: z.coerce.number().int().positive().default(15000),
+
+    SYSTEM_ARCHITECTURE_EXPLORER_ENABLED: z.coerce.boolean().default(true),
+    SYSTEM_ARCHITECTURE_STATUS_CACHE_TTL_SECONDS: z.coerce.number().int().positive().default(60)
   })
   .refine(
     (data) => {
@@ -841,6 +859,26 @@ export const envConfig = {
     maxSessionMinutes: env.server?.CHILL_FOCUS_MAX_SESSION_MINUTES ?? 120,
     defaultMode: env.server?.CHILL_FOCUS_DEFAULT_MODE ?? 'CHILL',
     aiInterventionEnabled: env.server?.CHILL_FOCUS_AI_INTERVENTION_ENABLED ?? true
+  },
+  meetingIntelligence: {
+    enabled: env.server?.MEETING_INTELLIGENCE_ENABLED ?? true,
+    analysisEnabled: env.server?.MEETING_ANALYSIS_ENABLED ?? true,
+    projectContextEnabled: env.server?.MEETING_PROJECT_CONTEXT_ENABLED ?? true,
+    analysisTimeoutMs: env.server?.MEETING_ANALYSIS_TIMEOUT_MS ?? 120000,
+    transcriptMaxLength: env.server?.MEETING_TRANSCRIPT_MAX_LENGTH ?? 200000,
+    maxProjectContextTokens: env.server?.MEETING_MAX_PROJECT_CONTEXT_TOKENS ?? 8000
+  },
+  clickup: {
+    enabled: env.server?.CLICKUP_ENABLED ?? true,
+    clientId: env.server?.CLICKUP_CLIENT_ID,
+    clientSecret: env.server?.CLICKUP_CLIENT_SECRET,
+    redirectUri: env.server?.CLICKUP_REDIRECT_URI ?? 'http://localhost:3000/api/integrations/clickup/callback',
+    apiBaseUrl: env.server?.CLICKUP_API_BASE_URL ?? 'https://api.clickup.com/api/v2',
+    timeoutMs: env.server?.CLICKUP_TIMEOUT_MS ?? 15000
+  },
+  systemArchitecture: {
+    explorerEnabled: env.server?.SYSTEM_ARCHITECTURE_EXPLORER_ENABLED ?? true,
+    statusCacheTtlSeconds: env.server?.SYSTEM_ARCHITECTURE_STATUS_CACHE_TTL_SECONDS ?? 60
   }
 };
 

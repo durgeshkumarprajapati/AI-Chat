@@ -4,14 +4,14 @@ import { configRepository } from './config.repository';
 import { configCacheService } from './config-cache.service';
 import { configValidator } from './config-validator';
 import { configTelemetryService } from './config-telemetry.service';
-import { DEFAULT_CONFIG_FALLBACKS } from './config.constants';
+import { CONFIG_REGISTRY, validateRegistryKey } from './config.registry';
 import { auditService } from '@/features/audit/audit.service';
 import { NotFoundError, ValidationError } from '@/errors';
 import { env } from '@/config/env';
 
 export class ConfigService {
   /**
-   * Resolves a configuration item with two-tier caching (Memory -> Redis -> Database -> Default Fallback).
+   * Resolves a configuration item with multi-level caching (Memory -> Redis -> Database -> Config Registry Fallback).
    */
   public async get(key: string): Promise<ConfigDTO | null> {
     const formattedKey = key.trim().toUpperCase();
@@ -58,17 +58,17 @@ export class ConfigService {
       configTelemetryService.logEvent({ event: 'config.db_lookup_error', key: formattedKey, error: String(err) });
     }
 
-    // 4. Safe Default Fallback
-    const fallback = DEFAULT_CONFIG_FALLBACKS[formattedKey];
-    if (fallback) {
+    // 4. Config Registry Default Fallback
+    const registryItem = CONFIG_REGISTRY[formattedKey];
+    if (registryItem) {
       return {
-        id: `fallback-${formattedKey}`,
+        id: `registry-fallback-${formattedKey}`,
         key: formattedKey,
-        value: fallback.value,
-        valueType: fallback.type as any,
-        category: ConfigCategory.SYSTEM,
-        purpose: 'Safe default fallback value',
-        description: 'System default fallback configuration',
+        value: registryItem.defaultValue,
+        valueType: registryItem.valueType,
+        category: registryItem.category,
+        purpose: registryItem.purpose,
+        description: registryItem.description || null,
         isActive: true,
         isSystem: true,
         createdAt: new Date(),
@@ -134,6 +134,9 @@ export class ConfigService {
 
   public async createConfig(input: CreateConfigInput): Promise<ConfigDTO> {
     const formattedKey = input.key.trim().toUpperCase();
+    
+    // Assert key exists in CONFIG_REGISTRY and is non-secret
+    validateRegistryKey(formattedKey);
     configValidator.validateInput({ ...input, key: formattedKey });
 
     const existing = await configRepository.findByKey(formattedKey);
@@ -171,7 +174,7 @@ export class ConfigService {
         action: 'CONFIG_CREATED',
         targetType: 'CONFIG',
         targetId: dto.id,
-        details: { key: dto.key, category: dto.category, value: dto.value }
+        details: { key: dto.key, category: dto.category }
       });
     }
 
@@ -182,6 +185,9 @@ export class ConfigService {
 
   public async updateConfig(key: string, input: UpdateConfigInput): Promise<ConfigDTO> {
     const formattedKey = key.trim().toUpperCase();
+    
+    // Assert key exists in CONFIG_REGISTRY and is non-secret
+    validateRegistryKey(formattedKey);
     configValidator.validateInput({ ...input, key: formattedKey });
 
     const existing = await configRepository.findByKey(formattedKey);
@@ -190,7 +196,6 @@ export class ConfigService {
     }
 
     const previousValue = existing.value;
-
     const updated = await configRepository.update(formattedKey, input);
 
     const dto: ConfigDTO = {
@@ -209,7 +214,7 @@ export class ConfigService {
       updatedBy: updated.updatedBy
     };
 
-    await configCacheService.invalidateKey(formattedKey);
+    await configCacheService.invalidateKey(formattedKey, true);
     configCacheService.setToMemory(formattedKey, dto);
     await configCacheService.setToRedis(formattedKey, dto);
 
@@ -238,6 +243,8 @@ export class ConfigService {
 
   private async setActivationStatus(key: string, isActive: boolean, actorId?: string): Promise<ConfigDTO> {
     const formattedKey = key.trim().toUpperCase();
+    validateRegistryKey(formattedKey);
+
     const existing = await configRepository.findByKey(formattedKey);
     if (!existing) {
       throw new NotFoundError(`Configuration with key "${formattedKey}" not found.`);
@@ -261,7 +268,7 @@ export class ConfigService {
       updatedBy: updated.updatedBy
     };
 
-    await configCacheService.invalidateKey(formattedKey);
+    await configCacheService.invalidateKey(formattedKey, true);
 
     if (actorId) {
       await auditService.logEvent({
@@ -290,17 +297,17 @@ export class ConfigService {
       {
         providerName: 'Google Gemini',
         configured: Boolean(env.server?.GEMINI_API_KEY || process.env.GEMINI_API_KEY),
-        enabled: Boolean(env.server?.GEMINI_ENABLED ?? true)
+        enabled: await this.getBoolean('GEMINI_ENABLED', true)
       },
       {
         providerName: 'DeepSeek',
         configured: Boolean(env.server?.DEEPSEEK_API_KEY || process.env.DEEPSEEK_API_KEY),
-        enabled: Boolean(env.server?.DEEPSEEK_ENABLED ?? true)
+        enabled: await this.getBoolean('DEEPSEEK_ENABLED', true)
       },
       {
         providerName: 'Groq',
         configured: Boolean(env.server?.GROQ_API_KEY || process.env.GROQ_API_KEY),
-        enabled: Boolean(env.server?.GROQ_ENABLED ?? true)
+        enabled: await this.getBoolean('GROQ_ENABLED', true)
       },
       {
         providerName: 'ClickUp Integration',
@@ -310,7 +317,7 @@ export class ConfigService {
       {
         providerName: 'Web Intelligence (Tavily)',
         configured: Boolean(env.server?.TAVILY_API_KEY || process.env.TAVILY_API_KEY),
-        enabled: Boolean(env.server?.WEB_SEARCH_ENABLED ?? true)
+        enabled: await this.getBoolean('WEB_SEARCH_ENABLED', true)
       }
     ];
   }

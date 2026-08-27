@@ -94,6 +94,19 @@ class RedisService {
     await this.del(lockKey);
   }
 
+  public async publish(channel: string, message: string): Promise<number> {
+    const client = await this.getClient();
+    return client.publish(channel, message);
+  }
+
+  public async createSubscriber(): Promise<RedisClientType> {
+    const redisUrl = env.server?.REDIS_URL || process.env.REDIS_URL || 'redis://localhost:6379';
+    const sub = createClient({ url: redisUrl });
+    sub.on('error', (err) => console.error('Redis subscriber error:', err));
+    await sub.connect();
+    return sub as RedisClientType;
+  }
+
   public async disconnect(): Promise<void> {
     if (this.client && this.client.isOpen) {
       await this.client.disconnect();

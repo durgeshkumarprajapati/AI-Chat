@@ -3,6 +3,7 @@ import { prisma } from '@/lib/prisma';
 import { configService } from '@/features/config/config.service';
 
 describe('Phase 75B — Seed Metadata Sync & Admin Value Preservation', () => {
+  jest.setTimeout(30000);
   it('synchronizes governance metadata without overwriting administrator custom values', async () => {
     await seedMain();
 

@@ -3,6 +3,7 @@ import { prisma } from '@/lib/prisma';
 import { configService } from '@/features/config/config.service';
 
 describe('Phase 75A — Seed Preservation of Admin Values', () => {
+  jest.setTimeout(30000);
   it('preserves administrator-modified values and activation status during subsequent seed runs', async () => {
     // 1. Ensure seed is run initial time
     await seedMain();

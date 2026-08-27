@@ -57,9 +57,19 @@ class RedisService {
     return client.del(key);
   }
 
+  /**
+   * Same matching semantics as `KEYS pattern` (every key matching the glob is deleted), but
+   * uses non-blocking SCAN internally instead of KEYS. KEYS is O(N) over the entire keyspace
+   * and blocks Redis's single event loop for the whole scan; SCAN performs the identical match
+   * in small incremental cursor steps, so this is a pure latency/throughput fix with the exact
+   * same final set of deleted keys.
+   */
   public async delByPattern(pattern: string): Promise<number> {
     const client = await this.getClient();
-    const keys = await client.keys(pattern);
+    const keys: string[] = [];
+    for await (const key of client.scanIterator({ MATCH: pattern, COUNT: 100 })) {
+      keys.push(key);
+    }
     if (keys.length > 0) {
       return client.del(keys);
     }

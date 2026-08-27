@@ -352,7 +352,8 @@ export class ProjectService {
     }
 
     // Verify user owns or has access to document
-    const doc = await prisma.document.findUnique({ where: { id: documentId } });
+    // Phase 77: narrowed to only the field actually read below (userId), instead of the full row.
+    const doc = await prisma.document.findUnique({ where: { id: documentId }, select: { userId: true } });
     if (!doc || doc.userId !== userId) {
       throw new Error('Document not found or unauthorized');
     }

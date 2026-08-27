@@ -82,7 +82,9 @@ export class SubscriptionRepository {
     const [items, total] = await Promise.all([
       prisma.userSubscription.findMany({
         where,
-        include: { plan: true, user: { select: { id: true, email: true, name: true } } },
+        // Phase 77: narrowed from `include: { plan: true }` — the admin route only ever reads
+        // `plan.code`, not the full plan row (pricing, description, etc.).
+        include: { plan: { select: { code: true } }, user: { select: { id: true, email: true, name: true } } },
         orderBy: { createdAt: 'desc' },
         skip: (opts.page - 1) * opts.pageSize,
         take: opts.pageSize

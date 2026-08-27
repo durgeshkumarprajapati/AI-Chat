@@ -1,6 +1,6 @@
 'use client';
 
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useMemo } from 'react';
 import Link from 'next/link';
 import { usePathname } from 'next/navigation';
 import { ProductTour } from '../tour/ProductTour';
@@ -70,7 +70,12 @@ function InnerAppLayout({ children }: { children: React.ReactNode }) {
     pathname === '/study/chill-focus';
 
   // Grouped Navigation Information Architecture
-  const navigationGroups: NavGroup[] = [
+  // Phase 77: memoized on its only two real inputs (role gates the ADMINISTRATION group,
+  // activeCity changes one item's label/badge) — this array was previously rebuilt from
+  // scratch on every render (including keystrokes in any page's own state), which every
+  // consumer below (.map calls, the active-route effect) then re-iterated for no reason.
+  const navigationGroups: NavGroup[] = useMemo(
+    () => [
     {
       id: 'core',
       title: 'CORE',
@@ -94,6 +99,12 @@ function InnerAppLayout({ children }: { children: React.ReactNode }) {
                 name: 'Billing',
                 href: '/admin/billing',
                 icon: '💳',
+                badge: 'ADMIN'
+              },
+              {
+                name: 'Performance',
+                href: '/admin/performance',
+                icon: '⚡',
                 badge: 'ADMIN'
               }
             ]
@@ -169,7 +180,9 @@ function InnerAppLayout({ children }: { children: React.ReactNode }) {
         { name: 'Pricing', href: '/pricing', icon: '🏷️' }
       ]
     }
-  ];
+    ],
+    [currentUser?.role, activeCity]
+  );
 
   // Helper to determine if a group contains the active route
   const groupContainsActiveRoute = (group: NavGroup): boolean => {

@@ -3,11 +3,12 @@ import { requireAuthenticatedUser } from '@/lib/auth';
 import { configService } from '@/features/config';
 import { subscriptionService } from '@/features/billing';
 import { AppError } from '@/errors';
+import { withApiTiming } from '@/features/performance/perf-telemetry.service';
 
 export const dynamic = 'force-dynamic';
 
 /** Returns the caller's own subscription only — never accepts a userId param, matching the tenant-isolation pattern used across every other user-scoped route in this app. */
-export async function GET(req: NextRequest) {
+async function handleGet(req: NextRequest) {
   try {
     const user = await requireAuthenticatedUser(req);
     const billingEnabled = await configService.getBoolean('BILLING_ENABLED', false);
@@ -28,3 +29,5 @@ export async function GET(req: NextRequest) {
     );
   }
 }
+
+export const GET = withApiTiming('billing.subscription', handleGet);

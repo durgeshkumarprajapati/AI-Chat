@@ -1,8 +1,22 @@
 'use client';
 
 import { useState, useEffect, useCallback } from 'react';
-import { ReactFlow, Background, Controls, MiniMap, useNodesState, useEdgesState, Node } from '@xyflow/react';
-import '@xyflow/react/dist/style.css';
+import dynamic from 'next/dynamic';
+import type { Node } from '@xyflow/react';
+
+// Phase 77: @xyflow/react (the largest client-side dependency in this codebase) now loads as
+// its own async chunk instead of being bundled into this page's initial JS. `ssr: false`
+// because ReactFlow requires browser APIs; this page was already 100% client-rendered
+// ('use client' above), so this changes nothing about when/whether the graph is interactive —
+// only whether its JS ships in the initial page bundle.
+const ArchitectureGraphCanvas = dynamic(() => import('./ArchitectureGraphCanvas'), {
+  ssr: false,
+  loading: () => (
+    <div className="flex items-center justify-center h-full text-xs text-slate-500 animate-pulse">
+      Loading interactive architecture graph...
+    </div>
+  )
+});
 
 type SystemNodeData = {
   label: string;
@@ -14,8 +28,8 @@ type SystemNodeData = {
 };
 
 export default function ArchitectureExplorerPage() {
-  const [nodes, setNodes, onNodesChange] = useNodesState<Node>([]);
-  const [edges, setEdges, onEdgesChange] = useEdgesState([]);
+  const [nodes, setNodes] = useState<Node[]>([]);
+  const [edges, setEdges] = useState<any[]>([]);
   const [selectedNode, setSelectedNode] = useState<SystemNodeData | null>(null);
   const [isDarkMode, setIsDarkMode] = useState(true);
   const [loading, setLoading] = useState(true);
@@ -74,7 +88,7 @@ export default function ArchitectureExplorerPage() {
     fetchGraphData();
   }, [fetchGraphData]);
 
-  const onNodeClick = (_: any, node: Node) => {
+  const onNodeSelect = (node: Node) => {
     setSelectedNode(node.data as unknown as SystemNodeData);
   };
 
@@ -116,21 +130,12 @@ export default function ArchitectureExplorerPage() {
               Loading interactive architecture graph...
             </div>
           ) : (
-            <ReactFlow
-              nodes={nodes}
-              edges={edges}
-              onNodesChange={onNodesChange}
-              onEdgesChange={onEdgesChange}
-              onNodeClick={onNodeClick}
-              fitView
-            >
-              <Background color={isDarkMode ? '#334155' : '#cbd5e1'} gap={16} size={1} />
-              <Controls />
-              <MiniMap
-                nodeColor={() => (isDarkMode ? '#6366f1' : '#3b82f6')}
-                maskColor={isDarkMode ? 'rgba(15, 23, 42, 0.7)' : 'rgba(248, 250, 252, 0.7)'}
-              />
-            </ReactFlow>
+            <ArchitectureGraphCanvas
+              initialNodes={nodes}
+              initialEdges={edges}
+              isDarkMode={isDarkMode}
+              onNodeSelect={onNodeSelect}
+            />
           )}
         </div>
 

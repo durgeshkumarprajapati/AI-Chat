@@ -5,6 +5,7 @@ import { configService } from '@/features/config';
 import { subscriptionService, razorpayProvider } from '@/features/billing';
 import { prisma } from '@/lib/prisma';
 import { AppError } from '@/errors';
+import { withApiTiming } from '@/features/performance/perf-telemetry.service';
 
 export const dynamic = 'force-dynamic';
 
@@ -13,22 +14,23 @@ export const dynamic = 'force-dynamic';
  * pricing (yearly normalized to /12), so both are honestly 0 while BILLING_ENABLED=false and no
  * subscriptions exist.
  */
-export async function GET(req: NextRequest) {
+async function handleGet(req: NextRequest) {
   try {
     const authUser = await requireAuthenticatedUser(req);
     requireRole(authUser, UserRole.ADMIN);
 
-    const [billingEnabled, razorpayEnabled, snapshot, totalUsers] = await Promise.all([
+    // Phase 77: activeSubs never depended on the other four values — folded into the same
+    // Promise.all instead of a separate sequential round trip. Identical data, lower latency.
+    const [billingEnabled, razorpayEnabled, snapshot, totalUsers, activeSubs] = await Promise.all([
       configService.getBoolean('BILLING_ENABLED', false),
       configService.getBoolean('RAZORPAY_ENABLED', false),
       subscriptionService.getMetricsSnapshot(),
-      prisma.user.count()
+      prisma.user.count(),
+      prisma.userSubscription.findMany({
+        where: { status: 'ACTIVE' },
+        select: { billingInterval: true, plan: { select: { monthlyPriceCents: true, yearlyPriceCents: true } } }
+      })
     ]);
-
-    const activeSubs = await prisma.userSubscription.findMany({
-      where: { status: 'ACTIVE' },
-      select: { billingInterval: true, plan: { select: { monthlyPriceCents: true, yearlyPriceCents: true } } }
-    });
 
     const mrrCents = activeSubs.reduce((sum, s) => {
       const monthlyEquivalent = s.billingInterval === 'YEARLY' ? Math.round(s.plan.yearlyPriceCents / 12) : s.plan.monthlyPriceCents;
@@ -62,3 +64,7 @@ export async function GET(req: NextRequest) {
     );
   }
 }
+
+// Phase 77: pure timing wrapper — same handler, same inputs/outputs/error behavior, records
+// duration and warns on slow requests via the new perf telemetry service.
+export const GET = withApiTiming('admin.billing.metrics', handleGet);

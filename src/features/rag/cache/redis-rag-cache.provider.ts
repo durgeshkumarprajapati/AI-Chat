@@ -113,13 +113,15 @@ export class RedisRAGCacheProvider implements RAGCacheProvider {
     }
   }
 
+  // Phase 77: these three call sites previously ran blocking `KEYS` scans over the entire
+  // Redis keyspace on every invalidation. `redis.delByPattern` now performs the identical
+  // pattern match and deletes the identical key set via non-blocking SCAN — same invalidation
+  // footprint (including invalidateDocument's existing, pre-Phase-77 platform-wide exact-cache
+  // wipe; narrowing that footprint would be a behavior change and is out of scope here), just
+  // without blocking the single-threaded Redis event loop for the duration of the scan.
   public async invalidateUser(userId: string): Promise<void> {
     try {
-      const client = await redis.getClient();
-      const keys = await client.keys(`rag:*${userId}*`);
-      if (keys.length > 0) {
-        await client.del(keys);
-      }
+      await redis.delByPattern(`rag:*${userId}*`);
     } catch (err) {
       console.warn('[RedisRAGCacheProvider] Invalidate user failed safely:', err);
     }
@@ -127,11 +129,7 @@ export class RedisRAGCacheProvider implements RAGCacheProvider {
 
   public async invalidateKnowledgeBase(knowledgeBaseId: string): Promise<void> {
     try {
-      const client = await redis.getClient();
-      const keys = await client.keys(`rag:*${knowledgeBaseId}*`);
-      if (keys.length > 0) {
-        await client.del(keys);
-      }
+      await redis.delByPattern(`rag:*${knowledgeBaseId}*`);
     } catch (err) {
       console.warn('[RedisRAGCacheProvider] Invalidate KB failed safely:', err);
     }
@@ -139,11 +137,7 @@ export class RedisRAGCacheProvider implements RAGCacheProvider {
 
   public async invalidateDocument(_documentId: string): Promise<void> {
     try {
-      const client = await redis.getClient();
-      const keys = await client.keys(`rag:exact:*`);
-      if (keys.length > 0) {
-        await client.del(keys);
-      }
+      await redis.delByPattern(`rag:exact:*`);
     } catch (err) {
       console.warn('[RedisRAGCacheProvider] Invalidate doc failed safely:', err);
     }

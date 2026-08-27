@@ -1082,6 +1082,44 @@ export const CONFIG_REGISTRY: Record<string, RegistryConfigItem> = {
     isHighImpact: true,
     requiresRestart: false
   },
+  // PHASE 77 — PERFORMANCE OPTIMIZATION
+  MULTIMODAL_IMAGE_PROCESSING_CONCURRENCY: {
+    key: 'MULTIMODAL_IMAGE_PROCESSING_CONCURRENCY',
+    valueType: ConfigValueType.NUMBER,
+    category: ConfigCategory.PERFORMANCE,
+    defaultValue: '3',
+    purpose: 'Number of document images processed concurrently (upload + OCR + vision analysis) per document during multimodal extraction, bounding peak concurrent calls to external OCR/vision providers.',
+    description: 'Worker multimodal image-processing concurrency.',
+    isEditable: true,
+    isHighImpact: true,
+    requiresRestart: false,
+    minValue: 1,
+    maxValue: 10
+  },
+  PERF_SLOW_QUERY_THRESHOLD_MS: {
+    key: 'PERF_SLOW_QUERY_THRESHOLD_MS',
+    valueType: ConfigValueType.NUMBER,
+    category: ConfigCategory.PERFORMANCE,
+    defaultValue: '1000',
+    purpose: 'Duration threshold in milliseconds above which a database query or API route is logged as a slow-operation warning.',
+    description: 'Slow-operation telemetry threshold.',
+    isEditable: true,
+    isHighImpact: false,
+    requiresRestart: false,
+    minValue: 100,
+    maxValue: 30000
+  },
+  PERF_TELEMETRY_ENABLED: {
+    key: 'PERF_TELEMETRY_ENABLED',
+    valueType: ConfigValueType.BOOLEAN,
+    category: ConfigCategory.PERFORMANCE,
+    defaultValue: 'true',
+    purpose: 'Master switch for Phase 77 performance telemetry (API/DB/RAG timing capture). Purely observational — never affects request handling.',
+    description: 'Performance telemetry master flag.',
+    isEditable: true,
+    isHighImpact: false,
+    requiresRestart: false
+  },
   BILLING_RECONCILIATION_INTERVAL_MS: {
     key: 'BILLING_RECONCILIATION_INTERVAL_MS',
     valueType: ConfigValueType.NUMBER,

@@ -79,14 +79,22 @@ export default function AdminBillingPage() {
   useEffect(() => {
     async function load() {
       try {
-        const [metricsRes, plansRes] = await Promise.all([
+        // Phase 77: the initial subscriptions page never depended on metrics/plans resolving
+        // first — folded into the same Promise.all instead of a separate request issued only
+        // after those two settled.
+        const [metricsRes, plansRes, subsRes] = await Promise.all([
           fetch('/api/admin/billing/metrics').then((r) => r.json()),
-          fetch('/api/admin/billing/plans').then((r) => r.json())
+          fetch('/api/admin/billing/plans').then((r) => r.json()),
+          fetch('/api/admin/billing/subscriptions?page=1&pageSize=20').then((r) => r.json())
         ]);
         if (!metricsRes.success) throw new Error(metricsRes.error?.message || 'Access denied');
         setMetrics(metricsRes.data);
         if (plansRes.success) setPlans(plansRes.data.plans);
-        await loadSubscriptions(1);
+        if (subsRes.success) {
+          setSubscriptions(subsRes.data.subscriptions);
+          setSubTotal(subsRes.data.total);
+          setSubPage(1);
+        }
       } catch (err) {
         setError(err instanceof Error ? err.message : 'Admin access required.');
       } finally {

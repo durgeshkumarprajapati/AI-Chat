@@ -51,41 +51,50 @@ export async function main() {
     if (!item) continue;
     const existing = await prisma.config.findUnique({ where: { key: item.key } });
 
-    if (existing) {
-      // PRESERVE admin-controlled `value`, `isActive`, and `version`!
-      // Migrate deprecated gemini-2.5 models if present
-      const isDeprecatedGeminiModel = existing.value === 'gemini-2.5-flash' || existing.value === 'gemini-2.5-pro';
-      const updatedValue = isDeprecatedGeminiModel ? item.defaultValue : existing.value;
+    try {
+      if (existing) {
+        // PRESERVE admin-controlled `value`, `isActive`, and `version`!
+        // Migrate deprecated gemini-2.5 models if present
+        const isDeprecatedGeminiModel = existing.value === 'gemini-2.5-flash' || existing.value === 'gemini-2.5-pro';
+        const updatedValue = isDeprecatedGeminiModel ? item.defaultValue : existing.value;
 
-      await prisma.config.update({
-        where: { key: item.key },
-        data: {
-          value: updatedValue,
-          valueType: item.valueType,
-          category: item.category,
-          purpose: item.purpose,
-          description: item.description || null,
-          isSystem: true
-        }
-      });
-      updatedCount++;
-    } else {
-      await prisma.config.create({
-        data: {
-          key: item.key,
-          value: item.defaultValue,
-          valueType: item.valueType,
-          category: item.category,
-          purpose: item.purpose,
-          description: item.description || null,
-          isActive: true,
-          isSystem: true,
-          version: 1,
-          createdBy: admin ? admin.id : null,
-          updatedBy: admin ? admin.id : null
-        }
-      });
-      createdCount++;
+        await prisma.config.update({
+          where: { key: item.key },
+          data: {
+            value: updatedValue,
+            valueType: item.valueType,
+            category: item.category,
+            purpose: item.purpose,
+            description: item.description || null,
+            isSystem: true
+          }
+        });
+        updatedCount++;
+      } else {
+        await prisma.config.create({
+          data: {
+            key: item.key,
+            value: item.defaultValue,
+            valueType: item.valueType,
+            category: item.category,
+            purpose: item.purpose,
+            description: item.description || null,
+            isActive: true,
+            isSystem: true,
+            version: 1,
+            createdBy: admin ? admin.id : null,
+            updatedBy: admin ? admin.id : null
+          }
+        });
+        createdCount++;
+      }
+    } catch (err: any) {
+      if (err?.code === 'P2002') {
+        // Unique constraint race condition during concurrent test executions
+        updatedCount++;
+      } else {
+        throw err;
+      }
     }
   }
 
@@ -107,30 +116,44 @@ export async function main() {
     let plan = await prisma.subscriptionPlan.findUnique({ where: { code: planCode as any } });
 
     if (!plan) {
-      plan = await prisma.subscriptionPlan.create({
-        data: {
-          code: planCode as any,
-          name: display.name,
-          description: display.description,
-          monthlyPriceCents: display.monthlyPriceCents,
-          yearlyPriceCents: display.yearlyPriceCents,
-          currency: display.currency,
-          trialDays: display.trialDays,
-          sortOrder: display.sortOrder
+      try {
+        plan = await prisma.subscriptionPlan.create({
+          data: {
+            code: planCode as any,
+            name: display.name,
+            description: display.description,
+            monthlyPriceCents: display.monthlyPriceCents,
+            yearlyPriceCents: display.yearlyPriceCents,
+            currency: display.currency,
+            trialDays: display.trialDays,
+            sortOrder: display.sortOrder
+          }
+        });
+        plansCreated++;
+      } catch (err: any) {
+        if (err?.code === 'P2002') {
+          plan = await prisma.subscriptionPlan.findUnique({ where: { code: planCode as any } });
+        } else {
+          throw err;
         }
-      });
-      plansCreated++;
+      }
     }
+
+    if (!plan) continue;
 
     for (const feature of DEFAULT_PLAN_FEATURES[planCode]) {
       const existingFeature = await prisma.subscriptionPlanFeature.findUnique({
         where: { planId_featureCode: { planId: plan.id, featureCode: feature.featureCode } }
       });
       if (!existingFeature) {
-        await prisma.subscriptionPlanFeature.create({
-          data: { planId: plan.id, featureCode: feature.featureCode, isEnabled: feature.isEnabled }
-        });
-        planFeaturesSynced++;
+        try {
+          await prisma.subscriptionPlanFeature.create({
+            data: { planId: plan.id, featureCode: feature.featureCode, isEnabled: feature.isEnabled }
+          });
+          planFeaturesSynced++;
+        } catch (err: any) {
+          if (err?.code !== 'P2002') throw err;
+        }
       }
     }
 
@@ -139,16 +162,20 @@ export async function main() {
         where: { planId_metric: { planId: plan.id, metric: limit.metric } }
       });
       if (!existingLimit) {
-        await prisma.subscriptionPlanLimit.create({
-          data: {
-            planId: plan.id,
-            metric: limit.metric,
-            limit: limit.limit ?? null,
-            isUnlimited: limit.isUnlimited ?? false,
-            period: limit.period
-          }
-        });
-        planLimitsSynced++;
+        try {
+          await prisma.subscriptionPlanLimit.create({
+            data: {
+              planId: plan.id,
+              metric: limit.metric,
+              limit: limit.limit,
+              isUnlimited: limit.isUnlimited,
+              period: limit.period
+            }
+          });
+          planLimitsSynced++;
+        } catch (err: any) {
+          if (err?.code !== 'P2002') throw err;
+        }
       }
     }
   }

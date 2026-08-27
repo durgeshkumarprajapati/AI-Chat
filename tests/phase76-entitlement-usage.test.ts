@@ -81,7 +81,7 @@ describe('Phase 76 — Entitlement gating and usage limits (BILLING_ENABLED=true
   });
 
   it('checkUsageLimit denies once the count reaches the plan limit when enforcement is enabled', async () => {
-    (configService.getBoolean as jest.Mock).mockImplementation((key: string) => Promise.resolve(true));
+    (configService.getBoolean as jest.Mock).mockImplementation(() => Promise.resolve(true));
     (prisma.usageCounter.findUnique as jest.Mock).mockResolvedValue({ count: 10 });
 
     const result = await entitlementService.checkUsageLimit('user-1', 'RAG_QUERIES');
@@ -90,7 +90,7 @@ describe('Phase 76 — Entitlement gating and usage limits (BILLING_ENABLED=true
   });
 
   it('consumeUsage increments the counter only when allowed', async () => {
-    (configService.getBoolean as jest.Mock).mockImplementation((key: string) => Promise.resolve(true));
+    (configService.getBoolean as jest.Mock).mockImplementation(() => Promise.resolve(true));
     (prisma.usageCounter.findUnique as jest.Mock).mockResolvedValue({ count: 3 });
     (prisma.usageCounter.upsert as jest.Mock).mockResolvedValue({ count: 4 });
 
@@ -101,7 +101,7 @@ describe('Phase 76 — Entitlement gating and usage limits (BILLING_ENABLED=true
   });
 
   it('consumeUsage never increments the counter when enforcement denies, and records ENTITLEMENT_DENIED', async () => {
-    (configService.getBoolean as jest.Mock).mockImplementation((key: string) => Promise.resolve(true));
+    (configService.getBoolean as jest.Mock).mockImplementation(() => Promise.resolve(true));
     (prisma.usageCounter.findUnique as jest.Mock).mockResolvedValue({ count: 10 });
 
     const result = await entitlementService.consumeUsage('user-1', 'RAG_QUERIES');

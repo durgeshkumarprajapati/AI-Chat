@@ -28,6 +28,8 @@
     "../src/features/document-intelligence/**/*",
     "../src/features/multimodal-document-intelligence/**/*",
     "../src/features/document-management/**/*",
-    "../src/features/config/**/*"
+    "../src/features/config/**/*",
+    "../src/features/billing/**/*",
+    "../src/features/audit/**/*"
   ]
 }

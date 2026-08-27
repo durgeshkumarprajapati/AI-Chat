@@ -1,6 +1,7 @@
 import { PrismaClient, UserRole, AuthProvider, UserStatus } from '@prisma/client';
 import { passwordService } from '../src/features/auth/password.service';
 import { CONFIG_REGISTRY } from '../src/features/config/config.registry';
+import { PLAN_DISPLAY_SEED, DEFAULT_PLAN_FEATURES, DEFAULT_PLAN_LIMITS } from '../src/features/billing/billing.constants';
 
 const prisma = new PrismaClient();
 
@@ -90,6 +91,70 @@ export async function main() {
 
   console.log(
     `✅ [PrismaSeed] Governance sync complete: ${registryKeys.length} items (${createdCount} created, ${updatedCount} metadata synced, 0 admin values overwritten).`
+  );
+
+  // 3. Phase 76 — Subscription plan seeding. Idempotent: pricing/description/trialDays are only
+  // set on first create, never overwritten on re-seed, so an admin's pricing edits in
+  // /admin/billing survive every future `prisma db seed` run. Feature/limit rows use upsert on
+  // their own natural key, so a re-seed after adding a new FeatureCode/UsageMetric fills in only
+  // the newly-added rows without touching ones an admin already customized.
+  let plansCreated = 0;
+  let planFeaturesSynced = 0;
+  let planLimitsSynced = 0;
+
+  for (const planCode of Object.keys(PLAN_DISPLAY_SEED) as Array<keyof typeof PLAN_DISPLAY_SEED>) {
+    const display = PLAN_DISPLAY_SEED[planCode];
+    let plan = await prisma.subscriptionPlan.findUnique({ where: { code: planCode as any } });
+
+    if (!plan) {
+      plan = await prisma.subscriptionPlan.create({
+        data: {
+          code: planCode as any,
+          name: display.name,
+          description: display.description,
+          monthlyPriceCents: display.monthlyPriceCents,
+          yearlyPriceCents: display.yearlyPriceCents,
+          currency: display.currency,
+          trialDays: display.trialDays,
+          sortOrder: display.sortOrder
+        }
+      });
+      plansCreated++;
+    }
+
+    for (const feature of DEFAULT_PLAN_FEATURES[planCode]) {
+      const existingFeature = await prisma.subscriptionPlanFeature.findUnique({
+        where: { planId_featureCode: { planId: plan.id, featureCode: feature.featureCode } }
+      });
+      if (!existingFeature) {
+        await prisma.subscriptionPlanFeature.create({
+          data: { planId: plan.id, featureCode: feature.featureCode, isEnabled: feature.isEnabled }
+        });
+        planFeaturesSynced++;
+      }
+    }
+
+    for (const limit of DEFAULT_PLAN_LIMITS[planCode]) {
+      const existingLimit = await prisma.subscriptionPlanLimit.findUnique({
+        where: { planId_metric: { planId: plan.id, metric: limit.metric } }
+      });
+      if (!existingLimit) {
+        await prisma.subscriptionPlanLimit.create({
+          data: {
+            planId: plan.id,
+            metric: limit.metric,
+            limit: limit.limit ?? null,
+            isUnlimited: limit.isUnlimited ?? false,
+            period: limit.period
+          }
+        });
+        planLimitsSynced++;
+      }
+    }
+  }
+
+  console.log(
+    `✅ [PrismaSeed] Phase 76 billing sync complete: ${plansCreated} plans created, ${planFeaturesSynced} feature rows added, ${planLimitsSynced} limit rows added (existing admin-edited rows untouched).`
   );
 }
 

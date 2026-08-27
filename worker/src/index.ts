@@ -5,7 +5,9 @@ import { knowledgeGraphProcessor, KnowledgeGraphJobPayload } from './processors/
 import { multimodalProcessor } from './processors/multimodal.processor.js';
 import { workerDocumentRepository } from './repositories/document.repository.js';
 import { workerCalendarSyncProcessor } from './processors/calendar-sync.processor.js';
+import { billingReconciliationProcessor } from './processors/billing-reconciliation.processor.js';
 import { MultimodalJobPayload, QUEUES } from '@/lib/rabbitmq';
+import { configService } from '@/features/config';
 import { prisma } from './lib/prisma.js';
 
 dotenv.config({ path: '../.env' });
@@ -191,6 +193,19 @@ export async function startWorker() {
       }
     }, 30000);
     syncInterval.unref();
+
+    // Phase 76 — periodic billing reconciliation (trial expiry, grace-period entry/exit).
+    // A no-op query round-trip while BILLING_ENABLED=false; see billing-reconciliation.processor.ts.
+    const billingReconciliationIntervalMs = await configService.getNumber('BILLING_RECONCILIATION_INTERVAL_MS', 3600000);
+    const billingInterval = setInterval(async () => {
+      if (isShuttingDown) return;
+      try {
+        await billingReconciliationProcessor.run();
+      } catch (err) {
+        console.error('[Worker] Periodic billing reconciliation error:', err);
+      }
+    }, billingReconciliationIntervalMs);
+    billingInterval.unref();
   } catch (error) {
     console.error('[Worker] Failed to start worker:', error);
     process.exit(1);

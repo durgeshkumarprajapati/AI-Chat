@@ -146,6 +146,9 @@ model User {
   clickUpIntegrations           ClickUpIntegration[]
   configsCreated                Config[] @relation("ConfigCreatedBy")
   configsUpdated                Config[] @relation("ConfigUpdatedBy")
+  subscription                  UserSubscription?
+  paymentTransactions           PaymentTransaction[]
+  usageCounters                 UsageCounter[]
 
   @@index([email])
   @@map("users")
@@ -3308,6 +3311,7 @@ enum ConfigCategory {
   FEATURE_FLAG
   PERFORMANCE
   SECURITY
+  BILLING
   OTHER
 }
 
@@ -3335,6 +3339,241 @@ model Config {
   @@map("configs")
 }
 
+// ==========================================
+// PHASE 76 — SUBSCRIPTION, BILLING & ENTITLEMENT ARCHITECTURE
+// Additive only. BILLING_ENABLED / RAZORPAY_ENABLED (Config registry) default false,
+// so no code path in this section is exercised by default traffic. See
+// src/features/billing/index.ts for the entry points.
+// ==========================================
+
+enum PlanCode {
+  FREE
+  PRO
+  PREMIUM
+}
+
+enum BillingInterval {
+  MONTHLY
+  YEARLY
+}
+
+enum SubscriptionStatus {
+  TRIALING
+  ACTIVE
+  PAST_DUE
+  GRACE_PERIOD
+  CANCEL_SCHEDULED
+  CANCELED
+  EXPIRED
+  SUSPENDED
+  INCOMPLETE
+}
+
+enum PaymentStatus {
+  CREATED
+  AUTHORIZED
+  CAPTURED
+  FAILED
+  REFUNDED
+}
+
+enum FeatureCode {
+  PRIVATE_RAG_CHAT
+  GROUP_RAG_CHAT
+  PROJECT_RAG_WORKSPACE
+  ADVANCED_RAG
+  GRAPH_RAG
+  MULTIMODAL_DOCUMENT_INTELLIGENCE
+  OCR_PROCESSING
+  TABLE_EXTRACTION
+  IMAGE_ANALYSIS
+  CHART_ANALYSIS
+  DOCUMENT_VERSIONING
+  DOCUMENT_LIFECYCLE
+  MEETING_INTELLIGENCE
+  CLICKUP_INTEGRATION
+  WEB_SEARCH
+  KNOWLEDGE_GRAPH
+  SYSTEM_ARCHITECTURE_EXPLORER
+}
+
+enum UsageMetric {
+  DOCUMENTS
+  STORAGE_MB
+  RAG_QUERIES
+  GROUP_MEMBERS
+  PROJECTS
+  MEETING_ANALYSES
+  AI_REQUESTS
+}
+
+enum UsagePeriod {
+  DAILY
+  MONTHLY
+  LIFETIME
+}
+
+enum WebhookProcessingStatus {
+  RECEIVED
+  PROCESSED
+  FAILED
+  IGNORED
+}
+
+model SubscriptionPlan {
+  id                    String   @id @default(uuid())
+  code                  PlanCode @unique
+  name                  String
+  description           String?  @db.Text
+  isActive              Boolean  @default(true) @map("is_active")
+  monthlyPriceCents     Int      @default(0) @map("monthly_price_cents")
+  yearlyPriceCents      Int      @default(0) @map("yearly_price_cents")
+  currency              String   @default("INR")
+  razorpayMonthlyPlanId String?  @map("razorpay_monthly_plan_id")
+  razorpayYearlyPlanId  String?  @map("razorpay_yearly_plan_id")
+  trialDays             Int      @default(0) @map("trial_days")
+  sortOrder             Int      @default(0) @map("sort_order")
+  createdAt             DateTime @default(now()) @map("created_at")
+  updatedAt             DateTime @updatedAt @map("updated_at")
+
+  features      SubscriptionPlanFeature[]
+  limits        SubscriptionPlanLimit[]
+  subscriptions UserSubscription[]
+
+  @@index([isActive])
+  @@map("subscription_plans")
+}
+
+// Boolean entitlement: does this plan grant access to this feature at all.
+model SubscriptionPlanFeature {
+  id          String      @id @default(uuid())
+  planId      String      @map("plan_id")
+  featureCode FeatureCode @map("feature_code")
+  isEnabled   Boolean     @default(true) @map("is_enabled")
+  createdAt   DateTime    @default(now()) @map("created_at")
+  updatedAt   DateTime    @updatedAt @map("updated_at")
+
+  plan SubscriptionPlan @relation(fields: [planId], references: [id], onDelete: Cascade)
+
+  @@unique([planId, featureCode])
+  @@index([planId])
+  @@index([featureCode])
+  @@map("subscription_plan_features")
+}
+
+// Numeric usage entitlement, independent of any single feature (e.g. RAG_QUERIES spans both
+// PRIVATE_RAG_CHAT and WEB_SEARCH). isUnlimited true means "no cap, ignore limit" without a
+// magic sentinel number.
+model SubscriptionPlanLimit {
+  id          String      @id @default(uuid())
+  planId      String      @map("plan_id")
+  metric      UsageMetric
+  limit       Int?
+  isUnlimited Boolean     @default(false) @map("is_unlimited")
+  period      UsagePeriod @default(MONTHLY)
+  createdAt   DateTime    @default(now()) @map("created_at")
+  updatedAt   DateTime    @updatedAt @map("updated_at")
+
+  plan SubscriptionPlan @relation(fields: [planId], references: [id], onDelete: Cascade)
+
+  @@unique([planId, metric])
+  @@index([planId])
+  @@index([metric])
+  @@map("subscription_plan_limits")
+}
+
+model UserSubscription {
+  id                     String             @id @default(uuid())
+  userId                 String             @unique @map("user_id")
+  planId                 String             @map("plan_id")
+  status                 SubscriptionStatus @default(TRIALING)
+  billingInterval        BillingInterval    @default(MONTHLY) @map("billing_interval")
+  trialStartedAt         DateTime?          @map("trial_started_at")
+  trialEndsAt            DateTime?          @map("trial_ends_at")
+  hasUsedTrial           Boolean            @default(false) @map("has_used_trial")
+  currentPeriodStart     DateTime?          @map("current_period_start")
+  currentPeriodEnd       DateTime?          @map("current_period_end")
+  gracePeriodEndsAt      DateTime?          @map("grace_period_ends_at")
+  cancelAtPeriodEnd      Boolean            @default(false) @map("cancel_at_period_end")
+  canceledAt             DateTime?          @map("canceled_at")
+  razorpaySubscriptionId String?            @unique @map("razorpay_subscription_id")
+  razorpayCustomerId     String?            @map("razorpay_customer_id")
+  isGrandfathered        Boolean            @default(false) @map("is_grandfathered")
+  metadata               Json?              @default("{}")
+  createdAt              DateTime           @default(now()) @map("created_at")
+  updatedAt              DateTime           @updatedAt @map("updated_at")
+
+  user          User                  @relation(fields: [userId], references: [id], onDelete: Cascade)
+  plan          SubscriptionPlan      @relation(fields: [planId], references: [id], onDelete: Restrict)
+  transactions  PaymentTransaction[]
+  usageCounters UsageCounter[]
+
+  @@index([userId, status])
+  @@index([status])
+  @@index([planId])
+  @@index([razorpaySubscriptionId])
+  @@map("user_subscriptions")
+}
+
+model PaymentTransaction {
+  id                        String        @id @default(uuid())
+  subscriptionId            String?       @map("subscription_id")
+  userId                    String        @map("user_id")
+  status                    PaymentStatus @default(CREATED)
+  amountCents               Int           @map("amount_cents")
+  currency                  String        @default("INR")
+  razorpayOrderId           String?       @unique @map("razorpay_order_id")
+  razorpayPaymentId         String?       @unique @map("razorpay_payment_id")
+  razorpaySignatureVerified Boolean       @default(false) @map("razorpay_signature_verified")
+  failureReason             String?       @db.Text @map("failure_reason")
+  metadata                  Json?         @default("{}")
+  createdAt                 DateTime      @default(now()) @map("created_at")
+  updatedAt                 DateTime      @updatedAt @map("updated_at")
+
+  subscription UserSubscription? @relation(fields: [subscriptionId], references: [id], onDelete: SetNull)
+  user         User              @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId])
+  @@index([subscriptionId])
+  @@index([status])
+  @@map("payment_transactions")
+}
+
+model BillingWebhookEvent {
+  id                String                   @id @default(uuid())
+  eventId           String                   @unique @map("event_id")
+  eventType         String                   @map("event_type")
+  status            WebhookProcessingStatus  @default(RECEIVED)
+  rawPayload        Json                     @map("raw_payload")
+  signatureVerified Boolean                  @default(false) @map("signature_verified")
+  processingError   String?                  @db.Text @map("processing_error")
+  receivedAt        DateTime                 @default(now()) @map("received_at")
+  processedAt       DateTime?                @map("processed_at")
+
+  @@index([eventType])
+  @@index([status])
+  @@map("billing_webhook_events")
+}
+
+model UsageCounter {
+  id             String       @id @default(uuid())
+  userId         String       @map("user_id")
+  subscriptionId String?      @map("subscription_id")
+  metric         UsageMetric
+  period         UsagePeriod
+  periodKey      String       @map("period_key")
+  count          Int          @default(0)
+  createdAt      DateTime     @default(now()) @map("created_at")
+  updatedAt      DateTime     @updatedAt @map("updated_at")
+
+  user         User               @relation(fields: [userId], references: [id], onDelete: Cascade)
+  subscription UserSubscription?  @relation(fields: [subscriptionId], references: [id], onDelete: SetNull)
+
+  @@unique([userId, metric, period, periodKey])
+  @@index([userId])
+  @@index([subscriptionId])
+  @@map("usage_counters")
+}
 
 
 

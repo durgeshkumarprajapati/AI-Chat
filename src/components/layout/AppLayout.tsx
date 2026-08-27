@@ -89,6 +89,12 @@ function InnerAppLayout({ children }: { children: React.ReactNode }) {
                 href: '/admin/configuration',
                 icon: '⚙️',
                 badge: 'ADMIN'
+              },
+              {
+                name: 'Billing',
+                href: '/admin/billing',
+                icon: '💳',
+                badge: 'ADMIN'
               }
             ]
           }
@@ -157,7 +163,11 @@ function InnerAppLayout({ children }: { children: React.ReactNode }) {
       id: 'account',
       title: 'ACCOUNT',
       icon: '👤',
-      items: [{ name: 'My Account', href: '/account', icon: '👤' }]
+      items: [
+        { name: 'My Account', href: '/account', icon: '👤' },
+        { name: 'Billing & Plan', href: '/billing', icon: '💳' },
+        { name: 'Pricing', href: '/pricing', icon: '🏷️' }
+      ]
     }
   ];
 

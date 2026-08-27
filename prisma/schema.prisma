@@ -144,7 +144,10 @@ model User {
   documentRetentionJobs         DocumentRetentionJob[]
   meetings                      Meeting[]
   clickUpIntegrations           ClickUpIntegration[]
+  configsCreated                Config[] @relation("ConfigCreatedBy")
+  configsUpdated                Config[] @relation("ConfigUpdatedBy")
 
+  @@index([email])
   @@map("users")
 }
 
@@ -3276,6 +3279,61 @@ model ClickUpIntegration {
   @@index([userId, status])
   @@map("clickup_integrations")
 }
+
+// ==========================================
+// PHASE 75 — ENTERPRISE CONFIGURATION MANAGEMENT
+// ==========================================
+
+enum ConfigValueType {
+  STRING
+  NUMBER
+  BOOLEAN
+  JSON
+  ARRAY
+}
+
+enum ConfigCategory {
+  SYSTEM
+  RAG
+  LLM
+  CACHE
+  RETRIEVAL
+  DOCUMENT
+  MULTIMODAL
+  OCR
+  WORKER
+  QUEUE
+  MEETING
+  CLICKUP
+  FEATURE_FLAG
+  PERFORMANCE
+  SECURITY
+  OTHER
+}
+
+model Config {
+  id          String          @id @default(uuid())
+  key         String          @unique
+  value       String          @db.Text
+  valueType   ConfigValueType @default(STRING) @map("value_type")
+  category    ConfigCategory  @default(SYSTEM)
+  purpose     String          @db.Text
+  description String?         @db.Text
+  isActive    Boolean         @default(true) @map("is_active")
+  isSystem    Boolean         @default(false) @map("is_system")
+  createdAt   DateTime        @default(now()) @map("created_at")
+  updatedAt   DateTime        @updatedAt @map("updated_at")
+  createdBy   String?         @map("created_by")
+  updatedBy   String?         @map("updated_by")
+
+  creator User? @relation("ConfigCreatedBy", fields: [createdBy], references: [id], onDelete: SetNull)
+  updater User? @relation("ConfigUpdatedBy", fields: [updatedBy], references: [id], onDelete: SetNull)
+
+  @@index([category])
+  @@index([isActive])
+  @@map("configs")
+}
+
 
 
 

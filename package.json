@@ -12,6 +12,7 @@
     "db:generate": "prisma generate",
     "db:migrate": "prisma migrate dev",
     "db:push": "prisma db push",
+    "db:seed": "prisma db seed",
     "db:studio": "prisma studio",
     "test:phase7": "tsx tests/phase7-upload.test.ts",
     "test:phase8": "tsx tests/phase8-parser.test.ts",
@@ -145,5 +146,8 @@
     "ts-jest": "^29.4.12",
     "tsx": "^4.17.0",
     "typescript": "^5.5.4"
+  },
+  "prisma": {
+    "seed": "npx tsx prisma/seed.ts"
   }
 }

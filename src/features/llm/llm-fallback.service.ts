@@ -1,7 +1,11 @@
-import { LLMProvider } from './llm-provider.interface';
-import { LLMRequest, LLMResponse, LLMStreamChunk, StructuredLLMRequest } from './llm.types';
-import { LLMModelRegistry, llmModelRegistry } from './llm-model-registry';
-import { llmCircuitBreakerService } from './llm-circuit-breaker.service';
+import { LLMProvider } from '@/features/llm/llm-provider.interface';
+import { LLMRequest, LLMResponse, LLMStreamChunk, StructuredLLMRequest } from '@/features/llm/llm.types';
+import { LLMModelRegistry, llmModelRegistry } from '@/features/llm/llm-model-registry';
+import { llmCircuitBreakerService } from '@/features/llm/llm-circuit-breaker.service';
+import { isModelValidForProvider } from '@/features/llm/utils/model-validator';
+import { classifyLLMError } from '@/features/llm/llm-error.classifier';
+import { llmTelemetryService } from '@/features/llm/llm-telemetry.service';
+import { env } from '@/config/env';
 
 export class LLMFallbackService {
   private registry: LLMModelRegistry;
@@ -16,15 +20,52 @@ export class LLMFallbackService {
    */
   private getNextFallbackProvider(attempted: Set<string>, request: LLMRequest): LLMProvider | null {
     const candidates: { name: string; isConfigured: () => boolean }[] = [
-      { name: 'gemini', isConfigured: () => !!(process.env.GEMINI_API_KEY || process.env.NODE_ENV === 'test') },
-      { name: 'deepseek', isConfigured: () => !!process.env.DEEPSEEK_API_KEY },
-      { name: 'groq', isConfigured: () => !!process.env.GROQ_API_KEY },
-      { name: 'kimi', isConfigured: () => !!process.env.LLM_KIMI_API_KEY },
+      {
+        name: 'gemini',
+        isConfigured: () => {
+          const enabledEnv = process.env.GEMINI_ENABLED;
+          const isEnabled = enabledEnv !== undefined ? enabledEnv !== 'false' : (env.server?.GEMINI_ENABLED ?? true);
+          const key = process.env.GEMINI_API_KEY;
+          const hasKey = !!key;
+          return isEnabled && hasKey;
+        }
+      },
+      {
+        name: 'deepseek',
+        isConfigured: () => {
+          const enabledEnv = process.env.DEEPSEEK_ENABLED;
+          const isEnabled = enabledEnv !== undefined ? enabledEnv !== 'false' : (env.server?.DEEPSEEK_ENABLED ?? true);
+          const key = process.env.DEEPSEEK_API_KEY;
+          const hasKey = !!key;
+          return isEnabled && hasKey;
+        }
+      },
+      {
+        name: 'groq',
+        isConfigured: () => {
+          const enabledEnv = process.env.GROQ_ENABLED;
+          const isEnabled = enabledEnv !== undefined ? enabledEnv !== 'false' : (env.server?.GROQ_ENABLED ?? true);
+          const key = process.env.GROQ_API_KEY;
+          const hasKey = !!key;
+          return isEnabled && hasKey;
+        }
+      },
+      {
+        name: 'kimi',
+        isConfigured: () => {
+          const enabledEnv = process.env.LLM_KIMI_ENABLED;
+          const isEnabled = enabledEnv !== undefined ? enabledEnv === 'true' : (env.server?.LLM_KIMI_ENABLED ?? false);
+          const key = process.env.LLM_KIMI_API_KEY;
+          const hasKey = !!key;
+          return isEnabled && hasKey;
+        }
+      },
       {
         name: 'ollama',
         isConfigured: () => {
           if (request.feature === 'CITY_EXPLORER') {
-            return process.env.CITY_EXPLORER_ALLOW_OLLAMA_FALLBACK === 'true';
+            const allowOllamaEnv = process.env.CITY_EXPLORER_ALLOW_OLLAMA_FALLBACK;
+            return allowOllamaEnv !== undefined ? allowOllamaEnv === 'true' : (env.server?.CITY_EXPLORER_ALLOW_OLLAMA_FALLBACK ?? false);
           }
           return true;
         }
@@ -44,6 +85,21 @@ export class LLMFallbackService {
   }
 
   /**
+   * Helper to ensure request model override is stripped if incompatible with candidate fallback provider
+   * or if fallback is active.
+   */
+  private sanitizeRequestForProvider<T extends LLMRequest>(providerName: string, request: T, usedFallback: boolean): T {
+    if (!request.modelOverride) {
+      return request;
+    }
+    if (!isModelValidForProvider(providerName, request.modelOverride) || usedFallback) {
+      const { modelOverride: _modelOverride, ...cleaned } = request;
+      return cleaned as T;
+    }
+    return request;
+  }
+
+  /**
    * Executes LLM call with dynamic fallback across prioritized providers.
    */
   public async executeWithFallback(
@@ -53,18 +109,64 @@ export class LLMFallbackService {
   ): Promise<{ response: LLMResponse; usedFallback: boolean }> {
     let currentProvider: LLMProvider | null = primaryProvider;
     let usedFallback = false;
+    let attemptIndex = 1;
     const attemptedProviders = new Set<string>();
-    const req = modelOverride ? { ...request, modelOverride } : request;
+    let currentReq: LLMRequest = modelOverride ? { ...request, modelOverride } : request;
 
     while (currentProvider) {
       attemptedProviders.add(currentProvider.name.toLowerCase());
+      const activeReq = this.sanitizeRequestForProvider(currentProvider.name, currentReq, usedFallback);
+
       try {
-        const response = await currentProvider.generate(req);
+        console.log(`[LLMFallbackService] Attempt ${attemptIndex}: provider=${currentProvider.name} feature=${activeReq.feature || 'GENERAL'}`);
+        llmTelemetryService.recordLifecycleEvent('llm.provider.request.started', {
+          provider: currentProvider.name,
+          model: activeReq.modelOverride,
+          feature: activeReq.feature,
+          attempt: attemptIndex
+        });
+
+        const response = await currentProvider.generate(activeReq);
         llmCircuitBreakerService.recordSuccess(currentProvider.name);
+
+        if (usedFallback) {
+          llmTelemetryService.recordLifecycleEvent('llm.provider.fallback.succeeded', {
+            provider: response.provider,
+            model: response.model,
+            feature: activeReq.feature,
+            attempt: attemptIndex
+          });
+        }
+
         return { response, usedFallback };
       } catch (err) {
-        console.warn(`[LLMFallbackService] Provider "${currentProvider.name}" failed:`, err);
+        const classified = classifyLLMError(err, currentProvider.name);
+        console.warn(
+          `[LLMFallbackService] Attempt ${attemptIndex} failed for provider "${currentProvider.name}" [category=${classified.category}]:`,
+          err instanceof Error ? err.message : String(err)
+        );
+
         llmCircuitBreakerService.recordFailure(currentProvider.name, err);
+
+        llmTelemetryService.recordLifecycleEvent('llm.provider.request.failed', {
+          provider: currentProvider.name,
+          model: activeReq.modelOverride,
+          feature: activeReq.feature,
+          attempt: attemptIndex,
+          errorCategory: classified.category,
+          error: classified.message
+        });
+
+        if (classified.category === 'MODEL_NOT_FOUND' || classified.category === 'INVALID_MODEL') {
+          llmTelemetryService.recordLifecycleEvent('llm.provider.model.not_found', {
+            provider: currentProvider.name,
+            model: activeReq.modelOverride,
+            feature: activeReq.feature,
+            attempt: attemptIndex,
+            errorCategory: classified.category,
+            error: classified.message
+          });
+        }
 
         if (currentProvider.name === 'ollama' || request.localOnly) {
           throw err;
@@ -72,10 +174,25 @@ export class LLMFallbackService {
 
         const nextProvider = this.getNextFallbackProvider(attemptedProviders, request);
         if (!nextProvider) {
+          llmTelemetryService.recordLifecycleEvent('llm.provider.fallback.exhausted', {
+            provider: currentProvider.name,
+            feature: request.feature,
+            attempt: attemptIndex,
+            errorCategory: classified.category,
+            error: classified.message
+          });
           throw err;
         }
 
-        console.warn(`[LLMFallbackService] Falling back from "${currentProvider.name}" to "${nextProvider.name}" provider...`);
+        attemptIndex++;
+        console.warn(`[LLMFallbackService] Falling back from "${currentProvider.name}" to "${nextProvider.name}" provider (Attempt ${attemptIndex})...`);
+
+        llmTelemetryService.recordLifecycleEvent('llm.provider.fallback.started', {
+          provider: nextProvider.name,
+          feature: request.feature,
+          attempt: attemptIndex
+        });
+
         currentProvider = nextProvider;
         usedFallback = true;
       }
@@ -92,30 +209,86 @@ export class LLMFallbackService {
     request: LLMRequest
   ): AsyncIterable<LLMStreamChunk> {
     let currentProvider: LLMProvider | null = primaryProvider;
+    let usedFallback = false;
+    let attemptIndex = 1;
     const attemptedProviders = new Set<string>();
 
     while (currentProvider) {
       attemptedProviders.add(currentProvider.name.toLowerCase());
+      const activeReq = this.sanitizeRequestForProvider(currentProvider.name, request, usedFallback);
+
       try {
-        for await (const chunk of currentProvider.stream(request)) {
+        console.log(`[LLMFallbackService] Streaming Attempt ${attemptIndex}: provider=${currentProvider.name} feature=${activeReq.feature || 'GENERAL'}`);
+        llmTelemetryService.recordLifecycleEvent('llm.provider.request.started', {
+          provider: currentProvider.name,
+          model: activeReq.modelOverride,
+          feature: activeReq.feature,
+          attempt: attemptIndex
+        });
+
+        for await (const chunk of currentProvider.stream(activeReq)) {
           yield chunk;
         }
+
         llmCircuitBreakerService.recordSuccess(currentProvider.name);
+        if (usedFallback) {
+          llmTelemetryService.recordLifecycleEvent('llm.provider.fallback.succeeded', {
+            provider: currentProvider.name,
+            feature: activeReq.feature,
+            attempt: attemptIndex
+          });
+        }
         return;
       } catch (err) {
-        console.warn(`[LLMFallbackService] Stream provider "${currentProvider.name}" failed:`, err);
+        const classified = classifyLLMError(err, currentProvider.name);
+        console.warn(`[LLMFallbackService] Streaming Attempt ${attemptIndex} failed for provider "${currentProvider.name}" [category=${classified.category}]:`, err instanceof Error ? err.message : String(err));
         llmCircuitBreakerService.recordFailure(currentProvider.name, err);
+
+        llmTelemetryService.recordLifecycleEvent('llm.provider.request.failed', {
+          provider: currentProvider.name,
+          model: activeReq.modelOverride,
+          feature: activeReq.feature,
+          attempt: attemptIndex,
+          errorCategory: classified.category,
+          error: classified.message
+        });
+
+        if (classified.category === 'MODEL_NOT_FOUND' || classified.category === 'INVALID_MODEL') {
+          llmTelemetryService.recordLifecycleEvent('llm.provider.model.not_found', {
+            provider: currentProvider.name,
+            model: activeReq.modelOverride,
+            feature: activeReq.feature,
+            attempt: attemptIndex,
+            errorCategory: classified.category,
+            error: classified.message
+          });
+        }
 
         if (currentProvider.name === 'ollama' || request.localOnly) {
           throw err;
         }
 
+        const prevProviderName = currentProvider.name;
         currentProvider = this.getNextFallbackProvider(attemptedProviders, request);
         if (!currentProvider) {
+          llmTelemetryService.recordLifecycleEvent('llm.provider.fallback.exhausted', {
+            provider: prevProviderName,
+            feature: request.feature,
+            attempt: attemptIndex,
+            errorCategory: classified.category,
+            error: classified.message
+          });
           throw err;
         }
 
-        console.warn(`[LLMFallbackService] Streaming falling back to "${currentProvider.name}" provider...`);
+        attemptIndex++;
+        usedFallback = true;
+        console.warn(`[LLMFallbackService] Streaming falling back to "${currentProvider.name}" provider (Attempt ${attemptIndex})...`);
+        llmTelemetryService.recordLifecycleEvent('llm.provider.fallback.started', {
+          provider: currentProvider.name,
+          feature: request.feature,
+          attempt: attemptIndex
+        });
       }
     }
   }
@@ -129,29 +302,83 @@ export class LLMFallbackService {
   ): Promise<{ data: T; usedFallback: boolean }> {
     let currentProvider: LLMProvider | null = primaryProvider;
     let usedFallback = false;
+    let attemptIndex = 1;
     const attemptedProviders = new Set<string>();
 
     while (currentProvider) {
       attemptedProviders.add(currentProvider.name.toLowerCase());
+      const activeReq = this.sanitizeRequestForProvider(currentProvider.name, request, usedFallback);
+
       try {
-        const data = await currentProvider.generateStructured(request);
+        console.log(`[LLMFallbackService] Structured Attempt ${attemptIndex}: provider=${currentProvider.name} feature=${activeReq.feature || 'GENERAL'}`);
+        llmTelemetryService.recordLifecycleEvent('llm.provider.request.started', {
+          provider: currentProvider.name,
+          model: activeReq.modelOverride,
+          feature: activeReq.feature,
+          attempt: attemptIndex
+        });
+
+        const data = await currentProvider.generateStructured(activeReq);
         llmCircuitBreakerService.recordSuccess(currentProvider.name);
+
+        if (usedFallback) {
+          llmTelemetryService.recordLifecycleEvent('llm.provider.fallback.succeeded', {
+            provider: currentProvider.name,
+            feature: activeReq.feature,
+            attempt: attemptIndex
+          });
+        }
         return { data, usedFallback };
       } catch (err) {
-        console.warn(`[LLMFallbackService] Structured provider "${currentProvider.name}" failed:`, err);
+        const classified = classifyLLMError(err, currentProvider.name);
+        console.warn(`[LLMFallbackService] Structured Attempt ${attemptIndex} failed for provider "${currentProvider.name}" [category=${classified.category}]:`, err instanceof Error ? err.message : String(err));
         llmCircuitBreakerService.recordFailure(currentProvider.name, err);
+
+        llmTelemetryService.recordLifecycleEvent('llm.provider.request.failed', {
+          provider: currentProvider.name,
+          model: activeReq.modelOverride,
+          feature: activeReq.feature,
+          attempt: attemptIndex,
+          errorCategory: classified.category,
+          error: classified.message
+        });
+
+        if (classified.category === 'MODEL_NOT_FOUND' || classified.category === 'INVALID_MODEL') {
+          llmTelemetryService.recordLifecycleEvent('llm.provider.model.not_found', {
+            provider: currentProvider.name,
+            model: activeReq.modelOverride,
+            feature: activeReq.feature,
+            attempt: attemptIndex,
+            errorCategory: classified.category,
+            error: classified.message
+          });
+        }
 
         if (currentProvider.name === 'ollama' || request.localOnly) {
           throw err;
         }
 
+        const prevProviderName = currentProvider.name;
         currentProvider = this.getNextFallbackProvider(attemptedProviders, request);
         if (!currentProvider) {
+          llmTelemetryService.recordLifecycleEvent('llm.provider.fallback.exhausted', {
+            provider: prevProviderName,
+            feature: request.feature,
+            attempt: attemptIndex,
+            errorCategory: classified.category,
+            error: classified.message
+          });
           throw err;
         }
 
-        console.warn(`[LLMFallbackService] Structured falling back to "${currentProvider.name}" provider...`);
+        attemptIndex++;
         usedFallback = true;
+        console.warn(`[LLMFallbackService] Structured falling back to "${currentProvider.name}" provider (Attempt ${attemptIndex})...`);
+        llmTelemetryService.recordLifecycleEvent('llm.provider.fallback.started', {
+          provider: currentProvider.name,
+          feature: request.feature,
+          attempt: attemptIndex
+        });
       }
     }
 

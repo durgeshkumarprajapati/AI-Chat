@@ -7,7 +7,7 @@ import {
 } from '@aws-sdk/client-s3';
 import { getSignedUrl } from '@aws-sdk/s3-request-presigner';
 import { env } from '@/config/env';
-import { InfrastructureError, NotFoundError, ConfigurationError } from '@/errors';
+import { InfrastructureError, NotFoundError } from '@/errors';
 import { StorageProvider } from './storage';
 
 export class S3StorageProvider implements StorageProvider {
@@ -15,18 +15,13 @@ export class S3StorageProvider implements StorageProvider {
   private bucketName: string;
 
   constructor() {
-    const region = process.env.AWS_REGION || env.server?.AWS_REGION;
+    const region = process.env.AWS_REGION || env.server?.AWS_REGION || 'us-east-1';
     const bucket =
       process.env.AWS_S3_BUCKET ||
       env.server?.AWS_S3_BUCKET ||
       process.env.AWS_S3_BUCKET_NAME ||
-      env.server?.AWS_S3_BUCKET_NAME;
-
-    if (!region || !bucket) {
-      throw new ConfigurationError(
-        'AWS S3 Storage Provider requires valid AWS_REGION and AWS_S3_BUCKET (or AWS_S3_BUCKET_NAME) environment variables.'
-      );
-    }
+      env.server?.AWS_S3_BUCKET_NAME ||
+      'document-ai-default-bucket';
 
     this.bucketName = bucket;
 

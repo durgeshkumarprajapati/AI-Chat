@@ -5,8 +5,8 @@ describe('GeminiProvider Unit Tests', () => {
   const provider = new GeminiProvider({
     apiKey: 'mock-gemini-key',
     enabled: true,
-    fastModel: 'gemini-2.5-flash',
-    reasoningModel: 'gemini-2.5-pro'
+    defaultFastModel: 'gemini-2.5-flash',
+    defaultReasoningModel: 'gemini-2.5-pro'
   });
 
   beforeEach(() => {

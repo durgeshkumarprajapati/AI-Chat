@@ -95,6 +95,10 @@ export class LLMCacheService {
       }
     }
   }
+
+  public clearCache(): void {
+    this.inMemoryCache.clear();
+  }
 }
 
 export const llmCacheService = new LLMCacheService();

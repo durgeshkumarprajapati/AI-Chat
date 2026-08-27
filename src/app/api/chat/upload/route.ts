@@ -8,6 +8,8 @@ import { multimodalService } from '@/features/rag/multimodal/multimodal.service'
 import { createHash } from 'crypto';
 import path from 'path';
 
+export const dynamic = 'force-dynamic';
+
 export async function POST(req: NextRequest) {
   try {
     const authUser = await getAuthUser(req);

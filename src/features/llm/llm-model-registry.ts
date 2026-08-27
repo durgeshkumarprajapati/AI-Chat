@@ -1,10 +1,10 @@
 import { LLMProvider } from './llm-provider.interface';
 import { LLMCapability } from './llm.types';
-import { ollamaProvider } from './providers/ollama.provider';
-import { kimiProvider } from './providers/kimi.provider';
-import { geminiProvider } from './providers/gemini.provider';
-import { deepseekProvider } from './providers/deepseek.provider';
-import { groqProvider } from './providers/groq.provider';
+import { ollamaProvider } from '@/features/llm/providers/ollama.provider';
+import { kimiProvider } from '@/features/llm/providers/kimi.provider';
+import { geminiProvider } from '@/features/llm/providers/gemini.provider';
+import { deepseekProvider } from '@/features/llm/providers/deepseek.provider';
+import { groqProvider } from '@/features/llm/providers/groq.provider';
 
 export interface ProviderRegistration {
   provider: LLMProvider;
@@ -28,8 +28,8 @@ export class LLMModelRegistry {
 
     this.registerProvider({
       provider: deepseekProvider,
-      defaultModel: process.env.DEEPSEEK_DEFAULT_MODEL || 'deepseek-chat',
-      fastModel: process.env.DEEPSEEK_DEFAULT_MODEL || 'deepseek-chat',
+      defaultModel: process.env.DEEPSEEK_DEFAULT_MODEL || 'deepseek-v4-flash',
+      fastModel: process.env.DEEPSEEK_DEFAULT_MODEL || 'deepseek-v4-flash',
       reasoningModel: process.env.DEEPSEEK_REASONING_MODEL || 'deepseek-reasoner',
       priority: 2
     });

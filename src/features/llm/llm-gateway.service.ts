@@ -5,14 +5,14 @@ import {
   LLMStreamChunk,
   StructuredLLMRequest,
   ProviderHealthStatus
-} from './llm.types';
-import { llmRouterService, LLMRouterService } from './llm-router.service';
-import { llmCacheService, LLMCacheService } from './llm-cache.service';
-import { llmFallbackService, LLMFallbackService } from './llm-fallback.service';
-import { tokenBudgetManager, TokenBudgetManager } from './utils/token-budget';
-import { llmTelemetryService, LLMTelemetryService } from './llm-telemetry.service';
-import { llmModelRegistry, LLMModelRegistry } from './llm-model-registry';
-import { llmRateLimiterService, LLMRateLimiterService } from './llm-rate-limiter.service';
+} from '@/features/llm/llm.types';
+import { llmRouterService, LLMRouterService } from '@/features/llm/llm-router.service';
+import { llmCacheService, LLMCacheService } from '@/features/llm/llm-cache.service';
+import { llmFallbackService, LLMFallbackService } from '@/features/llm/llm-fallback.service';
+import { tokenBudgetManager, TokenBudgetManager } from '@/features/llm/utils/token-budget';
+import { llmTelemetryService, LLMTelemetryService } from '@/features/llm/llm-telemetry.service';
+import { llmModelRegistry, LLMModelRegistry } from '@/features/llm/llm-model-registry';
+import { llmRateLimiterService, LLMRateLimiterService } from '@/features/llm/llm-rate-limiter.service';
 
 export class LLMGateway {
   private router: LLMRouterService;
@@ -233,9 +233,22 @@ export class LLMGateway {
     let overallHealthy = true;
 
     for (const p of providers) {
-      const h = await p.healthCheck();
-      results[p.name] = h;
-      if (h.status === 'unhealthy') {
+      try {
+        const h = await p.healthCheck();
+        results[p.name] = h;
+        if (h.status === 'unhealthy') {
+          overallHealthy = false;
+        }
+      } catch (err) {
+        results[p.name] = {
+          name: p.name,
+          provider: p.name,
+          status: 'unhealthy',
+          configured: false,
+          enabled: false,
+          available: false,
+          message: err instanceof Error ? err.message : String(err)
+        };
         overallHealthy = false;
       }
     }

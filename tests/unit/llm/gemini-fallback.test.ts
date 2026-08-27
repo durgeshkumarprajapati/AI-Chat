@@ -30,7 +30,7 @@ describe('Gemini Fallback & Circuit Breaker Unit Tests', () => {
     );
 
     expect(usedFallback).toBe(true);
-    expect(response.provider).toBe('ollama');
+    expect(response.provider).toBe('deepseek');
   });
 
   it('does NOT fall back to cloud when request is LOCAL_ONLY', async () => {

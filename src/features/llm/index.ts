@@ -15,3 +15,4 @@ export * from './providers/gemini.provider';
 export * from './providers/deepseek.provider';
 export * from './providers/groq.provider';
 export * from './llm-gateway.service';
+export * from './llm-error.classifier';

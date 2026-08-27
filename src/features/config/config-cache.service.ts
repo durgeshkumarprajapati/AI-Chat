@@ -9,7 +9,11 @@ export class ConfigCacheService {
   private subscriberInitialized = false;
 
   public getFromMemory(key: string): ConfigDTO | null {
-    return this.memoryCache.get(key) ?? null;
+    const cached = this.memoryCache.get(key);
+    if (cached && typeof cached.version !== 'number') {
+      cached.version = 1;
+    }
+    return cached ?? null;
   }
 
   public setToMemory(key: string, config: ConfigDTO): void {

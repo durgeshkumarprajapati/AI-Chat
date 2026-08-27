@@ -1,6 +1,7 @@
 import { prisma } from '@/lib/prisma';
 import { ConfigCategory } from '@prisma/client';
 import { CreateConfigInput, UpdateConfigInput } from './config.types';
+import { ConflictError } from '@/errors';
 
 export class ConfigRepository {
   public async findByKey(key: string) {
@@ -44,6 +45,7 @@ export class ConfigRepository {
         description: input.description || null,
         isActive: input.isActive ?? true,
         isSystem: input.isSystem ?? false,
+        version: 1,
         createdBy: input.actorId || null,
         updatedBy: input.actorId || null
       }
@@ -51,6 +53,18 @@ export class ConfigRepository {
   }
 
   public async update(key: string, input: UpdateConfigInput) {
+    // Perform Optimistic Concurrency Check if expectedVersion is supplied
+    const existing = await prisma.config.findUnique({ where: { key } });
+    if (!existing) {
+      throw new Error(`Configuration with key "${key}" not found.`);
+    }
+
+    if (input.expectedVersion !== undefined && existing.version !== input.expectedVersion) {
+      throw new ConflictError(
+        `Optimistic Concurrency Conflict for configuration "${key}". Expected version ${input.expectedVersion}, but current database version is ${existing.version}. Please refresh latest settings and try again.`
+      );
+    }
+
     return prisma.config.update({
       where: { key },
       data: {
@@ -60,16 +74,29 @@ export class ConfigRepository {
         ...(input.purpose ? { purpose: input.purpose } : {}),
         ...(input.description !== undefined ? { description: input.description } : {}),
         ...(input.isActive !== undefined ? { isActive: input.isActive } : {}),
+        version: { increment: 1 },
         ...(input.actorId ? { updatedBy: input.actorId } : {})
       }
     });
   }
 
-  public async updateStatus(key: string, isActive: boolean, actorId?: string) {
+  public async updateStatus(key: string, isActive: boolean, actorId?: string, expectedVersion?: number) {
+    const existing = await prisma.config.findUnique({ where: { key } });
+    if (!existing) {
+      throw new Error(`Configuration with key "${key}" not found.`);
+    }
+
+    if (expectedVersion !== undefined && existing.version !== expectedVersion) {
+      throw new ConflictError(
+        `Optimistic Concurrency Conflict for configuration "${key}". Expected version ${expectedVersion}, but current database version is ${existing.version}.`
+      );
+    }
+
     return prisma.config.update({
       where: { key },
       data: {
         isActive,
+        version: { increment: 1 },
         ...(actorId ? { updatedBy: actorId } : {})
       }
     });

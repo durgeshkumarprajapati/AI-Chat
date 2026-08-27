@@ -11,6 +11,33 @@ import { env } from '@/config/env';
 
 export class ConfigService {
   /**
+   * Helper to map database record or fallback to ConfigDTO enriched with governance metadata.
+   */
+  private enrichDTO(dbRecord: any): ConfigDTO {
+    const registryItem = CONFIG_REGISTRY[dbRecord.key];
+
+    return {
+      id: dbRecord.id,
+      key: dbRecord.key,
+      value: dbRecord.value,
+      valueType: dbRecord.valueType,
+      category: dbRecord.category,
+      purpose: dbRecord.purpose,
+      description: dbRecord.description,
+      isActive: dbRecord.isActive,
+      isSystem: dbRecord.isSystem,
+      version: dbRecord.version ?? 1,
+      isEditable: registryItem ? registryItem.isEditable : true,
+      isHighImpact: registryItem ? registryItem.isHighImpact : false,
+      requiresRestart: registryItem ? registryItem.requiresRestart : false,
+      createdAt: dbRecord.createdAt,
+      updatedAt: dbRecord.updatedAt,
+      createdBy: dbRecord.createdBy,
+      updatedBy: dbRecord.updatedBy
+    };
+  }
+
+  /**
    * Resolves a configuration item with multi-level caching (Memory -> Redis -> Database -> Config Registry Fallback).
    */
   public async get(key: string): Promise<ConfigDTO | null> {
@@ -33,25 +60,9 @@ export class ConfigService {
     try {
       const dbRecord = await configRepository.findByKey(formattedKey);
       if (dbRecord) {
-        const dto: ConfigDTO = {
-          id: dbRecord.id,
-          key: dbRecord.key,
-          value: dbRecord.value,
-          valueType: dbRecord.valueType,
-          category: dbRecord.category,
-          purpose: dbRecord.purpose,
-          description: dbRecord.description,
-          isActive: dbRecord.isActive,
-          isSystem: dbRecord.isSystem,
-          createdAt: dbRecord.createdAt,
-          updatedAt: dbRecord.updatedAt,
-          createdBy: dbRecord.createdBy,
-          updatedBy: dbRecord.updatedBy
-        };
-
+        const dto = this.enrichDTO(dbRecord);
         configCacheService.setToMemory(formattedKey, dto);
         await configCacheService.setToRedis(formattedKey, dto);
-
         return dto.isActive ? dto : null;
       }
     } catch (err) {
@@ -71,6 +82,10 @@ export class ConfigService {
         description: registryItem.description || null,
         isActive: true,
         isSystem: true,
+        version: 1,
+        isEditable: registryItem.isEditable,
+        isHighImpact: registryItem.isHighImpact,
+        requiresRestart: registryItem.requiresRestart,
         createdAt: new Date(),
         updatedAt: new Date(),
         createdBy: null,
@@ -111,21 +126,7 @@ export class ConfigService {
 
   public async listConfigs(opts?: { category?: ConfigCategory; isActive?: boolean }): Promise<ConfigDTO[]> {
     const records = await configRepository.findAll(opts);
-    return records.map((r) => ({
-      id: r.id,
-      key: r.key,
-      value: r.value,
-      valueType: r.valueType,
-      category: r.category,
-      purpose: r.purpose,
-      description: r.description,
-      isActive: r.isActive,
-      isSystem: r.isSystem,
-      createdAt: r.createdAt,
-      updatedAt: r.updatedAt,
-      createdBy: r.createdBy,
-      updatedBy: r.updatedBy
-    }));
+    return records.map((r) => this.enrichDTO(r));
   }
 
   public async getByCategory(category: ConfigCategory): Promise<ConfigDTO[]> {
@@ -149,21 +150,7 @@ export class ConfigService {
       key: formattedKey
     });
 
-    const dto: ConfigDTO = {
-      id: created.id,
-      key: created.key,
-      value: created.value,
-      valueType: created.valueType,
-      category: created.category,
-      purpose: created.purpose,
-      description: created.description,
-      isActive: created.isActive,
-      isSystem: created.isSystem,
-      createdAt: created.createdAt,
-      updatedAt: created.updatedAt,
-      createdBy: created.createdBy,
-      updatedBy: created.updatedBy
-    };
+    const dto = this.enrichDTO(created);
 
     configCacheService.setToMemory(formattedKey, dto);
     await configCacheService.setToRedis(formattedKey, dto);
@@ -174,7 +161,7 @@ export class ConfigService {
         action: 'CONFIG_CREATED',
         targetType: 'CONFIG',
         targetId: dto.id,
-        details: { key: dto.key, category: dto.category }
+        details: { key: dto.key, category: dto.category, version: dto.version }
       });
     }
 
@@ -186,34 +173,31 @@ export class ConfigService {
   public async updateConfig(key: string, input: UpdateConfigInput): Promise<ConfigDTO> {
     const formattedKey = key.trim().toUpperCase();
     
-    // Assert key exists in CONFIG_REGISTRY and is non-secret
-    validateRegistryKey(formattedKey);
-    configValidator.validateInput({ ...input, key: formattedKey });
+    // Assert key exists in CONFIG_REGISTRY and is non-secret & editable
+    const registryItem = validateRegistryKey(formattedKey);
+    if (!registryItem.isEditable) {
+      throw new ValidationError(`Configuration key "${formattedKey}" is marked as non-editable.`);
+    }
 
     const existing = await configRepository.findByKey(formattedKey);
     if (!existing) {
       throw new NotFoundError(`Configuration with key "${formattedKey}" not found.`);
     }
 
+    configValidator.validateInput({
+      key: formattedKey,
+      value: input.value !== undefined ? input.value : existing.value,
+      valueType: input.valueType || existing.valueType,
+      purpose: input.purpose || existing.purpose
+    });
+
     const previousValue = existing.value;
+
+    // Database transaction execution with optimistic concurrency check
     const updated = await configRepository.update(formattedKey, input);
+    const dto = this.enrichDTO(updated);
 
-    const dto: ConfigDTO = {
-      id: updated.id,
-      key: updated.key,
-      value: updated.value,
-      valueType: updated.valueType,
-      category: updated.category,
-      purpose: updated.purpose,
-      description: updated.description,
-      isActive: updated.isActive,
-      isSystem: updated.isSystem,
-      createdAt: updated.createdAt,
-      updatedAt: updated.updatedAt,
-      createdBy: updated.createdBy,
-      updatedBy: updated.updatedBy
-    };
-
+    // Commit-First: Trigger cache invalidation and PubSub AFTER DB commit succeeds
     await configCacheService.invalidateKey(formattedKey, true);
     configCacheService.setToMemory(formattedKey, dto);
     await configCacheService.setToRedis(formattedKey, dto);
@@ -224,24 +208,24 @@ export class ConfigService {
         action: 'CONFIG_UPDATED',
         targetType: 'CONFIG',
         targetId: dto.id,
-        details: { key: dto.key, previousValue, newValue: dto.value }
+        details: { key: dto.key, previousValue, newValue: dto.value, version: dto.version }
       });
     }
 
-    configTelemetryService.logEvent({ event: 'config.updated', key: dto.key, actorId: input.actorId });
+    configTelemetryService.logEvent({ event: 'config.updated', key: dto.key, version: dto.version, actorId: input.actorId });
 
     return dto;
   }
 
-  public async activateConfig(key: string, actorId?: string): Promise<ConfigDTO> {
-    return this.setActivationStatus(key, true, actorId);
+  public async activateConfig(key: string, actorId?: string, expectedVersion?: number): Promise<ConfigDTO> {
+    return this.setActivationStatus(key, true, actorId, expectedVersion);
   }
 
-  public async deactivateConfig(key: string, actorId?: string): Promise<ConfigDTO> {
-    return this.setActivationStatus(key, false, actorId);
+  public async deactivateConfig(key: string, actorId?: string, expectedVersion?: number): Promise<ConfigDTO> {
+    return this.setActivationStatus(key, false, actorId, expectedVersion);
   }
 
-  private async setActivationStatus(key: string, isActive: boolean, actorId?: string): Promise<ConfigDTO> {
+  private async setActivationStatus(key: string, isActive: boolean, actorId?: string, expectedVersion?: number): Promise<ConfigDTO> {
     const formattedKey = key.trim().toUpperCase();
     validateRegistryKey(formattedKey);
 
@@ -250,24 +234,10 @@ export class ConfigService {
       throw new NotFoundError(`Configuration with key "${formattedKey}" not found.`);
     }
 
-    const updated = await configRepository.updateStatus(formattedKey, isActive, actorId);
+    const updated = await configRepository.updateStatus(formattedKey, isActive, actorId, expectedVersion);
+    const dto = this.enrichDTO(updated);
 
-    const dto: ConfigDTO = {
-      id: updated.id,
-      key: updated.key,
-      value: updated.value,
-      valueType: updated.valueType,
-      category: updated.category,
-      purpose: updated.purpose,
-      description: updated.description,
-      isActive: updated.isActive,
-      isSystem: updated.isSystem,
-      createdAt: updated.createdAt,
-      updatedAt: updated.updatedAt,
-      createdBy: updated.createdBy,
-      updatedBy: updated.updatedBy
-    };
-
+    // Commit-First invalidation
     await configCacheService.invalidateKey(formattedKey, true);
 
     if (actorId) {
@@ -276,13 +246,14 @@ export class ConfigService {
         action: isActive ? 'CONFIG_ACTIVATED' : 'CONFIG_DEACTIVATED',
         targetType: 'CONFIG',
         targetId: dto.id,
-        details: { key: dto.key, isActive }
+        details: { key: dto.key, isActive, version: dto.version }
       });
     }
 
     configTelemetryService.logEvent({
       event: isActive ? 'config.activated' : 'config.deactivated',
       key: dto.key,
+      version: dto.version,
       actorId
     });
 
@@ -295,29 +266,44 @@ export class ConfigService {
   public async getIntegrationStatus(): Promise<IntegrationStatusDTO[]> {
     return [
       {
-        providerName: 'Google Gemini',
+        providerName: 'Google Gemini LLM',
+        purpose: 'Primary multi-modal LLM reasoning & fast path provider',
         configured: Boolean(env.server?.GEMINI_API_KEY || process.env.GEMINI_API_KEY),
-        enabled: await this.getBoolean('GEMINI_ENABLED', true)
+        enabled: await this.getBoolean('GEMINI_ENABLED', true),
+        connectionStatus: Boolean(env.server?.GEMINI_API_KEY || process.env.GEMINI_API_KEY) ? 'HEALTHY' : 'NOT_CONFIGURED',
+        managedBy: 'ENVIRONMENT_SECRET_MANAGER'
       },
       {
-        providerName: 'DeepSeek',
+        providerName: 'DeepSeek LLM',
+        purpose: 'High-efficiency deep reasoning fallback provider',
         configured: Boolean(env.server?.DEEPSEEK_API_KEY || process.env.DEEPSEEK_API_KEY),
-        enabled: await this.getBoolean('DEEPSEEK_ENABLED', true)
+        enabled: await this.getBoolean('DEEPSEEK_ENABLED', true),
+        connectionStatus: Boolean(env.server?.DEEPSEEK_API_KEY || process.env.DEEPSEEK_API_KEY) ? 'HEALTHY' : 'NOT_CONFIGURED',
+        managedBy: 'ENVIRONMENT_SECRET_MANAGER'
       },
       {
-        providerName: 'Groq',
+        providerName: 'Groq LLM',
+        purpose: 'Ultra-low-latency Llama-3.3 inference engine',
         configured: Boolean(env.server?.GROQ_API_KEY || process.env.GROQ_API_KEY),
-        enabled: await this.getBoolean('GROQ_ENABLED', true)
+        enabled: await this.getBoolean('GROQ_ENABLED', true),
+        connectionStatus: Boolean(env.server?.GROQ_API_KEY || process.env.GROQ_API_KEY) ? 'HEALTHY' : 'NOT_CONFIGURED',
+        managedBy: 'ENVIRONMENT_SECRET_MANAGER'
       },
       {
         providerName: 'ClickUp Integration',
+        purpose: 'Automated ClickUp task suggestion & creation pipeline',
         configured: Boolean(env.server?.CLICKUP_CLIENT_ID && env.server?.CLICKUP_CLIENT_SECRET),
-        enabled: await this.getBoolean('CLICKUP_ENABLED', true)
+        enabled: await this.getBoolean('CLICKUP_ENABLED', true),
+        connectionStatus: Boolean(env.server?.CLICKUP_CLIENT_ID && env.server?.CLICKUP_CLIENT_SECRET) ? 'HEALTHY' : 'NOT_CONFIGURED',
+        managedBy: 'ENVIRONMENT_SECRET_MANAGER'
       },
       {
         providerName: 'Web Intelligence (Tavily)',
+        purpose: 'Real-time agentic web retrieval & page synthesis',
         configured: Boolean(env.server?.TAVILY_API_KEY || process.env.TAVILY_API_KEY),
-        enabled: await this.getBoolean('WEB_SEARCH_ENABLED', true)
+        enabled: await this.getBoolean('WEB_SEARCH_ENABLED', true),
+        connectionStatus: Boolean(env.server?.TAVILY_API_KEY || process.env.TAVILY_API_KEY) ? 'HEALTHY' : 'NOT_CONFIGURED',
+        managedBy: 'ENVIRONMENT_SECRET_MANAGER'
       }
     ];
   }

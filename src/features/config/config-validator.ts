@@ -1,6 +1,7 @@
 import { ValidationError, SecurityError } from '@/errors';
 import { ConfigValueType, ConfigCategory } from '@prisma/client';
 import { SECRET_KEY_PATTERNS } from './config.constants';
+import { CONFIG_REGISTRY, RegistryConfigItem } from './config.registry';
 
 export class ConfigValidator {
   /**
@@ -17,7 +18,7 @@ export class ConfigValidator {
   }
 
   /**
-   * Validates key format, purpose presence, and value type compatibility.
+   * Validates key format, purpose presence, value type compatibility, and boundary rules.
    */
   public validateInput(input: {
     key?: string;
@@ -26,6 +27,8 @@ export class ConfigValidator {
     category?: ConfigCategory;
     purpose?: string;
   }): void {
+    let registryItem: RegistryConfigItem | undefined;
+
     if (input.key !== undefined) {
       if (!input.key || !input.key.trim()) {
         throw new ValidationError('Configuration key cannot be empty.');
@@ -35,6 +38,11 @@ export class ConfigValidator {
         throw new ValidationError('Configuration key must contain only uppercase alphanumeric characters and underscores.');
       }
       this.assertNotSecretKey(formattedKey, input.value);
+
+      registryItem = CONFIG_REGISTRY[formattedKey];
+      if (registryItem && !registryItem.isEditable) {
+        throw new ValidationError(`Configuration key "${formattedKey}" is marked as non-editable.`);
+      }
     }
 
     if (input.purpose !== undefined && (!input.purpose || !input.purpose.trim())) {
@@ -42,23 +50,37 @@ export class ConfigValidator {
     }
 
     if (input.value !== undefined && input.valueType !== undefined) {
-      this.validateValueSyntax(input.value, input.valueType);
+      this.validateValueSyntax(input.value, input.valueType, registryItem);
     }
   }
 
   /**
-   * Validates typed value syntax for NUMBER, BOOLEAN, JSON, and ARRAY types.
+   * Validates typed value syntax and boundary rules (min, max, allowedValues, JSON syntax).
    */
-  public validateValueSyntax(value: string, valueType: ConfigValueType): void {
+  public validateValueSyntax(value: string, valueType: ConfigValueType, registryItem?: RegistryConfigItem): void {
     if (valueType === 'NUMBER') {
       const num = Number(value);
       if (isNaN(num)) {
         throw new ValidationError(`Configuration value "${value}" is not a valid number.`);
       }
+      if (registryItem?.minValue !== undefined && num < registryItem.minValue) {
+        throw new ValidationError(`Configuration value ${num} is below minimum allowed value ${registryItem.minValue}.`);
+      }
+      if (registryItem?.maxValue !== undefined && num > registryItem.maxValue) {
+        throw new ValidationError(`Configuration value ${num} exceeds maximum allowed value ${registryItem.maxValue}.`);
+      }
     } else if (valueType === 'BOOLEAN') {
       const lower = value.trim().toLowerCase();
       if (lower !== 'true' && lower !== 'false') {
         throw new ValidationError(`Configuration value "${value}" must be "true" or "false".`);
+      }
+    } else if (valueType === 'STRING') {
+      if (registryItem?.allowedValues && registryItem.allowedValues.length > 0) {
+        if (!registryItem.allowedValues.includes(value.trim())) {
+          throw new ValidationError(
+            `Configuration value "${value}" is not in allowed values: [${registryItem.allowedValues.join(', ')}].`
+          );
+        }
       }
     } else if (valueType === 'JSON' || valueType === 'ARRAY') {
       try {

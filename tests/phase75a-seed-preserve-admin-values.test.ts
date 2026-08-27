@@ -7,7 +7,7 @@ describe('Phase 75A — Seed Preservation of Admin Values', () => {
     // 1. Ensure seed is run initial time
     await seedMain();
 
-    const targetKey = 'RAG_CACHE_TTL_SECONDS';
+    const targetKey = 'DOCUMENT_MULTIMODAL_TIMEOUT_MS';
     const customAdminValue = '9999';
 
     // 2. Simulate Admin updating value and deactivating a config

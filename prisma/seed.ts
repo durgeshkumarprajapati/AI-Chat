@@ -5,11 +5,11 @@ import { CONFIG_REGISTRY } from '../src/features/config/config.registry';
 const prisma = new PrismaClient();
 
 export async function main() {
-  console.log('🌱 [PrismaSeed] Starting Phase 75A seed process...');
+  console.log('🌱 [PrismaSeed] Starting Phase 75B seed & governance process...');
 
-  // 1. Seed or promote Admin user
-  const adminEmail = 'admin@documentai.com';
-  const adminPasswordRaw = 'Documentai@admin1';
+  const nodeEnv = process.env.NODE_ENV || 'development';
+  const adminEmail = process.env.INITIAL_ADMIN_EMAIL || 'admin@documentai.com';
+  const adminPasswordRaw = process.env.INITIAL_ADMIN_PASSWORD || (nodeEnv !== 'production' ? 'Documentai@admin1' : undefined);
 
   let admin = await prisma.user.findUnique({ where: { email: adminEmail } });
 
@@ -18,12 +18,12 @@ export async function main() {
       where: { id: admin.id },
       data: {
         role: UserRole.ADMIN,
-        status: UserStatus.ACTIVE,
-        passwordHash: admin.passwordHash || passwordService.hashPassword(adminPasswordRaw)
+        status: UserStatus.ACTIVE
+        // NEVER overwrite an existing administrator's password!
       }
     });
-    console.log(`✅ [PrismaSeed] Admin account updated/verified: ${admin.email} (${admin.id})`);
-  } else {
+    console.log(`✅ [PrismaSeed] Admin account verified & active: ${admin.email} (${admin.id})`);
+  } else if (adminPasswordRaw) {
     admin = await prisma.user.create({
       data: {
         email: adminEmail,
@@ -35,10 +35,12 @@ export async function main() {
         emailVerified: true
       }
     });
-    console.log(`🎉 [PrismaSeed] Admin account created: ${admin.email} (${admin.id})`);
+    console.log(`🎉 [PrismaSeed] Admin account provisioned: ${admin.email} (${admin.id})`);
+  } else {
+    console.warn('⚠️ [PrismaSeed] Skipping initial admin creation: INITIAL_ADMIN_PASSWORD not set in production.');
   }
 
-  // 2. Safe & Idempotent Configuration Seeding with Metadata Sync (Preserving Admin Values & Activation Status)
+  // 2. Safe & Idempotent Configuration Seeding with Metadata Synchronization
   const registryKeys = Object.keys(CONFIG_REGISTRY);
   let createdCount = 0;
   let updatedCount = 0;
@@ -49,8 +51,8 @@ export async function main() {
     const existing = await prisma.config.findUnique({ where: { key: item.key } });
 
     if (existing) {
-      // PRESERVE admin-controlled `value` and `isActive` status!
-      // Update only metadata/schema definition changes.
+      // PRESERVE admin-controlled `value`, `isActive`, and `version`!
+      // Sync only governance metadata and descriptions.
       await prisma.config.update({
         where: { key: item.key },
         data: {
@@ -73,8 +75,9 @@ export async function main() {
           description: item.description || null,
           isActive: true,
           isSystem: true,
-          createdBy: admin.id,
-          updatedBy: admin.id
+          version: 1,
+          createdBy: admin ? admin.id : null,
+          updatedBy: admin ? admin.id : null
         }
       });
       createdCount++;
@@ -82,7 +85,7 @@ export async function main() {
   }
 
   console.log(
-    `✅ [PrismaSeed] Processed ${registryKeys.length} registry keys (${createdCount} created, ${updatedCount} metadata synced, 0 admin values overwritten).`
+    `✅ [PrismaSeed] Governance sync complete: ${registryKeys.length} items (${createdCount} created, ${updatedCount} metadata synced, 0 admin values overwritten).`
   );
 }
 

@@ -51,6 +51,7 @@ export async function PATCH(req: NextRequest, { params }: { params: { key: strin
       purpose: body.purpose,
       description: body.description,
       isActive: body.isActive,
+      expectedVersion: body.expectedVersion !== undefined ? Number(body.expectedVersion) : undefined,
       actorId: authUser.id
     });
 

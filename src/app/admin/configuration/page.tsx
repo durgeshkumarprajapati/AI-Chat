@@ -12,13 +12,20 @@ type ConfigItem = {
   description: string | null;
   isActive: boolean;
   isSystem: boolean;
+  version: number;
+  isEditable: boolean;
+  isHighImpact: boolean;
+  requiresRestart: boolean;
   updatedAt: string;
 };
 
 type IntegrationStatusItem = {
   providerName: string;
+  purpose: string;
   configured: boolean;
   enabled: boolean;
+  connectionStatus: 'HEALTHY' | 'UNAVAILABLE' | 'NOT_CONFIGURED';
+  managedBy: string;
 };
 
 const CATEGORIES = [
@@ -41,18 +48,24 @@ const CATEGORIES = [
   'OTHER'
 ];
 
-export default function AdminConfigurationPage() {
+export default function EnterpriseAdminControlCenter() {
   const [configs, setConfigs] = useState<ConfigItem[]>([]);
   const [integrations, setIntegrations] = useState<IntegrationStatusItem[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
 
-  const [activeTab, setActiveTab] = useState<'configs' | 'integrations'>('configs');
+  // Navigation Tabs
+  const [activeTab, setActiveTab] = useState<
+    'overview' | 'configs' | 'flags' | 'providers' | 'integrations' | 'infrastructure' | 'audit'
+  >('overview');
+
+  // Search & Filters
   const [searchQuery, setSearchQuery] = useState('');
   const [selectedCategory, setSelectedCategory] = useState('ALL');
   const [statusFilter, setStatusFilter] = useState<'ALL' | 'ACTIVE' | 'INACTIVE'>('ALL');
+  const [highImpactFilter, setHighImpactFilter] = useState(false);
 
-  // Modals
+  // Modals & Editing
   const [isCreateModalOpen, setIsCreateModalOpen] = useState(false);
   const [newKey, setNewKey] = useState('');
   const [newValue, setNewValue] = useState('');
@@ -66,10 +79,12 @@ export default function AdminConfigurationPage() {
   const [editPurpose, setEditPurpose] = useState('');
   const [editDescription, setEditDescription] = useState('');
 
+  // High Impact Confirmation Dialog
   const [confirmationPendingConfig, setConfirmationPendingConfig] = useState<{
     config: ConfigItem;
     newValue: string;
   } | null>(null);
+  const [confirmInputText, setConfirmInputText] = useState('');
 
   const fetchConfigs = useCallback(async () => {
     try {
@@ -151,28 +166,32 @@ export default function AdminConfigurationPage() {
     e.preventDefault();
     if (!editingConfig) return;
 
-    // Check for high-impact threshold/flag change
-    const isHighImpact =
-      editingConfig.key.includes('THRESHOLD') ||
-      editingConfig.key.includes('TIMEOUT') ||
-      editingConfig.key.includes('ENABLED') ||
-      editingConfig.category === 'FEATURE_FLAG';
-
-    if (isHighImpact && editValue !== editingConfig.value) {
+    if (editingConfig.isHighImpact && editValue !== editingConfig.value) {
       setConfirmationPendingConfig({ config: editingConfig, newValue: editValue });
+      setConfirmInputText('');
       return;
     }
 
-    await executeSaveConfig(editingConfig.key, editValue, editPurpose, editDescription);
+    await executeSaveConfig(editingConfig.key, editValue, editPurpose, editDescription, editingConfig.version);
   };
 
-  const executeSaveConfig = async (key: string, val: string, purp: string, desc: string) => {
+  const executeSaveConfig = async (key: string, val: string, purp: string, desc: string, version: number) => {
     try {
       const res = await fetch(`/api/admin/config/${key}`, {
         method: 'PATCH',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ value: val, purpose: purp, description: desc })
+        body: JSON.stringify({ value: val, purpose: purp, description: desc, expectedVersion: version })
       });
+
+      if (res.status === 409) {
+        const conflictJson = await res.json();
+        alert(`⚠️ 409 Conflict Error: ${conflictJson.error?.message}`);
+        fetchConfigs();
+        setEditingConfig(null);
+        setConfirmationPendingConfig(null);
+        return;
+      }
+
       const json = await res.json();
       if (json.success) {
         setEditingConfig(null);
@@ -186,10 +205,22 @@ export default function AdminConfigurationPage() {
     }
   };
 
-  const handleToggleStatus = async (key: string, currentStatus: boolean) => {
+  const handleToggleStatus = async (key: string, currentStatus: boolean, version: number) => {
     const action = currentStatus ? 'deactivate' : 'activate';
     try {
-      const res = await fetch(`/api/admin/config/${key}/${action}`, { method: 'POST' });
+      const res = await fetch(`/api/admin/config/${key}/${action}`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ expectedVersion: version })
+      });
+
+      if (res.status === 409) {
+        const conflictJson = await res.json();
+        alert(`⚠️ 409 Conflict: ${conflictJson.error?.message}`);
+        fetchConfigs();
+        return;
+      }
+
       const json = await res.json();
       if (json.success) {
         fetchConfigs();
@@ -211,11 +242,17 @@ export default function AdminConfigurationPage() {
     const matchesStatus =
       statusFilter === 'ALL' || (statusFilter === 'ACTIVE' && c.isActive) || (statusFilter === 'INACTIVE' && !c.isActive);
 
-    return matchesSearch && matchesCategory && matchesStatus;
+    const matchesHighImpact = !highImpactFilter || c.isHighImpact;
+
+    return matchesSearch && matchesCategory && matchesStatus && matchesHighImpact;
   });
+
+  const featureFlags = configs.filter((c) => c.category === 'FEATURE_FLAG' || c.key.endsWith('_ENABLED'));
+  const aiProviderConfigs = configs.filter((c) => c.category === 'LLM');
 
   const totalActive = configs.filter((c) => c.isActive).length;
   const totalInactive = configs.filter((c) => !c.isActive).length;
+  const totalHighImpact = configs.filter((c) => c.isHighImpact).length;
 
   if (error) {
     return (
@@ -229,68 +266,96 @@ export default function AdminConfigurationPage() {
 
   return (
     <div className="min-h-screen bg-slate-950 text-slate-100 p-6 space-y-6">
-      {/* Header Banner */}
+      {/* Top Header & Navigation Bar */}
       <div className="bg-slate-900 border border-slate-800 rounded-2xl p-6 shadow-xl space-y-4">
         <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">
           <div>
-            <h1 className="text-2xl font-extrabold text-white flex items-center gap-2">
-              ⚙️ Enterprise Configuration Control Center
-            </h1>
+            <div className="flex items-center gap-3">
+              <span className="text-2xl">🛡️</span>
+              <h1 className="text-2xl font-extrabold text-white">Enterprise Configuration Control Center</h1>
+            </div>
             <p className="text-xs text-slate-400 mt-1">
-              Manage operational runtime behavior, RAG timeouts, thresholds, and feature flags dynamically without application redeployments.
+              Centralized governance, secret isolation, optimistic concurrency, multi-instance Redis Pub/Sub invalidation & feature flag management.
             </p>
           </div>
 
-          <button
-            onClick={() => setIsCreateModalOpen(true)}
-            className="px-4 py-2.5 rounded-xl bg-indigo-600 hover:bg-indigo-500 text-white text-xs font-bold transition-all shadow-lg shadow-indigo-600/20"
-          >
-            + Create Configuration
-          </button>
+          <div className="flex items-center gap-3">
+            <div className="text-right border-r border-slate-800 pr-4 hidden sm:block">
+              <span className="text-[10px] text-slate-500 font-mono">ENFORCEMENT</span>
+              <p className="text-xs text-emerald-400 font-bold">🔒 Secrets in .env only</p>
+            </div>
+            <button
+              onClick={() => setIsCreateModalOpen(true)}
+              className="px-4 py-2.5 rounded-xl bg-indigo-600 hover:bg-indigo-500 text-white text-xs font-bold transition-all shadow-lg shadow-indigo-600/20"
+            >
+              + Add Configuration
+            </button>
+          </div>
         </div>
 
-        {/* Tab Selection */}
-        <div className="flex border-b border-slate-800 gap-6 text-xs font-bold text-slate-400 pt-2">
-          <button
-            onClick={() => setActiveTab('configs')}
-            className={`pb-2 border-b-2 transition-colors ${activeTab === 'configs' ? 'border-indigo-500 text-indigo-400' : 'border-transparent hover:text-slate-200'
+        {/* Tab Navigation */}
+        <div className="flex overflow-x-auto border-b border-slate-800 gap-6 text-xs font-bold text-slate-400 pt-2 no-scrollbar">
+          {[
+            { id: 'overview', label: '📊 Overview' },
+            { id: 'configs', label: `⚙️ Runtime Configs (${configs.length})` },
+            { id: 'flags', label: `🚩 Feature Flags (${featureFlags.length})` },
+            { id: 'providers', label: `🤖 AI Providers (${aiProviderConfigs.length})` },
+            { id: 'integrations', label: `🔗 Integrations (${integrations.length})` },
+            { id: 'infrastructure', label: '🏗️ Infrastructure Status' }
+          ].map((tab) => (
+            <button
+              key={tab.id}
+              onClick={() => setActiveTab(tab.id as any)}
+              className={`pb-2 border-b-2 whitespace-nowrap transition-colors ${
+                activeTab === tab.id ? 'border-indigo-500 text-indigo-400' : 'border-transparent hover:text-slate-200'
               }`}
-          >
-            Runtime Configurations ({configs.length})
-          </button>
-          <button
-            onClick={() => setActiveTab('integrations')}
-            className={`pb-2 border-b-2 transition-colors ${activeTab === 'integrations' ? 'border-indigo-500 text-indigo-400' : 'border-transparent hover:text-slate-200'
-              }`}
-          >
-            External Integration Status ({integrations.length})
-          </button>
+            >
+              {tab.label}
+            </button>
+          ))}
         </div>
       </div>
 
-      {activeTab === 'configs' ? (
-        <>
-          {/* Dashboard Summary Cards */}
+      {/* OVERVIEW TAB */}
+      {activeTab === 'overview' && (
+        <div className="space-y-6">
           <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
-            <div className="p-4 rounded-2xl bg-slate-900 border border-slate-800 space-y-1 shadow-lg">
-              <span className="text-xs text-slate-400">Total Configurations</span>
-              <p className="text-2xl font-extrabold text-white">{configs.length}</p>
+            <div className="p-5 rounded-2xl bg-slate-900 border border-slate-800 space-y-1 shadow-lg">
+              <span className="text-xs text-slate-400 font-semibold">Total Governance Keys</span>
+              <p className="text-3xl font-extrabold text-white">{configs.length}</p>
+              <p className="text-[10px] text-slate-500 mt-1">Configured in PostgreSQL & Registry</p>
             </div>
-            <div className="p-4 rounded-2xl bg-slate-900 border border-slate-800 space-y-1 shadow-lg">
-              <span className="text-xs text-slate-400">Active Items</span>
-              <p className="text-2xl font-extrabold text-emerald-400">{totalActive}</p>
+            <div className="p-5 rounded-2xl bg-slate-900 border border-slate-800 space-y-1 shadow-lg">
+              <span className="text-xs text-slate-400 font-semibold">Active Operational Items</span>
+              <p className="text-3xl font-extrabold text-emerald-400">{totalActive}</p>
+              <p className="text-[10px] text-slate-500 mt-1">{totalInactive} deactivated items</p>
             </div>
-            <div className="p-4 rounded-2xl bg-slate-900 border border-slate-800 space-y-1 shadow-lg">
-              <span className="text-xs text-slate-400">Deactivated Items</span>
-              <p className="text-2xl font-extrabold text-amber-400">{totalInactive}</p>
+            <div className="p-5 rounded-2xl bg-slate-900 border border-slate-800 space-y-1 shadow-lg">
+              <span className="text-xs text-slate-400 font-semibold">High Impact Thresholds</span>
+              <p className="text-3xl font-extrabold text-amber-400">{totalHighImpact}</p>
+              <p className="text-[10px] text-slate-500 mt-1">Require confirmation & alert verification</p>
             </div>
-            <div className="p-4 rounded-2xl bg-slate-900 border border-slate-800 space-y-1 shadow-lg">
-              <span className="text-xs text-slate-400">Security Rule</span>
-              <p className="text-xs font-bold text-indigo-400 mt-1">🔒 Secrets remain in .env only</p>
+            <div className="p-5 rounded-2xl bg-slate-900 border border-slate-800 space-y-1 shadow-lg">
+              <span className="text-xs text-slate-400 font-semibold">Multi-Instance Bus</span>
+              <p className="text-3xl font-extrabold text-indigo-400">Redis Pub/Sub</p>
+              <p className="text-[10px] text-slate-500 mt-1">Commit-first cache invalidation active</p>
             </div>
           </div>
 
-          {/* Search & Filtering Toolbar */}
+          {/* Quick Notice Banner */}
+          <div className="p-4 rounded-2xl bg-indigo-950/40 border border-indigo-800/60 flex items-start gap-3">
+            <span className="text-lg">ℹ️</span>
+            <div className="text-xs text-indigo-200 leading-relaxed">
+              <strong>Strict Secret & Credentials Notice:</strong> API keys (`GEMINI_API_KEY`, `DEEPSEEK_API_KEY`, etc.), OAuth client secrets (`CLICKUP_CLIENT_SECRET`), JWT passwords, and database connection URLs are managed exclusively via environment files (`.env`) or your deployment secret manager. Secret values are never stored in the database or exposed via API payloads.
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* RUNTIME CONFIGURATIONS TAB */}
+      {activeTab === 'configs' && (
+        <div className="space-y-4">
+          {/* Toolbar */}
           <div className="flex flex-col md:flex-row gap-3 bg-slate-900 border border-slate-800 p-4 rounded-2xl">
             <input
               type="text"
@@ -321,9 +386,19 @@ export default function AdminConfigurationPage() {
               <option value="ACTIVE">Status: Active</option>
               <option value="INACTIVE">Status: Deactivated</option>
             </select>
+
+            <label className="flex items-center gap-2 bg-slate-950 border border-slate-800 px-3 py-2 rounded-xl text-xs text-slate-300 cursor-pointer">
+              <input
+                type="checkbox"
+                checked={highImpactFilter}
+                onChange={(e) => setHighImpactFilter(e.target.checked)}
+                className="rounded border-slate-700 text-indigo-600 focus:ring-0"
+              />
+              High Impact Only
+            </label>
           </div>
 
-          {/* Configurations Table */}
+          {/* Table */}
           {loading ? (
             <div className="p-12 text-center text-slate-500 animate-pulse">Loading configurations...</div>
           ) : (
@@ -335,7 +410,7 @@ export default function AdminConfigurationPage() {
                     <th className="p-4">Value</th>
                     <th className="p-4">Type</th>
                     <th className="p-4">Category</th>
-                    <th className="p-4">Purpose</th>
+                    <th className="p-4">Version</th>
                     <th className="p-4">Status</th>
                     <th className="p-4 text-right">Actions</th>
                   </tr>
@@ -352,9 +427,9 @@ export default function AdminConfigurationPage() {
                       <tr key={c.id} className="hover:bg-slate-800/40 transition-colors">
                         <td className="p-4 font-mono font-bold text-indigo-300">
                           {c.key}
-                          {c.isSystem && (
-                            <span className="ml-1.5 px-1.5 py-0.5 rounded bg-slate-800 text-[9px] text-slate-400">
-                              SYSTEM
+                          {c.isHighImpact && (
+                            <span className="ml-1.5 px-1.5 py-0.5 rounded bg-amber-950 border border-amber-800 text-[9px] text-amber-400 font-bold">
+                              HIGH IMPACT
                             </span>
                           )}
                         </td>
@@ -365,15 +440,14 @@ export default function AdminConfigurationPage() {
                           </span>
                         </td>
                         <td className="p-4 font-bold text-slate-300 text-[11px]">{c.category}</td>
-                        <td className="p-4 text-slate-400 max-w-xs truncate" title={c.purpose}>
-                          {c.purpose}
-                        </td>
+                        <td className="p-4 font-mono font-bold text-slate-400">v{c.version}</td>
                         <td className="p-4">
                           <span
-                            className={`px-2.5 py-1 rounded-full text-[10px] font-bold ${c.isActive
+                            className={`px-2.5 py-1 rounded-full text-[10px] font-bold ${
+                              c.isActive
                                 ? 'bg-emerald-950 border border-emerald-800 text-emerald-400'
                                 : 'bg-amber-950 border border-amber-800 text-amber-300'
-                              }`}
+                            }`}
                           >
                             {c.isActive ? 'Active' : 'Deactivated'}
                           </span>
@@ -386,11 +460,12 @@ export default function AdminConfigurationPage() {
                             ✏️ Edit
                           </button>
                           <button
-                            onClick={() => handleToggleStatus(c.key, c.isActive)}
-                            className={`px-2.5 py-1.5 rounded-lg font-semibold transition-colors ${c.isActive
+                            onClick={() => handleToggleStatus(c.key, c.isActive, c.version)}
+                            className={`px-2.5 py-1.5 rounded-lg font-semibold transition-colors ${
+                              c.isActive
                                 ? 'bg-amber-950 border border-amber-800 text-amber-300 hover:bg-amber-900'
                                 : 'bg-emerald-950 border border-emerald-800 text-emerald-300 hover:bg-emerald-900'
-                              }`}
+                            }`}
                           >
                             {c.isActive ? 'Deactivate' : 'Activate'}
                           </button>
@@ -402,59 +477,158 @@ export default function AdminConfigurationPage() {
               </table>
             </div>
           )}
-        </>
-      ) : (
-        /* Integration Status View */
-        <div className="bg-slate-900 border border-slate-800 rounded-2xl p-6 space-y-4 shadow-xl">
-          <div>
-            <h3 className="text-base font-bold text-white flex items-center gap-2">
-              🛡️ Secret-Isolated Integration Status
-            </h3>
-            <p className="text-xs text-slate-400 mt-1">
-              Shows whether deployment credentials are configured in environment files without exposing secret strings.
-            </p>
-          </div>
+        </div>
+      )}
 
-          <div className="grid grid-cols-1 md:grid-cols-2 gap-4 pt-2">
-            {integrations.map((item) => (
-              <div key={item.providerName} className="p-4 rounded-xl bg-slate-950 border border-slate-800 space-y-2">
-                <div className="flex justify-between items-center">
-                  <h4 className="font-bold text-sm text-slate-100">{item.providerName}</h4>
-                  <span
-                    className={`px-2.5 py-0.5 rounded-full text-[10px] font-bold ${item.configured
-                        ? 'bg-emerald-950 border border-emerald-800 text-emerald-400'
-                        : 'bg-rose-950 border border-rose-800 text-rose-400'
-                      }`}
-                  >
-                    {item.configured ? 'Configured ✓' : 'Not Configured'}
-                  </span>
-                </div>
-                <div className="flex justify-between items-center text-xs text-slate-400 border-t border-slate-900 pt-2">
-                  <span>Runtime Enablement</span>
-                  <span className="font-bold text-indigo-400">{item.enabled ? 'Enabled' : 'Disabled'}</span>
-                </div>
+      {/* FEATURE FLAGS TAB */}
+      {activeTab === 'flags' && (
+        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+          {featureFlags.map((flag) => (
+            <div key={flag.id} className="p-5 rounded-2xl bg-slate-900 border border-slate-800 space-y-3 shadow-xl">
+              <div className="flex justify-between items-start">
+                <span className="font-mono text-xs font-bold text-indigo-300">{flag.key}</span>
+                <span
+                  className={`px-2.5 py-0.5 rounded-full text-[10px] font-bold ${
+                    flag.isActive && flag.value === 'true'
+                      ? 'bg-emerald-950 border border-emerald-800 text-emerald-400'
+                      : 'bg-rose-950 border border-rose-800 text-rose-400'
+                  }`}
+                >
+                  {flag.isActive && flag.value === 'true' ? 'ENABLED' : 'DISABLED'}
+                </span>
               </div>
-            ))}
+              <p className="text-xs text-slate-400 line-clamp-2">{flag.purpose}</p>
+              <div className="flex justify-between items-center border-t border-slate-800/80 pt-3">
+                <span className="text-[10px] text-slate-500 font-mono">v{flag.version}</span>
+                <button
+                  onClick={() =>
+                    executeSaveConfig(
+                      flag.key,
+                      flag.value === 'true' ? 'false' : 'true',
+                      flag.purpose,
+                      flag.description || '',
+                      flag.version
+                    )
+                  }
+                  className={`px-3 py-1.5 rounded-xl text-xs font-bold transition-all ${
+                    flag.value === 'true'
+                      ? 'bg-rose-900/40 hover:bg-rose-900/60 border border-rose-700 text-rose-300'
+                      : 'bg-emerald-900/40 hover:bg-emerald-900/60 border border-emerald-700 text-emerald-300'
+                  }`}
+                >
+                  {flag.value === 'true' ? 'Turn Off' : 'Turn On'}
+                </button>
+              </div>
+            </div>
+          ))}
+        </div>
+      )}
+
+      {/* AI PROVIDERS TAB */}
+      {activeTab === 'providers' && (
+        <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+          {aiProviderConfigs.map((prov) => (
+            <div key={prov.id} className="p-5 rounded-2xl bg-slate-900 border border-slate-800 space-y-3 shadow-xl">
+              <div className="flex justify-between items-center">
+                <span className="font-mono text-xs font-bold text-purple-300">{prov.key}</span>
+                <span className="px-2 py-0.5 rounded bg-slate-800 text-[10px] font-mono text-slate-400">
+                  {prov.valueType}
+                </span>
+              </div>
+              <p className="text-xs text-slate-400">{prov.purpose}</p>
+              <div className="p-3 rounded-xl bg-slate-950 border border-slate-800 font-mono text-xs text-slate-200">
+                Current Value: <strong className="text-indigo-400">{prov.value}</strong>
+              </div>
+              <div className="flex justify-end">
+                <button
+                  onClick={() => initiateUpdateConfig(prov)}
+                  className="px-3 py-1.5 rounded-xl bg-indigo-600 hover:bg-indigo-500 text-white text-xs font-bold"
+                >
+                  Configure Provider Setting
+                </button>
+              </div>
+            </div>
+          ))}
+        </div>
+      )}
+
+      {/* INTEGRATIONS TAB */}
+      {activeTab === 'integrations' && (
+        <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+          {integrations.map((item) => (
+            <div key={item.providerName} className="p-5 rounded-2xl bg-slate-900 border border-slate-800 space-y-3 shadow-xl">
+              <div className="flex justify-between items-center">
+                <h4 className="font-bold text-sm text-slate-100">{item.providerName}</h4>
+                <span
+                  className={`px-2.5 py-0.5 rounded-full text-[10px] font-bold ${
+                    item.configured
+                      ? 'bg-emerald-950 border border-emerald-800 text-emerald-400'
+                      : 'bg-rose-950 border border-rose-800 text-rose-400'
+                  }`}
+                >
+                  {item.configured ? 'Configured ✓' : 'Not Configured ✗'}
+                </span>
+              </div>
+              <p className="text-xs text-slate-400">{item.purpose}</p>
+              <div className="flex justify-between items-center text-xs text-slate-400 border-t border-slate-800 pt-3">
+                <span>Secret Management:</span>
+                <span className="font-mono text-[10px] text-indigo-400">{item.managedBy}</span>
+              </div>
+            </div>
+          ))}
+        </div>
+      )}
+
+      {/* INFRASTRUCTURE TAB */}
+      {activeTab === 'infrastructure' && (
+        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
+          <div className="p-5 rounded-2xl bg-slate-900 border border-slate-800 space-y-2 shadow-lg">
+            <span className="text-xs text-slate-400">PostgreSQL Database</span>
+            <div className="flex justify-between items-center">
+              <span className="text-sm font-bold text-emerald-400">ONLINE</span>
+              <span className="text-[10px] text-slate-500 font-mono">Port 5433</span>
+            </div>
+          </div>
+          <div className="p-5 rounded-2xl bg-slate-900 border border-slate-800 space-y-2 shadow-lg">
+            <span className="text-xs text-slate-400">Redis Cache & Bus</span>
+            <div className="flex justify-between items-center">
+              <span className="text-sm font-bold text-emerald-400">ONLINE</span>
+              <span className="text-[10px] text-slate-500 font-mono">Port 6379</span>
+            </div>
+          </div>
+          <div className="p-5 rounded-2xl bg-slate-900 border border-slate-800 space-y-2 shadow-lg">
+            <span className="text-xs text-slate-400">RabbitMQ Message Queue</span>
+            <div className="flex justify-between items-center">
+              <span className="text-sm font-bold text-emerald-400">ONLINE</span>
+              <span className="text-[10px] text-slate-500 font-mono">Port 5672</span>
+            </div>
+          </div>
+          <div className="p-5 rounded-2xl bg-slate-900 border border-slate-800 space-y-2 shadow-lg">
+            <span className="text-xs text-slate-400">Worker Process</span>
+            <div className="flex justify-between items-center">
+              <span className="text-sm font-bold text-emerald-400">ACTIVE</span>
+              <span className="text-[10px] text-slate-500 font-mono">Document AI</span>
+            </div>
           </div>
         </div>
       )}
 
-      {/* Create Modal */}
+      {/* CREATE MODAL */}
       {isCreateModalOpen && (
         <div className="fixed inset-0 bg-slate-950/80 backdrop-blur-sm flex items-center justify-center p-4 z-50">
           <form
             onSubmit={handleCreateConfig}
             className="bg-slate-900 border border-slate-800 rounded-2xl p-6 w-full max-w-lg space-y-4 shadow-2xl"
           >
-            <h3 className="text-base font-bold text-white">Create Runtime Configuration</h3>
+            <h3 className="text-base font-bold text-white">Add Configuration to Registry</h3>
             <div className="space-y-1">
-              <label className="text-xs text-slate-400 font-semibold">Key (e.g. RAG_CUSTOM_TOPK)</label>
+              <label className="text-xs text-slate-400 font-semibold">Key (Must match registered format)</label>
               <input
                 type="text"
                 required
                 value={newKey}
                 onChange={(e) => setNewKey(e.target.value)}
-                placeholder="RAG_CUSTOM_TOPK"
+                placeholder="RAG_VECTOR_TIMEOUT_MS"
                 className="w-full bg-slate-950 border border-slate-800 rounded-xl px-3 py-2 text-xs font-mono text-slate-100"
               />
             </div>
@@ -492,13 +666,13 @@ export default function AdminConfigurationPage() {
             </div>
 
             <div className="space-y-1">
-              <label className="text-xs text-slate-400 font-semibold">Value</label>
+              <label className="text-xs text-slate-400 font-semibold">Initial Value</label>
               <input
                 type="text"
                 required
                 value={newValue}
                 onChange={(e) => setNewValue(e.target.value)}
-                placeholder="e.g. 10 or true"
+                placeholder="e.g. 15000"
                 className="w-full bg-slate-950 border border-slate-800 rounded-xl px-3 py-2 text-xs font-mono text-slate-100"
               />
             </div>
@@ -509,19 +683,8 @@ export default function AdminConfigurationPage() {
                 required
                 value={newPurpose}
                 onChange={(e) => setNewPurpose(e.target.value)}
-                placeholder="Clear explanation of how this setting is used in code..."
+                placeholder="Explain runtime purpose in code..."
                 className="w-full bg-slate-950 border border-slate-800 rounded-xl px-3 py-2 text-xs text-slate-100 h-16"
-              />
-            </div>
-
-            <div className="space-y-1">
-              <label className="text-xs text-slate-400 font-semibold">Description (Optional)</label>
-              <input
-                type="text"
-                value={newDescription}
-                onChange={(e) => setNewDescription(e.target.value)}
-                placeholder="Additional notes"
-                className="w-full bg-slate-950 border border-slate-800 rounded-xl px-3 py-2 text-xs text-slate-100"
               />
             </div>
 
@@ -537,23 +700,29 @@ export default function AdminConfigurationPage() {
                 type="submit"
                 className="px-4 py-2 rounded-xl bg-indigo-600 hover:bg-indigo-500 text-xs font-semibold text-white"
               >
-                Save Configuration
+                Create Configuration
               </button>
             </div>
           </form>
         </div>
       )}
 
-      {/* Edit Modal */}
+      {/* EDIT MODAL */}
       {editingConfig && (
         <div className="fixed inset-0 bg-slate-950/80 backdrop-blur-sm flex items-center justify-center p-4 z-50">
           <form
             onSubmit={handleSaveEdit}
             className="bg-slate-900 border border-slate-800 rounded-2xl p-6 w-full max-w-lg space-y-4 shadow-2xl"
           >
-            <h3 className="text-base font-bold text-white">Edit Configuration — {editingConfig.key}</h3>
+            <div className="flex justify-between items-center">
+              <h3 className="text-base font-bold text-white">Edit Configuration — {editingConfig.key}</h3>
+              <span className="px-2 py-0.5 rounded bg-slate-800 text-[10px] font-mono text-indigo-400 font-bold">
+                Version {editingConfig.version}
+              </span>
+            </div>
+
             <div className="space-y-1">
-              <label className="text-xs text-slate-400 font-semibold">Value</label>
+              <label className="text-xs text-slate-400 font-semibold">New Value</label>
               <input
                 type="text"
                 required
@@ -570,16 +739,6 @@ export default function AdminConfigurationPage() {
                 value={editPurpose}
                 onChange={(e) => setEditPurpose(e.target.value)}
                 className="w-full bg-slate-950 border border-slate-800 rounded-xl px-3 py-2 text-xs text-slate-100 h-16"
-              />
-            </div>
-
-            <div className="space-y-1">
-              <label className="text-xs text-slate-400 font-semibold">Description</label>
-              <input
-                type="text"
-                value={editDescription}
-                onChange={(e) => setEditDescription(e.target.value)}
-                className="w-full bg-slate-950 border border-slate-800 rounded-xl px-3 py-2 text-xs text-slate-100"
               />
             </div>
 
@@ -602,30 +761,40 @@ export default function AdminConfigurationPage() {
         </div>
       )}
 
-      {/* Confirmation Dialog for High-Impact Changes */}
+      {/* HIGH IMPACT CONFIRMATION MODAL WITH TYPE "CONFIRM" REQUIREMENT */}
       {confirmationPendingConfig && (
         <div className="fixed inset-0 bg-slate-950/80 backdrop-blur-sm flex items-center justify-center p-4 z-50">
           <div className="bg-slate-900 border border-amber-800/80 rounded-2xl p-6 w-full max-w-md space-y-4 shadow-2xl">
             <div className="flex items-center gap-2 text-amber-400 font-bold text-base">
-              ⚠️ Confirm High-Impact Configuration Change
+              ⚠️ High Impact Change Confirmation Required
             </div>
             <p className="text-xs text-slate-300 leading-relaxed">
-              You are updating a high-impact global configuration setting (threshold, timeout, or feature flag). Changes take effect immediately across all active RAG pipelines.
+              This setting is flagged as <strong>HIGH IMPACT</strong>. Changes take effect immediately across all active application & worker instances.
             </p>
 
-            <div className="p-3 rounded-xl bg-slate-950 border border-slate-800 space-y-2 text-xs">
-              <div>
-                <span className="text-slate-400 font-semibold">Configuration Key:</span>
-                <p className="font-mono text-indigo-300 font-bold">{confirmationPendingConfig.config.key}</p>
+            <div className="p-3 rounded-xl bg-slate-950 border border-slate-800 space-y-2 text-xs font-mono">
+              <div className="text-indigo-300 font-bold">{confirmationPendingConfig.config.key}</div>
+              <div className="flex justify-between text-slate-400">
+                <span>Previous:</span>
+                <span className="text-rose-400">{confirmationPendingConfig.config.value}</span>
               </div>
-              <div className="flex justify-between">
-                <span className="text-slate-400">Previous Value:</span>
-                <span className="font-mono text-rose-400">{confirmationPendingConfig.config.value}</span>
+              <div className="flex justify-between text-slate-400">
+                <span>New:</span>
+                <span className="text-emerald-400">{confirmationPendingConfig.newValue}</span>
               </div>
-              <div className="flex justify-between">
-                <span className="text-slate-400">New Value:</span>
-                <span className="font-mono text-emerald-400">{confirmationPendingConfig.newValue}</span>
-              </div>
+            </div>
+
+            <div className="space-y-1">
+              <label className="text-[11px] text-slate-400 font-semibold">
+                Type <strong className="text-white">CONFIRM</strong> to proceed:
+              </label>
+              <input
+                type="text"
+                value={confirmInputText}
+                onChange={(e) => setConfirmInputText(e.target.value)}
+                placeholder="CONFIRM"
+                className="w-full bg-slate-950 border border-slate-800 rounded-xl px-3 py-2 text-xs font-mono text-amber-400 font-bold"
+              />
             </div>
 
             <div className="flex justify-end gap-2 pt-2">
@@ -638,15 +807,17 @@ export default function AdminConfigurationPage() {
               </button>
               <button
                 type="button"
+                disabled={confirmInputText !== 'CONFIRM'}
                 onClick={() =>
                   executeSaveConfig(
                     confirmationPendingConfig.config.key,
                     confirmationPendingConfig.newValue,
                     editPurpose,
-                    editDescription
+                    editDescription,
+                    confirmationPendingConfig.config.version
                   )
                 }
-                className="px-4 py-2 rounded-xl bg-amber-600 hover:bg-amber-500 text-xs font-bold text-white shadow-lg shadow-amber-600/20"
+                className="px-4 py-2 rounded-xl bg-amber-600 disabled:opacity-40 hover:bg-amber-500 text-xs font-bold text-white shadow-lg shadow-amber-600/20"
               >
                 Confirm & Propagate
               </button>

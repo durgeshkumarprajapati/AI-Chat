@@ -25,6 +25,10 @@ import {
   queryIntelligenceTelemetryService,
   QueryIntelligenceResult
 } from '../query-intelligence';
+import { queryNormalizer } from '../cache/query-normalizer';
+import { singleFlightService } from '../cache/single-flight.service';
+import { ragExecutionContextManager } from '../performance/rag-execution-context';
+import { ragPerformanceTelemetryService } from '../performance/rag-telemetry.service';
 
 interface IntelligentRetrievalPlan {
   retrievalOverrides: Partial<RetrievalOptions>;
@@ -241,8 +245,19 @@ export class AnswerOrchestratorService {
     const startTime = Date.now();
     const latencyTrace: Record<string, number> = {};
 
-    const effectiveQuery = retrievalQuery || input.question;
-    const requestedMode = input.requestedAnswerMode;
+    const execCtx = ragExecutionContextManager.create({ timeoutMs: env.server?.RAG_REQUEST_TIMEOUT_MS });
+    const normalizedInfo = queryNormalizer.normalize(input.question);
+    const singleFlightKey = `sf:user:${input.userId}:kb:${input.knowledgeBaseId || 'all'}:q:${normalizedInfo.queryHash}`;
+
+    ragPerformanceTelemetryService.logEvent({
+      event: 'rag.request.started',
+      requestId: execCtx.requestId,
+      remainingBudgetMs: execCtx.remainingMs()
+    });
+
+    return singleFlightService.execute(singleFlightKey, async () => {
+      const effectiveQuery = retrievalQuery || input.question;
+      const requestedMode = input.requestedAnswerMode;
 
     // 1. General Knowledge Mode Bypass (If explicitly selected by user)
     if (requestedMode === 'GENERAL_KNOWLEDGE' || (input.allowGeneralKnowledge && !input.knowledgeBaseId)) {
@@ -588,26 +603,27 @@ export class AnswerOrchestratorService {
 
     latencyTrace.totalMs = Date.now() - startTime;
 
-    return {
-      conversationId: input.conversationId || '',
-      answerMode: currentMode,
-      answer: '', // Filled by caller via stream or non-stream generation
-      citations,
-      retrievedChunks: chunks,
-      topSimilarity: evidence.topSimilarity,
-      retrievalQuery: effectiveQuery,
-      contextMessagesCount,
-      cacheHit: false,
-      cacheType: 'none',
-      llmCalled: true,
-      embeddingCalled: true,
-      vectorSearchCalled: true,
-      keywordSearchCalled: true,
-      rerankCalled: true,
-      recoveryAttempted,
-      recoveryAttempts: recoveryAttempted ? 1 : 0,
-      latencyTrace
-    };
+      return {
+        conversationId: input.conversationId || '',
+        answerMode: currentMode,
+        answer: '', // Filled by caller via stream or non-stream generation
+        citations,
+        retrievedChunks: chunks,
+        topSimilarity: evidence.topSimilarity,
+        retrievalQuery: effectiveQuery,
+        contextMessagesCount,
+        cacheHit: false,
+        cacheType: 'none',
+        llmCalled: true,
+        embeddingCalled: true,
+        vectorSearchCalled: true,
+        keywordSearchCalled: true,
+        rerankCalled: true,
+        recoveryAttempted,
+        recoveryAttempts: recoveryAttempted ? 1 : 0,
+        latencyTrace
+      };
+    });
   }
 
   /**

@@ -13,13 +13,32 @@ export async function GET(req: NextRequest) {
     // Heartbeat user presence
     await collabPresenceService.heartbeat(user.id);
 
-    // Fetch user channels to authorize SSE listener
-    const memberships = await prisma.collabChannelMember.findMany({
-      where: { userId: user.id },
-      select: { channelId: true }
-    });
+    // Fetch user channels, RAG group conversation memberships, and project memberships to authorize SSE listener
+    const [collabMemberships, ragMemberships, projectMemberships, ownedProjects] = await Promise.all([
+      prisma.collabChannelMember.findMany({
+        where: { userId: user.id },
+        select: { channelId: true }
+      }),
+      prisma.ragConversationMember.findMany({
+        where: { userId: user.id },
+        select: { conversationId: true }
+      }),
+      prisma.projectMember.findMany({
+        where: { userId: user.id },
+        select: { projectId: true }
+      }),
+      prisma.project.findMany({
+        where: { ownerId: user.id },
+        select: { id: true }
+      })
+    ]);
 
-    const userChannelIds = new Set(memberships.map((m) => m.channelId));
+    const userChannelIds = new Set([
+      ...collabMemberships.map((m) => m.channelId),
+      ...ragMemberships.map((m) => m.conversationId),
+      ...projectMemberships.map((m) => m.projectId),
+      ...ownedProjects.map((p) => p.id)
+    ]);
 
     const encoder = new TextEncoder();
 

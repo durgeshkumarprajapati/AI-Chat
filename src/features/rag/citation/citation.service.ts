@@ -145,7 +145,15 @@ export class CitationService {
     userId: string,
     knowledgeBaseId?: string | null,
     retrievedChunks?: RetrievedChunk[],
-    sourceMode?: string
+    sourceMode?: string,
+    /**
+     * Phase 71B — optional. When provided (only by the GROUP/PROJECT multi-owner fan-out
+     * service), a citation's document may belong to any of these owners, not just `userId`.
+     * Every existing call site omits this argument, so `authorizedOwnerIds` stays `undefined`
+     * and the original `doc.userId === userId` check fires exactly as before — byte-for-byte
+     * backward compatible.
+     */
+    authorizedOwnerIds?: Set<string>
   ): Promise<Citation[]> {
     if (!citations || citations.length === 0) {
       return [];
@@ -208,7 +216,8 @@ export class CitationService {
         continue;
       }
 
-      if (doc.userId !== userId) {
+      const ownerAuthorized = authorizedOwnerIds ? authorizedOwnerIds.has(doc.userId) : doc.userId === userId;
+      if (!ownerAuthorized) {
         console.warn(`[CitationValidation] Security Violation / Rejected citation for documentId ${citation.documentId}: Document belongs to user ${doc.userId}, unauthorized for user ${userId}.`);
         throw new SecurityError('Unauthorized citation document reference');
       }

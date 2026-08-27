@@ -126,6 +126,11 @@ model User {
   documentMultimodalRuns DocumentMultimodalRun[]
   documentVersionsUploaded DocumentVersion[]
   documentDuplicateFingerprints DocumentDuplicateFingerprint[]
+  ragConversationsCreated RagConversation[] @relation("RagConversationCreator")
+  ragConversationMemberships RagConversationMember[]
+  ragMessages RagMessage[]
+  ragConversationDocumentSourcesAdded RagConversationDocumentSource[] @relation("RagConversationDocumentSourceAddedBy")
+  ragConversationKbSourcesAdded RagConversationKnowledgeBaseSource[] @relation("RagConversationKbSourceAddedBy")
 
   @@map("users")
 }
@@ -173,6 +178,7 @@ model Document {
   charts              DocumentChart[]
   versions            DocumentVersion[]
   duplicateFingerprint DocumentDuplicateFingerprint?
+  ragConversationSources RagConversationDocumentSource[]
 
   @@index([userId])
   @@index([status])
@@ -199,6 +205,7 @@ model KnowledgeBase {
   knowledgeEntities   KnowledgeEntity[]
   knowledgeGraphJobs  KnowledgeGraphJob[]
   voiceTutorSessions  VoiceTutorSession[]
+  ragConversationSources RagConversationKnowledgeBaseSource[]
 
   @@index([userId])
   @@map("knowledge_bases")
@@ -588,6 +595,110 @@ model DocumentDuplicateFingerprint {
   @@index([userId, contentHash])
   @@index([userId, normalizedTextFingerprint])
   @@map("document_duplicate_fingerprints")
+}
+
+// PHASE 71A — COLLABORATIVE RAG WORKSPACES: FOUNDATION
+// New, parallel models — the existing single-owner Conversation/Message models and chat.service.ts
+// are completely untouched. RagConversation/RagConversationMember/RagMessage serve PRIVATE/GROUP/
+// PROJECT conversations through a new authorization-first scope-resolution layer.
+
+enum RagConversationType {
+  PRIVATE
+  GROUP
+  PROJECT
+}
+
+model RagConversation {
+  id              String              @id @default(uuid())
+  type            RagConversationType @default(PRIVATE)
+  createdById     String              @map("created_by_id")
+  projectId       String?             @map("project_id")
+  knowledgeBaseId String?             @map("knowledge_base_id")
+  title           String              @default("New Chat")
+  summary         String?             @db.Text
+  createdAt       DateTime            @default(now()) @map("created_at")
+  updatedAt       DateTime            @updatedAt @map("updated_at")
+
+  createdBy User                                @relation("RagConversationCreator", fields: [createdById], references: [id], onDelete: Cascade)
+  project   Project?                            @relation(fields: [projectId], references: [id], onDelete: Cascade)
+  members   RagConversationMember[]
+  messages  RagMessage[]
+  documentSources     RagConversationDocumentSource[]
+  knowledgeBaseSources RagConversationKnowledgeBaseSource[]
+
+  @@index([createdById])
+  @@index([projectId])
+  @@index([type])
+  @@map("rag_conversations")
+}
+
+model RagConversationMember {
+  id                String            @id @default(uuid())
+  conversationId    String            @map("conversation_id")
+  userId            String            @map("user_id")
+  role              ProjectMemberRole @default(VIEWER)
+  lastReadAt        DateTime?         @map("last_read_at")
+  lastReadMessageId String?           @map("last_read_message_id")
+  joinedAt          DateTime          @default(now()) @map("joined_at")
+
+  conversation RagConversation @relation(fields: [conversationId], references: [id], onDelete: Cascade)
+  user         User            @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@unique([conversationId, userId])
+  @@index([conversationId])
+  @@index([userId])
+  @@map("rag_conversation_members")
+}
+
+model RagMessage {
+  id             String      @id @default(uuid())
+  conversationId String      @map("conversation_id")
+  authorId       String?     @map("author_id")
+  role           MessageRole
+  content        String      @db.Text
+  citations      Json?       @default("[]")
+  createdAt      DateTime    @default(now()) @map("created_at")
+
+  conversation RagConversation @relation(fields: [conversationId], references: [id], onDelete: Cascade)
+  author       User?           @relation(fields: [authorId], references: [id], onDelete: SetNull)
+
+  @@index([conversationId])
+  @@index([conversationId, createdAt])
+  @@map("rag_messages")
+}
+
+model RagConversationDocumentSource {
+  id             String   @id @default(uuid())
+  conversationId String   @map("conversation_id")
+  documentId     String   @map("document_id")
+  addedByUserId  String   @map("added_by_user_id")
+  createdAt      DateTime @default(now()) @map("created_at")
+
+  conversation RagConversation @relation(fields: [conversationId], references: [id], onDelete: Cascade)
+  document     Document        @relation(fields: [documentId], references: [id], onDelete: Cascade)
+  addedBy      User            @relation("RagConversationDocumentSourceAddedBy", fields: [addedByUserId], references: [id], onDelete: Cascade)
+
+  @@unique([conversationId, documentId])
+  @@index([conversationId])
+  @@index([documentId])
+  @@map("rag_conversation_document_sources")
+}
+
+model RagConversationKnowledgeBaseSource {
+  id              String   @id @default(uuid())
+  conversationId  String   @map("conversation_id")
+  knowledgeBaseId String   @map("knowledge_base_id")
+  addedByUserId   String   @map("added_by_user_id")
+  createdAt       DateTime @default(now()) @map("created_at")
+
+  conversation  RagConversation @relation(fields: [conversationId], references: [id], onDelete: Cascade)
+  knowledgeBase KnowledgeBase   @relation(fields: [knowledgeBaseId], references: [id], onDelete: Cascade)
+  addedBy       User            @relation("RagConversationKbSourceAddedBy", fields: [addedByUserId], references: [id], onDelete: Cascade)
+
+  @@unique([conversationId, knowledgeBaseId])
+  @@index([conversationId])
+  @@index([knowledgeBaseId])
+  @@map("rag_conversation_kb_sources")
 }
 
 model Session {
@@ -1579,6 +1690,7 @@ enum ProjectStatus {
 
 enum ProjectMemberRole {
   OWNER
+  ADMIN
   EDITOR
   VIEWER
 }
@@ -1712,6 +1824,7 @@ model Project {
   knowledgeConflicts     KnowledgeConflict[]
   knowledgeGraphJobs     KnowledgeGraphJob[]
   knowledgeGraphVersions KnowledgeGraphVersion[]
+  ragConversations       RagConversation[]
 
   @@index([ownerId])
   @@index([status])

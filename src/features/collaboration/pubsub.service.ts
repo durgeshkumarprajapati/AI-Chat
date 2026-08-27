@@ -32,7 +32,23 @@ export interface CollabEventPayload {
     | 'scheduled-call:updated'
     | 'scheduled-call:calendar-synced'
     | 'scheduled-call:calendar-failed'
-    | 'scheduled-call:cancelled';
+    | 'scheduled-call:cancelled'
+    | 'rag:group_conversation_message_created'
+    | 'rag:group_ai_response_created'
+    | 'rag:group_member_added'
+    | 'rag:group_member_removed'
+    | 'rag:group_member_role_updated'
+    | 'rag:group_source_added'
+    | 'rag:group_source_removed'
+    | 'rag:group_conversation_updated'
+    | 'rag:group_conversation_deleted'
+    | 'project:member_joined'
+    | 'project:member_left'
+    | 'project:message_created'
+    | 'project:ai_response_started'
+    | 'project:ai_response_completed'
+    | 'project:source_updated'
+    | 'project:updated';
   channelId: string;
   senderId?: string;
   targetUserId?: string;

@@ -408,12 +408,16 @@ export class RetrievalService {
     const deduplicatedCandidates = Array.from(candidateMap.values());
     const mergeMs = Date.now() - mergeStart;
 
-    // 4. Conditional Reranking
+    // 4. Conditional Reranking (Fast Path Optimization if top vector score >= threshold)
     const rerankStart = Date.now();
     let rerankedCandidates = deduplicatedCandidates;
 
+    const fastPathThreshold = env.server?.RAG_FAST_PATH_CONFIDENCE_THRESHOLD ?? 0.90;
+    const topVectorSim = rawVectorResults.length > 0 ? Number(rawVectorResults[0]?.similarity ?? 0) : 0;
+    const isFastPath = Boolean(env.server?.RAG_FAST_PATH_ENABLED && topVectorSim >= fastPathThreshold && !options?.forceRerank);
+
     const minCandidatesForRerank = env.server?.RAG_RERANK_MIN_CANDIDATES ?? 10;
-    const shouldRerank = enableRerank && (deduplicatedCandidates.length >= minCandidatesForRerank || options?.forceRerank);
+    const shouldRerank = enableRerank && !isFastPath && (deduplicatedCandidates.length >= minCandidatesForRerank || options?.forceRerank);
 
     if (shouldRerank) {
       rerankedCandidates = this.reranker.rerank(question, deduplicatedCandidates);

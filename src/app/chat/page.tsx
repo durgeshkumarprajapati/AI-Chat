@@ -3,6 +3,9 @@
 import { useState, useEffect, useRef, useCallback, Suspense } from 'react';
 import { useSearchParams, useRouter } from 'next/navigation';
 import { EvidenceModal } from '@/components/chat/EvidenceModal';
+import { CreateGroupModal } from '@/components/chat/CreateGroupModal';
+import { GroupSettingsModal } from '@/components/chat/GroupSettingsModal';
+import { GroupConversationDetailsDTO, GroupMessageDTO } from '@/features/rag/collaboration/group-rag.types';
 import { ttsService, TTSLanguage } from '@/features/tts/tts.service';
 import { speechToTextService, VoiceState, SUPPORTED_VOICE_LANGUAGES, getFriendlyVoiceErrorMessage } from '@/features/voice';
 
@@ -83,6 +86,14 @@ function ChatPageContent() {
   const [attachment, setAttachment] = useState<{ id: string; filename: string; mimeType: string; fileSize: number; storageKey: string } | null>(null);
   const [uploading, setUploading] = useState(false);
   const [saveSuccessMsg, setSaveSuccessMsg] = useState<string | null>(null);
+
+  // Phase 71B — Group RAG Chat State
+  const [chatMode, setChatMode] = useState<'PRIVATE' | 'GROUP'>('PRIVATE');
+  const [groups, setGroups] = useState<GroupConversationDetailsDTO[]>([]);
+  const [activeGroup, setActiveGroup] = useState<GroupConversationDetailsDTO | null>(null);
+  const [groupMessages, setGroupMessages] = useState<GroupMessageDTO[]>([]);
+  const [isCreateGroupOpen, setIsCreateGroupOpen] = useState(false);
+  const [isGroupSettingsOpen, setIsGroupSettingsOpen] = useState(false);
 
   // Phase 29 TTS Audio State
   const [speakingMsgId, setSpeakingMsgId] = useState<string | null>(null);
@@ -275,10 +286,77 @@ function ChatPageContent() {
     }
   }, []);
 
+  const fetchGroups = useCallback(async () => {
+    try {
+      const res = await fetch('/api/rag/conversations/group');
+      if (res.ok) {
+        const data = await res.json();
+        setGroups(data.data || []);
+      }
+    } catch (err) {
+      console.warn('Failed to fetch groups:', err);
+    }
+  }, []);
+
+  const selectGroup = async (groupId: string) => {
+    setFetchingHistory(true);
+    try {
+      const [detailsRes, msgsRes] = await Promise.all([
+        fetch(`/api/rag/conversations/${groupId}`),
+        fetch(`/api/rag/conversations/${groupId}/messages`)
+      ]);
+      if (detailsRes.ok && msgsRes.ok) {
+        const detailsData = await detailsRes.json();
+        const msgsData = await msgsRes.json();
+        setActiveGroup(detailsData.data);
+        setGroupMessages(msgsData.data || []);
+      }
+    } catch (err) {
+      console.warn('Failed to load group details:', err);
+    } finally {
+      setFetchingHistory(false);
+    }
+  };
+
+  const handleSendGroupMsg = async (isAi = false) => {
+    if (!question.trim() || !activeGroup || loading) return;
+    const q = question.trim();
+    setQuestion('');
+    setLoading(true);
+    try {
+      if (isAi) {
+        const res = await fetch(`/api/rag/conversations/${activeGroup.id}/ask`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ question: q })
+        });
+        if (res.ok) {
+          const data = await res.json();
+          setGroupMessages((prev) => [...prev, data.data.userMessage, data.data.assistantMessage]);
+        }
+      } else {
+        const res = await fetch(`/api/rag/conversations/${activeGroup.id}/messages`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ content: q })
+        });
+        if (res.ok) {
+          const data = await res.json();
+          setGroupMessages((prev) => [...prev, data.data]);
+        }
+      }
+    } catch (err) {
+      console.error('Group message error:', err);
+    } finally {
+      setLoading(false);
+    }
+  };
+
   useEffect(() => {
     fetchConversations();
     fetchKnowledgeBases();
-  }, [fetchConversations]);
+    fetchGroups();
+  }, [fetchConversations, fetchGroups]);
 
   useEffect(() => {
     if (initialKbId) {
@@ -665,33 +743,69 @@ function ChatPageContent() {
             </span>
           </div>
 
-          {/* RAG Retrieval Scope Selector */}
-          <div className="space-y-1.5 border-b border-slate-200 dark:border-slate-800 pb-3">
-            <label className="text-[11px] font-bold text-indigo-600 dark:text-indigo-400 uppercase tracking-wider block px-1">
-              RAG Retrieval Scope:
-            </label>
-            <select
-              value={selectedKbId}
-              onChange={(e) => setSelectedKbId(e.target.value)}
-              className="w-full bg-slate-50 dark:bg-slate-950 border border-slate-300 dark:border-slate-800 rounded-xl px-3 py-2 text-xs font-semibold text-slate-800 dark:text-slate-200 focus:outline-none focus:border-indigo-500"
+          {/* Workspace Mode Switcher */}
+          <div className="flex bg-slate-100 dark:bg-slate-950 p-1 rounded-xl border border-slate-200 dark:border-slate-800">
+            <button
+              onClick={() => setChatMode('PRIVATE')}
+              className={`flex-1 py-1.5 text-[11px] font-bold rounded-lg transition-all ${
+                chatMode === 'PRIVATE'
+                  ? 'bg-white dark:bg-slate-800 text-indigo-600 dark:text-indigo-400 shadow-sm'
+                  : 'text-slate-500 hover:text-slate-800 dark:hover:text-slate-200'
+              }`}
             >
-              <option value="">🌐 All Documents (Global)</option>
-              {knowledgeBases.map((kb) => (
-                <option key={kb.id} value={kb.id}>
-                  📚 {kb.name} ({kb.documentCount} docs)
-                </option>
-              ))}
-            </select>
+              🔒 Private
+            </button>
+            <button
+              onClick={() => setChatMode('GROUP')}
+              className={`flex-1 py-1.5 text-[11px] font-bold rounded-lg transition-all ${
+                chatMode === 'GROUP'
+                  ? 'bg-white dark:bg-slate-800 text-indigo-600 dark:text-indigo-400 shadow-sm'
+                  : 'text-slate-500 hover:text-slate-800 dark:hover:text-slate-200'
+              }`}
+            >
+              👥 Groups ({groups.length})
+            </button>
           </div>
 
-          {/* New Chat Button */}
-          <button
-            onClick={handleStartNewChat}
-            className="w-full py-2.5 px-4 rounded-xl bg-indigo-600 hover:bg-indigo-500 text-white font-semibold text-xs flex items-center justify-center space-x-2 shadow-lg shadow-indigo-600/20 transition-all flex-shrink-0"
-          >
-            <span>+</span>
-            <span>New Chat</span>
-          </button>
+          {/* RAG Retrieval Scope Selector */}
+          {chatMode === 'PRIVATE' && (
+            <div className="space-y-1.5 border-b border-slate-200 dark:border-slate-800 pb-3">
+              <label className="text-[11px] font-bold text-indigo-600 dark:text-indigo-400 uppercase tracking-wider block px-1">
+                RAG Retrieval Scope:
+              </label>
+              <select
+                value={selectedKbId}
+                onChange={(e) => setSelectedKbId(e.target.value)}
+                className="w-full bg-slate-50 dark:bg-slate-950 border border-slate-300 dark:border-slate-800 rounded-xl px-3 py-2 text-xs font-semibold text-slate-800 dark:text-slate-200 focus:outline-none focus:border-indigo-500"
+              >
+                <option value="">🌐 All Documents (Global)</option>
+                {knowledgeBases.map((kb) => (
+                  <option key={kb.id} value={kb.id}>
+                    📚 {kb.name} ({kb.documentCount} docs)
+                  </option>
+                ))}
+              </select>
+            </div>
+          )}
+
+          {/* Action Button */}
+          {chatMode === 'GROUP' ? (
+            <button
+              onClick={() => setIsCreateGroupOpen(true)}
+              className="w-full py-2.5 px-4 rounded-xl bg-indigo-600 hover:bg-indigo-500 text-white font-semibold text-xs flex items-center justify-center space-x-2 shadow-lg shadow-indigo-600/20 transition-all flex-shrink-0"
+            >
+              <span>+</span>
+              <span>Create Group Workspace</span>
+            </button>
+          ) : (
+            <button
+              onClick={handleStartNewChat}
+              className="w-full py-2.5 px-4 rounded-xl bg-indigo-600 hover:bg-indigo-500 text-white font-semibold text-xs flex items-center justify-center space-x-2 shadow-lg shadow-indigo-600/20 transition-all flex-shrink-0"
+            >
+              <span>+</span>
+              <span>New Chat</span>
+            </button>
+          )}
 
           {/* Conversation Search Bar */}
           <div className="px-1 flex-shrink-0">
@@ -710,10 +824,41 @@ function ChatPageContent() {
           {/* Conversations List */}
           <div className="space-y-1 flex-1 min-h-0 flex flex-col">
             <h3 className="text-[11px] font-semibold text-slate-400 uppercase tracking-wider px-2 pb-1 flex-shrink-0">
-              Conversations History
+              {chatMode === 'GROUP' ? 'Group Workspaces' : 'Conversations History'}
             </h3>
             <div className="flex-1 overflow-y-auto space-y-1 pr-1">
-              {conversations.length === 0 ? (
+              {chatMode === 'GROUP' ? (
+                groups.length === 0 ? (
+                  <p className="text-xs text-slate-500 px-2 py-3">No group workspaces found.</p>
+                ) : (
+                  groups.map((g) => {
+                    const isActive = activeGroup?.id === g.id;
+                    return (
+                      <div
+                        key={g.id}
+                        onClick={() => selectGroup(g.id)}
+                        className={`group relative p-2.5 rounded-xl cursor-pointer transition-all border ${
+                          isActive
+                            ? 'bg-indigo-950/80 border-indigo-800 text-indigo-300'
+                            : 'hover:bg-slate-800/60 text-slate-300 border border-transparent'
+                        }`}
+                      >
+                        <div className="flex justify-between items-start">
+                          <span className="text-xs font-semibold truncate block pr-2">👥 {g.title}</span>
+                          <span className="text-[9px] font-mono px-1.5 py-0.5 rounded bg-slate-800 text-indigo-300 border border-indigo-700/50">
+                            {g.userRole}
+                          </span>
+                        </div>
+                        <div className="flex items-center gap-2 mt-1 text-[10px] text-slate-500">
+                          <span>{g.members.length} members</span>
+                          <span>•</span>
+                          <span>{g.documentSources.length + g.knowledgeBaseSources.length} sources</span>
+                        </div>
+                      </div>
+                    );
+                  })
+                )
+              ) : conversations.length === 0 ? (
                 <p className="text-xs text-slate-500 px-2 py-3">No conversations found.</p>
               ) : (
                 conversations.map((conv) => {
@@ -799,29 +944,46 @@ function ChatPageContent() {
         {/* Header Bar */}
         <div className="px-6 py-3.5 border-b border-slate-200 dark:border-slate-800/80 bg-slate-50/80 dark:bg-slate-950/60 flex items-center justify-between flex-shrink-0">
           <div className="flex items-center space-x-3 text-xs font-medium text-slate-700 dark:text-slate-300 min-w-0">
-            <span className="font-bold text-slate-900 dark:text-white truncate max-w-[200px]">{activeTitle}</span>
-            <span className="text-slate-400 dark:text-slate-600">•</span>
-            <span className="text-indigo-600 dark:text-indigo-400 font-mono truncate">{selectedKbName}</span>
+            {chatMode === 'GROUP' ? (
+              <>
+                <span className="font-bold text-slate-900 dark:text-white truncate max-w-[200px]">👥 {activeGroup?.title || 'Select Group Workspace'}</span>
+                {activeGroup && (
+                  <>
+                    <span className="text-slate-400 dark:text-slate-600">•</span>
+                    <span className="text-indigo-600 dark:text-indigo-400 font-mono truncate">{activeGroup.members.length} members</span>
+                    <span className="text-slate-400 dark:text-slate-600">•</span>
+                    <span className="text-indigo-600 dark:text-indigo-400 font-mono truncate">{activeGroup.documentSources.length + activeGroup.knowledgeBaseSources.length} sources</span>
+                  </>
+                )}
+              </>
+            ) : (
+              <>
+                <span className="font-bold text-slate-900 dark:text-white truncate max-w-[200px]">{activeTitle}</span>
+                <span className="text-slate-400 dark:text-slate-600">•</span>
+                <span className="text-indigo-600 dark:text-indigo-400 font-mono truncate">{selectedKbName}</span>
+              </>
+            )}
 
-            {/* Knowledge Source Selector */}
-            <div className="flex items-center space-x-1.5 bg-white dark:bg-slate-900 border border-slate-300 dark:border-slate-800 rounded-lg px-2.5 py-1 shadow-sm">
-              <span className="text-[10px] text-slate-500 dark:text-slate-400 font-medium uppercase tracking-wider">Source:</span>
-              <select
-                value={sourceMode}
-                onChange={(e) => setSourceMode(e.target.value as any)}
-                className="bg-transparent text-xs text-indigo-700 dark:text-indigo-300 font-semibold focus:outline-none cursor-pointer"
-              >
-                <option value="auto" className="bg-white dark:bg-slate-900 text-slate-800 dark:text-slate-200">✨ Auto (Smart Fusion)</option>
-                <option value="documents_only" className="bg-white dark:bg-slate-900 text-slate-800 dark:text-slate-200">📄 Uploaded Documents</option>
-                <option value="web_only" className="bg-white dark:bg-slate-900 text-slate-800 dark:text-slate-200">🌐 Web Sources</option>
-                <option value="all_sources" className="bg-white dark:bg-slate-900 text-slate-800 dark:text-slate-200">🔎 Documents + Web</option>
-                <option value="web_search" className="bg-white dark:bg-slate-900 text-slate-800 dark:text-slate-200">🌐 Web Search</option>
-                <option value="web_discovery" className="bg-white dark:bg-slate-900 text-slate-800 dark:text-slate-200">🌍 Web Discovery</option>
-              </select>
-            </div>
+            {chatMode === 'PRIVATE' && (
+              <div className="flex items-center space-x-1.5 bg-white dark:bg-slate-900 border border-slate-300 dark:border-slate-800 rounded-lg px-2.5 py-1 shadow-sm">
+                <span className="text-[10px] text-slate-500 dark:text-slate-400 font-medium uppercase tracking-wider">Source:</span>
+                <select
+                  value={sourceMode}
+                  onChange={(e) => setSourceMode(e.target.value as any)}
+                  className="bg-transparent text-xs text-indigo-700 dark:text-indigo-300 font-semibold focus:outline-none cursor-pointer"
+                >
+                  <option value="auto" className="bg-white dark:bg-slate-900 text-slate-800 dark:text-slate-200">✨ Auto (Smart Fusion)</option>
+                  <option value="documents_only" className="bg-white dark:bg-slate-900 text-slate-800 dark:text-slate-200">📄 Uploaded Documents</option>
+                  <option value="web_only" className="bg-white dark:bg-slate-900 text-slate-800 dark:text-slate-200">🌐 Web Sources</option>
+                  <option value="all_sources" className="bg-white dark:bg-slate-900 text-slate-800 dark:text-slate-200">🔎 Documents + Web</option>
+                  <option value="web_search" className="bg-white dark:bg-slate-900 text-slate-800 dark:text-slate-200">🌐 Web Search</option>
+                  <option value="web_discovery" className="bg-white dark:bg-slate-900 text-slate-800 dark:text-slate-200">🌍 Web Discovery</option>
+                </select>
+              </div>
+            )}
 
             {/* Context Indicator Pill */}
-            {messages.length > 0 && (
+            {chatMode === 'PRIVATE' && messages.length > 0 && (
               <span className="hidden lg:inline-flex items-center space-x-1.5 px-2.5 py-0.5 rounded-full bg-indigo-50 dark:bg-indigo-950 border border-indigo-200 dark:border-indigo-800 text-[10px] text-indigo-700 dark:text-indigo-300 font-mono">
                 <span className="w-1.5 h-1.5 rounded-full bg-emerald-500 dark:bg-emerald-400 animate-pulse" />
                 <span>Memory Active ({activeSourcesCount} sources)</span>
@@ -829,7 +991,16 @@ function ChatPageContent() {
             )}
           </div>
 
-          {streaming && (
+          {chatMode === 'GROUP' && activeGroup && (
+            <button
+              onClick={() => setIsGroupSettingsOpen(true)}
+              className="px-3 py-1.5 rounded-lg bg-indigo-950/80 border border-indigo-800 text-[11px] font-semibold text-indigo-300 hover:bg-indigo-900 transition-colors flex items-center space-x-1.5"
+            >
+              <span>⚙️ Settings</span>
+            </button>
+          )}
+
+          {chatMode === 'PRIVATE' && streaming && (
             <button
               onClick={handleStopGenerating}
               className="px-3 py-1 rounded-lg bg-rose-950/80 border border-rose-800 text-[11px] font-semibold text-rose-300 hover:bg-rose-900 transition-colors flex items-center space-x-1.5"
@@ -840,7 +1011,7 @@ function ChatPageContent() {
         </div>
 
         {/* Phase 24 Web Discovery Config Toolbar */}
-        {sourceMode === 'web_discovery' && (
+        {chatMode === 'PRIVATE' && sourceMode === 'web_discovery' && (
           <div className="px-6 py-2.5 bg-slate-50 dark:bg-slate-950/90 border-b border-slate-200 dark:border-slate-800/80 flex flex-wrap items-center justify-between gap-3 text-xs flex-shrink-0">
             <div className="flex items-center space-x-2 min-w-[280px]">
               <span className="text-slate-500 dark:text-slate-400 text-[11px] font-medium">Target Website:</span>
@@ -892,7 +1063,43 @@ function ChatPageContent() {
         {/* Messages Area */}
         <div className="flex-1 p-6 overflow-y-auto space-y-6">
           {fetchingHistory ? (
-            <div className="text-center py-12 text-slate-500 font-mono text-xs">Loading conversation history...</div>
+            <div className="text-center py-12 text-slate-500 font-mono text-xs">Loading history...</div>
+          ) : chatMode === 'GROUP' ? (
+            groupMessages.length === 0 ? (
+              <div className="text-center py-12 space-y-4 max-w-lg mx-auto">
+                <div className="w-14 h-14 rounded-2xl bg-indigo-950/80 border border-indigo-800 text-indigo-400 text-2xl flex items-center justify-center mx-auto shadow-sm">
+                  👥
+                </div>
+                <h2 className="text-xl font-bold text-white">Group RAG Workspace</h2>
+                <p className="text-xs text-slate-400 leading-relaxed">
+                  Post messages to collaborate with your team, or click <strong className="text-indigo-400">Ask AI ✨</strong> to synthesize multi-owner document sources.
+                </p>
+              </div>
+            ) : (
+              groupMessages.map((m) => (
+                <div
+                  key={m.id}
+                  className={`flex flex-col space-y-1 ${
+                    m.role === 'USER' ? 'items-end' : 'items-start'
+                  }`}
+                >
+                  <div className="flex items-center space-x-2 text-[10px] text-slate-400 px-1 font-mono">
+                    <span>{m.role === 'USER' ? m.author?.name || m.author?.email || 'User' : '🤖 Assistant (Multi-Owner RAG)'}</span>
+                    <span>•</span>
+                    <span>{new Date(m.createdAt).toLocaleTimeString()}</span>
+                  </div>
+                  <div
+                    className={`max-w-2xl rounded-2xl px-4 py-3 text-xs leading-relaxed ${
+                      m.role === 'USER'
+                        ? 'bg-indigo-600 text-white rounded-tr-none shadow-md'
+                        : 'bg-slate-800/90 text-slate-200 border border-slate-700/80 rounded-tl-none shadow-md'
+                    }`}
+                  >
+                    {m.content}
+                  </div>
+                </div>
+              ))
+            )
           ) : messages.length === 0 ? (
             <div className="text-center py-12 space-y-6 max-w-lg mx-auto">
               <div className="w-14 h-14 rounded-2xl bg-indigo-50 dark:bg-indigo-950/80 border border-indigo-200 dark:border-indigo-800 text-indigo-600 dark:text-indigo-400 text-2xl flex items-center justify-center mx-auto shadow-sm">
@@ -1349,7 +1556,24 @@ function ChatPageContent() {
               {voiceErrorMsg && `Voice error: ${voiceErrorMsg}`}
             </div>
 
-            {streaming ? (
+            {chatMode === 'GROUP' ? (
+              <div className="flex items-center space-x-2">
+                <button
+                  onClick={() => handleSendGroupMsg(false)}
+                  disabled={loading || !question.trim() || !activeGroup}
+                  className="px-4 py-3 rounded-xl bg-slate-800 hover:bg-slate-700 disabled:opacity-50 text-white font-semibold text-xs transition-all flex-shrink-0"
+                >
+                  {loading ? 'Sending...' : 'Post 💬'}
+                </button>
+                <button
+                  onClick={() => handleSendGroupMsg(true)}
+                  disabled={loading || !question.trim() || !activeGroup}
+                  className="px-4 py-3 rounded-xl bg-indigo-600 hover:bg-indigo-500 disabled:opacity-50 text-white font-semibold text-xs shadow-lg shadow-indigo-600/20 transition-all flex-shrink-0"
+                >
+                  {loading ? 'Thinking...' : 'Ask AI ✨'}
+                </button>
+              </div>
+            ) : streaming ? (
               <button
                 onClick={handleStopGenerating}
                 className="px-5 py-3 rounded-xl bg-rose-600 hover:bg-rose-500 text-white font-semibold text-xs shadow-lg shadow-rose-600/20 transition-all flex-shrink-0"
@@ -1374,6 +1598,27 @@ function ChatPageContent() {
         citation={activeModalCitation}
         isOpen={!!activeModalCitation}
         onClose={() => setActiveModalCitation(null)}
+      />
+
+      <CreateGroupModal
+        isOpen={isCreateGroupOpen}
+        onClose={() => setIsCreateGroupOpen(false)}
+        onSuccess={(newGroup) => {
+          fetchGroups();
+          setActiveGroup(newGroup);
+          setGroupMessages([]);
+          setChatMode('GROUP');
+        }}
+      />
+
+      <GroupSettingsModal
+        isOpen={isGroupSettingsOpen}
+        group={activeGroup}
+        onClose={() => setIsGroupSettingsOpen(false)}
+        onUpdated={() => {
+          fetchGroups();
+          if (activeGroup) selectGroup(activeGroup.id);
+        }}
       />
     </div>
   );

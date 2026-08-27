@@ -581,7 +581,70 @@ const serverEnvSchema = z
     DOCUMENT_VERSION_COMPARISON_ENABLED: z.coerce.boolean().default(false),
     DOCUMENT_REINDEX_ENABLED: z.coerce.boolean().default(false),
     DOCUMENT_REINDEX_MAX_RETRIES: z.coerce.number().int().positive().default(3),
-    DOCUMENT_DUPLICATE_SIMILARITY_THRESHOLD: z.coerce.number().min(0).max(1).default(0.95)
+    DOCUMENT_DUPLICATE_SIMILARITY_THRESHOLD: z.coerce.number().min(0).max(1).default(0.95),
+
+    // PHASE 71A — COLLABORATIVE RAG WORKSPACES: FOUNDATION
+    COLLABORATIVE_RAG_ENABLED: z.coerce.boolean().default(false),
+    RAG_GROUP_CHAT_ENABLED: z.coerce.boolean().default(false),
+    RAG_PROJECT_CHAT_ENABLED: z.coerce.boolean().default(false),
+    // Security control, not a rollout control — defaults true unlike every other flag in this
+    // phase. PRIVATE scope resolution never branches on this flag (membership checking stays
+    // unconditional); it only matters as an incident-response escape hatch once GROUP/PROJECT
+    // resolvers are exercised.
+    RAG_SCOPE_AUTHORIZATION_ENABLED: z.coerce.boolean().default(true),
+    RAG_GROUP_MAX_FANOUT_OWNERS: z.coerce.number().int().positive().default(20),
+
+    // PHASE 71B — PRODUCTION GROUP RAG CHAT
+    GROUP_RAG_ENABLED: z.coerce.boolean().default(true),
+    GROUP_RAG_MAX_MEMBERS: z.coerce.number().int().positive().default(50),
+    GROUP_RAG_MAX_DOCUMENT_SOURCES: z.coerce.number().int().positive().default(100),
+    GROUP_RAG_MAX_KNOWLEDGE_BASE_SOURCES: z.coerce.number().int().positive().default(50),
+    GROUP_RAG_MAX_PARALLEL_RETRIEVALS: z.coerce.number().int().positive().default(5),
+    GROUP_RAG_RETRIEVAL_TIMEOUT_MS: z.coerce.number().int().positive().default(8000),
+    GROUP_RAG_MAX_RETRIEVAL_CANDIDATES: z.coerce.number().int().positive().default(50),
+    GROUP_RAG_CACHE_ENABLED: z.coerce.boolean().default(true),
+    GROUP_RAG_CACHE_TTL_SECONDS: z.coerce.number().int().positive().default(300),
+    GROUP_RAG_REALTIME_ENABLED: z.coerce.boolean().default(true),
+
+    // PHASE 71C — PRODUCTION PROJECT RAG WORKSPACE
+    PROJECT_RAG_ENABLED: z.coerce.boolean().default(true),
+    PROJECT_RAG_AUDIT_ENABLED: z.coerce.boolean().default(true),
+    PROJECT_RAG_REALTIME_ENABLED: z.coerce.boolean().default(true),
+    PROJECT_RAG_CACHE_ENABLED: z.coerce.boolean().default(true),
+    PROJECT_RAG_CACHE_TTL_SECONDS: z.coerce.number().int().positive().default(300),
+    PROJECT_RAG_MAX_RETRIEVAL_TIMEOUT_MS: z.coerce.number().int().positive().default(8000),
+    PROJECT_RAG_MAX_CONTEXT_TOKENS: z.coerce.number().int().positive().default(12000),
+    PROJECT_RAG_LEGACY_FALLBACK_ENABLED: z.coerce.boolean().default(true),
+
+    // PHASE 71D — RAG PERFORMANCE ENGINE
+    RAG_PERFORMANCE_OPTIMIZATION_ENABLED: z.coerce.boolean().default(true),
+    RAG_REQUEST_TIMEOUT_MS: z.coerce.number().int().positive().default(12000),
+    RAG_AUTH_TIMEOUT_MS: z.coerce.number().int().positive().default(300),
+    RAG_SCOPE_TIMEOUT_MS: z.coerce.number().int().positive().default(500),
+    RAG_CACHE_TIMEOUT_MS: z.coerce.number().int().positive().default(200),
+    RAG_VECTOR_TIMEOUT_MS: z.coerce.number().int().positive().default(2500),
+    RAG_KEYWORD_TIMEOUT_MS: z.coerce.number().int().positive().default(1500),
+    RAG_GRAPH_TIMEOUT_MS: z.coerce.number().int().positive().default(2500),
+    RAG_RERANK_TIMEOUT_MS: z.coerce.number().int().positive().default(2000),
+    RAG_CONTEXT_TIMEOUT_MS: z.coerce.number().int().positive().default(500),
+    RAG_STAGE_TIMEOUT_ENFORCEMENT_ENABLED: z.coerce.boolean().default(false),
+    RAG_RETRIEVAL_CACHE_ENABLED: z.coerce.boolean().default(true),
+    RAG_RETRIEVAL_CACHE_TTL_SECONDS: z.coerce.number().int().positive().default(300),
+    RAG_ANSWER_CACHE_ENABLED: z.coerce.boolean().default(true),
+    RAG_ANSWER_CACHE_TTL_SECONDS: z.coerce.number().int().positive().default(180),
+    RAG_RERANK_CACHE_ENABLED: z.coerce.boolean().default(true),
+    RAG_RERANK_CACHE_TTL_SECONDS: z.coerce.number().int().positive().default(300),
+    RAG_CACHE_SINGLE_FLIGHT_ENABLED: z.coerce.boolean().default(true),
+    RAG_ADAPTIVE_RETRIEVAL_ENABLED: z.coerce.boolean().default(true),
+    RAG_TOP_K_SIMPLE: z.coerce.number().int().positive().default(5),
+    RAG_TOP_K_STANDARD: z.coerce.number().int().positive().default(8),
+    RAG_TOP_K_COMPLEX: z.coerce.number().int().positive().default(12),
+    RAG_TOP_K_MAX: z.coerce.number().int().positive().default(20),
+    RAG_FAST_PATH_ENABLED: z.coerce.boolean().default(true),
+    RAG_FAST_PATH_CONFIDENCE_THRESHOLD: z.coerce.number().min(0).max(1).default(0.90),
+    RAG_GRACEFUL_DEGRADATION_ENABLED: z.coerce.boolean().default(true),
+    RAG_GRAPH_RETRIEVAL_ENABLED: z.coerce.boolean().default(true),
+    RAG_GRAPH_RETRIEVAL_ALWAYS_ON: z.coerce.boolean().default(false)
   })
   .refine(
     (data) => {

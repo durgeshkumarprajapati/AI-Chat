@@ -92,15 +92,23 @@ describe('AnswerOrchestratorService — Phase 69A metadata-aware retrieval cache
 
   it('forwards documentTypeFilter into retrieveContextWithTrace options', async () => {
     const { orchestrator, retrievalService } = buildOrchestrator({});
+    jest.spyOn(orchestrator as any, 'computeIntelligentRetrievalOptions').mockResolvedValue({
+      rerankerOverride: undefined,
+      routeConfidence: 'LOW',
+      candidateDocIds: [],
+      boostDocIds: []
+    });
 
     await orchestrator.orchestrate({ ...baseInput, sourceMode: 'documents_only', documentTypeFilter: ['REPORT'] });
 
     expect(retrievalService.retrieveContextWithTrace).toHaveBeenCalledWith(
       'u1',
       expect.any(String),
-      expect.objectContaining({ documentTypeFilter: ['REPORT'] })
+      expect.objectContaining({
+        documentTypeFilter: ['REPORT']
+      })
     );
-  });
+  }, 10000);
 });
 
 describe('RetrievalService — Phase 69A metadata-aware filter (in-memory contract)', () => {

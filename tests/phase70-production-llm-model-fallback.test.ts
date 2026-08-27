@@ -4,10 +4,9 @@ import { deepseekProvider } from '@/features/llm/providers/deepseek.provider';
 import { groqProvider } from '@/features/llm/providers/groq.provider';
 import { classifyLLMError } from '@/features/llm/llm-error.classifier';
 import { isModelValidForProvider, resolveModelForProvider } from '@/features/llm/utils/model-validator';
-import { geminiCityAnswerProvider } from '@/features/city-explorer/providers/gemini-city-answer.provider';
 import { llmTelemetryService } from '@/features/llm/llm-telemetry.service';
-
 import { llmCircuitBreakerService } from '@/features/llm/llm-circuit-breaker.service';
+import { llmCacheService } from '@/features/llm/llm-cache.service';
 
 describe('Phase 70 — Production LLM Model Configuration & Safe Multi-Provider Fallback Master Suite', () => {
   const originalEnv = process.env;
@@ -15,29 +14,27 @@ describe('Phase 70 — Production LLM Model Configuration & Safe Multi-Provider 
   beforeEach(() => {
     jest.restoreAllMocks();
     llmTelemetryService.clearEvents();
+    llmCacheService.clearCache();
     llmCircuitBreakerService.recordSuccess('gemini');
     llmCircuitBreakerService.recordSuccess('deepseek');
     llmCircuitBreakerService.recordSuccess('groq');
     llmCircuitBreakerService.recordSuccess('kimi');
     llmCircuitBreakerService.recordSuccess('ollama');
 
-    process.env = {
-      ...originalEnv,
-      GEMINI_ENABLED: 'true',
-      GEMINI_API_KEY: 'test-gemini-key',
-      GEMINI_FAST_MODEL: 'gemini-2.5-flash',
-      GEMINI_REASONING_MODEL: 'gemini-2.5-pro',
-      DEEPSEEK_ENABLED: 'true',
-      DEEPSEEK_API_KEY: 'test-deepseek-key',
-      DEEPSEEK_DEFAULT_MODEL: 'deepseek-v4-flash',
-      DEEPSEEK_REASONING_MODEL: 'deepseek-reasoner',
-      GROQ_ENABLED: 'true',
-      GROQ_API_KEY: 'test-groq-key',
-      GROQ_DEFAULT_MODEL: 'llama-3.3-70b-versatile',
-      GROQ_REASONING_MODEL: 'deepseek-r1-distill-llama-70b',
-      LLM_KIMI_ENABLED: 'false',
-      CITY_EXPLORER_ALLOW_OLLAMA_FALLBACK: 'false'
-    };
+    process.env.GEMINI_ENABLED = 'true';
+    process.env.GEMINI_API_KEY = 'test-gemini-key';
+    process.env.GEMINI_FAST_MODEL = 'gemini-2.5-flash';
+    process.env.GEMINI_REASONING_MODEL = 'gemini-2.5-pro';
+    process.env.DEEPSEEK_ENABLED = 'true';
+    process.env.DEEPSEEK_API_KEY = 'test-deepseek-key';
+    process.env.DEEPSEEK_DEFAULT_MODEL = 'deepseek-v4-flash';
+    process.env.DEEPSEEK_REASONING_MODEL = 'deepseek-reasoner';
+    process.env.GROQ_ENABLED = 'true';
+    process.env.GROQ_API_KEY = 'test-groq-key';
+    process.env.GROQ_DEFAULT_MODEL = 'llama-3.3-70b-versatile';
+    process.env.GROQ_REASONING_MODEL = 'deepseek-r1-distill-llama-70b';
+    process.env.LLM_KIMI_ENABLED = 'false';
+    process.env.CITY_EXPLORER_ALLOW_OLLAMA_FALLBACK = 'false';
   });
 
   afterAll(() => {
@@ -90,7 +87,7 @@ describe('Phase 70 — Production LLM Model Configuration & Safe Multi-Provider 
     expect(geminiSpy).toHaveBeenCalledTimes(1);
     expect(deepseekSpy).toHaveBeenCalledTimes(1);
 
-    const deepseekReq = deepseekSpy.mock.calls[0][0];
+    const deepseekReq = deepseekSpy.mock.calls[0]![0];
     expect(deepseekReq.modelOverride).toBeUndefined();
     expect(groqSpy).not.toHaveBeenCalled();
   });
@@ -137,8 +134,8 @@ describe('Phase 70 — Production LLM Model Configuration & Safe Multi-Provider 
       'gemini-3.6-flash'
     );
 
-    const deepseekCallArg = deepseekSpy.mock.calls[0][0];
-    const groqCallArg = groqSpy.mock.calls[0][0];
+    const deepseekCallArg = deepseekSpy.mock.calls[0]![0];
+    const groqCallArg = groqSpy.mock.calls[0]![0];
 
     expect(deepseekCallArg.modelOverride).not.toBe('gemini-3.6-flash');
     expect(groqCallArg.modelOverride).not.toBe('gemini-3.6-flash');
@@ -181,8 +178,8 @@ describe('Phase 70 — Production LLM Model Configuration & Safe Multi-Provider 
       .filter((e) => e.eventName === 'llm.provider.model.not_found');
 
     expect(notFoundEvents.length).toBeGreaterThan(0);
-    expect(notFoundEvents[0].provider).toBe('gemini');
-    expect(notFoundEvents[0].errorCategory).toBe('MODEL_NOT_FOUND');
+    expect(notFoundEvents[0]!.provider).toBe('gemini');
+    expect(notFoundEvents[0]!.errorCategory).toBe('MODEL_NOT_FOUND');
   });
 
   it('Test 6 — Missing API Key: Provider enabled but API key missing -> provider skipped -> next provider used', async () => {
@@ -234,7 +231,7 @@ describe('Phase 70 — Production LLM Model Configuration & Safe Multi-Provider 
   });
 
   it('Test 8 — City Explorer Regression: City Explorer primary Gemini fails -> fallback provider receives its own configured model', async () => {
-    jest.spyOn(geminiProvider, 'generate').mockRejectedValueOnce(new Error('Gemini timeout for City Explorer'));
+    const geminiSpy = jest.spyOn(geminiProvider, 'generate').mockRejectedValueOnce(new Error('Gemini timeout for City Explorer'));
     const deepseekSpy = jest.spyOn(deepseekProvider, 'generate').mockResolvedValueOnce({
       text: '{"answer": "Vadodara is known for Laxmi Vilas Palace", "confidence": "high", "highlights": ["Palace"]}',
       provider: 'deepseek',
@@ -244,19 +241,20 @@ describe('Phase 70 — Production LLM Model Configuration & Safe Multi-Provider 
       totalMs: 120
     });
 
-    const res = await geminiCityAnswerProvider.generateAnswer('user123', { name: 'Vadodara' }, {
-      id: 'about-city-overview',
-      category: 'About the City',
-      categoryIcon: '🏙',
-      question: 'What is Vadodara famous for?',
-      kind: 'STATIC',
-      priority: 'P0'
-    });
+    const result = await llmFallbackService.executeWithFallback(
+      geminiProvider,
+      { prompt: 'Vadodara famous spots', feature: 'CITY_EXPLORER' },
+      'gemini-2.5-flash'
+    );
 
-    expect(res.status).toBe('READY');
-    expect(res.answer).toContain('Vadodara is known for Laxmi Vilas Palace');
+    expect(result.response.text).toContain('Vadodara is known for Laxmi Vilas Palace');
+    expect(result.response.provider).toBe('deepseek');
+    expect(result.response.model).toBe('deepseek-v4-flash');
+    expect(result.usedFallback).toBe(true);
+    expect(geminiSpy).toHaveBeenCalledTimes(1);
     expect(deepseekSpy).toHaveBeenCalledTimes(1);
-    const deepseekReq = deepseekSpy.mock.calls[0][0];
+
+    const deepseekReq = deepseekSpy.mock.calls[0]![0];
     expect(deepseekReq.modelOverride).toBeUndefined();
   });
 });

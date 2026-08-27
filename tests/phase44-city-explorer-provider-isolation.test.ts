@@ -69,6 +69,8 @@ describe('Phase 44 — Production City Explorer Provider Isolation & Zero-Stall 
   });
 
   it('6. Gemini failure NEVER calls Ollama when CITY_EXPLORER_ALLOW_OLLAMA_FALLBACK=false', async () => {
+    process.env.DEEPSEEK_ENABLED = 'false';
+    process.env.GROQ_ENABLED = 'false';
     const mockReq = { feature: 'CITY_EXPLORER' as const, prompt: 'Vadodara test' };
     const mockPrimary = { name: 'gemini', generate: jest.fn().mockRejectedValue(new Error('Gemini outage')) } as any;
 

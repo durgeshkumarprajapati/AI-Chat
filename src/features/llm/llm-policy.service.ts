@@ -1,6 +1,6 @@
 import { FeatureScope, ComplexityLevel, RoutingDecision, LLMRequest } from './llm.types';
 import { env } from '@/config/env';
-import { llmCircuitBreakerService } from './llm-circuit-breaker.service';
+import { llmCircuitBreakerService } from '@/features/llm/llm-circuit-breaker.service';
 import { resolveModelForProvider } from './utils/model-validator';
 
 export class LLMPolicyService {

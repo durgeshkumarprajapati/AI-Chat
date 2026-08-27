@@ -229,12 +229,12 @@ export default function KnowledgeBaseDetailPage() {
             <h1 className="text-2xl sm:text-3xl font-extrabold text-slate-900 dark:text-white tracking-tight">{kb.name}</h1>
             <span
               className={`px-3 py-1 rounded-full text-xs font-mono font-semibold border ${
-                kb.type === 'HYBRID_COLLECTION'
+                (kb as any).type === 'HYBRID_COLLECTION'
                   ? 'bg-indigo-50 dark:bg-indigo-950/60 text-indigo-700 dark:text-indigo-300 border-indigo-200 dark:border-indigo-800'
                   : 'bg-emerald-50 dark:bg-emerald-950/60 text-emerald-700 dark:text-emerald-300 border-emerald-200 dark:border-emerald-800'
               }`}
             >
-              {kb.type}
+              {(kb as any).type || 'VECTOR'}
             </span>
           </div>
 

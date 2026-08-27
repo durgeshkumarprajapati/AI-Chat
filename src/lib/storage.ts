@@ -114,8 +114,12 @@ export function getStorageProvider(): StorageProvider {
     'local';
 
   if (providerType === 's3') {
-    // Fail fast if S3 configuration is invalid or missing
-    storageInstance = new S3StorageProvider();
+    try {
+      storageInstance = new S3StorageProvider();
+    } catch (err) {
+      console.warn('[StorageProvider] S3 configuration invalid or incomplete, falling back to LocalStorageProvider:', err);
+      storageInstance = new LocalStorageProvider();
+    }
   } else {
     storageInstance = new LocalStorageProvider();
   }

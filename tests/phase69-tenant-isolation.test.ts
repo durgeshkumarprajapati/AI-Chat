@@ -1,3 +1,7 @@
+process.env.STORAGE_PROVIDER = 'local';
+process.env.AWS_REGION = 'us-east-1';
+process.env.AWS_S3_BUCKET = 'test-bucket';
+
 import { NextRequest } from 'next/server';
 import { GET } from '@/app/api/documents/[id]/intelligence/route';
 import { prisma } from '@/lib/prisma';

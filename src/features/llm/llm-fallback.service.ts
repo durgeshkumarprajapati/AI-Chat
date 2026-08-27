@@ -1,10 +1,10 @@
-import { LLMProvider } from './llm-provider.interface';
-import { LLMRequest, LLMResponse, LLMStreamChunk, StructuredLLMRequest } from './llm.types';
-import { LLMModelRegistry, llmModelRegistry } from './llm-model-registry';
-import { llmCircuitBreakerService } from './llm-circuit-breaker.service';
-import { isModelValidForProvider } from './utils/model-validator';
-import { classifyLLMError } from './llm-error.classifier';
-import { llmTelemetryService } from './llm-telemetry.service';
+import { LLMProvider } from '@/features/llm/llm-provider.interface';
+import { LLMRequest, LLMResponse, LLMStreamChunk, StructuredLLMRequest } from '@/features/llm/llm.types';
+import { LLMModelRegistry, llmModelRegistry } from '@/features/llm/llm-model-registry';
+import { llmCircuitBreakerService } from '@/features/llm/llm-circuit-breaker.service';
+import { isModelValidForProvider } from '@/features/llm/utils/model-validator';
+import { classifyLLMError } from '@/features/llm/llm-error.classifier';
+import { llmTelemetryService } from '@/features/llm/llm-telemetry.service';
 import { env } from '@/config/env';
 
 export class LLMFallbackService {
@@ -26,7 +26,7 @@ export class LLMFallbackService {
           const enabledEnv = process.env.GEMINI_ENABLED;
           const isEnabled = enabledEnv !== undefined ? enabledEnv !== 'false' : (env.server?.GEMINI_ENABLED ?? true);
           const key = process.env.GEMINI_API_KEY;
-          const hasKey = key !== undefined ? key !== '' : !!(env.server?.GEMINI_API_KEY || (process.env.NODE_ENV === 'test' && env.server?.GEMINI_API_KEY !== ''));
+          const hasKey = !!key;
           return isEnabled && hasKey;
         }
       },
@@ -36,7 +36,7 @@ export class LLMFallbackService {
           const enabledEnv = process.env.DEEPSEEK_ENABLED;
           const isEnabled = enabledEnv !== undefined ? enabledEnv !== 'false' : (env.server?.DEEPSEEK_ENABLED ?? true);
           const key = process.env.DEEPSEEK_API_KEY;
-          const hasKey = key !== undefined ? key !== '' : !!env.server?.DEEPSEEK_API_KEY;
+          const hasKey = !!key;
           return isEnabled && hasKey;
         }
       },
@@ -46,7 +46,7 @@ export class LLMFallbackService {
           const enabledEnv = process.env.GROQ_ENABLED;
           const isEnabled = enabledEnv !== undefined ? enabledEnv !== 'false' : (env.server?.GROQ_ENABLED ?? true);
           const key = process.env.GROQ_API_KEY;
-          const hasKey = key !== undefined ? key !== '' : !!env.server?.GROQ_API_KEY;
+          const hasKey = !!key;
           return isEnabled && hasKey;
         }
       },
@@ -56,7 +56,7 @@ export class LLMFallbackService {
           const enabledEnv = process.env.LLM_KIMI_ENABLED;
           const isEnabled = enabledEnv !== undefined ? enabledEnv === 'true' : (env.server?.LLM_KIMI_ENABLED ?? false);
           const key = process.env.LLM_KIMI_API_KEY;
-          const hasKey = key !== undefined ? key !== '' : !!env.server?.LLM_KIMI_API_KEY;
+          const hasKey = !!key;
           return isEnabled && hasKey;
         }
       },
@@ -268,10 +268,11 @@ export class LLMFallbackService {
           throw err;
         }
 
+        const prevProviderName = currentProvider.name;
         currentProvider = this.getNextFallbackProvider(attemptedProviders, request);
         if (!currentProvider) {
           llmTelemetryService.recordLifecycleEvent('llm.provider.fallback.exhausted', {
-            provider: currentProvider.name,
+            provider: prevProviderName,
             feature: request.feature,
             attempt: attemptIndex,
             errorCategory: classified.category,
@@ -357,10 +358,11 @@ export class LLMFallbackService {
           throw err;
         }
 
+        const prevProviderName = currentProvider.name;
         currentProvider = this.getNextFallbackProvider(attemptedProviders, request);
         if (!currentProvider) {
           llmTelemetryService.recordLifecycleEvent('llm.provider.fallback.exhausted', {
-            provider: currentProvider.name,
+            provider: prevProviderName,
             feature: request.feature,
             attempt: attemptIndex,
             errorCategory: classified.category,

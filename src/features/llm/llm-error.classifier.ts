@@ -50,7 +50,7 @@ export function classifyLLMError(error: any, providerName: string): ClassifiedLL
     message.match(/status\s*code\s*(\d{3})/i) ||
     message.match(/(\d{3})\s*(not found|unauthorized|forbidden|internal server error|bad request|too many requests)/i);
 
-  if (statusMatch) {
+  if (statusMatch && statusMatch[1]) {
     statusCode = parseInt(statusMatch[1], 10);
   } else if (typeof error?.status === 'number') {
     statusCode = error.status;

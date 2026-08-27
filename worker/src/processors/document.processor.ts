@@ -48,6 +48,16 @@ export class DocumentProcessor {
       }
     }
 
+    if (job.jobType === 'MEETING_ANALYSIS') {
+      try {
+        const { meetingIntelligenceService } = await import('@/features/meeting-intelligence/index.js');
+        await meetingIntelligenceService.analyzeMeeting(job.userId, job.documentId);
+        return { status: 'SUCCESS', action: 'COMPLETED' };
+      } catch (err) {
+        return { status: 'FAILED', action: 'PERMANENT_ERROR', errorMessage: String(err) };
+      }
+    }
+
     if (job.jobType === 'DOCUMENT_PERMANENT_DELETE') {
       try {
         const { documentSoftDeleteService } = await import('@/features/document-management/index.js');

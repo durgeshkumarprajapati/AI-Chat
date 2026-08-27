@@ -168,7 +168,7 @@ export class LLMFallbackService {
           });
         }
 
-        if (currentProvider.name === 'ollama' || request.localOnly) {
+        if (request.localOnly) {
           throw err;
         }
 
@@ -264,7 +264,7 @@ export class LLMFallbackService {
           });
         }
 
-        if (currentProvider.name === 'ollama' || request.localOnly) {
+        if (request.localOnly) {
           throw err;
         }
 
@@ -354,7 +354,7 @@ export class LLMFallbackService {
           });
         }
 
-        if (currentProvider.name === 'ollama' || request.localOnly) {
+        if (request.localOnly) {
           throw err;
         }
 

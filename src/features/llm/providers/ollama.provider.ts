@@ -8,7 +8,6 @@ import {
   LLMCapability
 } from '../llm.types';
 import { env } from '@/config/env';
-import { DocumentProcessingError } from '@/errors';
 import { resolveModelForProvider } from '../utils/model-validator';
 
 export class OllamaProvider implements LLMProvider {
@@ -130,7 +129,7 @@ export class OllamaProvider implements LLMProvider {
       const text = data.response?.trim() || '';
 
       if (!text) {
-        throw new DocumentProcessingError('Ollama provider returned empty text.');
+        throw new Error('Ollama provider returned empty text.');
       }
 
       return {
@@ -146,7 +145,7 @@ export class OllamaProvider implements LLMProvider {
     } catch (err: any) {
       clearTimeout(timeoutId);
       if (err.name === 'AbortError') {
-        throw new DocumentProcessingError(`Ollama request timed out or cancelled after ${request.timeoutMs || this.timeoutMs}ms.`);
+        throw new Error(`Ollama request timed out or cancelled after ${request.timeoutMs || this.timeoutMs}ms.`);
       }
       throw err;
     }

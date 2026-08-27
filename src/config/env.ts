@@ -691,7 +691,13 @@ const serverEnvSchema = z
     CLICKUP_TIMEOUT_MS: z.coerce.number().int().positive().default(15000),
 
     SYSTEM_ARCHITECTURE_EXPLORER_ENABLED: z.coerce.boolean().default(true),
-    SYSTEM_ARCHITECTURE_STATUS_CACHE_TTL_SECONDS: z.coerce.number().int().positive().default(60)
+    SYSTEM_ARCHITECTURE_STATUS_CACHE_TTL_SECONDS: z.coerce.number().int().positive().default(60),
+
+    // PHASE 76 — RAZORPAY BILLING CREDENTIALS (secrets only; runtime billing settings live in
+    // the Config registry, see src/features/billing/billing.registry.ts)
+    RAZORPAY_KEY_ID: z.string().optional(),
+    RAZORPAY_KEY_SECRET: z.string().optional(),
+    RAZORPAY_WEBHOOK_SECRET: z.string().optional()
   })
   .refine(
     (data) => {

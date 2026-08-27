@@ -1,6 +1,7 @@
 'use client';
 
 import React, { useEffect, useState } from 'react';
+import Link from 'next/link';
 import { useRouter } from 'next/navigation';
 import { useWorkspace } from '@/context/WorkspaceContext';
 
@@ -46,6 +47,7 @@ export default function AccountPage() {
   const [actionMsg, setActionMsg] = useState<string | null>(null);
   const [copiedWsId, setCopiedWsId] = useState(false);
   const [memberSearch, setMemberSearch] = useState('');
+  const [billingSummary, setBillingSummary] = useState<{ billingEnabled: boolean; planCode?: string; status?: string } | null>(null);
 
   useEffect(() => {
     async function loadAccountData() {
@@ -73,6 +75,19 @@ export default function AccountPage() {
           router.push('/login');
         }
         setSessions(sessionsRes.data || []);
+
+        fetch('/api/billing/subscription')
+          .then((r) => r.json())
+          .then((data) => {
+            if (data.success) {
+              setBillingSummary({
+                billingEnabled: data.data.billingEnabled,
+                planCode: data.data.subscription?.planCode,
+                status: data.data.subscription?.status
+              });
+            }
+          })
+          .catch(() => {});
       } catch {
         router.push('/login');
       } finally {
@@ -240,62 +255,42 @@ export default function AccountPage() {
                   <span>💳</span>
                   <span>Billing & Plan</span>
                 </h3>
-                <span className="text-[10px] font-mono text-[#4edea3] bg-[#4edea3]/10 px-2 py-0.5 rounded-md border border-[#4edea3]/30 font-bold">
-                  ACTIVE
-                </span>
-              </div>
-
-              <div className="p-4 rounded-xl bg-gradient-to-br from-[#171b26] to-[#0f131d] border border-[#424754] flex items-center justify-between">
-                <div>
-                  <span className="text-[10px] font-mono font-bold text-[#adc6ff] uppercase tracking-wider block">
-                    CURRENT PLAN
+                {billingSummary?.status && (
+                  <span className="text-[10px] font-mono text-[#4edea3] bg-[#4edea3]/10 px-2 py-0.5 rounded-md border border-[#4edea3]/30 font-bold">
+                    {billingSummary.status}
                   </span>
-                  <h4 className="text-base font-extrabold text-[#dfe2f1] font-sans">Enterprise Scale</h4>
-                  <p className="text-[10px] text-[#8c909f] font-mono mt-0.5">Renews on Oct 01, 2026</p>
-                </div>
-                <div className="text-right">
-                  <span className="text-xl font-extrabold text-[#dfe2f1] font-mono">$2,499</span>
-                  <span className="text-[10px] text-[#8c909f] font-mono block">/month</span>
-                </div>
+                )}
               </div>
 
-              <div className="space-y-3 text-xs">
-                <div className="space-y-1">
-                  <div className="flex justify-between text-[11px]">
-                    <span className="text-[#c2c6d6] font-medium">Vector Storage Usage</span>
-                    <span className="text-[#adc6ff] font-mono font-bold">84%</span>
+              <div className="p-4 rounded-xl bg-gradient-to-br from-[#171b26] to-[#0f131d] border border-[#424754]">
+                {billingSummary?.billingEnabled ? (
+                  <div>
+                    <span className="text-[10px] font-mono font-bold text-[#adc6ff] uppercase tracking-wider block">
+                      CURRENT PLAN
+                    </span>
+                    <h4 className="text-base font-extrabold text-[#dfe2f1] font-sans">{billingSummary.planCode}</h4>
                   </div>
-                  <div className="h-2 w-full bg-[#0f131d] border border-[#424754]/60 rounded-full overflow-hidden">
-                    <div className="h-full bg-gradient-to-r from-[#4d8eff] to-[#adc6ff] rounded-full w-[84%]" />
-                  </div>
-                </div>
-
-                <div className="space-y-1">
-                  <div className="flex justify-between text-[11px]">
-                    <span className="text-[#c2c6d6] font-medium">API Inference Capacity</span>
-                    <span className="text-[#adc6ff] font-mono font-bold">60%</span>
-                  </div>
-                  <div className="h-2 w-full bg-[#0f131d] border border-[#424754]/60 rounded-full overflow-hidden">
-                    <div className="h-full bg-gradient-to-r from-[#4d8eff] to-[#adc6ff] rounded-full w-[60%]" />
-                  </div>
-                </div>
+                ) : (
+                  <p className="text-xs text-[#8c909f]">
+                    Billing is not yet enabled for this workspace — every feature is currently available to you at no
+                    charge.
+                  </p>
+                )}
               </div>
 
               <div className="flex space-x-3 pt-2">
-                <button
-                  type="button"
-                  onClick={() => alert('Billing portal management is configured for Enterprise deployment.')}
-                  className="flex-1 h-10 bg-[#0f131d] hover:bg-[#141926] border border-[#424754] text-[#dfe2f1] text-xs font-bold rounded-xl transition shadow-sm"
+                <Link
+                  href="/billing"
+                  className="flex-1 h-10 flex items-center justify-center bg-[#0f131d] hover:bg-[#141926] border border-[#424754] text-[#dfe2f1] text-xs font-bold rounded-xl transition shadow-sm"
                 >
-                  Manage
-                </button>
-                <button
-                  type="button"
-                  onClick={() => alert('Your workspace is currently on the highest Enterprise Scale tier.')}
-                  className="flex-1 h-10 bg-gradient-to-r from-[#4d8eff] to-[#adc6ff] text-[#0a0e18] text-xs font-extrabold rounded-xl shadow-md shadow-[#4d8eff]/20 hover:opacity-90 transition"
+                  Manage Billing
+                </Link>
+                <Link
+                  href="/pricing"
+                  className="flex-1 h-10 flex items-center justify-center bg-gradient-to-r from-[#4d8eff] to-[#adc6ff] text-[#0a0e18] text-xs font-extrabold rounded-xl shadow-md shadow-[#4d8eff]/20 hover:opacity-90 transition"
                 >
-                  Upgrade Tier
-                </button>
+                  View Plans
+                </Link>
               </div>
             </div>
           </div>

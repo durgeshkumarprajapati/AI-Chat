@@ -1006,6 +1006,94 @@ export const CONFIG_REGISTRY: Record<string, RegistryConfigItem> = {
     isEditable: true,
     isHighImpact: false,
     requiresRestart: false
+  },
+
+  // PHASE 76 — SUBSCRIPTION, BILLING & ENTITLEMENT ARCHITECTURE
+  // BILLING_ENABLED and RAZORPAY_ENABLED default false: EntitlementService operates in
+  // backward-compatible mode (every feature check resolves to allowed) until an operator
+  // explicitly flips these through the admin Config UI. See src/features/billing/billing.registry.ts.
+  BILLING_ENABLED: {
+    key: 'BILLING_ENABLED',
+    valueType: ConfigValueType.BOOLEAN,
+    category: ConfigCategory.BILLING,
+    defaultValue: 'false',
+    purpose: 'Master switch for the subscription/billing system. When false, all users retain unrestricted access to every existing feature and no checkout can be initiated.',
+    description: 'Billing system master flag.',
+    isEditable: true,
+    isHighImpact: true,
+    requiresRestart: false
+  },
+  RAZORPAY_ENABLED: {
+    key: 'RAZORPAY_ENABLED',
+    valueType: ConfigValueType.BOOLEAN,
+    category: ConfigCategory.BILLING,
+    defaultValue: 'false',
+    purpose: 'Controls whether the Razorpay provider is permitted to make live API calls (checkout, subscription creation). Independent of BILLING_ENABLED so Razorpay connectivity can be validated before enabling billing for users.',
+    description: 'Razorpay provider enablement flag.',
+    isEditable: true,
+    isHighImpact: true,
+    requiresRestart: false
+  },
+  BILLING_TRIAL_ENABLED: {
+    key: 'BILLING_TRIAL_ENABLED',
+    valueType: ConfigValueType.BOOLEAN,
+    category: ConfigCategory.BILLING,
+    defaultValue: 'true',
+    purpose: 'Controls whether new subscriptions are eligible for a free trial period when billing is enabled.',
+    description: 'Free trial eligibility flag.',
+    isEditable: true,
+    isHighImpact: false,
+    requiresRestart: false
+  },
+  BILLING_TRIAL_DURATION_DAYS: {
+    key: 'BILLING_TRIAL_DURATION_DAYS',
+    valueType: ConfigValueType.NUMBER,
+    category: ConfigCategory.BILLING,
+    defaultValue: '30',
+    purpose: 'Length of the free trial period in days, applied once per eligible user.',
+    description: 'Free trial duration.',
+    isEditable: true,
+    isHighImpact: false,
+    requiresRestart: false,
+    minValue: 0,
+    maxValue: 365
+  },
+  BILLING_GRACE_PERIOD_DAYS: {
+    key: 'BILLING_GRACE_PERIOD_DAYS',
+    valueType: ConfigValueType.NUMBER,
+    category: ConfigCategory.BILLING,
+    defaultValue: '3',
+    purpose: 'Number of days a PAST_DUE subscription remains accessible before transitioning to EXPIRED, giving failed payments a window to retry.',
+    description: 'Payment failure grace period.',
+    isEditable: true,
+    isHighImpact: false,
+    requiresRestart: false,
+    minValue: 0,
+    maxValue: 30
+  },
+  BILLING_USAGE_ENFORCEMENT_ENABLED: {
+    key: 'BILLING_USAGE_ENFORCEMENT_ENABLED',
+    valueType: ConfigValueType.BOOLEAN,
+    category: ConfigCategory.BILLING,
+    defaultValue: 'false',
+    purpose: 'Controls whether EntitlementService.checkUsageLimit/consumeUsage actually deny requests over their plan limit, versus recording usage without enforcing it.',
+    description: 'Usage limit enforcement flag.',
+    isEditable: true,
+    isHighImpact: true,
+    requiresRestart: false
+  },
+  BILLING_RECONCILIATION_INTERVAL_MS: {
+    key: 'BILLING_RECONCILIATION_INTERVAL_MS',
+    valueType: ConfigValueType.NUMBER,
+    category: ConfigCategory.BILLING,
+    defaultValue: '3600000',
+    purpose: 'Interval in milliseconds between worker billing reconciliation passes (trial expiry, grace period expiry, usage period reset).',
+    description: 'Billing reconciliation job cadence.',
+    isEditable: true,
+    isHighImpact: false,
+    requiresRestart: true,
+    minValue: 60000,
+    maxValue: 86400000
   }
 };
 

@@ -91,6 +91,18 @@ export function UserProfileMenu() {
             <span>Account Settings</span>
           </Link>
 
+          {/* Admin Manage Configs Link */}
+          {currentUser.role === 'ADMIN' && (
+            <Link
+              href="/admin/configuration"
+              onClick={() => setIsOpen(false)}
+              className="flex items-center space-x-2 px-4 py-2 text-xs font-bold text-indigo-600 dark:text-[#adc6ff] hover:bg-indigo-50 dark:hover:bg-[#1c2438] transition"
+            >
+              <span>⚙️</span>
+              <span>Manage Configs</span>
+            </Link>
+          )}
+
           {/* Logout Action */}
           <button
             type="button"

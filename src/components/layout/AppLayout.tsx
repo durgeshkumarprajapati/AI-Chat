@@ -48,7 +48,7 @@ interface NavGroup {
 
 function InnerAppLayout({ children }: { children: React.ReactNode }) {
   const pathname = usePathname();
-  const { activeCity } = useWorkspace();
+  const { activeCity, currentUser } = useWorkspace();
   const [isMobileMenuOpen, setIsMobileMenuOpen] = useState(false);
   const [healthStatus, setHealthStatus] = useState<'ok' | 'degraded' | 'loading'>('loading');
 
@@ -77,6 +77,23 @@ function InnerAppLayout({ children }: { children: React.ReactNode }) {
       icon: '🏠',
       items: [{ name: 'Dashboard', href: '/dashboard', icon: '🏠' }]
     },
+    ...(currentUser?.role === 'ADMIN'
+      ? [
+          {
+            id: 'administration',
+            title: 'ADMINISTRATION',
+            icon: '🛡️',
+            items: [
+              {
+                name: 'Manage Configs',
+                href: '/admin/configuration',
+                icon: '⚙️',
+                badge: 'ADMIN'
+              }
+            ]
+          }
+        ]
+      : []),
     {
       id: 'ai-knowledge',
       title: 'AI & KNOWLEDGE',

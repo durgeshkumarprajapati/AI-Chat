@@ -138,8 +138,8 @@ export default function AccountPage() {
 
   const filteredMembers = teamMembers.filter(
     (m) =>
-      m.name.toLowerCase().includes(memberSearch.toLowerCase()) ||
-      m.email.toLowerCase().includes(memberSearch.toLowerCase())
+      (m.name || '').toLowerCase().includes(memberSearch.toLowerCase()) ||
+      (m.email || '').toLowerCase().includes(memberSearch.toLowerCase())
   );
 
   return (
@@ -410,11 +410,13 @@ export default function AccountPage() {
                     {filteredMembers.length > 0 ? (
                       filteredMembers.map((member) => {
                         const mInitials = member.name
-                          .split(' ')
-                          .map((n) => n[0])
-                          .join('')
-                          .toUpperCase()
-                          .slice(0, 2);
+                          ? member.name
+                              .split(' ')
+                              .map((n) => n[0])
+                              .join('')
+                              .toUpperCase()
+                              .slice(0, 2)
+                          : 'U';
 
                         return (
                           <tr key={member.id} className="hover:bg-[#171b26]/50 transition">

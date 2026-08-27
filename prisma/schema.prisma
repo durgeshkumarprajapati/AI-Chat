@@ -10,10 +10,18 @@ datasource db {
 }
 
 enum DocumentStatus {
+  DRAFT
   UPLOADING
   PROCESSING
+  READY
   COMPLETED
+  ACTIVE
+  SUPERSEDED
+  REINDEXING
+  ARCHIVED
   FAILED
+  DELETING
+  DELETED
 }
 
 enum MessageRole {
@@ -131,6 +139,9 @@ model User {
   ragMessages RagMessage[]
   ragConversationDocumentSourcesAdded RagConversationDocumentSource[] @relation("RagConversationDocumentSourceAddedBy")
   ragConversationKbSourcesAdded RagConversationKnowledgeBaseSource[] @relation("RagConversationKbSourceAddedBy")
+  documentFamilies              DocumentFamily[]
+  documentLifecycleEvents       DocumentLifecycleEvent[]
+  documentRetentionJobs         DocumentRetentionJob[]
 
   @@map("users")
 }
@@ -141,48 +152,62 @@ enum SourceType {
 }
 
 model Document {
-  id               String                  @id @default(uuid())
-  userId           String                  @map("user_id")
-  sourceType       SourceType              @default(DOCUMENT) @map("source_type")
-  filename         String
-  originalFilename String                  @map("original_filename")
-  mimeType         String                  @map("mime_type")
-  fileSize         Int                     @map("file_size")
-  storageKey       String                  @map("storage_key")
-  webUrl           String?                 @map("web_url")
-  canonicalUrl     String?                 @map("canonical_url")
-  contentHash      String?                 @map("content_hash")
-  fetchedAt        DateTime?               @map("fetched_at")
-  status           DocumentStatus          @default(UPLOADING)
-  version          Int                     @default(1)
-  pageCount        Int                     @default(0) @map("page_count")
-  errorMessage     String?                 @map("error_message")
-  createdAt        DateTime                @default(now()) @map("created_at")
-  updatedAt        DateTime                @updatedAt @map("updated_at")
+  id                  String                  @id @default(uuid())
+  userId              String                  @map("user_id")
+  familyId            String?                 @map("family_id")
+  sourceType          SourceType              @default(DOCUMENT) @map("source_type")
+  filename            String
+  originalFilename    String                  @map("original_filename")
+  mimeType            String                  @map("mime_type")
+  fileSize            Int                     @map("file_size")
+  storageKey          String                  @map("storage_key")
+  webUrl              String?                 @map("web_url")
+  canonicalUrl        String?                 @map("canonical_url")
+  contentHash         String?                 @map("content_hash")
+  fetchedAt           DateTime?               @map("fetched_at")
+  status              DocumentStatus          @default(UPLOADING)
+  version             Int                     @default(1)
+  activeVersionNumber Int                     @default(1) @map("active_version_number")
+  pageCount           Int                     @default(0) @map("page_count")
+  isArchived          Boolean                 @default(false) @map("is_archived")
+  archivedAt          DateTime?               @map("archived_at")
+  isDeleted           Boolean                 @default(false) @map("is_deleted")
+  deletedAt           DateTime?               @map("deleted_at")
+  errorMessage        String?                 @map("error_message")
+  createdAt           DateTime                @default(now()) @map("created_at")
+  updatedAt           DateTime                @updatedAt @map("updated_at")
 
-  user           User                    @relation(fields: [userId], references: [id], onDelete: Cascade)
-  chunks         DocumentChunk[]
-  visuals        DocumentVisual[]
-  knowledgeBases KnowledgeBaseDocument[]
-  studySessionSources StudySessionSource[]
-  researchSources     ResearchSource[]
-  researchEvidences   ResearchEvidence[]
-  projects            ProjectDocument[]
-  knowledgeEvidences  KnowledgeEvidence[]
-  knowledgeGraphJobs  KnowledgeGraphJob[]
-  voiceTutorSessions  VoiceTutorSession[]
-  intelligence        DocumentIntelligence?
-  multimodalRun       DocumentMultimodalRun?
-  extractedTables     ExtractedTable[]
-  images              DocumentImage[]
-  charts              DocumentChart[]
-  versions            DocumentVersion[]
-  duplicateFingerprint DocumentDuplicateFingerprint?
+  user                   User                            @relation(fields: [userId], references: [id], onDelete: Cascade)
+  family                 DocumentFamily?                 @relation(fields: [familyId], references: [id], onDelete: SetNull)
+  chunks                 DocumentChunk[]
+  visuals                DocumentVisual[]
+  knowledgeBases         KnowledgeBaseDocument[]
+  studySessionSources    StudySessionSource[]
+  researchSources        ResearchSource[]
+  researchEvidences      ResearchEvidence[]
+  projects               ProjectDocument[]
+  knowledgeEvidences     KnowledgeEvidence[]
+  knowledgeGraphJobs     KnowledgeGraphJob[]
+  voiceTutorSessions     VoiceTutorSession[]
+  intelligence           DocumentIntelligence?
+  multimodalRun          DocumentMultimodalRun?
+  extractedTables        ExtractedTable[]
+  images                 DocumentImage[]
+  charts                 DocumentChart[]
+  versions               DocumentVersion[]
+  duplicateFingerprint   DocumentDuplicateFingerprint?
   ragConversationSources RagConversationDocumentSource[]
+  lineageSourceRelations DocumentLineage[]                @relation("LineageSource")
+  lineageTargetRelations DocumentLineage[]                @relation("LineageTarget")
+  lifecycleEvents        DocumentLifecycleEvent[]
+  retentionJobs          DocumentRetentionJob[]
 
   @@index([userId])
   @@index([status])
   @@index([sourceType])
+  @@index([userId, isDeleted, isArchived, status])
+  @@index([familyId])
+  @@index([isDeleted, deletedAt])
   @@map("documents")
 }
 
@@ -595,6 +620,99 @@ model DocumentDuplicateFingerprint {
   @@index([userId, contentHash])
   @@index([userId, normalizedTextFingerprint])
   @@map("document_duplicate_fingerprints")
+}
+
+enum LineageType {
+  ORIGINAL
+  NEW_VERSION
+  DERIVED_FROM
+  MERGED_FROM
+  SPLIT_FROM
+  IMPORTED_FROM
+}
+
+enum LifecycleEventType {
+  DOCUMENT_UPLOADED
+  DOCUMENT_DUPLICATE_DETECTED
+  DOCUMENT_VERSION_CREATED
+  DOCUMENT_VERSION_ACTIVATED
+  DOCUMENT_VERSION_SUPERSEDED
+  DOCUMENT_COMPARED
+  DOCUMENT_REINDEX_STARTED
+  DOCUMENT_REINDEX_COMPLETED
+  DOCUMENT_REINDEX_FAILED
+  DOCUMENT_ARCHIVED
+  DOCUMENT_RESTORED
+  DOCUMENT_SOFT_DELETED
+  DOCUMENT_PERMANENTLY_DELETED
+  DOCUMENT_LINEAGE_CREATED
+}
+
+model DocumentFamily {
+  id               String   @id @default(uuid())
+  userId           String   @map("user_id")
+  name             String
+  activeDocumentId String?  @map("active_document_id")
+  createdAt        DateTime @default(now()) @map("created_at")
+  updatedAt        DateTime @updatedAt @map("updated_at")
+
+  user      User       @relation(fields: [userId], references: [id], onDelete: Cascade)
+  documents Document[]
+
+  @@index([userId])
+  @@map("document_families")
+}
+
+model DocumentLineage {
+  id               String      @id @default(uuid())
+  sourceDocumentId String      @map("source_document_id")
+  targetDocumentId String      @map("target_document_id")
+  relationshipType LineageType @default(NEW_VERSION) @map("relationship_type")
+  metadata         Json?       @default("{}")
+  createdAt        DateTime    @default(now()) @map("created_at")
+
+  sourceDocument Document @relation("LineageSource", fields: [sourceDocumentId], references: [id], onDelete: Cascade)
+  targetDocument Document @relation("LineageTarget", fields: [targetDocumentId], references: [id], onDelete: Cascade)
+
+  @@index([sourceDocumentId])
+  @@index([targetDocumentId])
+  @@map("document_lineages")
+}
+
+model DocumentLifecycleEvent {
+  id            String             @id @default(uuid())
+  documentId    String             @map("document_id")
+  userId        String             @map("user_id")
+  eventType     LifecycleEventType @map("event_type")
+  previousState String?            @map("previous_state")
+  newState      String?            @map("new_state")
+  metadata      Json?              @default("{}")
+  createdAt     DateTime           @default(now()) @map("created_at")
+
+  document Document @relation(fields: [documentId], references: [id], onDelete: Cascade)
+  user     User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([documentId])
+  @@index([userId, eventType])
+  @@map("document_lifecycle_events")
+}
+
+model DocumentRetentionJob {
+  id           String    @id @default(uuid())
+  documentId   String    @map("document_id")
+  userId       String    @map("user_id")
+  scheduledFor DateTime  @map("scheduled_for")
+  status       String    @default("PENDING")
+  completedAt  DateTime? @map("completed_at")
+  errorMessage String?   @map("error_message")
+  createdAt    DateTime  @default(now()) @map("created_at")
+
+  document Document @relation(fields: [documentId], references: [id], onDelete: Cascade)
+  user     User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([scheduledFor, status])
+  @@index([documentId])
+  @@map("document_retention_jobs")
 }
 
 // PHASE 71A — COLLABORATIVE RAG WORKSPACES: FOUNDATION

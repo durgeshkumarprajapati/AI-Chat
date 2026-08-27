@@ -23,8 +23,10 @@
     "../src/lib/rabbitmq.ts",
     "../src/config/env.ts",
     "../src/errors/**/*",
+    "../src/features/llm/**/*",
     "../src/features/rag/multimodal/**/*",
     "../src/features/document-intelligence/**/*",
+    "../src/features/multimodal-document-intelligence/**/*",
     "../src/features/document-management/**/*"
   ]
 }

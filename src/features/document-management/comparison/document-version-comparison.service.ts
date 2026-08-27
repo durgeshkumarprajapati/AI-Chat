@@ -1,5 +1,6 @@
 import { diffLines, Change } from 'diff';
 import { prisma } from '@/lib/prisma';
+import { env } from '@/config/env';
 import { documentManagementRepository } from '../document-management.repository';
 
 export interface CompareVersionsInput {
@@ -28,6 +29,10 @@ export interface VersionComparisonResult {
 
 export class DocumentVersionComparisonService {
   public async compare(input: CompareVersionsInput): Promise<VersionComparisonResult> {
+    if (!env.server?.DOCUMENT_VERSION_COMPARISON_ENABLED) {
+      throw new Error('Document version comparison is disabled.');
+    }
+
     const [verA, verB] = await Promise.all([
       documentManagementRepository.getVersion(input.documentId, input.versionA),
       documentManagementRepository.getVersion(input.documentId, input.versionB)
@@ -37,15 +42,16 @@ export class DocumentVersionComparisonService {
       throw new Error(`Version comparison failed: version ${!verA ? input.versionA : input.versionB} not found.`);
     }
 
-    // Load chunk contents for version comparison
+    // Load chunk contents for version comparison safely without memory overflow
     const chunks = await prisma.documentChunk.findMany({
       where: { documentId: input.documentId },
-      orderBy: { chunkIndex: 'asc' }
+      orderBy: { chunkIndex: 'asc' },
+      take: 500 // Bounded processing for large documents
     });
 
     const textB = chunks.map((c) => c.content).join('\n\n');
     // Version A content baseline fallback if historical version content isn't separately stored
-    const textA = textB; 
+    const textA = textB;
 
     const diffs: Change[] = diffLines(textA, textB);
 
@@ -53,14 +59,14 @@ export class DocumentVersionComparisonService {
     let removedLinesCount = 0;
     let unchangedLinesCount = 0;
 
-    const changes: DiffChangeDTO[] = diffs.map((d) => {
+    const changes: DiffChangeDTO[] = diffs.slice(0, 100).map((d) => {
       const lineCount = (d.value.match(/\n/g) || []).length + (d.value ? 1 : 0);
       if (d.added) addedLinesCount += lineCount;
       else if (d.removed) removedLinesCount += lineCount;
       else unchangedLinesCount += lineCount;
 
       return {
-        value: d.value,
+        value: d.value.slice(0, 500),
         added: d.added,
         removed: d.removed,
         count: lineCount

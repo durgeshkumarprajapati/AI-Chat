@@ -35,7 +35,29 @@ export class DocumentProcessor {
     const startTime = Date.now();
     console.log(`[Worker] Validating job payload for job ID: ${job.jobId}...`);
 
-    // 1. Validate payload structure
+    // 1. Handle specialized lifecycle job types
+    if (job.jobType === 'DOCUMENT_REINDEX') {
+      try {
+        const { documentReindexService } = await import('@/features/document-management/index.js');
+        const reindexRes = await documentReindexService.execute({ documentId: job.documentId, userId: job.userId });
+        return reindexRes.success
+          ? { status: 'SUCCESS', action: 'COMPLETED' }
+          : { status: 'FAILED', action: 'PERMANENT_ERROR', errorMessage: reindexRes.error };
+      } catch (err) {
+        return { status: 'FAILED', action: 'PERMANENT_ERROR', errorMessage: String(err) };
+      }
+    }
+
+    if (job.jobType === 'DOCUMENT_PERMANENT_DELETE') {
+      try {
+        const { documentSoftDeleteService } = await import('@/features/document-management/index.js');
+        await documentSoftDeleteService.permanentDeleteDocument(job.documentId, job.userId);
+        return { status: 'SUCCESS', action: 'COMPLETED' };
+      } catch (err) {
+        return { status: 'FAILED', action: 'PERMANENT_ERROR', errorMessage: String(err) };
+      }
+    }
+
     if (job.jobType !== 'DOCUMENT_PROCESSING' || !job.documentId || !job.userId || !job.storageKey) {
       console.warn(`[Worker] Invalid job payload structure: ${JSON.stringify(job)}`);
       return { status: 'STALE_DISCARD', action: 'STALE_MISSING_DOCUMENT', errorMessage: 'Invalid job payload structure' };
@@ -136,6 +158,18 @@ export class DocumentProcessor {
 
       // 10. Mark Document status as COMPLETED in PostgreSQL after full pipeline succeeds
       await workerDocumentRepository.updateStatus(job.documentId, 'COMPLETED');
+
+      // 10.5 Asynchronously trigger Multimodal Document Intelligence (non-blocking)
+      try {
+        const { multimodalOrchestratorService } = await import('@/features/multimodal-document-intelligence/multimodal-orchestrator.service.js');
+        await multimodalOrchestratorService.process({
+          documentId: job.documentId,
+          userId: job.userId,
+          parsedDocument: parsedDoc
+        });
+      } catch (mmErr) {
+        console.warn(`[Worker] Non-fatal Multimodal Intelligence trigger warning for doc ${job.documentId}:`, mmErr);
+      }
 
       // 11. Asynchronously queue Knowledge Graph extraction (non-blocking)
       try {

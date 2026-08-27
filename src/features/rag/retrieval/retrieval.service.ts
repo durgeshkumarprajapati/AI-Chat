@@ -167,6 +167,8 @@ export class RetrievalService {
           FROM document_chunks dc
           INNER JOIN documents d ON d.id = dc.document_id
           WHERE d.user_id = ${userId} 
+            AND d.is_deleted = false
+            AND d.is_archived = false
             AND dc.embedding IS NOT NULL
             AND (${!isDocOnly} OR d.source_type = 'DOCUMENT' OR d.source_type IS NULL)
             AND (${!isWebOnly} OR d.source_type = 'WEB')
@@ -211,6 +213,8 @@ export class RetrievalService {
           FROM document_chunks dc
           INNER JOIN documents d ON d.id = dc.document_id
           WHERE d.user_id = ${userId} 
+            AND d.is_deleted = false
+            AND d.is_archived = false
             AND dc.embedding IS NOT NULL
             AND (${!isDocOnly} OR d.source_type = 'DOCUMENT' OR d.source_type IS NULL)
             AND (${!isWebOnly} OR d.source_type = 'WEB')
@@ -272,6 +276,8 @@ export class RetrievalService {
             FROM document_chunks dc
             INNER JOIN documents d ON d.id = dc.document_id
             WHERE d.user_id = ${userId} 
+              AND d.is_deleted = false
+              AND d.is_archived = false
               AND to_tsvector('english', dc.content) @@ plainto_tsquery('english', ${question})
               AND (${!isDocOnly} OR d.source_type = 'DOCUMENT' OR d.source_type IS NULL)
               AND (${!isWebOnly} OR d.source_type = 'WEB')
@@ -316,6 +322,8 @@ export class RetrievalService {
             FROM document_chunks dc
             INNER JOIN documents d ON d.id = dc.document_id
             WHERE d.user_id = ${userId} 
+              AND d.is_deleted = false
+              AND d.is_archived = false
               AND to_tsvector('english', dc.content) @@ plainto_tsquery('english', ${question})
               AND (${!isDocOnly} OR d.source_type = 'DOCUMENT' OR d.source_type IS NULL)
               AND (${!isWebOnly} OR d.source_type = 'WEB')

@@ -2,8 +2,19 @@ import { env } from '@/config/env';
 import { prisma } from '@/lib/prisma';
 import { rabbitmq, QUEUES, MultimodalJobPayload } from '@/lib/rabbitmq';
 import { documentIntelligenceOrchestratorService } from '@/features/document-intelligence/document-intelligence-orchestrator.service';
+import { documentLifecycleService } from '../lifecycle/document-lifecycle.service';
+import { documentLifecycleTelemetryService } from '../telemetry/document-lifecycle-telemetry.service';
+import { documentCacheInvalidationService } from '../cache/document-cache-invalidation.service';
+
+export type ReindexStrategy =
+  | 'FULL_REINDEX'
+  | 'METADATA_REINDEX'
+  | 'EMBEDDING_REINDEX'
+  | 'MULTIMODAL_REPROCESS'
+  | 'KNOWLEDGE_GRAPH_REBUILD';
 
 export interface ReindexOptions {
+  strategy?: ReindexStrategy;
   reembed?: boolean;
   reextractMetadata?: boolean;
   reclassifyDoctype?: boolean;
@@ -33,9 +44,23 @@ export class DocumentReindexService {
       where: { id: input.documentId }
     });
 
-    if (!doc) {
-      return { success: false, error: 'Document not found.' };
+    if (!doc || doc.isDeleted) {
+      return { success: false, error: 'Document not found or deleted.' };
     }
+
+    await documentLifecycleService.transition({
+      documentId: input.documentId,
+      userId: input.userId,
+      targetStatus: 'REINDEXING',
+      reason: `Reindex requested (${input.options?.strategy || 'FULL_REINDEX'})`
+    });
+
+    documentLifecycleTelemetryService.logEvent({
+      event: 'document.reindex.started',
+      documentId: input.documentId,
+      tenantId: input.userId,
+      operation: input.options?.strategy || 'FULL_REINDEX'
+    });
 
     const jobId = `reindex-${doc.id}-${Date.now()}`;
 
@@ -76,8 +101,10 @@ export class DocumentReindexService {
         return { success: false, error: 'Document not found.' };
       }
 
-      // 1. Re-run Document Intelligence Pipeline (Phase 69A) if metadata or classification is requested
-      if (input.options?.reextractMetadata || input.options?.reclassifyDoctype) {
+      const strategy = input.options?.strategy || 'FULL_REINDEX';
+
+      // 1. Re-run Document Intelligence Pipeline (Phase 69A) if metadata or full strategy
+      if (strategy === 'FULL_REINDEX' || strategy === 'METADATA_REINDEX' || input.options?.reextractMetadata) {
         const pageTextMap = new Map<number, string>();
         for (const chunk of doc.chunks) {
           const metadata = (chunk.metadata as Record<string, any>) || {};
@@ -101,10 +128,43 @@ export class DocumentReindexService {
         });
       }
 
+      // Transition state back to ACTIVE
+      await documentLifecycleService.transition({
+        documentId: input.documentId,
+        userId: input.userId,
+        targetStatus: 'ACTIVE',
+        reason: `Reindex completed (${strategy})`
+      });
+
+      await documentCacheInvalidationService.invalidateDocumentCaches(input.documentId, input.userId);
+
+      documentLifecycleTelemetryService.logEvent({
+        event: 'document.reindex.completed',
+        documentId: input.documentId,
+        tenantId: input.userId,
+        operation: strategy
+      });
+
       return { success: true };
     } catch (err) {
       console.warn(`[DocumentReindexService] Reindex failed for ${input.documentId}:`, err);
-      return { success: false, error: err instanceof Error ? err.message : String(err) };
+      const errMsg = err instanceof Error ? err.message : String(err);
+
+      await documentLifecycleService.transition({
+        documentId: input.documentId,
+        userId: input.userId,
+        targetStatus: 'FAILED',
+        reason: `Reindex failed: ${errMsg}`
+      });
+
+      documentLifecycleTelemetryService.logEvent({
+        event: 'document.reindex.failed',
+        documentId: input.documentId,
+        tenantId: input.userId,
+        error: errMsg
+      });
+
+      return { success: false, error: errMsg };
     }
   }
 }

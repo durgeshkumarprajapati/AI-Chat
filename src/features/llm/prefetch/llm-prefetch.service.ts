@@ -15,7 +15,8 @@ export class LLMPrefetchService {
     setTimeout(async () => {
       try {
         const req = await fetchFn();
-        const { llmGateway } = await import('../llm-gateway.service');
+        const gatewayPath = '../llm-gateway.service';
+        const { llmGateway } = await import(gatewayPath);
         await llmGateway.generate(req);
       } catch (err) {
         console.warn(`[LLMPrefetchService] Background prefetch failed for "${taskKey}":`, err);

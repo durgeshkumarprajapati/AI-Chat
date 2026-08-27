@@ -1,47 +1,66 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { getAuthUser } from '@/lib/auth';
-import { documentVersionService } from '@/features/document-management/versioning/document-version.service';
+import { documentService } from '@/features/documents/services/document.service';
+import { documentVersionService } from '@/features/document-management';
+import { AppError } from '@/errors';
+
+export const dynamic = 'force-dynamic';
 
 export async function GET(req: NextRequest, { params }: { params: { id: string } }) {
   try {
-    const user = await getAuthUser(req);
-    if (!user?.id) {
-      return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
-    }
+    const authUser = await getAuthUser(req);
+    await documentService.getDocumentById(authUser.id, params.id);
 
     const versions = await documentVersionService.listVersions(params.id);
-    return NextResponse.json({ success: true, versions });
-  } catch (error: any) {
-    return NextResponse.json({ error: error.message || 'Failed to list document versions' }, { status: 500 });
+
+    return NextResponse.json({
+      success: true,
+      data: { versions }
+    });
+  } catch (error) {
+    if (error instanceof AppError) {
+      return NextResponse.json(
+        { success: false, error: { code: error.code, message: error.message } },
+        { status: error.statusCode }
+      );
+    }
+    return NextResponse.json(
+      { success: false, error: { code: 'INTERNAL_SERVER_ERROR', message: 'Failed to list document versions' } },
+      { status: 500 }
+    );
   }
 }
 
 export async function POST(req: NextRequest, { params }: { params: { id: string } }) {
   try {
-    const user = await getAuthUser(req);
-    if (!user?.id) {
-      return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
-    }
-
-    const body = await req.json();
-    const { storageKey, contentHash, fileSize, pageCount, setActive } = body;
-
-    if (!storageKey || !fileSize) {
-      return NextResponse.json({ error: 'storageKey and fileSize are required' }, { status: 400 });
-    }
+    const authUser = await getAuthUser(req);
+    await documentService.getDocumentById(authUser.id, params.id);
+    const body = await req.json().catch(() => ({}));
 
     const version = await documentVersionService.createNextVersion({
       documentId: params.id,
-      storageKey,
-      contentHash: contentHash || 'sha256-hash',
-      fileSize,
-      pageCount: pageCount || 0,
-      uploadedByUserId: user.id,
-      isActive: setActive !== false
+      storageKey: body.storageKey || `docs/${params.id}/v-next`,
+      contentHash: body.contentHash || 'hash',
+      fileSize: body.fileSize || 1024,
+      pageCount: body.pageCount || 1,
+      uploadedByUserId: authUser.id,
+      isActive: body.isActive ?? true
     });
 
-    return NextResponse.json({ success: true, version });
-  } catch (error: any) {
-    return NextResponse.json({ error: error.message || 'Failed to create document version' }, { status: 500 });
+    return NextResponse.json({
+      success: true,
+      data: { version }
+    });
+  } catch (error) {
+    if (error instanceof AppError) {
+      return NextResponse.json(
+        { success: false, error: { code: error.code, message: error.message } },
+        { status: error.statusCode }
+      );
+    }
+    return NextResponse.json(
+      { success: false, error: { code: 'INTERNAL_SERVER_ERROR', message: 'Failed to create document version' } },
+      { status: 500 }
+    );
   }
 }

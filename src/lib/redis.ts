@@ -57,6 +57,15 @@ class RedisService {
     return client.del(key);
   }
 
+  public async delByPattern(pattern: string): Promise<number> {
+    const client = await this.getClient();
+    const keys = await client.keys(pattern);
+    if (keys.length > 0) {
+      return client.del(keys);
+    }
+    return 0;
+  }
+
   public async getJson<T>(key: string): Promise<T | null> {
     const data = await this.get(key);
     if (!data) return null;

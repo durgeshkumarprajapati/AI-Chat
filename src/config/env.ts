@@ -557,6 +557,26 @@ const serverEnvSchema = z
     DOCUMENT_MAX_TABLES_PER_DOCUMENT: z.coerce.number().int().positive().default(100),
     DOCUMENT_MULTIMODAL_MAX_RETRIES: z.coerce.number().int().positive().default(3),
 
+    // PHASE 69C — ADVANCED MULTIMODAL DOCUMENT INTELLIGENCE
+    MULTIMODAL_DOCUMENT_INTELLIGENCE_ENABLED: z.coerce.boolean().default(true),
+    MULTIMODAL_OCR_TIMEOUT_MS: z.coerce.number().int().positive().default(60000),
+    MULTIMODAL_TABLE_EXTRACTION_ENABLED: z.coerce.boolean().default(true),
+    MULTIMODAL_TABLE_MAX_PER_DOCUMENT: z.coerce.number().int().positive().default(50),
+    MULTIMODAL_TABLE_TIMEOUT_MS: z.coerce.number().int().positive().default(30000),
+    MULTIMODAL_IMAGE_ANALYSIS_ENABLED: z.coerce.boolean().default(true),
+    MULTIMODAL_IMAGE_MAX_PER_DOCUMENT: z.coerce.number().int().positive().default(30),
+    MULTIMODAL_IMAGE_TIMEOUT_MS: z.coerce.number().int().positive().default(60000),
+    MULTIMODAL_CHART_ANALYSIS_ENABLED: z.coerce.boolean().default(true),
+    MULTIMODAL_CHART_MAX_PER_DOCUMENT: z.coerce.number().int().positive().default(30),
+    MULTIMODAL_CHART_TIMEOUT_MS: z.coerce.number().int().positive().default(60000),
+    MULTIMODAL_LAYOUT_ENABLED: z.coerce.boolean().default(true),
+    MULTIMODAL_PROCESSING_TIMEOUT_MS: z.coerce.number().int().positive().default(120000),
+    MULTIMODAL_MAX_RETRIES: z.coerce.number().int().positive().default(3),
+    MULTIMODAL_RAG_ENABLED: z.coerce.boolean().default(true),
+    MULTIMODAL_MIN_CONFIDENCE: z.coerce.number().min(0).max(1).default(0.70),
+    MULTIMODAL_RETRIEVAL_MAX_RESULTS: z.coerce.number().int().positive().default(10),
+    MULTIMODAL_LEGACY_FALLBACK_ENABLED: z.coerce.boolean().default(true),
+
     // Reserved cloud-provider configuration surface — validated but NOT implemented this pass
     // (no provider classes exist for these yet; kept so a future pass can wire one in without
     // another schema change).
@@ -573,15 +593,24 @@ const serverEnvSchema = z
     TESSERACT_ENABLED: z.coerce.boolean().default(false),
     TESSERACT_LANGUAGE: z.string().default('eng'),
 
-    // PHASE 69D — ENTERPRISE DOCUMENT MANAGEMENT
-    DOCUMENT_DUPLICATE_DETECTION_ENABLED: z.coerce.boolean().default(false),
+    // PHASE 69D — ENTERPRISE DOCUMENT MANAGEMENT & LIFECYCLE
+    DOCUMENT_LIFECYCLE_ENABLED: z.coerce.boolean().default(true),
+    DOCUMENT_DUPLICATE_DETECTION_ENABLED: z.coerce.boolean().default(true),
     DOCUMENT_SEMANTIC_DUPLICATE_DETECTION_ENABLED: z.coerce.boolean().default(false),
-    DOCUMENT_VERSIONING_ENABLED: z.coerce.boolean().default(false),
-    DOCUMENT_LINEAGE_ENABLED: z.coerce.boolean().default(false),
-    DOCUMENT_VERSION_COMPARISON_ENABLED: z.coerce.boolean().default(false),
-    DOCUMENT_REINDEX_ENABLED: z.coerce.boolean().default(false),
+    DOCUMENT_VERSIONING_ENABLED: z.coerce.boolean().default(true),
+    DOCUMENT_LINEAGE_ENABLED: z.coerce.boolean().default(true),
+    DOCUMENT_VERSION_COMPARISON_ENABLED: z.coerce.boolean().default(true),
+    DOCUMENT_REINDEX_ENABLED: z.coerce.boolean().default(true),
+    DOCUMENT_ARCHIVING_ENABLED: z.coerce.boolean().default(true),
+    DOCUMENT_SOFT_DELETE_ENABLED: z.coerce.boolean().default(true),
+    DOCUMENT_RETENTION_ENABLED: z.coerce.boolean().default(false),
+    DOCUMENT_SOFT_DELETE_RETENTION_DAYS: z.coerce.number().int().positive().default(30),
+    DOCUMENT_PERMANENT_DELETE_ENABLED: z.coerce.boolean().default(false),
+    DOCUMENT_LIFECYCLE_TIMEOUT_MS: z.coerce.number().int().positive().default(120000),
     DOCUMENT_REINDEX_MAX_RETRIES: z.coerce.number().int().positive().default(3),
     DOCUMENT_DUPLICATE_SIMILARITY_THRESHOLD: z.coerce.number().min(0).max(1).default(0.95),
+    DOCUMENT_VERSION_MAX_COUNT: z.coerce.number().int().positive().default(100),
+    DOCUMENT_LIFECYCLE_AUDIT_ENABLED: z.coerce.boolean().default(true),
 
     // PHASE 71A — COLLABORATIVE RAG WORKSPACES: FOUNDATION
     COLLABORATIVE_RAG_ENABLED: z.coerce.boolean().default(false),

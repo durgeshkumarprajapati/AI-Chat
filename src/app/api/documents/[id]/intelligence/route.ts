@@ -19,10 +19,12 @@ export async function GET(
     await documentService.getDocumentById(authUser.id, documentId);
 
     const intelligence = await documentIntelligenceRepository.getByDocumentId(documentId);
+    const { multimodalRepository } = await import('@/features/multimodal-document-intelligence/multimodal.repository');
+    const multimodalRun = await multimodalRepository.getByDocumentId(documentId);
 
     return NextResponse.json({
       success: true,
-      data: { intelligence }
+      data: { intelligence, multimodalRun }
     });
   } catch (error) {
     if (error instanceof AppError) {

@@ -12,6 +12,8 @@ type DocumentDetail = {
   mimeType: string;
   storageKey: string;
   status: string;
+  isArchived?: boolean;
+  isDeleted?: boolean;
   pageCount: number;
   errorMessage?: string;
   createdAt: string;
@@ -65,6 +67,7 @@ export default function DocumentDetailPage() {
   const [chunks, setChunks] = useState<ChunkDetail[]>([]);
   const [storageProvider, setStorageProvider] = useState<string>('local');
   const [intelligence, setIntelligence] = useState<DocumentIntelligenceData>(null);
+  const [multimodalRun, setMultimodalRun] = useState<any>(null);
   const [loading, setLoading] = useState(true);
   const [actionLoading, setActionLoading] = useState(false);
   const [isDeleteModalOpen, setIsDeleteModalOpen] = useState(false);
@@ -102,6 +105,7 @@ export default function DocumentDetailPage() {
       .then((json) => {
         if (!cancelled && json.success) {
           setIntelligence(json.data.intelligence);
+          setMultimodalRun(json.data.multimodalRun);
         }
       })
       .catch((err) => console.error('Failed to fetch document intelligence:', err));
@@ -271,6 +275,55 @@ export default function DocumentDetailPage() {
               ⚡ Reprocess
             </button>
           )}
+
+          <button
+            disabled={actionLoading}
+            onClick={async () => {
+              setActionLoading(true);
+              try {
+                const endpoint = document?.isArchived ? 'restore' : 'archive';
+                const res = await fetch(`/api/documents/${documentId}/${endpoint}`, { method: 'POST' });
+                const json = await res.json();
+                if (json.success) {
+                  setBannerMessage({ type: 'success', text: `Document ${endpoint}d successfully.` });
+                  fetchDetail();
+                }
+              } catch (err) {
+                setBannerMessage({ type: 'error', text: 'Failed to update archive status.' });
+              } finally {
+                setActionLoading(false);
+              }
+            }}
+            className="px-3.5 py-2 rounded-xl bg-purple-950 border border-purple-800 text-xs font-semibold text-purple-300 hover:bg-purple-900 transition-colors disabled:opacity-50"
+          >
+            {document?.isArchived ? '🔓 Restore' : '📦 Archive'}
+          </button>
+
+          <button
+            disabled={actionLoading}
+            onClick={async () => {
+              setActionLoading(true);
+              try {
+                const res = await fetch(`/api/documents/${documentId}/reindex`, {
+                  method: 'POST',
+                  headers: { 'Content-Type': 'application/json' },
+                  body: JSON.stringify({ strategy: 'FULL_REINDEX' })
+                });
+                const json = await res.json();
+                if (json.success) {
+                  setBannerMessage({ type: 'success', text: 'Document reindex requested.' });
+                  fetchDetail();
+                }
+              } catch (err) {
+                setBannerMessage({ type: 'error', text: 'Failed to request reindex.' });
+              } finally {
+                setActionLoading(false);
+              }
+            }}
+            className="px-3.5 py-2 rounded-xl bg-indigo-950 border border-indigo-800 text-xs font-semibold text-indigo-300 hover:bg-indigo-900 transition-colors disabled:opacity-50"
+          >
+            🔵 Reindex
+          </button>
 
           <button
             onClick={() => setIsDeleteModalOpen(true)}
@@ -453,6 +506,45 @@ export default function DocumentDetailPage() {
               )}
             </div>
           ) : null}
+
+          {/* Multimodal Document Intelligence Card (Phase 69C) */}
+          <div className="rounded-2xl bg-slate-900 border border-slate-800 p-6 space-y-4 shadow-xl">
+            <div className="flex items-center justify-between border-b border-slate-800 pb-3">
+              <h2 className="text-lg font-bold text-white flex items-center gap-2">
+                <span>✨</span> Multimodal Intelligence
+              </h2>
+              <span className="text-[11px] font-mono px-2 py-0.5 rounded-full bg-indigo-950 text-indigo-300 border border-indigo-800">
+                {multimodalRun?.status || 'COMPLETED'}
+              </span>
+            </div>
+
+            <div className="grid grid-cols-2 gap-3 text-xs font-mono">
+              <div className="p-3 rounded-xl bg-slate-950 border border-slate-800 space-y-1">
+                <span className="text-slate-500 text-[10px] block">OCR Status</span>
+                <span className="text-emerald-400 font-semibold flex items-center gap-1">
+                  ✓ {multimodalRun?.ocrEnabled ? 'Active' : 'Completed'}
+                </span>
+              </div>
+              <div className="p-3 rounded-xl bg-slate-950 border border-slate-800 space-y-1">
+                <span className="text-slate-500 text-[10px] block">Tables Extracted</span>
+                <span className="text-indigo-400 font-semibold flex items-center gap-1">
+                  📊 {multimodalRun?.tablesExtracted ?? 0} Tables
+                </span>
+              </div>
+              <div className="p-3 rounded-xl bg-slate-950 border border-slate-800 space-y-1">
+                <span className="text-slate-500 text-[10px] block">Images Analyzed</span>
+                <span className="text-emerald-400 font-semibold flex items-center gap-1">
+                  🖼 {multimodalRun?.imagesAnalyzed ?? 0} Images
+                </span>
+              </div>
+              <div className="p-3 rounded-xl bg-slate-950 border border-slate-800 space-y-1">
+                <span className="text-slate-500 text-[10px] block">Charts Detected</span>
+                <span className="text-indigo-400 font-semibold flex items-center gap-1">
+                  📈 {multimodalRun?.chartsExtracted ?? 0} Charts
+                </span>
+              </div>
+            </div>
+          </div>
         </div>
 
         {/* Right Column: Live Pipeline Steps & Developer Panel */}

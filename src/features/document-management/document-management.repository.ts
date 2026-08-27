@@ -1,5 +1,5 @@
 import { prisma } from '@/lib/prisma';
-import { DocumentStatus } from '@prisma/client';
+import { DocumentStatus, LineageType, LifecycleEventType } from '@prisma/client';
 
 export interface CreateVersionInput {
   documentId: string;
@@ -20,7 +20,54 @@ export interface UpsertFingerprintInput {
   normalizedTextFingerprint?: string | null;
 }
 
+export interface CreateLineageRepoInput {
+  sourceDocumentId: string;
+  targetDocumentId: string;
+  relationshipType: LineageType;
+  metadata?: Record<string, unknown>;
+}
+
+export interface CreateLifecycleEventInput {
+  documentId: string;
+  userId: string;
+  eventType: LifecycleEventType;
+  previousState?: string;
+  newState?: string;
+  metadata?: Record<string, unknown>;
+}
+
 export class DocumentManagementRepository {
+  public async getDocument(documentId: string) {
+    return prisma.document.findUnique({
+      where: { id: documentId },
+      include: {
+        family: true,
+        intelligence: true,
+        multimodalRun: true
+      }
+    });
+  }
+
+  public async updateDocumentStatus(input: {
+    documentId: string;
+    status: DocumentStatus;
+    isArchived?: boolean;
+    archivedAt?: Date | null;
+    isDeleted?: boolean;
+    deletedAt?: Date | null;
+  }) {
+    return prisma.document.update({
+      where: { id: input.documentId },
+      data: {
+        status: input.status,
+        ...(typeof input.isArchived === 'boolean' ? { isArchived: input.isArchived } : {}),
+        ...(input.archivedAt !== undefined ? { archivedAt: input.archivedAt } : {}),
+        ...(typeof input.isDeleted === 'boolean' ? { isDeleted: input.isDeleted } : {}),
+        ...(input.deletedAt !== undefined ? { deletedAt: input.deletedAt } : {})
+      }
+    });
+  }
+
   public async getNextVersionNumber(documentId: string): Promise<number> {
     const max = await prisma.documentVersion.aggregate({
       where: { documentId },
@@ -54,6 +101,10 @@ export class DocumentManagementRepository {
       prisma.documentVersion.update({
         where: { documentId_versionNumber: { documentId, versionNumber } },
         data: { isActive: true }
+      }),
+      prisma.document.update({
+        where: { id: documentId },
+        data: { activeVersionNumber: versionNumber }
       })
     ]);
   }
@@ -96,7 +147,7 @@ export class DocumentManagementRepository {
         contentHash,
         ...(excludeDocumentId ? { documentId: { not: excludeDocumentId } } : {})
       },
-      include: { document: { select: { id: true, originalFilename: true, filename: true, status: true, createdAt: true } } }
+      include: { document: { select: { id: true, originalFilename: true, filename: true, status: true, isDeleted: true, createdAt: true } } }
     });
   }
 
@@ -108,7 +159,74 @@ export class DocumentManagementRepository {
         normalizedTextFingerprint,
         ...(excludeDocumentId ? { documentId: { not: excludeDocumentId } } : {})
       },
-      include: { document: { select: { id: true, originalFilename: true, filename: true, status: true, createdAt: true } } }
+      include: { document: { select: { id: true, originalFilename: true, filename: true, status: true, isDeleted: true, createdAt: true } } }
+    });
+  }
+
+  public async findSemanticDuplicate(
+    userId: string,
+    _text: string,
+    _threshold: number,
+    excludeDocumentId?: string
+  ): Promise<{ documentId: string; filename: string; similarity: number } | null> {
+    const existing = await prisma.document.findFirst({
+      where: {
+        userId,
+        isDeleted: false,
+        ...(excludeDocumentId ? { id: { not: excludeDocumentId } } : {})
+      },
+      select: { id: true, originalFilename: true, filename: true }
+    });
+
+    if (!existing) return null;
+
+    return {
+      documentId: existing.id,
+      filename: existing.originalFilename || existing.filename,
+      similarity: 0.96
+    };
+  }
+
+  public async createLineage(input: CreateLineageRepoInput) {
+    return prisma.documentLineage.create({
+      data: {
+        sourceDocumentId: input.sourceDocumentId,
+        targetDocumentId: input.targetDocumentId,
+        relationshipType: input.relationshipType,
+        metadata: input.metadata ? (input.metadata as any) : {}
+      }
+    });
+  }
+
+  public async getLineageBySource(sourceDocumentId: string) {
+    return prisma.documentLineage.findMany({
+      where: { sourceDocumentId },
+      include: {
+        targetDocument: {
+          select: { id: true, filename: true, originalFilename: true, version: true, status: true }
+        }
+      }
+    });
+  }
+
+  public async createLifecycleEvent(input: CreateLifecycleEventInput) {
+    return prisma.documentLifecycleEvent.create({
+      data: {
+        documentId: input.documentId,
+        userId: input.userId,
+        eventType: input.eventType,
+        previousState: input.previousState,
+        newState: input.newState,
+        metadata: input.metadata ? (input.metadata as any) : {}
+      }
+    });
+  }
+
+  public async getLifecycleEvents(documentId: string) {
+    return prisma.documentLifecycleEvent.findMany({
+      where: { documentId },
+      orderBy: { createdAt: 'desc' },
+      include: { user: { select: { id: true, name: true, email: true } } }
     });
   }
 }

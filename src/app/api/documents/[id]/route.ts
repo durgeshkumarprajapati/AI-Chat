@@ -57,11 +57,12 @@ export async function DELETE(
     const authUser = await getAuthUser(req);
     const documentId = params.id;
 
-    await documentService.deleteDocument(authUser.id, documentId);
+    const { documentSoftDeleteService } = await import('@/features/document-management');
+    await documentSoftDeleteService.softDeleteDocument(documentId, authUser.id);
 
     return NextResponse.json({
       success: true,
-      data: { message: 'Document and storage objects deleted successfully' }
+      data: { message: 'Document soft-deleted successfully' }
     });
   } catch (error) {
     if (error instanceof AppError) {

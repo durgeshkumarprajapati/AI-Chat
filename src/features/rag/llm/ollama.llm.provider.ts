@@ -31,7 +31,8 @@ export class OllamaLLMProvider implements LLMProvider {
     const isRoutingEnabled = env.server?.LLM_ROUTING_ENABLED !== false;
     if (isRoutingEnabled) {
       try {
-        const { llmGateway } = await import('@/features/llm/llm-gateway.service');
+        const gatewayPath = '@/features/llm/llm-gateway.service';
+        const { llmGateway } = await import(gatewayPath);
         const res = await llmGateway.generate({
           prompt: input.question,
           context: input.context,

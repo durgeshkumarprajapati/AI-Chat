@@ -80,12 +80,23 @@ export class CitationService {
 
     const citations: Citation[] = chunks.map((chunk, idx) => {
       const { confidence, label } = this.calculateEvidenceConfidence(chunk);
+      const contentType = chunk.metadata?.contentType as string | undefined;
+      let displayFilename = chunk.filename;
+
+      if (contentType === 'TABLE') {
+        displayFilename = `📊 Table — ${chunk.filename}`;
+      } else if (contentType === 'IMAGE') {
+        displayFilename = `🖼 Image — ${chunk.filename}`;
+      } else if (contentType === 'CHART' || contentType === 'DIAGRAM') {
+        displayFilename = `📈 Chart — ${chunk.filename}`;
+      }
+
       return {
         id: `cit-${idx + 1}`,
         index: idx + 1,
         documentId: chunk.documentId,
         chunkId: chunk.id,
-        filename: chunk.filename,
+        filename: displayFilename,
         pageNumber: chunk.pageNumber,
         similarity: Number(chunk.similarity.toFixed(4)),
         rerankScore: chunk.rerankScore ? Number(chunk.rerankScore.toFixed(4)) : undefined,

@@ -42,8 +42,8 @@ export class LLMPolicyService {
     const isKimiAvailable = isKimiEnabled && llmCircuitBreakerService.isAvailable('kimi');
     const isOllamaAvailable = llmCircuitBreakerService.isAvailable('ollama');
 
-    const geminiFastModel = env.server?.GEMINI_FAST_MODEL || process.env.GEMINI_FAST_MODEL || 'gemini-2.5-flash';
-    const geminiReasoningModel = env.server?.GEMINI_REASONING_MODEL || process.env.GEMINI_REASONING_MODEL || 'gemini-2.5-pro';
+    const geminiFastModel = env.server?.GEMINI_FAST_MODEL || process.env.GEMINI_FAST_MODEL || 'gemini-3.6-flash';
+    const geminiReasoningModel = env.server?.GEMINI_REASONING_MODEL || process.env.GEMINI_REASONING_MODEL || 'gemini-3.6-flash';
     const deepseekDefaultModel = env.server?.DEEPSEEK_DEFAULT_MODEL || process.env.DEEPSEEK_DEFAULT_MODEL || 'deepseek-v4-flash';
     const deepseekReasoningModel = env.server?.DEEPSEEK_REASONING_MODEL || process.env.DEEPSEEK_REASONING_MODEL || 'deepseek-reasoner';
     const groqDefaultModel = env.server?.GROQ_DEFAULT_MODEL || process.env.GROQ_DEFAULT_MODEL || 'llama-3.3-70b-versatile';

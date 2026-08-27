@@ -52,10 +52,14 @@ export async function main() {
 
     if (existing) {
       // PRESERVE admin-controlled `value`, `isActive`, and `version`!
-      // Sync only governance metadata and descriptions.
+      // Migrate deprecated gemini-2.5 models if present
+      const isDeprecatedGeminiModel = existing.value === 'gemini-2.5-flash' || existing.value === 'gemini-2.5-pro';
+      const updatedValue = isDeprecatedGeminiModel ? item.defaultValue : existing.value;
+
       await prisma.config.update({
         where: { key: item.key },
         data: {
+          value: updatedValue,
           valueType: item.valueType,
           category: item.category,
           purpose: item.purpose,

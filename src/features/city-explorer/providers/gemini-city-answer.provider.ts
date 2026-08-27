@@ -69,7 +69,7 @@ Rules:
       feature: 'CITY_EXPLORER',
       providerRequested: 'gemini',
       providerSelected: 'gemini',
-      model: env.server?.GEMINI_FAST_MODEL || 'gemini-2.5-flash',
+      model: env.server?.GEMINI_FAST_MODEL || 'gemini-3.6-flash',
       sourceMode: 'WEB_PUBLIC'
     });
 

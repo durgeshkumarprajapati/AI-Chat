@@ -44,12 +44,12 @@ export class GeminiProvider implements LLMProvider {
       options?.defaultFastModel ||
       env.server?.GEMINI_FAST_MODEL ||
       process.env.GEMINI_FAST_MODEL ||
-      'gemini-2.5-flash';
+      'gemini-3.6-flash';
     this.defaultReasoningModel =
       options?.defaultReasoningModel ||
       env.server?.GEMINI_REASONING_MODEL ||
       process.env.GEMINI_REASONING_MODEL ||
-      'gemini-2.5-pro';
+      'gemini-3.6-flash';
     this.isEnabled =
       options?.enabled ??
       (env.server?.GEMINI_ENABLED ?? (process.env.GEMINI_ENABLED !== 'false'));

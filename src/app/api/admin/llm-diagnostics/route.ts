@@ -34,7 +34,7 @@ export async function GET(req: NextRequest) {
           enabled: geminiEnabled,
           configured: geminiConfigured,
           healthy: health.providers.gemini?.status === 'healthy',
-          model: env.server?.GEMINI_FAST_MODEL || 'gemini-2.5-flash',
+          model: env.server?.GEMINI_FAST_MODEL || 'gemini-3.6-flash',
           circuitState: geminiCircuit.state
         },
         ollama: {

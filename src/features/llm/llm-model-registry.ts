@@ -20,9 +20,9 @@ export class LLMModelRegistry {
   constructor() {
     this.registerProvider({
       provider: geminiProvider,
-      defaultModel: process.env.GEMINI_FAST_MODEL || 'gemini-2.5-flash',
-      fastModel: process.env.GEMINI_FAST_MODEL || 'gemini-2.5-flash',
-      reasoningModel: process.env.GEMINI_REASONING_MODEL || 'gemini-2.5-pro',
+      defaultModel: process.env.GEMINI_FAST_MODEL || 'gemini-3.6-flash',
+      fastModel: process.env.GEMINI_FAST_MODEL || 'gemini-3.6-flash',
+      reasoningModel: process.env.GEMINI_REASONING_MODEL || 'gemini-3.6-flash',
       priority: 1
     });
 

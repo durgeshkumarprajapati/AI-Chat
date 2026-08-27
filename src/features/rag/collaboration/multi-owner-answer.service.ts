@@ -59,12 +59,20 @@ export class MultiOwnerAnswerService {
           results.push(...res.chunks);
         }
 
-        for (const kbId of kbIds) {
-          const res = await retrievalService.retrieveContextWithTrace(ownerId, question, {
-            knowledgeBaseId: kbId,
-            sourceMode: 'documents_only',
-            queryVector: queryEmbedding.vector
-          });
+        // Phase 77: these per-KB retrievals are independent of each other (each targets a
+        // different knowledgeBaseId under the same already-verified owner), and their chunks
+        // are merged into a Map keyed by chunk.id below regardless of arrival order — so
+        // running them concurrently changes only latency, never the final result set.
+        const kbResults = await Promise.all(
+          kbIds.map((kbId) =>
+            retrievalService.retrieveContextWithTrace(ownerId, question, {
+              knowledgeBaseId: kbId,
+              sourceMode: 'documents_only',
+              queryVector: queryEmbedding.vector
+            })
+          )
+        );
+        for (const res of kbResults) {
           results.push(...res.chunks);
         }
 
@@ -159,9 +167,14 @@ export class MultiOwnerAnswerService {
     }
 
     const kbIds = scope.authorizedKnowledgeBaseIds ?? [];
-    for (const kbId of kbIds) {
-      const kb = await prisma.knowledgeBase.findUnique({ where: { id: kbId }, select: { id: true, userId: true } });
-      if (kb) {
+    if (kbIds.length) {
+      // Phase 77: batched into a single findMany (was one findUnique per kbId) — identical
+      // result set, one round trip instead of N.
+      const kbs = await prisma.knowledgeBase.findMany({
+        where: { id: { in: kbIds } },
+        select: { id: true, userId: true }
+      });
+      for (const kb of kbs) {
         ownerOfKnowledgeBase.set(kb.id, kb.userId);
         owners.add(kb.userId);
       }

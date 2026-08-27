@@ -52,6 +52,13 @@ export default function AccountPage() {
   useEffect(() => {
     async function loadAccountData() {
       try {
+        // Phase 77: kicked off alongside the auth/sessions Promise.all instead of after it —
+        // this fetch doesn't read anything from meRes/sessionsRes, so waiting for them to
+        // settle first only added dead time before the request even started.
+        const billingPromise = fetch('/api/billing/subscription')
+          .then((r) => r.json())
+          .catch(() => null);
+
         const [meRes, sessionsRes] = await Promise.all([
           fetch('/api/auth/me').then((r) => r.json()),
           fetch('/api/auth/sessions').then((r) => r.json()).catch(() => ({ data: [] }))
@@ -76,18 +83,15 @@ export default function AccountPage() {
         }
         setSessions(sessionsRes.data || []);
 
-        fetch('/api/billing/subscription')
-          .then((r) => r.json())
-          .then((data) => {
-            if (data.success) {
-              setBillingSummary({
-                billingEnabled: data.data.billingEnabled,
-                planCode: data.data.subscription?.planCode,
-                status: data.data.subscription?.status
-              });
-            }
-          })
-          .catch(() => {});
+        billingPromise.then((data) => {
+          if (data?.success) {
+            setBillingSummary({
+              billingEnabled: data.data.billingEnabled,
+              planCode: data.data.subscription?.planCode,
+              status: data.data.subscription?.status
+            });
+          }
+        });
       } catch {
         router.push('/login');
       } finally {

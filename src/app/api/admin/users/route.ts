@@ -83,7 +83,8 @@ export async function PATCH(req: NextRequest) {
       );
     }
 
-    const targetUser = await prisma.user.findUnique({ where: { id: targetUserId } });
+    // Phase 77: narrowed to only the field read below (role), instead of the full user row.
+    const targetUser = await prisma.user.findUnique({ where: { id: targetUserId }, select: { role: true } });
     if (!targetUser) {
       return NextResponse.json(
         { success: false, error: { code: 'NOT_FOUND', message: 'User not found.' } },

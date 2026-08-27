@@ -38,40 +38,52 @@ export default function ChillFocusPage() {
 
     const init = async () => {
       try {
-        // 1. Fetch Streak
-        const streakRes = await fetch('/api/study/chill-focus/streak');
-        const streakData = await streakRes.json();
-        if (streakData.success && streakData.data) {
-          setStreak(streakData.data);
-        }
-
-        // 2. Fetch Preferences
-        const prefRes = await fetch('/api/study/chill-focus/preferences');
-        const prefData = await prefRes.json();
-        if (prefData.success && prefData.data) {
-          setSoundscape(prefData.data.preferredSoundscape || 'night_sky');
-          setVolume(prefData.data.preferredVolume ?? 0.7);
-          setMode((prefData.data.preferredMode as 'CHILL' | 'FOCUS') || 'CHILL');
-        }
-
-        // 3. Get or Create Session
-        const sessRes = await fetch('/api/study/chill-focus/session', {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ mode: 'CHILL', soundscape: 'night_sky' })
-        });
-        const sessData = await sessRes.json();
-        if (sessData.success && sessData.data) {
-          setSession(sessData.data);
-          setIsPaused(sessData.data.status === 'PAUSED');
-        }
-
-        // 4. Fetch AI Intervention Break Suggestion
-        const aiRes = await fetch('/api/study/chill-focus/intervention?studyMinutes=52');
-        const aiData = await aiRes.json();
-        if (aiData.success && aiData.data?.message) {
-          setAiMessage(aiData.data.message);
-        }
+        // Phase 77: these four requests never depended on one another's response (the session
+        // POST body below is hardcoded, not built from the preferences fetch) — issuing them
+        // concurrently instead of one-after-another preserves identical end state (each still
+        // sets its own piece of state from its own response) while cutting the total wait from
+        // the sum of four round trips to the slowest single one.
+        await Promise.all([
+          (async () => {
+            // 1. Fetch Streak
+            const streakRes = await fetch('/api/study/chill-focus/streak');
+            const streakData = await streakRes.json();
+            if (streakData.success && streakData.data) {
+              setStreak(streakData.data);
+            }
+          })(),
+          (async () => {
+            // 2. Fetch Preferences
+            const prefRes = await fetch('/api/study/chill-focus/preferences');
+            const prefData = await prefRes.json();
+            if (prefData.success && prefData.data) {
+              setSoundscape(prefData.data.preferredSoundscape || 'night_sky');
+              setVolume(prefData.data.preferredVolume ?? 0.7);
+              setMode((prefData.data.preferredMode as 'CHILL' | 'FOCUS') || 'CHILL');
+            }
+          })(),
+          (async () => {
+            // 3. Get or Create Session
+            const sessRes = await fetch('/api/study/chill-focus/session', {
+              method: 'POST',
+              headers: { 'Content-Type': 'application/json' },
+              body: JSON.stringify({ mode: 'CHILL', soundscape: 'night_sky' })
+            });
+            const sessData = await sessRes.json();
+            if (sessData.success && sessData.data) {
+              setSession(sessData.data);
+              setIsPaused(sessData.data.status === 'PAUSED');
+            }
+          })(),
+          (async () => {
+            // 4. Fetch AI Intervention Break Suggestion
+            const aiRes = await fetch('/api/study/chill-focus/intervention?studyMinutes=52');
+            const aiData = await aiRes.json();
+            if (aiData.success && aiData.data?.message) {
+              setAiMessage(aiData.data.message);
+            }
+          })()
+        ]);
       } catch (err) {
         console.warn('[ChillFocusPage] Init fetch failed, using defaults:', err);
       }

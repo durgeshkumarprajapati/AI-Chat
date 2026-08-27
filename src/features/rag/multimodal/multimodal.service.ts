@@ -6,6 +6,7 @@ import { defaultOCRProvider } from './ocr.provider';
 import { defaultVisionProvider } from './vision.provider';
 import { getStorageProvider } from '@/lib/storage';
 import { createHash } from 'crypto';
+import { configService } from '@/features/config';
 
 export class MultimodalService {
   /**
@@ -89,12 +90,19 @@ export class MultimodalService {
       const maxImages = env.server?.MULTIMODAL_MAX_IMAGES_PER_DOCUMENT ?? 30;
       const processBatch = imageInputs.slice(0, maxImages);
 
-      for (const img of processBatch) {
-        result.metrics.imagesExtracted++;
+      // Phase 77: each image's upload/OCR/vision/DB-write is independent of every other
+      // image's — processed in bounded-concurrency batches instead of one at a time. Per-image
+      // work is computed into a plain result object first; metrics increments and
+      // result.visuals/result.chunks pushes happen afterward in a single pass over
+      // `processBatch`'s ORIGINAL order (not resolution order), so the final arrays and
+      // cumulative counters are byte-identical to the previous fully-sequential version —
+      // only wall-clock time changes.
+      const concurrency = await configService.getNumber('MULTIMODAL_IMAGE_PROCESSING_CONCURRENCY', 3);
+
+      const processImage = async (img: (typeof processBatch)[number]) => {
         const visualType: VisualContentType = img.type || 'IMAGE';
         const contentHash = createHash('md5').update(img.buffer).digest('hex');
 
-        // Store image asset securely via StorageProvider
         const storageKey = `documents/${userId}/${documentId}/visuals/${contentHash.slice(0, 16)}.png`;
         try {
           await storageProvider.upload(storageKey, img.buffer, 'image/png');
@@ -102,23 +110,25 @@ export class MultimodalService {
           console.warn(`[MultimodalService] Image storage failed for ${storageKey}:`, storageErr);
         }
 
-        // OCR extraction
         let ocrText = '';
+        let ocrMs = 0;
+        let didOcr = false;
         if (env.server?.MULTIMODAL_OCR_ENABLED) {
           const ocrStart = Date.now();
           const ocrRes = await defaultOCRProvider.extractText(img.buffer);
-          result.metrics.ocrMs += Date.now() - ocrStart;
-          result.metrics.ocrPagesProcessed++;
+          ocrMs = Date.now() - ocrStart;
+          didOcr = true;
           ocrText = ocrRes.text;
         }
 
-        // Vision analysis for charts/diagrams
         let visionDescription = '';
+        let visionMs = 0;
+        let didVision = false;
         if (env.server?.MULTIMODAL_VISION_ENABLED) {
           const visionStart = Date.now();
           const visionRes = await defaultVisionProvider.analyzeVisualContent(img.buffer, visualType, img.caption);
-          result.metrics.visionMs += Date.now() - visionStart;
-          result.metrics.visionCallsMade++;
+          visionMs = Date.now() - visionStart;
+          didVision = true;
           visionDescription = visionRes.description;
         }
 
@@ -141,23 +151,51 @@ export class MultimodalService {
           }
         });
 
-        result.visuals.push(visualRecord as any);
-
         const fullVisualText = `[${visualType}: Page ${img.pageNumber}]\n${captionText}${ocrText ? '\nOCR Text: ' + ocrText : ''}`;
-        result.chunks.push({
-          content: fullVisualText,
-          pageNumber: img.pageNumber,
-          visualType,
-          visualId: visualRecord.id,
-          metadata: {
-            isVisual: true,
+
+        return {
+          visualRecord,
+          ocrMs,
+          didOcr,
+          visionMs,
+          didVision,
+          chunkEntry: {
+            content: fullVisualText,
+            pageNumber: img.pageNumber,
             visualType,
             visualId: visualRecord.id,
-            pageNumber: img.pageNumber,
-            storageKey
+            metadata: {
+              isVisual: true,
+              visualType,
+              visualId: visualRecord.id,
+              pageNumber: img.pageNumber,
+              storageKey
+            }
           }
-        });
+        };
+      };
+
+      const processedResults: Array<Awaited<ReturnType<typeof processImage>>> = [];
+      for (let batchStart = 0; batchStart < processBatch.length; batchStart += concurrency) {
+        const batchSlice = processBatch.slice(batchStart, batchStart + concurrency);
+        const batchResults = await Promise.all(batchSlice.map(processImage));
+        processedResults.push(...batchResults);
       }
+
+      for (const r of processedResults) {
+        result.metrics.imagesExtracted++;
+        if (r.didOcr) {
+          result.metrics.ocrMs += r.ocrMs;
+          result.metrics.ocrPagesProcessed++;
+        }
+        if (r.didVision) {
+          result.metrics.visionMs += r.visionMs;
+          result.metrics.visionCallsMade++;
+        }
+        result.visuals.push(r.visualRecord as any);
+        result.chunks.push(r.chunkEntry);
+      }
+
       result.metrics.extractionMs = Date.now() - imgStart;
     }
 

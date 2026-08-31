@@ -695,6 +695,136 @@ export const CONFIG_REGISTRY: Record<string, RegistryConfigItem> = {
     maxValue: 300000
   },
 
+  // KNOWLEDGE GRAPH EXPLORER (Phase 84 — additive presentation/query layer over the existing KG)
+  KG_EXPLORER_ENABLED: {
+    key: 'KG_EXPLORER_ENABLED',
+    valueType: ConfigValueType.BOOLEAN,
+    category: ConfigCategory.FEATURE_FLAG,
+    defaultValue: 'true',
+    purpose: 'Master flag enabling the Phase 84 AI Knowledge Graph Explorer query surface.',
+    description: 'KG Explorer feature flag.',
+    isEditable: true,
+    isHighImpact: true,
+    requiresRestart: false
+  },
+  KG_EXPLORER_DEFAULT_DEPTH: {
+    key: 'KG_EXPLORER_DEFAULT_DEPTH',
+    valueType: ConfigValueType.NUMBER,
+    category: ConfigCategory.RETRIEVAL,
+    defaultValue: '2',
+    purpose: 'Default neighborhood-expansion depth used by the KG Explorer when a request omits one.',
+    description: 'KG Explorer default traversal depth.',
+    isEditable: true,
+    isHighImpact: false,
+    requiresRestart: false,
+    minValue: 1,
+    maxValue: 3
+  },
+  KG_EXPLORER_MAX_DEPTH: {
+    key: 'KG_EXPLORER_MAX_DEPTH',
+    valueType: ConfigValueType.NUMBER,
+    category: ConfigCategory.RETRIEVAL,
+    defaultValue: '3',
+    purpose: 'Hard cap on the neighborhood-expansion depth the KG Explorer will ever traverse, regardless of request.',
+    description: 'KG Explorer max traversal depth.',
+    isEditable: true,
+    isHighImpact: true,
+    requiresRestart: false,
+    minValue: 1,
+    maxValue: 3
+  },
+  KG_EXPLORER_INITIAL_NODES: {
+    key: 'KG_EXPLORER_INITIAL_NODES',
+    valueType: ConfigValueType.NUMBER,
+    category: ConfigCategory.PERFORMANCE,
+    defaultValue: '50',
+    purpose: 'Number of entities returned for the KG Explorer default graph when no search query is supplied.',
+    description: 'KG Explorer default graph size.',
+    isEditable: true,
+    isHighImpact: false,
+    requiresRestart: false,
+    minValue: 1,
+    maxValue: 150
+  },
+  KG_EXPLORER_MAX_NODES: {
+    key: 'KG_EXPLORER_MAX_NODES',
+    valueType: ConfigValueType.NUMBER,
+    category: ConfigCategory.PERFORMANCE,
+    defaultValue: '150',
+    purpose: 'Hard cap on the number of nodes the KG Explorer will ever return in a single graph response.',
+    description: 'KG Explorer max node count.',
+    isEditable: true,
+    isHighImpact: true,
+    requiresRestart: false,
+    minValue: 1,
+    maxValue: 500
+  },
+  KG_EXPLORER_MAX_EDGES: {
+    key: 'KG_EXPLORER_MAX_EDGES',
+    valueType: ConfigValueType.NUMBER,
+    category: ConfigCategory.PERFORMANCE,
+    defaultValue: '300',
+    purpose: 'Hard cap on the number of edges the KG Explorer will ever return in a single graph response.',
+    description: 'KG Explorer max edge count.',
+    isEditable: true,
+    isHighImpact: true,
+    requiresRestart: false,
+    minValue: 1,
+    maxValue: 1000
+  },
+  KG_EXPLORER_MAX_QUERY_RESULTS: {
+    key: 'KG_EXPLORER_MAX_QUERY_RESULTS',
+    valueType: ConfigValueType.NUMBER,
+    category: ConfigCategory.PERFORMANCE,
+    defaultValue: '50',
+    purpose: 'Maximum number of seed entities matched by a KG Explorer search query before neighborhood expansion.',
+    description: 'KG Explorer max search seed results.',
+    isEditable: true,
+    isHighImpact: false,
+    requiresRestart: false,
+    minValue: 1,
+    maxValue: 200
+  },
+  KG_EXPLORER_TIMEOUT_MS: {
+    key: 'KG_EXPLORER_TIMEOUT_MS',
+    valueType: ConfigValueType.NUMBER,
+    category: ConfigCategory.PERFORMANCE,
+    defaultValue: '3000',
+    purpose: 'Soft per-request deadline (ms) for KG Explorer traversal/LLM calls before returning a truncated/partial result.',
+    description: 'KG Explorer request timeout budget.',
+    isEditable: true,
+    isHighImpact: true,
+    requiresRestart: false,
+    minValue: 500,
+    maxValue: 15000
+  },
+  KG_EXPLORER_RATE_LIMIT_PER_MINUTE: {
+    key: 'KG_EXPLORER_RATE_LIMIT_PER_MINUTE',
+    valueType: ConfigValueType.NUMBER,
+    category: ConfigCategory.SECURITY,
+    defaultValue: '30',
+    purpose: 'Maximum KG Explorer requests allowed per user per minute.',
+    description: 'KG Explorer rate limit.',
+    isEditable: true,
+    isHighImpact: true,
+    requiresRestart: false,
+    minValue: 1,
+    maxValue: 300
+  },
+  KG_EXPLORER_CACHE_TTL_SECONDS: {
+    key: 'KG_EXPLORER_CACHE_TTL_SECONDS',
+    valueType: ConfigValueType.NUMBER,
+    category: ConfigCategory.CACHE,
+    defaultValue: '120',
+    purpose: 'TTL (seconds) for cached KG Explorer graph responses. Also the module\'s only cache-invalidation mechanism today (no change-driven invalidation bus yet).',
+    description: 'KG Explorer cache TTL.',
+    isEditable: true,
+    isHighImpact: false,
+    requiresRestart: false,
+    minValue: 0,
+    maxValue: 3600
+  },
+
   // DOCUMENT INTELLIGENCE & MULTIMODAL
   DOCUMENT_INTELLIGENCE_ENABLED: {
     key: 'DOCUMENT_INTELLIGENCE_ENABLED',

@@ -70,7 +70,7 @@ export class DocumentRepository {
       data: {
         status,
         ...(extra?.pageCount !== undefined && { pageCount: extra.pageCount }),
-        ...(extra?.errorMessage !== undefined && { errorMessage: extra.errorMessage })
+        errorMessage: extra?.errorMessage !== undefined ? extra.errorMessage : status === DocumentStatus.COMPLETED ? null : undefined
       }
     });
 

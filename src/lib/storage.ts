@@ -22,7 +22,15 @@ export class LocalStorageProvider implements StorageProvider {
   private baseDir: string;
 
   constructor(baseDir?: string) {
-    this.baseDir = baseDir || path.join(process.cwd(), 'storage');
+    if (baseDir) {
+      this.baseDir = baseDir;
+    } else if (process.env.STORAGE_BASE_DIR) {
+      this.baseDir = process.env.STORAGE_BASE_DIR;
+    } else {
+      const cwd = process.cwd();
+      const projectRoot = path.basename(cwd) === 'worker' ? path.resolve(cwd, '..') : cwd;
+      this.baseDir = path.join(projectRoot, 'storage');
+    }
   }
 
   private getAbsolutePath(key: string): string {

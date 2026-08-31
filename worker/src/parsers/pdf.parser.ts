@@ -31,6 +31,18 @@ export class WorkerPdfParser implements DocumentParser {
       throw new Error('Cannot parse empty or invalid PDF buffer.');
     }
 
+    // Fallback: If uploaded file is plain text (does not start with %PDF header), extract text directly
+    const firstBytes = buffer.subarray(0, 8).toString('utf8');
+    if (!firstBytes.startsWith('%PDF')) {
+      const utf8Text = cleanExtractedText(buffer.toString('utf8'));
+      if (utf8Text.length > 0) {
+        return {
+          pageCount: 1,
+          pages: [{ pageNumber: 1, text: utf8Text }]
+        };
+      }
+    }
+
     try {
       const pdfjsLib = await import('pdfjs-dist/legacy/build/pdf.mjs');
       const data = Uint8Array.from(buffer);

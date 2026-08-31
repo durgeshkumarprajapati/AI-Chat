@@ -20,7 +20,9 @@ export type FeatureScope =
   | 'WORKFLOW_GENERATION'
   | 'COPILOT'
   | 'MULTIMODAL'
-  | 'GENERAL';
+  | 'GENERAL'
+  | 'INTELLIGENCE'
+  | 'AGENT';
 
 export interface LLMRequest {
   prompt: string;

@@ -6,6 +6,7 @@ import { multimodalProcessor } from './processors/multimodal.processor.js';
 import { workerDocumentRepository } from './repositories/document.repository.js';
 import { workerCalendarSyncProcessor } from './processors/calendar-sync.processor.js';
 import { billingReconciliationProcessor } from './processors/billing-reconciliation.processor.js';
+import { projectIntelligenceAnalysisProcessor } from './processors/project-intelligence-analysis.processor.js';
 import { MultimodalJobPayload, QUEUES } from '@/lib/rabbitmq';
 import { configService } from '@/features/config';
 import { prisma } from './lib/prisma.js';
@@ -206,6 +207,20 @@ export async function startWorker() {
       }
     }, billingReconciliationIntervalMs);
     billingInterval.unref();
+
+    // Phase 78B — periodic, bounded Project Intelligence analysis pass (health/risk/blocker/
+    // deadline detection). Disabled/no-op via INTELLIGENCE_ENABLED / INTELLIGENCE_PROJECT_HEALTH_ENABLED
+    // (both default true); a failure here never affects any other worker job or request-path traffic.
+    const intelligenceAnalysisIntervalMs = await configService.getNumber('INTELLIGENCE_ANALYSIS_INTERVAL_MS', 1800000);
+    const intelligenceInterval = setInterval(async () => {
+      if (isShuttingDown) return;
+      try {
+        await projectIntelligenceAnalysisProcessor.run();
+      } catch (err) {
+        console.error('[Worker] Periodic project intelligence analysis error:', err);
+      }
+    }, intelligenceAnalysisIntervalMs);
+    intelligenceInterval.unref();
   } catch (error) {
     console.error('[Worker] Failed to start worker:', error);
     process.exit(1);

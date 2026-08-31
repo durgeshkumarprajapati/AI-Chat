@@ -116,6 +116,24 @@ export const FEATURE_REGISTRY: Record<FeatureCode, FeatureRegistryEntry> = {
     name: 'System Architecture Explorer',
     description: 'Interactive visualization of the platform’s own system architecture.',
     category: 'PLATFORM'
+  },
+  KNOWLEDGE_INTELLIGENCE: {
+    code: 'KNOWLEDGE_INTELLIGENCE',
+    name: 'Knowledge Intelligence',
+    description: 'Cross-source contradiction detection and knowledge freshness analysis over your documents and knowledge graph.',
+    category: 'RAG'
+  },
+  PROJECT_INTELLIGENCE: {
+    code: 'PROJECT_INTELLIGENCE',
+    name: 'Project Intelligence',
+    description: 'Evidence-based project health, risk, blocker, and deadline analysis correlated across tasks, meetings, and calendar.',
+    category: 'PLATFORM'
+  },
+  AI_AGENT: {
+    code: 'AI_AGENT',
+    name: 'Proactive AI Agent',
+    description: 'Goal-directed AI planning with human-approved execution of ClickUp and Calendar actions.',
+    category: 'PLATFORM'
   }
 };
 
@@ -192,7 +210,10 @@ const PRO_ENABLED: FeatureCode[] = [
   'CLICKUP_INTEGRATION',
   'WEB_SEARCH',
   'KNOWLEDGE_GRAPH',
-  'SYSTEM_ARCHITECTURE_EXPLORER'
+  'SYSTEM_ARCHITECTURE_EXPLORER',
+  'KNOWLEDGE_INTELLIGENCE',
+  'PROJECT_INTELLIGENCE',
+  'AI_AGENT'
 ];
 
 /**

@@ -28,6 +28,20 @@ export type CalendarCreationResult =
       errorCode: string;
     };
 
+// Phase 78 — additive read model for Project Intelligence (deadline correlation) and the
+// AI Agent's read-only "get calendar events" tool. Never exposes tokens.
+export interface UpcomingCalendarEventSummary {
+  eventId: string;
+  title: string;
+  startTime: string;
+  endTime: string;
+  htmlLink?: string;
+}
+
+export type CalendarEventsFetchResult =
+  | { success: true; events: UpcomingCalendarEventSummary[] }
+  | { success: false; error: string; errorCode: string };
+
 export class GoogleCalendarService {
   /**
    * Generates a sanitized deterministic event ID suitable for Google Calendar API
@@ -369,6 +383,71 @@ export class GoogleCalendarService {
       return { success: true };
     } catch (err: any) {
       return { success: false, error: err?.message || 'Failed to delete Google Calendar event' };
+    }
+  }
+
+  /**
+   * Phase 78 — additive, read-only. Fetches upcoming events on the user's primary calendar
+   * within [timeMinIso, timeMaxIso]. Reuses the existing token-refresh flow; never returns or
+   * logs the access token. Bounded by maxResults to keep this safe on any request path.
+   */
+  public async getUpcomingEvents(
+    userId: string,
+    timeMinIso: string,
+    timeMaxIso: string,
+    maxResults: number = 50
+  ): Promise<CalendarEventsFetchResult> {
+    const tokenResult = await googleAuthService.getValidAccessToken(userId);
+
+    if (tokenResult.status === 'NOT_CONNECTED') {
+      return { success: false, error: 'Google Calendar integration is not connected', errorCode: 'GOOGLE_CALENDAR_NOT_CONNECTED' };
+    }
+    if (tokenResult.status === 'REAUTH_REQUIRED') {
+      return { success: false, error: 'Google Calendar re-authorization required', errorCode: 'GOOGLE_REAUTH_REQUIRED' };
+    }
+
+    const { accessToken } = tokenResult;
+
+    if (accessToken.startsWith('mock_access_token_')) {
+      return { success: true, events: [] };
+    }
+
+    try {
+      const params = new URLSearchParams({
+        timeMin: timeMinIso,
+        timeMax: timeMaxIso,
+        maxResults: String(Math.max(1, Math.min(maxResults, 250))),
+        singleEvents: 'true',
+        orderBy: 'startTime'
+      });
+
+      const res = await fetch(`https://www.googleapis.com/calendar/v3/calendars/primary/events?${params.toString()}`, {
+        headers: { Authorization: `Bearer ${accessToken}` }
+      });
+
+      if (!res.ok) {
+        const errorText = await res.text();
+        let errorCode = 'GOOGLE_CALENDAR_TEMPORARY_FAILURE';
+        if (res.status === 401) errorCode = 'GOOGLE_TOKEN_INVALID';
+        else if (res.status === 403) errorCode = 'GOOGLE_CALENDAR_PERMISSION_DENIED';
+        else if (res.status === 429) errorCode = 'GOOGLE_CALENDAR_RATE_LIMITED';
+        return { success: false, error: `Google Calendar API error (HTTP ${res.status}): ${errorText.slice(0, 150)}`, errorCode };
+      }
+
+      const data = await res.json();
+      const events: UpcomingCalendarEventSummary[] = (data.items || [])
+        .filter((e: any) => e.start && (e.start.dateTime || e.start.date))
+        .map((e: any) => ({
+          eventId: e.id,
+          title: e.summary || '(no title)',
+          startTime: e.start.dateTime || e.start.date,
+          endTime: e.end?.dateTime || e.end?.date || e.start.dateTime || e.start.date,
+          htmlLink: e.htmlLink
+        }));
+
+      return { success: true, events };
+    } catch (err: any) {
+      return { success: false, error: err?.message || 'Google Calendar request failed', errorCode: 'GOOGLE_CALENDAR_TEMPORARY_FAILURE' };
     }
   }
 

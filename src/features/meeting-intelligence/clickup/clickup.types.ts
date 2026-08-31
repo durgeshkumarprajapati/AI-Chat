@@ -27,3 +27,23 @@ export interface ClickUpTaskResponseDTO {
   url: string;
   status: { status: string };
 }
+
+// Phase 78 additions — reuse the existing ClickUpClient/auth infrastructure, do not duplicate it.
+export interface ClickUpTaskDTO {
+  id: string;
+  name: string;
+  url: string;
+  status: string;
+  dueDate: number | null; // epoch ms, ClickUp's native format
+  dateUpdated: number | null;
+  listId: string;
+  listName?: string;
+}
+
+export interface UpdateClickUpTaskPayload {
+  name?: string;
+  description?: string;
+  status?: string;
+  dueDate?: number;
+  priority?: number;
+}

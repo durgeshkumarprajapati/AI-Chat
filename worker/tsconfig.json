@@ -30,6 +30,12 @@
     "../src/features/document-management/**/*",
     "../src/features/config/**/*",
     "../src/features/billing/**/*",
-    "../src/features/audit/**/*"
+    "../src/features/audit/**/*",
+    "../src/features/project-intelligence/**/*",
+    "../src/features/meeting-intelligence/**/*",
+    "../src/features/projects/project.service.ts",
+    "../src/features/projects/project-authorization.service.ts",
+    "../src/features/calendar/**/*",
+    "../src/features/integrations/**/*"
   ]
 }

@@ -122,7 +122,9 @@ function InnerAppLayout({ children }: { children: React.ReactNode }) {
         { name: 'AI Voice Tutor', href: '/study/voice-tutor', icon: '🎤' },
         { name: 'Agentic Research', href: '/research', icon: '🔬' },
         { name: 'AI Roadmaps', href: '/roadmaps', icon: '🚀' },
-        { name: 'Knowledge Graph', href: '/knowledge-graph', icon: '🕸️' }
+        { name: 'Knowledge Graph', href: '/knowledge-graph', icon: '🕸️' },
+        { name: 'Knowledge Intelligence', href: '/intelligence', icon: '💡' },
+        { name: 'AI Agents', href: '/agents', icon: '🤖' }
       ]
     },
     {

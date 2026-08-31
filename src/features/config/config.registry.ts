@@ -1158,6 +1158,165 @@ export const CONFIG_REGISTRY: Record<string, RegistryConfigItem> = {
     requiresRestart: false,
     minValue: 1,
     maxValue: 50
+  },
+
+  // PHASE 78 — AI KNOWLEDGE INTELLIGENCE, PROJECT INTELLIGENCE & PROACTIVE AGENT PLATFORM
+  INTELLIGENCE_ENABLED: {
+    key: 'INTELLIGENCE_ENABLED',
+    valueType: ConfigValueType.BOOLEAN,
+    category: ConfigCategory.FEATURE_FLAG,
+    defaultValue: 'true',
+    purpose: 'Master switch for the Phase 78 intelligence layer (contradiction/freshness detection, project health). Purely additive — only ever creates new IntelligenceInsight rows, never touches existing documents/meetings/tasks.',
+    description: 'Knowledge/project intelligence master flag.',
+    isEditable: true,
+    isHighImpact: true,
+    requiresRestart: false
+  },
+  INTELLIGENCE_CONTRADICTION_DETECTION_ENABLED: {
+    key: 'INTELLIGENCE_CONTRADICTION_DETECTION_ENABLED',
+    valueType: ConfigValueType.BOOLEAN,
+    category: ConfigCategory.FEATURE_FLAG,
+    defaultValue: 'true',
+    purpose: 'Enables cross-source contradiction detection (documents, meetings, tasks, calendar) in the periodic intelligence analysis pass.',
+    description: 'Contradiction detection flag.',
+    isEditable: true,
+    isHighImpact: false,
+    requiresRestart: false
+  },
+  INTELLIGENCE_FRESHNESS_DETECTION_ENABLED: {
+    key: 'INTELLIGENCE_FRESHNESS_DETECTION_ENABLED',
+    valueType: ConfigValueType.BOOLEAN,
+    category: ConfigCategory.FEATURE_FLAG,
+    defaultValue: 'true',
+    purpose: 'Enables knowledge freshness/staleness detection based on document version/age and superseding activity.',
+    description: 'Freshness detection flag.',
+    isEditable: true,
+    isHighImpact: false,
+    requiresRestart: false
+  },
+  INTELLIGENCE_PROJECT_HEALTH_ENABLED: {
+    key: 'INTELLIGENCE_PROJECT_HEALTH_ENABLED',
+    valueType: ConfigValueType.BOOLEAN,
+    category: ConfigCategory.FEATURE_FLAG,
+    defaultValue: 'true',
+    purpose: 'Enables project health/risk/blocker/deadline computation in the periodic intelligence analysis pass.',
+    description: 'Project intelligence flag.',
+    isEditable: true,
+    isHighImpact: false,
+    requiresRestart: false
+  },
+  INTELLIGENCE_AGENT_ENABLED: {
+    key: 'INTELLIGENCE_AGENT_ENABLED',
+    valueType: ConfigValueType.BOOLEAN,
+    category: ConfigCategory.FEATURE_FLAG,
+    defaultValue: 'false',
+    purpose: 'Master switch for the proactive AI agent (planning + tool execution, including state-changing ClickUp/Calendar actions). Defaults OFF since, unlike detection, this can take real external actions once a human approves a step.',
+    description: 'AI agent master flag — defaults off.',
+    isEditable: true,
+    isHighImpact: true,
+    requiresRestart: false
+  },
+  INTELLIGENCE_MAX_CANDIDATES: {
+    key: 'INTELLIGENCE_MAX_CANDIDATES',
+    valueType: ConfigValueType.NUMBER,
+    category: ConfigCategory.PERFORMANCE,
+    defaultValue: '50',
+    purpose: 'Maximum number of candidate records considered per intelligence analysis pass (documents, claims, tasks), bounding cost and preventing full-corpus scans.',
+    description: 'Intelligence candidate-generation bound.',
+    isEditable: true,
+    isHighImpact: true,
+    requiresRestart: false,
+    minValue: 1,
+    maxValue: 500
+  },
+  INTELLIGENCE_ANALYSIS_TIMEOUT_MS: {
+    key: 'INTELLIGENCE_ANALYSIS_TIMEOUT_MS',
+    valueType: ConfigValueType.NUMBER,
+    category: ConfigCategory.PERFORMANCE,
+    defaultValue: '30000',
+    purpose: 'Timeout budget in milliseconds for a single intelligence analysis LLM call (contradiction classification, risk summarization).',
+    description: 'Intelligence LLM call timeout.',
+    isEditable: true,
+    isHighImpact: false,
+    requiresRestart: false,
+    minValue: 1000,
+    maxValue: 120000
+  },
+  INTELLIGENCE_MIN_CONFIDENCE: {
+    key: 'INTELLIGENCE_MIN_CONFIDENCE',
+    valueType: ConfigValueType.NUMBER,
+    category: ConfigCategory.PERFORMANCE,
+    defaultValue: '0.4',
+    purpose: 'Minimum internal confidence score (0-1) required for a candidate to become a persisted insight; below this, the candidate is discarded rather than surfaced.',
+    description: 'Minimum insight confidence threshold.',
+    isEditable: true,
+    isHighImpact: false,
+    requiresRestart: false,
+    minValue: 0,
+    maxValue: 1
+  },
+  INTELLIGENCE_ANALYSIS_INTERVAL_MS: {
+    key: 'INTELLIGENCE_ANALYSIS_INTERVAL_MS',
+    valueType: ConfigValueType.NUMBER,
+    category: ConfigCategory.WORKER,
+    defaultValue: '1800000',
+    purpose: 'Interval in milliseconds between worker intelligence analysis passes (contradiction/freshness/project health scans).',
+    description: 'Intelligence analysis job cadence.',
+    isEditable: true,
+    isHighImpact: false,
+    requiresRestart: true,
+    minValue: 60000,
+    maxValue: 86400000
+  },
+  AGENT_MAX_PLAN_STEPS: {
+    key: 'AGENT_MAX_PLAN_STEPS',
+    valueType: ConfigValueType.NUMBER,
+    category: ConfigCategory.FEATURE_FLAG,
+    defaultValue: '8',
+    purpose: 'Maximum number of steps the AI Planner may include in a single agent plan, bounding both cost and blast radius of any one run.',
+    description: 'Agent plan step cap.',
+    isEditable: true,
+    isHighImpact: true,
+    requiresRestart: false,
+    minValue: 1,
+    maxValue: 20
+  },
+  AGENT_MAX_EXECUTION_TIME_MS: {
+    key: 'AGENT_MAX_EXECUTION_TIME_MS',
+    valueType: ConfigValueType.NUMBER,
+    category: ConfigCategory.PERFORMANCE,
+    defaultValue: '120000',
+    purpose: 'Maximum total wall-clock time an agent run may spend executing its plan before it is marked FAILED.',
+    description: 'Agent run execution time budget.',
+    isEditable: true,
+    isHighImpact: false,
+    requiresRestart: false,
+    minValue: 10000,
+    maxValue: 600000
+  },
+  AGENT_TOOL_TIMEOUT_MS: {
+    key: 'AGENT_TOOL_TIMEOUT_MS',
+    valueType: ConfigValueType.NUMBER,
+    category: ConfigCategory.PERFORMANCE,
+    defaultValue: '20000',
+    purpose: 'Timeout budget in milliseconds for a single tool execution (e.g. one ClickUp API call).',
+    description: 'Agent tool call timeout.',
+    isEditable: true,
+    isHighImpact: false,
+    requiresRestart: false,
+    minValue: 1000,
+    maxValue: 60000
+  },
+  AGENT_AUTO_EXECUTE_READ_ONLY: {
+    key: 'AGENT_AUTO_EXECUTE_READ_ONLY',
+    valueType: ConfigValueType.BOOLEAN,
+    category: ConfigCategory.FEATURE_FLAG,
+    defaultValue: 'true',
+    purpose: 'When true, READ_ONLY-risk plan steps execute automatically once the user\'s own authorization is confirmed; MEDIUM/HIGH/CRITICAL steps always require explicit human approval regardless of this flag.',
+    description: 'Auto-execute read-only agent steps.',
+    isEditable: true,
+    isHighImpact: false,
+    requiresRestart: false
   }
 };
 

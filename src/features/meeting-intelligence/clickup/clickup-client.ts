@@ -1,5 +1,12 @@
 import { env } from '@/config/env';
-import { CreateClickUpTaskPayload, ClickUpTaskResponseDTO, ClickUpWorkspaceDTO, ClickUpListDTO } from './clickup.types';
+import {
+  CreateClickUpTaskPayload,
+  ClickUpTaskResponseDTO,
+  ClickUpWorkspaceDTO,
+  ClickUpListDTO,
+  ClickUpTaskDTO,
+  UpdateClickUpTaskPayload
+} from './clickup.types';
 
 export class ClickUpClient {
   private baseUrl: string;
@@ -79,6 +86,80 @@ export class ClickUpClient {
         name: payload.name,
         description: payload.description,
         due_date: payload.dueDate
+      }),
+      signal: AbortSignal.timeout(this.timeoutMs)
+    });
+
+    if (!res.ok) {
+      const errorText = await res.text();
+      throw new Error(`ClickUp API Error (${res.status}): ${errorText}`);
+    }
+
+    return res.json();
+  }
+
+  // Phase 78 — additive, read-only. Needed by Project Intelligence (deadline/blocker
+  // detection) and the AI Agent's read-only "get task status" tool. Mirrors the
+  // mock-token/timeout/error-handling conventions of the methods above exactly.
+  public async getTasksForList(accessToken: string, listId: string): Promise<ClickUpTaskDTO[]> {
+    if (!accessToken || accessToken.startsWith('mock_')) {
+      return [];
+    }
+
+    try {
+      const res = await fetch(`${this.baseUrl}/list/${listId}/task?include_closed=true`, {
+        headers: { Authorization: accessToken },
+        signal: AbortSignal.timeout(this.timeoutMs)
+      });
+
+      if (!res.ok) {
+        return [];
+      }
+
+      const data = await res.json();
+      return (data.tasks || []).map((t: any) => ({
+        id: t.id,
+        name: t.name,
+        url: t.url,
+        status: t.status?.status || 'unknown',
+        dueDate: t.due_date ? Number(t.due_date) : null,
+        dateUpdated: t.date_updated ? Number(t.date_updated) : null,
+        listId,
+        listName: t.list?.name
+      }));
+    } catch {
+      return [];
+    }
+  }
+
+  // Phase 78 — additive. Needed by the AI Agent's "update ClickUp task" tool (always
+  // MEDIUM+ risk, always human-approved before this is ever called).
+  public async updateTask(
+    accessToken: string,
+    taskId: string,
+    payload: UpdateClickUpTaskPayload
+  ): Promise<ClickUpTaskResponseDTO> {
+    if (!accessToken || accessToken.startsWith('mock_')) {
+      return {
+        id: taskId,
+        name: payload.name || 'Updated Task',
+        url: `https://app.clickup.com/t/${taskId}`,
+        status: { status: payload.status || 'to do' }
+      };
+    }
+
+    const res = await fetch(`${this.baseUrl}/task/${taskId}`, {
+      method: 'PUT',
+      headers: {
+        'Content-Type': 'application/json',
+        Authorization: accessToken
+      },
+      body: JSON.stringify({
+        name: payload.name,
+        description: payload.description,
+        status: payload.status,
+        due_date: payload.dueDate,
+        priority: payload.priority
       }),
       signal: AbortSignal.timeout(this.timeoutMs)
     });

@@ -150,6 +150,10 @@ model User {
   paymentTransactions           PaymentTransaction[]
   usageCounters                 UsageCounter[]
   pushSubscriptions             PushSubscription[]
+  intelligenceInsights          IntelligenceInsight[]
+  insightReviews                InsightReview[]
+  agentRuns                     AgentRun[]
+  agentApprovalsGiven           AgentPlanStep[]
 
   @@index([email])
   @@map("users")
@@ -1954,6 +1958,9 @@ model Project {
   knowledgeGraphVersions KnowledgeGraphVersion[]
   ragConversations       RagConversation[]
   meetings               Meeting[]
+  intelligenceInsights   IntelligenceInsight[]
+  healthSnapshots        ProjectHealthSnapshot[]
+  agentRuns              AgentRun[]
 
   @@index([ownerId])
   @@index([status])
@@ -3417,6 +3424,9 @@ enum FeatureCode {
   WEB_SEARCH
   KNOWLEDGE_GRAPH
   SYSTEM_ARCHITECTURE_EXPLORER
+  KNOWLEDGE_INTELLIGENCE
+  PROJECT_INTELLIGENCE
+  AI_AGENT
 }
 
 enum UsageMetric {
@@ -3595,6 +3605,259 @@ model UsageCounter {
   @@index([userId])
   @@index([subscriptionId])
   @@map("usage_counters")
+}
+
+// ==========================================
+// PHASE 78 — AI KNOWLEDGE INTELLIGENCE, PROJECT INTELLIGENCE & PROACTIVE AGENT PLATFORM
+// Purely additive: no existing model is modified. Every table here is new state produced by a
+// background analysis pass or an explicitly-approved agent action — nothing in this section is
+// read by any pre-Phase-78 code path, so a bug here cannot affect existing RAG/document/meeting/
+// billing behavior. See src/features/{knowledge-intelligence,project-intelligence,ai-agent}/.
+// ==========================================
+
+enum IntelligenceInsightType {
+  CONTRADICTION
+  STALE_KNOWLEDGE
+  PROJECT_RISK
+  BLOCKER
+  DEADLINE_RISK
+  TASK_MEETING_MISMATCH
+  RECOMMENDATION
+  OTHER
+}
+
+enum IntelligenceSeverity {
+  LOW
+  MEDIUM
+  HIGH
+  CRITICAL
+}
+
+enum ConfidenceBand {
+  LOW
+  MEDIUM
+  HIGH
+}
+
+enum InsightStatus {
+  NEW
+  UNDER_REVIEW
+  CONFIRMED
+  DISMISSED
+  RESOLVED
+}
+
+enum InsightReviewAction {
+  CONFIRM
+  DISMISS
+  RESOLVE
+  NOTE
+}
+
+// A single unified, evidence-backed AI insight — the presentation/workflow layer over both
+// existing detection (e.g. KnowledgeConflict, surfaced here as a CONTRADICTION insight) and new
+// Phase 78 detectors (freshness, project risk/blocker/deadline, task/meeting mismatch).
+model IntelligenceInsight {
+  id               String                  @id @default(uuid())
+  userId           String                  @map("user_id")
+  projectId        String?                 @map("project_id")
+  type             IntelligenceInsightType
+  severity         IntelligenceSeverity
+  title            String
+  description      String                  @db.Text
+  confidenceBand   ConfidenceBand          @map("confidence_band")
+  confidenceScore  Float?                  @map("confidence_score")
+  status           InsightStatus           @default(NEW)
+  detectionVersion String                  @map("detection_version")
+  metadata         Json?                   @default("{}")
+  createdAt        DateTime                @default(now()) @map("created_at")
+  updatedAt        DateTime                @updatedAt @map("updated_at")
+
+  user    User                  @relation(fields: [userId], references: [id], onDelete: Cascade)
+  project Project?              @relation(fields: [projectId], references: [id], onDelete: Cascade)
+  evidence IntelligenceEvidence[]
+  reviews  InsightReview[]
+
+  @@index([userId, status])
+  @@index([projectId, status])
+  @@index([type])
+  @@index([createdAt])
+  @@map("intelligence_insights")
+}
+
+// Evidence always points at a REAL existing record (documentId/meetingId/clickUpTaskId/
+// calendarEventId/knowledgeClaimId/...) via a polymorphic (sourceType, sourceId) pair rather
+// than a foreign key to any one table, since evidence legitimately spans many unrelated models.
+// This is deliberate — see insight.service.ts's evidence-gathering, which only ever writes rows
+// it can trace back to a record it just read, never a fabricated ID.
+model IntelligenceEvidence {
+  id              String    @id @default(uuid())
+  insightId       String    @map("insight_id")
+  sourceType      String    @map("source_type")
+  sourceId        String    @map("source_id")
+  snippet         String?   @db.Text
+  sourceTimestamp DateTime? @map("source_timestamp")
+  createdAt       DateTime  @default(now()) @map("created_at")
+
+  insight IntelligenceInsight @relation(fields: [insightId], references: [id], onDelete: Cascade)
+
+  @@index([insightId])
+  @@index([sourceType, sourceId])
+  @@map("intelligence_evidence")
+}
+
+// Append-only human review trail — rows are never updated or deleted, matching the spec's
+// "every action must create an immutable audit record" requirement (in addition to, not instead
+// of, the existing generic AuditLog, which also receives one entry per review action).
+model InsightReview {
+  id         String              @id @default(uuid())
+  insightId  String              @map("insight_id")
+  reviewerId String              @map("reviewer_id")
+  action     InsightReviewAction
+  note       String?             @db.Text
+  createdAt  DateTime            @default(now()) @map("created_at")
+
+  insight  IntelligenceInsight @relation(fields: [insightId], references: [id], onDelete: Cascade)
+  reviewer User                @relation(fields: [reviewerId], references: [id], onDelete: Cascade)
+
+  @@index([insightId])
+  @@index([reviewerId])
+  @@map("insight_reviews")
+}
+
+// One row per health computation (history/trend), not an in-place-updated row — "current"
+// health is simply the latest row for a project. Every dimension + the overall status is a
+// deterministic string derived from real counts (see project-health.service.ts), never a
+// free-floating AI-generated score.
+model ProjectHealthSnapshot {
+  id                  String   @id @default(uuid())
+  projectId           String   @map("project_id")
+  overallStatus       String   @map("overall_status")
+  scheduleHealth      String   @map("schedule_health")
+  taskHealth          String   @map("task_health")
+  riskHealth          String   @map("risk_health")
+  blockerHealth       String   @map("blocker_health")
+  documentationHealth String   @map("documentation_health")
+  meetingHealth       String   @map("meeting_health")
+  modelVersion        String   @map("model_version")
+  factors             Json     @default("{}")
+  createdAt           DateTime @default(now()) @map("created_at")
+
+  project Project @relation(fields: [projectId], references: [id], onDelete: Cascade)
+
+  @@index([projectId, createdAt])
+  @@map("project_health_snapshots")
+}
+
+enum AgentRunStatus {
+  PLANNING
+  AWAITING_APPROVAL
+  EXECUTING
+  COMPLETED
+  FAILED
+  REJECTED
+  CANCELLED
+}
+
+enum AgentRiskLevel {
+  READ_ONLY
+  LOW
+  MEDIUM
+  HIGH
+  CRITICAL
+}
+
+enum AgentStepStatus {
+  PENDING
+  APPROVED
+  REJECTED
+  EXECUTING
+  SUCCEEDED
+  FAILED
+  SKIPPED
+}
+
+enum AgentApprovalDecision {
+  PENDING
+  APPROVED
+  REJECTED
+}
+
+// A user-submitted goal and the AI-generated plan produced for it. The plan itself
+// (bounded, validated JSON — see ai-agent/planner/) is persisted on the run for observability;
+// each step additionally gets its own row for granular status/approval tracking.
+model AgentRun {
+  id            String         @id @default(uuid())
+  userId        String         @map("user_id")
+  projectId     String?        @map("project_id")
+  goal          String         @db.Text
+  status        AgentRunStatus @default(PLANNING)
+  planJson      Json?          @map("plan_json")
+  resultSummary String?        @db.Text @map("result_summary")
+  createdAt     DateTime       @default(now()) @map("created_at")
+  updatedAt     DateTime       @updatedAt @map("updated_at")
+
+  user  User            @relation(fields: [userId], references: [id], onDelete: Cascade)
+  project Project?      @relation(fields: [projectId], references: [id], onDelete: Cascade)
+  steps AgentPlanStep[]
+
+  @@index([userId, status])
+  @@index([projectId])
+  @@map("agent_runs")
+}
+
+// Approval state is folded directly onto the step (rather than a separate 1:1 table) — a step
+// IS the unit of approval; `approvalDecision` defaults PENDING for every step, but only
+// `requiresApproval=true` steps ever block on it (READ_ONLY steps may auto-execute, see
+// orchestrator.service.ts).
+model AgentPlanStep {
+  id                 String                 @id @default(uuid())
+  agentRunId         String                 @map("agent_run_id")
+  stepIndex          Int                    @map("step_index")
+  toolId             String                 @map("tool_id")
+  description        String                 @db.Text
+  inputJson          Json?                  @map("input_json")
+  riskLevel          AgentRiskLevel         @map("risk_level")
+  requiresApproval   Boolean                @map("requires_approval")
+  status             AgentStepStatus        @default(PENDING)
+  approvalDecision    AgentApprovalDecision @default(PENDING) @map("approval_decision")
+  approverId          String?               @map("approver_id")
+  approvalDecidedAt   DateTime?             @map("approval_decided_at")
+  approvalNote        String?               @db.Text @map("approval_note")
+  outputJson         Json?                  @map("output_json")
+  errorMessage       String?                @db.Text @map("error_message")
+  startedAt          DateTime?              @map("started_at")
+  completedAt        DateTime?              @map("completed_at")
+
+  agentRun AgentRun @relation(fields: [agentRunId], references: [id], onDelete: Cascade)
+  approver User?                  @relation(fields: [approverId], references: [id], onDelete: SetNull)
+  toolExecutions AgentToolExecution[]
+
+  @@unique([agentRunId, stepIndex])
+  @@index([agentRunId])
+  @@index([status])
+  @@map("agent_plan_steps")
+}
+
+// Every actual tool invocation attempt (including retries) gets its own row, keyed by an
+// idempotency key so a retried/duplicated execution request can never run a state-changing
+// tool (e.g. "create ClickUp task") twice.
+model AgentToolExecution {
+  id             String   @id @default(uuid())
+  agentPlanStepId String  @map("agent_plan_step_id")
+  toolId         String   @map("tool_id")
+  idempotencyKey String   @unique @map("idempotency_key")
+  requestJson    Json     @map("request_json")
+  responseJson   Json?    @map("response_json")
+  success        Boolean
+  errorMessage   String?  @db.Text @map("error_message")
+  durationMs     Int?     @map("duration_ms")
+  createdAt      DateTime @default(now()) @map("created_at")
+
+  step AgentPlanStep @relation(fields: [agentPlanStepId], references: [id], onDelete: Cascade)
+
+  @@index([agentPlanStepId])
+  @@map("agent_tool_executions")
 }
 
 

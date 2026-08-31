@@ -124,4 +124,75 @@ export async function rejectStep(
   return updated;
 }
 
-export const approvalService = { approveStep, rejectStep };
+export async function editStepInput(
+  userId: string,
+  runId: string,
+  stepIndexOrStepId: number | string,
+  newInput: Record<string, unknown>,
+  newDescription?: string
+): Promise<AgentPlanStep> {
+  const run = await agentRunService.getRun(userId, runId);
+  const step = resolveStep(run.steps, stepIndexOrStepId);
+
+  if (step.status !== 'PENDING') {
+    throw new ValidationError(`Step ${step.stepIndex} is not in PENDING status (status: ${step.status}) and cannot be edited.`);
+  }
+
+  const updated = await prisma.agentPlanStep.update({
+    where: { id: step.id },
+    data: {
+      inputJson: newInput as any,
+      ...(newDescription && newDescription.trim() ? { description: newDescription.trim() } : {})
+    }
+  });
+
+  await auditService.logEvent({
+    actorId: userId,
+    action: 'AGENT_STEP_EDITED',
+    targetType: 'AGENT_PLAN_STEP',
+    targetId: step.id,
+    projectId: run.projectId,
+    details: { runId: run.id, stepIndex: step.stepIndex, toolId: step.toolId }
+  });
+
+  return updated;
+}
+
+export async function approveAllSteps(
+  approverId: string,
+  runId: string
+): Promise<AgentPlanStep[]> {
+  const run = await agentRunService.getRun(approverId, runId);
+  const pendingSteps = run.steps.filter((s) => s.status === 'PENDING');
+
+  if (pendingSteps.length === 0) {
+    return run.steps;
+  }
+
+  await prisma.agentPlanStep.updateMany({
+    where: {
+      agentRunId: run.id,
+      status: 'PENDING'
+    },
+    data: {
+      approvalDecision: 'APPROVED',
+      approverId,
+      approvalDecidedAt: new Date(),
+      status: 'APPROVED'
+    }
+  });
+
+  await auditService.logEvent({
+    actorId: approverId,
+    action: 'AGENT_ALL_STEPS_APPROVED',
+    targetType: 'AGENT_RUN',
+    targetId: run.id,
+    projectId: run.projectId,
+    details: { approvedStepCount: pendingSteps.length }
+  });
+
+  const refreshedRun = await agentRunService.getRun(approverId, runId);
+  return refreshedRun.steps;
+}
+
+export const approvalService = { approveStep, rejectStep, editStepInput, approveAllSteps };

@@ -6,6 +6,7 @@ import { SecurityError } from '@/errors';
 import { agentRunService, AgentRunWithSteps } from './agent-run.service';
 import { getRegisteredTool } from './tool-registry';
 import { AgentToolContext } from './ai-agent.types';
+import { agentNotificationService } from './agent-notification.service';
 
 /**
  * Phase 78C — the execution engine.
@@ -263,6 +264,8 @@ export async function executeRun(userId: string, runId: string): Promise<AgentRu
         details: { reason: 'STEP_FAILED', stepIndex: step.stepIndex, toolId: step.toolId }
       });
 
+      agentNotificationService.notifyExecutionFailed(run).catch(() => {});
+
       return run;
     }
   }
@@ -281,6 +284,8 @@ export async function executeRun(userId: string, runId: string): Promise<AgentRu
     projectId: finalRun.projectId,
     details: { stepCount: orderedSteps.length }
   });
+
+  agentNotificationService.notifyExecutionCompleted(finalRun).catch(() => {});
 
   return finalRun;
 }

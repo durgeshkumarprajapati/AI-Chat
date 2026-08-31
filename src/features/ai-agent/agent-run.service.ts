@@ -3,6 +3,7 @@ import { prisma } from '@/lib/prisma';
 import { auditService } from '@/features/audit/audit.service';
 import { NotFoundError, ValidationError } from '@/errors';
 import { plannerService } from './planner.service';
+import { agentNotificationService } from './agent-notification.service';
 
 export type AgentRunWithSteps = AgentRun & { steps: AgentPlanStep[] };
 
@@ -55,6 +56,8 @@ export async function createRun(userId: string, goal: string, projectId?: string
     projectId: projectId || null,
     details: { goal, stepCount: steps.length, status: initialStatus }
   });
+
+  agentNotificationService.notifyPlanCreated(run).catch(() => {});
 
   return run;
 }

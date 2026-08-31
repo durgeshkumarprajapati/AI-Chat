@@ -10,10 +10,22 @@ export const QUEUES = {
   AI_INTELLIGENCE_DAILY: 'ai-intelligence-daily',
   AI_INTELLIGENCE_WEEKLY: 'ai-intelligence-weekly',
   NOTIFICATION_DISPATCH: 'notification-dispatch',
-  NOTIFICATION_EMAIL: 'notification-email'
+  NOTIFICATION_EMAIL: 'notification-email',
+  AI_AGENT_EXECUTION: 'ai-agent-execution'
 } as const;
 
 export type QueueName = typeof QUEUES[keyof typeof QUEUES];
+
+export interface AIAgentExecutionJobPayload {
+  jobType: 'AI_AGENT_EXECUTION';
+  version: number;
+  jobId: string;
+  runId: string;
+  userId: string;
+  projectId?: string | null;
+  attempt: number;
+  createdAt: string;
+}
 
 export interface DocumentProcessingJob {
   jobType: 'DOCUMENT_PROCESSING';

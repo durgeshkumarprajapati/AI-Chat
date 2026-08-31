@@ -1842,6 +1842,108 @@ export const CONFIG_REGISTRY: Record<string, RegistryConfigItem> = {
     isHighImpact: false,
     requiresRestart: false
   },
+  AI_AGENT_ENABLED: {
+    key: 'AI_AGENT_ENABLED',
+    valueType: ConfigValueType.BOOLEAN,
+    category: ConfigCategory.FEATURE_FLAG,
+    defaultValue: 'false',
+    purpose: 'Master flag enabling Phase 87 Production AI Agent Platform operations. Refuses plan creation when false.',
+    description: 'Enable AI Agent platform.',
+    isEditable: true,
+    isHighImpact: true,
+    requiresRestart: false
+  },
+  AI_AGENT_MAX_STEPS: {
+    key: 'AI_AGENT_MAX_STEPS',
+    valueType: ConfigValueType.NUMBER,
+    category: ConfigCategory.FEATURE_FLAG,
+    defaultValue: '10',
+    purpose: 'Maximum number of steps allowed in a single AI Agent plan.',
+    description: 'Maximum plan steps.',
+    isEditable: true,
+    isHighImpact: true,
+    requiresRestart: false,
+    minValue: 1,
+    maxValue: 50
+  },
+  AI_AGENT_MAX_TOOL_CALLS: {
+    key: 'AI_AGENT_MAX_TOOL_CALLS',
+    valueType: ConfigValueType.NUMBER,
+    category: ConfigCategory.PERFORMANCE,
+    defaultValue: '20',
+    purpose: 'Maximum number of total tool execution attempts per AI Agent session.',
+    description: 'Maximum tool calls per session.',
+    isEditable: true,
+    isHighImpact: false,
+    requiresRestart: false,
+    minValue: 1,
+    maxValue: 100
+  },
+  AI_AGENT_MAX_EXECUTION_TIME_MS: {
+    key: 'AI_AGENT_MAX_EXECUTION_TIME_MS',
+    valueType: ConfigValueType.NUMBER,
+    category: ConfigCategory.PERFORMANCE,
+    defaultValue: '60000',
+    purpose: 'Maximum total execution time budget in milliseconds for an AI Agent run.',
+    description: 'Agent run maximum execution time.',
+    isEditable: true,
+    isHighImpact: false,
+    requiresRestart: false,
+    minValue: 5000,
+    maxValue: 600000
+  },
+  AI_AGENT_MAX_RETRIES: {
+    key: 'AI_AGENT_MAX_RETRIES',
+    valueType: ConfigValueType.NUMBER,
+    category: ConfigCategory.PERFORMANCE,
+    defaultValue: '2',
+    purpose: 'Maximum number of retries for transient tool execution failures.',
+    description: 'Agent tool execution retries.',
+    isEditable: true,
+    isHighImpact: false,
+    requiresRestart: false,
+    minValue: 0,
+    maxValue: 5
+  },
+  AI_AGENT_MAX_CONTEXT_TOKENS: {
+    key: 'AI_AGENT_MAX_CONTEXT_TOKENS',
+    valueType: ConfigValueType.NUMBER,
+    category: ConfigCategory.PERFORMANCE,
+    defaultValue: '4096',
+    purpose: 'Maximum context token limit for agent prompt assembly.',
+    description: 'Agent maximum context tokens.',
+    isEditable: true,
+    isHighImpact: false,
+    requiresRestart: false,
+    minValue: 512,
+    maxValue: 32768
+  },
+  AI_AGENT_APPROVAL_TIMEOUT_MS: {
+    key: 'AI_AGENT_APPROVAL_TIMEOUT_MS',
+    valueType: ConfigValueType.NUMBER,
+    category: ConfigCategory.PERFORMANCE,
+    defaultValue: '1800000',
+    purpose: 'Maximum duration in milliseconds a plan step can await human approval before expiring.',
+    description: 'Agent step approval timeout.',
+    isEditable: true,
+    isHighImpact: false,
+    requiresRestart: false,
+    minValue: 60000,
+    maxValue: 86400000
+  },
+  AI_AGENT_RATE_LIMIT_PER_HOUR: {
+    key: 'AI_AGENT_RATE_LIMIT_PER_HOUR',
+    valueType: ConfigValueType.NUMBER,
+    category: ConfigCategory.SECURITY,
+    defaultValue: '50',
+    purpose: 'Maximum number of AI Agent runs a user may create per hour.',
+    description: 'Agent hourly run rate limit.',
+    isEditable: true,
+    isHighImpact: false,
+    requiresRestart: false,
+    minValue: 1,
+    maxValue: 1000
+  },
 
   // SARVAM AI INDIC LANGUAGE & DOCUMENT INTELLIGENCE
   SARVAM_ENABLED: {

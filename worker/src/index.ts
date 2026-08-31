@@ -11,11 +11,13 @@ import { sarvamTranslationProcessor } from './processors/sarvam-translation.proc
 import { aiIntelligenceProcessor } from './processors/ai-intelligence.processor.js';
 import { notificationDispatchProcessor } from './processors/notification-dispatch.processor.js';
 import { notificationEmailProcessor } from './processors/notification-email.processor.js';
+import { aiAgentExecutionProcessor } from './processors/ai-agent-execution.processor.js';
 import {
   MultimodalJobPayload,
   AIIntelligenceJobPayload,
   NotificationDispatchJobPayload,
   NotificationEmailJobPayload,
+  AIAgentExecutionJobPayload,
   QUEUES,
   rabbitmq
 } from '@/lib/rabbitmq';
@@ -37,6 +39,7 @@ const AI_INTELLIGENCE_DAILY_QUEUE_NAME = QUEUES.AI_INTELLIGENCE_DAILY;
 const AI_INTELLIGENCE_WEEKLY_QUEUE_NAME = QUEUES.AI_INTELLIGENCE_WEEKLY;
 const NOTIFICATION_DISPATCH_QUEUE_NAME = QUEUES.NOTIFICATION_DISPATCH;
 const NOTIFICATION_EMAIL_QUEUE_NAME = QUEUES.NOTIFICATION_EMAIL;
+const AI_AGENT_EXECUTION_QUEUE_NAME = QUEUES.AI_AGENT_EXECUTION;
 const RABBITMQ_URL = process.env.RABBITMQ_URL || 'amqp://guest:guest@localhost:5672';
 const MAX_RETRIES = 3;
 const TIMEOUT_MINUTES = process.env.DOCUMENT_PROCESSING_TIMEOUT_MINUTES
@@ -54,6 +57,7 @@ let aiIntelligenceDailyConsumerTag: string | null = null;
 let aiIntelligenceWeeklyConsumerTag: string | null = null;
 let notificationDispatchConsumerTag: string | null = null;
 let notificationEmailConsumerTag: string | null = null;
+let aiAgentExecutionConsumerTag: string | null = null;
 let isShuttingDown = false;
 let activeInFlightJobs = 0;
 
@@ -397,6 +401,46 @@ export async function startWorker() {
     );
     notificationEmailConsumerTag = notificationEmailConsumeResult.consumerTag;
 
+    // 8. Consume ai-agent-execution (channel2).
+    await channel2.assertQueue(AI_AGENT_EXECUTION_QUEUE_NAME, { durable: true });
+    const aiAgentExecutionConsumeResult = await channel2.consume(
+      AI_AGENT_EXECUTION_QUEUE_NAME,
+      async (msg: ConsumeMessage | null) => {
+        if (!msg || isShuttingDown) return;
+
+        activeInFlightJobs++;
+        let payload: AIAgentExecutionJobPayload | null = null;
+
+        try {
+          payload = JSON.parse(msg.content.toString()) as AIAgentExecutionJobPayload;
+          console.log(`[Worker-AIAgentExecution] Job received for run: ${payload.runId} (Job ID: ${payload.jobId})`);
+
+          const result = await aiAgentExecutionProcessor.process(payload);
+
+          if (result.status === 'SUCCESS' || result.status === 'STALE_DISCARD' || result.action === 'PERMANENT_ERROR') {
+            channel2?.ack(msg);
+          } else if (result.action === 'TRANSIENT_ERROR') {
+            const attemptCount = payload.attempt || 1;
+            if (attemptCount >= MAX_RETRIES) {
+              console.error(`[Worker-AIAgentExecution] Max retries (${MAX_RETRIES}) reached for job: ${payload.jobId}`);
+              channel2?.ack(msg);
+            } else {
+              channel2?.nack(msg, false, true);
+            }
+          }
+        } catch (error) {
+          console.error('[Worker-AIAgentExecution] Unexpected job execution error:', error instanceof Error ? error.message : error);
+          if (msg && channel2) {
+            channel2.ack(msg);
+          }
+        } finally {
+          activeInFlightJobs--;
+        }
+      },
+      { noAck: false }
+    );
+    aiAgentExecutionConsumerTag = aiAgentExecutionConsumeResult.consumerTag;
+
     // Start periodic Google Calendar Sync Retry loop
     const syncInterval = setInterval(async () => {
       if (isShuttingDown) return;
@@ -616,6 +660,10 @@ export async function shutdownWorker(signal?: string) {
     if (notificationEmailConsumerTag && channel2) {
       await channel2.cancel(notificationEmailConsumerTag).catch(() => {});
       notificationEmailConsumerTag = null;
+    }
+    if (aiAgentExecutionConsumerTag && channel2) {
+      await channel2.cancel(aiAgentExecutionConsumerTag).catch(() => {});
+      aiAgentExecutionConsumerTag = null;
     }
     console.log('[Worker] RabbitMQ consumers stopped.');
 

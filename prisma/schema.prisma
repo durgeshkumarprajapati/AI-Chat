@@ -156,6 +156,8 @@ model User {
   agentApprovalsGiven           AgentPlanStep[]
   sarvamDigitisationRuns        SarvamDigitisationRun[]
   documentTranslations          DocumentTranslation[]
+  aiIntelligenceSnapshots       AIIntelligenceSnapshot[]
+  aiIntelligencePreference      AIIntelligencePreference?
 
   @@index([email])
   @@map("users")
@@ -2020,6 +2022,7 @@ model Project {
   intelligenceInsights   IntelligenceInsight[]
   healthSnapshots        ProjectHealthSnapshot[]
   agentRuns              AgentRun[]
+  aiIntelligenceSnapshots AIIntelligenceSnapshot[]
 
   @@index([ownerId])
   @@index([status])
@@ -3486,6 +3489,7 @@ enum FeatureCode {
   KNOWLEDGE_INTELLIGENCE
   PROJECT_INTELLIGENCE
   AI_AGENT
+  AI_WORKSPACE_INTELLIGENCE
 }
 
 enum UsageMetric {
@@ -3683,6 +3687,11 @@ enum IntelligenceInsightType {
   TASK_MEETING_MISMATCH
   RECOMMENDATION
   OTHER
+  // Phase 85 — AI Workspace Intelligence (additive; see AIIntelligenceSnapshot below).
+  KNOWLEDGE_CHANGE
+  MEETING_FOLLOWUP
+  TASK
+  DECISION
 }
 
 enum IntelligenceSeverity {
@@ -3729,11 +3738,17 @@ model IntelligenceInsight {
   status           InsightStatus           @default(NEW)
   detectionVersion String                  @map("detection_version")
   metadata         Json?                   @default("{}")
+  // Phase 85 — additive: links an insight back to the AI Workspace Intelligence snapshot that
+  // produced it (nullable, so every pre-existing Phase 78 insight row is unaffected), plus the
+  // claim-type classification (FACT/INFERENCE/RECOMMENDATION) for that generation.
+  snapshotId       String?                 @map("snapshot_id")
+  claimType        IntelligenceClaimType   @default(INFERENCE) @map("claim_type")
   createdAt        DateTime                @default(now()) @map("created_at")
   updatedAt        DateTime                @updatedAt @map("updated_at")
 
-  user    User                  @relation(fields: [userId], references: [id], onDelete: Cascade)
-  project Project?              @relation(fields: [projectId], references: [id], onDelete: Cascade)
+  user     User                     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  project  Project?                 @relation(fields: [projectId], references: [id], onDelete: Cascade)
+  snapshot AIIntelligenceSnapshot?  @relation(fields: [snapshotId], references: [id], onDelete: SetNull)
   evidence IntelligenceEvidence[]
   reviews  InsightReview[]
 
@@ -3741,6 +3756,7 @@ model IntelligenceInsight {
   @@index([projectId, status])
   @@index([type])
   @@index([createdAt])
+  @@index([snapshotId])
   @@map("intelligence_insights")
 }
 
@@ -3806,6 +3822,79 @@ model ProjectHealthSnapshot {
 
   @@index([projectId, createdAt])
   @@map("project_health_snapshots")
+}
+
+// ==========================================
+// PHASE 85 — AI WORKSPACE INTELLIGENCE
+// Purely additive over Phase 78: a proactive daily/weekly narrative briefing layer built on top
+// of already-persisted IntelligenceInsight/ProjectHealthSnapshot rows (never re-derives them).
+// See src/features/ai-intelligence/.
+// ==========================================
+
+enum IntelligenceClaimType {
+  FACT
+  INFERENCE
+  RECOMMENDATION
+}
+
+enum AIIntelligenceSnapshotType {
+  DAILY
+  WEEKLY
+}
+
+enum AIIntelligenceSnapshotStatus {
+  PENDING
+  GENERATING
+  READY
+  FAILED
+}
+
+model AIIntelligenceSnapshot {
+  id             String   @id @default(uuid())
+  userId         String   @map("user_id")
+  projectId      String?  @map("project_id")
+  type           AIIntelligenceSnapshotType
+  periodStart    DateTime @map("period_start")
+  periodEnd      DateTime @map("period_end")
+  status         AIIntelligenceSnapshotStatus @default(PENDING)
+  summary        String?  @db.Text
+  structuredData Json     @default("{}") @map("structured_data")
+  modelProvider  String?  @map("model_provider")
+  modelName      String?  @map("model_name")
+  version        Int      @default(1)
+  generatedAt    DateTime? @map("generated_at")
+  expiresAt      DateTime? @map("expires_at")
+  errorMessage   String?  @db.Text @map("error_message")
+  createdAt      DateTime @default(now()) @map("created_at")
+  updatedAt      DateTime @updatedAt @map("updated_at")
+
+  user     User                  @relation(fields: [userId], references: [id], onDelete: Cascade)
+  project  Project?              @relation(fields: [projectId], references: [id], onDelete: Cascade)
+  insights IntelligenceInsight[]
+
+  @@unique([userId, projectId, type, periodStart])
+  @@index([userId, type])
+  @@index([projectId, type])
+  @@index([status])
+  @@map("ai_intelligence_snapshots")
+}
+
+model AIIntelligencePreference {
+  id              String    @id @default(uuid())
+  userId          String    @unique @map("user_id")
+  dailyEnabled    Boolean   @default(true) @map("daily_enabled")
+  weeklyEnabled   Boolean   @default(true) @map("weekly_enabled")
+  preferredHour   Int       @default(8) @map("preferred_hour")
+  timezone        String    @default("UTC")
+  deliveryMode    String    @default("IN_APP") @map("delivery_mode")
+  lastDailyRunAt  DateTime? @map("last_daily_run_at")
+  lastWeeklyRunAt DateTime? @map("last_weekly_run_at")
+  createdAt       DateTime  @default(now()) @map("created_at")
+  updatedAt       DateTime  @updatedAt @map("updated_at")
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@map("ai_intelligence_preferences")
 }
 
 enum AgentRunStatus {

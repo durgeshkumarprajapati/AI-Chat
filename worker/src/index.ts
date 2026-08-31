@@ -8,8 +8,11 @@ import { workerCalendarSyncProcessor } from './processors/calendar-sync.processo
 import { billingReconciliationProcessor } from './processors/billing-reconciliation.processor.js';
 import { projectIntelligenceAnalysisProcessor } from './processors/project-intelligence-analysis.processor.js';
 import { sarvamTranslationProcessor } from './processors/sarvam-translation.processor.js';
-import { MultimodalJobPayload, QUEUES } from '@/lib/rabbitmq';
+import { aiIntelligenceProcessor } from './processors/ai-intelligence.processor.js';
+import { MultimodalJobPayload, AIIntelligenceJobPayload, QUEUES, rabbitmq } from '@/lib/rabbitmq';
 import { configService } from '@/features/config';
+import { aiIntelligenceSchedulerService } from '@/features/ai-intelligence/scheduling/ai-intelligence-scheduler.service';
+import { randomUUID } from 'crypto';
 import { prisma } from './lib/prisma.js';
 
 dotenv.config({ path: '../.env' });
@@ -19,6 +22,8 @@ const QUEUE_NAME = 'document-processing';
 const KG_QUEUE_NAME = 'knowledge-graph-extraction';
 const MULTIMODAL_QUEUE_NAME = QUEUES.DOCUMENT_MULTIMODAL_EXTRACTION;
 const SARVAM_QUEUE_NAME = QUEUES.SARVAM_TRANSLATION;
+const AI_INTELLIGENCE_DAILY_QUEUE_NAME = QUEUES.AI_INTELLIGENCE_DAILY;
+const AI_INTELLIGENCE_WEEKLY_QUEUE_NAME = QUEUES.AI_INTELLIGENCE_WEEKLY;
 const RABBITMQ_URL = process.env.RABBITMQ_URL || 'amqp://guest:guest@localhost:5672';
 const MAX_RETRIES = 3;
 const TIMEOUT_MINUTES = process.env.DOCUMENT_PROCESSING_TIMEOUT_MINUTES
@@ -32,6 +37,8 @@ let consumerTag: string | null = null;
 let kgConsumerTag: string | null = null;
 let multimodalConsumerTag: string | null = null;
 let sarvamConsumerTag: string | null = null;
+let aiIntelligenceDailyConsumerTag: string | null = null;
+let aiIntelligenceWeeklyConsumerTag: string | null = null;
 let isShuttingDown = false;
 let activeInFlightJobs = 0;
 
@@ -214,6 +221,86 @@ export async function startWorker() {
     );
     sarvamConsumerTag = sarvamConsumeRes.consumerTag;
 
+    // 5. Consume ai-intelligence-daily / ai-intelligence-weekly (channel2 — same isolation as
+    // multimodal/sarvam). Mirrors the KG-extraction consumer's ack/nack-with-retry pattern exactly.
+    await channel2.assertQueue(AI_INTELLIGENCE_DAILY_QUEUE_NAME, { durable: true });
+    const aiDailyConsumeResult = await channel2.consume(
+      AI_INTELLIGENCE_DAILY_QUEUE_NAME,
+      async (msg: ConsumeMessage | null) => {
+        if (!msg || isShuttingDown) return;
+
+        activeInFlightJobs++;
+        let payload: AIIntelligenceJobPayload | null = null;
+
+        try {
+          payload = JSON.parse(msg.content.toString()) as AIIntelligenceJobPayload;
+          console.log(`[Worker-AIIntelligence] Daily job received for user: ${payload.userId} (Job ID: ${payload.jobId})`);
+
+          const result = await aiIntelligenceProcessor.process(payload);
+
+          if (result.status === 'SUCCESS' || result.status === 'STALE_DISCARD' || result.action === 'PERMANENT_ERROR') {
+            channel2?.ack(msg);
+          } else if (result.action === 'TRANSIENT_ERROR') {
+            const attemptCount = payload.attempt || 1;
+            if (attemptCount >= MAX_RETRIES) {
+              console.error(`[Worker-AIIntelligence] Max retries (${MAX_RETRIES}) reached for daily job: ${payload.jobId}`);
+              channel2?.ack(msg);
+            } else {
+              channel2?.nack(msg, false, true);
+            }
+          }
+        } catch (error) {
+          console.error('[Worker-AIIntelligence] Unexpected daily job execution error:', error instanceof Error ? error.message : error);
+          if (msg && channel2) {
+            channel2.ack(msg);
+          }
+        } finally {
+          activeInFlightJobs--;
+        }
+      },
+      { noAck: false }
+    );
+    aiIntelligenceDailyConsumerTag = aiDailyConsumeResult.consumerTag;
+
+    await channel2.assertQueue(AI_INTELLIGENCE_WEEKLY_QUEUE_NAME, { durable: true });
+    const aiWeeklyConsumeResult = await channel2.consume(
+      AI_INTELLIGENCE_WEEKLY_QUEUE_NAME,
+      async (msg: ConsumeMessage | null) => {
+        if (!msg || isShuttingDown) return;
+
+        activeInFlightJobs++;
+        let payload: AIIntelligenceJobPayload | null = null;
+
+        try {
+          payload = JSON.parse(msg.content.toString()) as AIIntelligenceJobPayload;
+          console.log(`[Worker-AIIntelligence] Weekly job received for user: ${payload.userId} (Job ID: ${payload.jobId})`);
+
+          const result = await aiIntelligenceProcessor.process(payload);
+
+          if (result.status === 'SUCCESS' || result.status === 'STALE_DISCARD' || result.action === 'PERMANENT_ERROR') {
+            channel2?.ack(msg);
+          } else if (result.action === 'TRANSIENT_ERROR') {
+            const attemptCount = payload.attempt || 1;
+            if (attemptCount >= MAX_RETRIES) {
+              console.error(`[Worker-AIIntelligence] Max retries (${MAX_RETRIES}) reached for weekly job: ${payload.jobId}`);
+              channel2?.ack(msg);
+            } else {
+              channel2?.nack(msg, false, true);
+            }
+          }
+        } catch (error) {
+          console.error('[Worker-AIIntelligence] Unexpected weekly job execution error:', error instanceof Error ? error.message : error);
+          if (msg && channel2) {
+            channel2.ack(msg);
+          }
+        } finally {
+          activeInFlightJobs--;
+        }
+      },
+      { noAck: false }
+    );
+    aiIntelligenceWeeklyConsumerTag = aiWeeklyConsumeResult.consumerTag;
+
     // Start periodic Google Calendar Sync Retry loop
     const syncInterval = setInterval(async () => {
       if (isShuttingDown) return;
@@ -251,6 +338,61 @@ export async function startWorker() {
       }
     }, intelligenceAnalysisIntervalMs);
     intelligenceInterval.unref();
+
+    // Phase 85 — periodic AI Workspace Intelligence scheduler tick: finds users due for a daily/
+    // weekly briefing (per their own AIIntelligencePreference row/timezone/preferredHour) and
+    // enqueues one job per due user onto the new queues. A failure here never affects any other
+    // worker job; the scheduling-layer "due" check is a best-effort filter — generateSnapshot's
+    // own DB-unique-key check is the authoritative idempotency gate (see scheduler service docs).
+    const aiIntelligenceSchedulerIntervalMs = await configService.getNumber('AI_INTELLIGENCE_SCHEDULER_INTERVAL_MS', 900000);
+    const aiIntelligenceSchedulerInterval = setInterval(async () => {
+      if (isShuttingDown) return;
+      try {
+        const aiIntelligenceEnabled = await configService.getBoolean('AI_INTELLIGENCE_ENABLED', false);
+        if (!aiIntelligenceEnabled) return;
+
+        const now = new Date();
+        const [dueDaily, dueWeekly] = await Promise.all([
+          aiIntelligenceSchedulerService.findUsersDueForDaily(now),
+          aiIntelligenceSchedulerService.findUsersDueForWeekly(now)
+        ]);
+
+        for (const userId of dueDaily) {
+          try {
+            await rabbitmq.publishToQueue<AIIntelligenceJobPayload>(QUEUES.AI_INTELLIGENCE_DAILY, {
+              jobType: 'AI_INTELLIGENCE_DAILY',
+              version: 1,
+              jobId: randomUUID(),
+              userId,
+              projectId: null,
+              attempt: 1,
+              createdAt: new Date().toISOString()
+            });
+          } catch (err) {
+            console.error(`[Worker] Failed to enqueue daily AI Intelligence job for user ${userId}:`, err);
+          }
+        }
+
+        for (const userId of dueWeekly) {
+          try {
+            await rabbitmq.publishToQueue<AIIntelligenceJobPayload>(QUEUES.AI_INTELLIGENCE_WEEKLY, {
+              jobType: 'AI_INTELLIGENCE_WEEKLY',
+              version: 1,
+              jobId: randomUUID(),
+              userId,
+              projectId: null,
+              attempt: 1,
+              createdAt: new Date().toISOString()
+            });
+          } catch (err) {
+            console.error(`[Worker] Failed to enqueue weekly AI Intelligence job for user ${userId}:`, err);
+          }
+        }
+      } catch (err) {
+        console.error('[Worker] Periodic AI Workspace Intelligence scheduler error:', err);
+      }
+    }, aiIntelligenceSchedulerIntervalMs);
+    aiIntelligenceSchedulerInterval.unref();
   } catch (error) {
     console.error('[Worker] Failed to start worker:', error);
     process.exit(1);
@@ -279,6 +421,14 @@ export async function shutdownWorker(signal?: string) {
     if (sarvamConsumerTag && channel2) {
       await channel2.cancel(sarvamConsumerTag).catch(() => {});
       sarvamConsumerTag = null;
+    }
+    if (aiIntelligenceDailyConsumerTag && channel2) {
+      await channel2.cancel(aiIntelligenceDailyConsumerTag).catch(() => {});
+      aiIntelligenceDailyConsumerTag = null;
+    }
+    if (aiIntelligenceWeeklyConsumerTag && channel2) {
+      await channel2.cancel(aiIntelligenceWeeklyConsumerTag).catch(() => {});
+      aiIntelligenceWeeklyConsumerTag = null;
     }
     console.log('[Worker] RabbitMQ consumers stopped.');
 

@@ -57,12 +57,12 @@ export class SarvamConfigService {
       configService.getBoolean('SARVAM_FALLBACK_ENABLED').catch(() => true)
     ]);
 
-    const enabled = typeof enabledRaw === 'boolean' ? enabledRaw : isClientConfigured;
-    const digitisationEnabled = typeof digitisationEnabledRaw === 'boolean' ? digitisationEnabledRaw : isClientConfigured;
-    const translationEnabled = typeof translationEnabledRaw === 'boolean' ? translationEnabledRaw : isClientConfigured;
-    const textTranslationEnabled = typeof textTranslationEnabledRaw === 'boolean' ? textTranslationEnabledRaw : isClientConfigured;
-    const documentTranslationEnabled = typeof documentTranslationEnabledRaw === 'boolean' ? documentTranslationEnabledRaw : isClientConfigured;
-    const multilingualRagEnabled = typeof multilingualRagEnabledRaw === 'boolean' ? multilingualRagEnabledRaw : isClientConfigured;
+    const enabled = enabledRaw ?? isClientConfigured;
+    const digitisationEnabled = digitisationEnabledRaw ?? isClientConfigured;
+    const translationEnabled = translationEnabledRaw ?? isClientConfigured;
+    const textTranslationEnabled = textTranslationEnabledRaw ?? isClientConfigured;
+    const documentTranslationEnabled = documentTranslationEnabledRaw ?? isClientConfigured;
+    const multilingualRagEnabled = multilingualRagEnabledRaw ?? isClientConfigured;
 
     return {
       enabled,

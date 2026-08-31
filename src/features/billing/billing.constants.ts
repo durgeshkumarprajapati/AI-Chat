@@ -134,6 +134,12 @@ export const FEATURE_REGISTRY: Record<FeatureCode, FeatureRegistryEntry> = {
     name: 'Proactive AI Agent',
     description: 'Goal-directed AI planning with human-approved execution of ClickUp and Calendar actions.',
     category: 'PLATFORM'
+  },
+  AI_WORKSPACE_INTELLIGENCE: {
+    code: 'AI_WORKSPACE_INTELLIGENCE',
+    name: 'AI Workspace Intelligence',
+    description: 'Proactive daily/weekly AI briefings synthesizing tasks, meetings, documents, and existing intelligence insights.',
+    category: 'PLATFORM'
   }
 };
 
@@ -213,7 +219,8 @@ const PRO_ENABLED: FeatureCode[] = [
   'SYSTEM_ARCHITECTURE_EXPLORER',
   'KNOWLEDGE_INTELLIGENCE',
   'PROJECT_INTELLIGENCE',
-  'AI_AGENT'
+  'AI_AGENT',
+  'AI_WORKSPACE_INTELLIGENCE'
 ];
 
 /**

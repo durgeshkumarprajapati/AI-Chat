@@ -6,7 +6,9 @@ export const QUEUES = {
   DOCUMENT_PROCESSING: 'document-processing',
   KNOWLEDGE_GRAPH_EXTRACTION: 'knowledge-graph-extraction',
   DOCUMENT_MULTIMODAL_EXTRACTION: 'document-multimodal-extraction',
-  SARVAM_TRANSLATION: 'sarvam-translation'
+  SARVAM_TRANSLATION: 'sarvam-translation',
+  AI_INTELLIGENCE_DAILY: 'ai-intelligence-daily',
+  AI_INTELLIGENCE_WEEKLY: 'ai-intelligence-weekly'
 } as const;
 
 export type QueueName = typeof QUEUES[keyof typeof QUEUES];
@@ -55,6 +57,22 @@ export interface MultimodalJobPayload {
     remultimodal?: boolean;
     rekg?: boolean;
   };
+}
+
+/**
+ * Phase 85 — AI Workspace Intelligence worker job, published by the periodic scheduler tick
+ * (see worker/src/index.ts) once per user/queue for a user found due by
+ * aiIntelligenceSchedulerService.findUsersDueForDaily/Weekly. Consumed by
+ * worker/src/processors/ai-intelligence.processor.ts.
+ */
+export interface AIIntelligenceJobPayload {
+  jobType: 'AI_INTELLIGENCE_DAILY' | 'AI_INTELLIGENCE_WEEKLY';
+  version: number;
+  jobId: string;
+  userId: string;
+  projectId?: string | null;
+  attempt: number;
+  createdAt: string;
 }
 
 class RabbitMQService {

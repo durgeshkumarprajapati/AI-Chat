@@ -697,7 +697,13 @@ const serverEnvSchema = z
     // the Config registry, see src/features/billing/billing.registry.ts)
     RAZORPAY_KEY_ID: z.string().optional(),
     RAZORPAY_KEY_SECRET: z.string().optional(),
-    RAZORPAY_WEBHOOK_SECRET: z.string().optional()
+    RAZORPAY_WEBHOOK_SECRET: z.string().optional(),
+
+    // BROWSER PUSH NOTIFICATIONS — VAPID credentials (secrets only; PUSH_NOTIFICATIONS_ENABLED
+    // and other runtime behavior live in the Config registry)
+    VAPID_PUBLIC_KEY: z.string().optional(),
+    VAPID_PRIVATE_KEY: z.string().optional(),
+    VAPID_SUBJECT: z.string().default('mailto:admin@example.com')
   })
   .refine(
     (data) => {

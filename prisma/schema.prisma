@@ -149,6 +149,7 @@ model User {
   subscription                  UserSubscription?
   paymentTransactions           PaymentTransaction[]
   usageCounters                 UsageCounter[]
+  pushSubscriptions             PushSubscription[]
 
   @@index([email])
   @@map("users")
@@ -2685,6 +2686,26 @@ model NotificationPreference {
   user User @relation(fields: [userId], references: [id], onDelete: Cascade)
 
   @@map("notification_preferences")
+}
+
+// Browser Web Push subscriptions. A user may have several rows (one per browser/device they've
+// granted permission on); each maps 1:1 to a PushSubscription object the browser's Push API
+// returns from `registration.pushManager.subscribe()`. Independent of NotificationPreference —
+// per-type opt-out still applies before a push is ever attempted (see notification.service.ts).
+model PushSubscription {
+  id         String    @id @default(uuid())
+  userId     String    @map("user_id")
+  endpoint   String    @unique @db.Text
+  p256dh     String    @db.Text
+  auth       String    @db.Text
+  userAgent  String?   @map("user_agent")
+  createdAt  DateTime  @default(now()) @map("created_at")
+  lastUsedAt DateTime? @map("last_used_at")
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId])
+  @@map("push_subscriptions")
 }
 
 // ==========================================

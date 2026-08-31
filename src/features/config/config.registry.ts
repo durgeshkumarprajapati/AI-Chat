@@ -1132,6 +1132,32 @@ export const CONFIG_REGISTRY: Record<string, RegistryConfigItem> = {
     requiresRestart: true,
     minValue: 60000,
     maxValue: 86400000
+  },
+
+  // BROWSER PUSH NOTIFICATIONS
+  PUSH_NOTIFICATIONS_ENABLED: {
+    key: 'PUSH_NOTIFICATIONS_ENABLED',
+    valueType: ConfigValueType.BOOLEAN,
+    category: ConfigCategory.FEATURE_FLAG,
+    defaultValue: 'true',
+    purpose: 'Master switch for sending real browser Web Push notifications. When false, in-app notifications (bell/SSE) continue working exactly as before; only the OS-level push send is skipped.',
+    description: 'Browser push notifications master flag.',
+    isEditable: true,
+    isHighImpact: false,
+    requiresRestart: false
+  },
+  PUSH_NOTIFICATION_MAX_SUBSCRIPTIONS_PER_USER: {
+    key: 'PUSH_NOTIFICATION_MAX_SUBSCRIPTIONS_PER_USER',
+    valueType: ConfigValueType.NUMBER,
+    category: ConfigCategory.FEATURE_FLAG,
+    defaultValue: '10',
+    purpose: 'Maximum number of concurrent push subscriptions (browsers/devices) stored per user, preventing unbounded growth.',
+    description: 'Push subscription cap per user.',
+    isEditable: true,
+    isHighImpact: false,
+    requiresRestart: false,
+    minValue: 1,
+    maxValue: 50
   }
 };
 

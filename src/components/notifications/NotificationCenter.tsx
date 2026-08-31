@@ -1,6 +1,7 @@
 import React, { useState, useEffect, useCallback, useRef } from 'react';
 import Link from 'next/link';
 import { NotificationPayload, UserNotificationPreferences } from '@/features/notifications/notification.types';
+import { isPushSupported, getPushPermission, isPushSubscribedLocally, enablePushNotifications, disablePushNotifications } from '@/lib/push-notifications';
 
 export default function NotificationCenter() {
   const [isOpen, setIsOpen] = useState(false);
@@ -9,6 +10,8 @@ export default function NotificationCenter() {
   const [loading, setLoading] = useState(false);
   const [showPreferences, setShowPreferences] = useState(false);
   const [preferences, setPreferences] = useState<UserNotificationPreferences | null>(null);
+  const [pushSubscribed, setPushSubscribed] = useState(false);
+  const [pushBusy, setPushBusy] = useState(false);
 
   const containerRef = useRef<HTMLDivElement>(null);
 
@@ -147,6 +150,21 @@ export default function NotificationCenter() {
     }
   };
 
+  const handleTogglePush = async () => {
+    setPushBusy(true);
+    try {
+      if (pushSubscribed) {
+        const ok = await disablePushNotifications();
+        if (ok) setPushSubscribed(false);
+      } else {
+        const ok = await enablePushNotifications();
+        if (ok) setPushSubscribed(true);
+      }
+    } finally {
+      setPushBusy(false);
+    }
+  };
+
   const handleSavePreferences = async (updated: UserNotificationPreferences) => {
     try {
       const res = await fetch('/api/notifications/preferences', {
@@ -216,6 +234,7 @@ export default function NotificationCenter() {
               <button
                 onClick={() => {
                   fetchPreferences();
+                  isPushSubscribedLocally().then(setPushSubscribed);
                   setShowPreferences(true);
                 }}
                 className="text-slate-400 hover:text-slate-600 dark:hover:text-slate-200 text-xs p-1"
@@ -295,6 +314,31 @@ export default function NotificationCenter() {
                 ✕
               </button>
             </div>
+
+            {isPushSupported() && (
+              <div className="flex items-center justify-between p-3 rounded-xl bg-indigo-50/60 dark:bg-indigo-950/30 border border-indigo-100 dark:border-indigo-900/50">
+                <div className="pr-3">
+                  <p className="text-xs font-bold text-slate-900 dark:text-white">Browser Push Notifications</p>
+                  <p className="text-[11px] text-slate-500 dark:text-slate-400 mt-0.5">
+                    {getPushPermission() === 'denied'
+                      ? 'Blocked in your browser settings — re-enable notifications for this site to use this.'
+                      : 'Get native notifications on this device, even when this tab isn’t open.'}
+                  </p>
+                </div>
+                <button
+                  type="button"
+                  onClick={handleTogglePush}
+                  disabled={pushBusy || getPushPermission() === 'denied'}
+                  className={`shrink-0 px-3 py-1.5 rounded-lg text-[11px] font-bold transition disabled:opacity-50 ${
+                    pushSubscribed
+                      ? 'bg-slate-200 dark:bg-slate-800 text-slate-700 dark:text-slate-300 hover:bg-slate-300 dark:hover:bg-slate-700'
+                      : 'bg-indigo-600 hover:bg-indigo-500 text-white shadow-md'
+                  }`}
+                >
+                  {pushBusy ? '…' : pushSubscribed ? 'Enabled ✓' : 'Enable'}
+                </button>
+              </div>
+            )}
 
             <div className="space-y-3 text-xs">
               {[

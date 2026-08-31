@@ -2,6 +2,8 @@ import { prisma } from '@/lib/prisma';
 import { NotificationType, Prisma } from '@prisma/client';
 import { notificationPreferencesService } from './notification-preferences.service';
 import { notificationPubSubService } from './notification.pubsub.service';
+import { webPushService } from './web-push.service';
+import { configService } from '@/features/config';
 import { NotificationPayload } from './notification.types';
 
 export class NotificationService {
@@ -61,10 +63,40 @@ export class NotificationService {
       actor: notification.actor
     };
 
-    // Dispatch realtime SSE event
+    // Dispatch realtime SSE event (in-app bell/badge — always fires; independent of push).
     notificationPubSubService.publishNewNotification(data.userId, payload, unreadCount);
 
+    // Best-effort browser push — fire-and-forget so a push provider hiccup never delays or
+    // breaks notification creation, which has already succeeded above.
+    void this.dispatchPushNotification(payload);
+
     return payload;
+  }
+
+  private async dispatchPushNotification(payload: NotificationPayload): Promise<void> {
+    try {
+      const pushEnabled = await configService.getBoolean('PUSH_NOTIFICATIONS_ENABLED', true);
+      if (!pushEnabled || !webPushService.isConfigured()) return;
+
+      await webPushService.sendToUser(payload.userId, {
+        title: payload.title,
+        body: payload.body,
+        url: this.getDeepLinkUrl(payload),
+        tag: payload.type
+      });
+    } catch (err) {
+      console.warn('[NotificationService] Push dispatch failed safely:', err);
+    }
+  }
+
+  private getDeepLinkUrl(n: NotificationPayload): string {
+    if (n.channelId) {
+      return `/collab-chat?channel=${n.channelId}${n.messageId ? `&message=${n.messageId}` : ''}`;
+    }
+    if (n.type === 'ROADMAP_SHARED' && n.metadata?.roadmapId) {
+      return `/roadmaps/${n.metadata.roadmapId}`;
+    }
+    return '/collab-chat';
   }
 
   /**

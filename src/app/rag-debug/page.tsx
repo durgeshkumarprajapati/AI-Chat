@@ -148,37 +148,37 @@ export default function RAGDebugPage() {
   return (
     <div className="w-full max-w-[1600px] mx-auto space-y-8">
       {/* Header */}
-      <div className="flex flex-col md:flex-row md:items-center justify-between gap-4 border-b border-slate-800 pb-5">
+      <div className="flex flex-col md:flex-row md:items-center justify-between gap-4 border-b border-border pb-5">
         <div>
           <div className="flex items-center space-x-2">
             <span className="px-2.5 py-0.5 rounded-md bg-indigo-950 border border-indigo-800 text-indigo-400 font-mono text-[10px] uppercase font-bold">
               Observability
             </span>
-            <h1 className="text-2xl font-bold text-white tracking-tight">RAG Retrieval Inspector</h1>
+            <h1 className="text-2xl font-bold text-foreground tracking-tight">RAG Retrieval Inspector</h1>
           </div>
-          <p className="text-xs text-slate-400 mt-1">
+          <p className="text-xs text-muted-foreground mt-1">
             Inspect Hybrid Vector + Lexical Search candidates, Conversation Memory Query Rewriting, Local Reranker scores, and step-by-step latency metrics.
           </p>
         </div>
         <Link
           href="/chat"
-          className="px-4 py-2 rounded-xl bg-slate-900 border border-slate-800 hover:border-slate-700 text-xs font-semibold text-slate-300 hover:text-white transition-all flex items-center space-x-2 self-start md:self-auto"
+          className="px-4 py-2 rounded-xl bg-surface border border-border hover:border-border text-xs font-semibold text-foreground hover:text-foreground transition-all flex items-center space-x-2 self-start md:self-auto"
         >
           <span>💬 Open Stream Chat</span>
         </Link>
       </div>
 
       {/* Query & Diagnostics Controls Box */}
-      <div className="bg-slate-900 border border-slate-800 rounded-2xl p-5 shadow-xl space-y-4">
+      <div className="bg-surface border border-border rounded-2xl p-5 shadow-xl space-y-4">
         <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
           <div>
-            <label className="block text-xs font-bold uppercase tracking-wider text-slate-400 mb-1.5">
+            <label className="block text-xs font-bold uppercase tracking-wider text-muted-foreground mb-1.5">
               Knowledge Base Scope
             </label>
             <select
               value={selectedKbId}
               onChange={(e) => setSelectedKbId(e.target.value)}
-              className="w-full bg-slate-950 border border-slate-800 rounded-xl px-3 py-2 text-xs font-semibold text-slate-200 focus:outline-none focus:border-indigo-500"
+              className="w-full bg-background border border-border rounded-xl px-3 py-2 text-xs font-semibold text-foreground focus:outline-none focus:border-indigo-500"
             >
               <option value="">🌐 All Documents (Global)</option>
               {knowledgeBases.map((kb) => (
@@ -190,7 +190,7 @@ export default function RAGDebugPage() {
           </div>
 
           <div>
-            <label className="block text-xs font-bold uppercase tracking-wider text-slate-400 mb-1.5">
+            <label className="block text-xs font-bold uppercase tracking-wider text-muted-foreground mb-1.5">
               Optional Conversation ID (Memory Scope)
             </label>
             <input
@@ -198,7 +198,7 @@ export default function RAGDebugPage() {
               value={conversationId}
               onChange={(e) => setConversationId(e.target.value)}
               placeholder="Paste Conversation ID for multi-turn testing..."
-              className="w-full bg-slate-950 border border-slate-800 rounded-xl px-3 py-2 text-xs font-mono text-slate-300 placeholder-slate-600 focus:outline-none focus:border-indigo-500"
+              className="w-full bg-background border border-border rounded-xl px-3 py-2 text-xs font-mono text-foreground placeholder-slate-600 focus:outline-none focus:border-indigo-500"
             />
           </div>
         </div>
@@ -210,12 +210,12 @@ export default function RAGDebugPage() {
             onChange={(e) => setQuestion(e.target.value)}
             onKeyDown={(e) => e.key === 'Enter' && handleRunRetrieval()}
             placeholder="Type a question or follow-up to inspect memory rewriting & hybrid search..."
-            className="flex-1 rounded-xl bg-slate-950 border border-slate-800 px-4 py-3 text-xs text-white placeholder-slate-500 focus:outline-none focus:border-indigo-500"
+            className="flex-1 rounded-xl bg-background border border-border px-4 py-3 text-xs text-foreground placeholder-slate-500 focus:outline-none focus:border-indigo-500"
           />
           <button
             onClick={handleRunRetrieval}
             disabled={loading || !question.trim()}
-            className="px-6 py-3 rounded-xl bg-indigo-600 hover:bg-indigo-500 disabled:opacity-40 text-white font-semibold text-xs shadow-lg shadow-indigo-600/20 transition-all flex-shrink-0"
+            className="px-6 py-3 rounded-xl bg-indigo-600 hover:bg-indigo-500 disabled:opacity-40 text-foreground font-semibold text-xs shadow-lg shadow-indigo-600/20 transition-all flex-shrink-0"
           >
             {loading ? 'Inspecting...' : 'Run Memory RAG Search →'}
           </button>
@@ -223,14 +223,14 @@ export default function RAGDebugPage() {
 
         {/* Sample Queries */}
         <div className="flex flex-wrap gap-2 pt-1">
-          <span className="text-[11px] font-mono text-slate-500 py-1">Try query:</span>
+          <span className="text-[11px] font-mono text-muted-foreground py-1">Try query:</span>
           {sampleQueries.map((sq, idx) => (
             <button
               key={idx}
               onClick={() => {
                 setQuestion(sq);
               }}
-              className="text-[11px] font-mono text-indigo-400 hover:text-indigo-300 bg-slate-950 hover:bg-slate-800/80 px-2.5 py-1 rounded-lg border border-slate-800 transition-colors"
+              className="text-[11px] font-mono text-indigo-400 hover:text-indigo-300 bg-background hover:bg-surface-hover/80 px-2.5 py-1 rounded-lg border border-border transition-colors"
             >
               {sq}
             </button>
@@ -245,7 +245,7 @@ export default function RAGDebugPage() {
       )}
 
       {orchestration && (
-        <div className="bg-slate-900 border border-slate-800 rounded-2xl p-5 shadow-xl space-y-3">
+        <div className="bg-surface border border-border rounded-2xl p-5 shadow-xl space-y-3">
           <div className="flex items-center justify-between">
             <span className="text-xs font-bold text-indigo-400 uppercase tracking-wider">Answer Orchestration & Source Isolation</span>
             <span className="text-[10px] font-mono px-2 py-0.5 rounded bg-indigo-950 text-indigo-300 border border-indigo-800">
@@ -253,21 +253,21 @@ export default function RAGDebugPage() {
             </span>
           </div>
           <div className="grid grid-cols-2 md:grid-cols-4 gap-3 text-[11px] font-mono">
-            <div className="bg-slate-950 p-2.5 rounded-lg border border-slate-800"><span className="text-slate-500 block">Source Mode</span><b className="text-indigo-300">{(orchestration as any).sourceMode || 'documents_only'}</b></div>
-            <div className="bg-slate-950 p-2.5 rounded-lg border border-slate-800"><span className="text-slate-500 block">Target Website</span><b className="text-white font-mono truncate block">{(orchestration as any).targetWebsite || 'None (Public Discovery)'}</b></div>
-            <div className="bg-slate-950 p-2.5 rounded-lg border border-slate-800"><span className="text-slate-500 block">Allowed Sources</span><b className="text-white font-mono">{(orchestration as any).allowedSources?.join(', ') || 'wikipedia, medium'}</b></div>
-            <div className="bg-slate-950 p-2.5 rounded-lg border border-slate-800"><span className="text-slate-500 block">Cache Status</span><b className="text-emerald-400">{((orchestration as any).cacheType || orchestration.cache || 'miss').toUpperCase()} (Hit: {String((orchestration as any).cacheHit ?? false)})</b></div>
-            <div className="bg-slate-950 p-2.5 rounded-lg border border-slate-800"><span className="text-slate-500 block">Web Chunks</span><b className="text-cyan-400">{(orchestration as any).retrievedWebChunks ?? 0} Chunks</b></div>
-            <div className="bg-slate-950 p-2.5 rounded-lg border border-slate-800"><span className="text-slate-500 block">Doc Chunks</span><b className="text-emerald-400">{(orchestration as any).retrievedDocumentChunks ?? 0} Chunks</b></div>
-            <div className="bg-slate-950 p-2.5 rounded-lg border border-slate-800"><span className="text-slate-500 block">Candidates</span><b className="text-white">{orchestration.candidateCount} Candidates</b></div>
-            <div className="bg-slate-950 p-2.5 rounded-lg border border-slate-800"><span className="text-slate-500 block">Discovery Latency</span><b className="text-cyan-300">{(orchestration as any).discoveryMs ?? 0}ms search · {(orchestration as any).fetchMs ?? 0}ms fetch</b></div>
+            <div className="bg-background p-2.5 rounded-lg border border-border"><span className="text-muted-foreground block">Source Mode</span><b className="text-indigo-300">{(orchestration as any).sourceMode || 'documents_only'}</b></div>
+            <div className="bg-background p-2.5 rounded-lg border border-border"><span className="text-muted-foreground block">Target Website</span><b className="text-foreground font-mono truncate block">{(orchestration as any).targetWebsite || 'None (Public Discovery)'}</b></div>
+            <div className="bg-background p-2.5 rounded-lg border border-border"><span className="text-muted-foreground block">Allowed Sources</span><b className="text-foreground font-mono">{(orchestration as any).allowedSources?.join(', ') || 'wikipedia, medium'}</b></div>
+            <div className="bg-background p-2.5 rounded-lg border border-border"><span className="text-muted-foreground block">Cache Status</span><b className="text-emerald-400">{((orchestration as any).cacheType || orchestration.cache || 'miss').toUpperCase()} (Hit: {String((orchestration as any).cacheHit ?? false)})</b></div>
+            <div className="bg-background p-2.5 rounded-lg border border-border"><span className="text-muted-foreground block">Web Chunks</span><b className="text-cyan-400">{(orchestration as any).retrievedWebChunks ?? 0} Chunks</b></div>
+            <div className="bg-background p-2.5 rounded-lg border border-border"><span className="text-muted-foreground block">Doc Chunks</span><b className="text-emerald-400">{(orchestration as any).retrievedDocumentChunks ?? 0} Chunks</b></div>
+            <div className="bg-background p-2.5 rounded-lg border border-border"><span className="text-muted-foreground block">Candidates</span><b className="text-foreground">{orchestration.candidateCount} Candidates</b></div>
+            <div className="bg-background p-2.5 rounded-lg border border-border"><span className="text-muted-foreground block">Discovery Latency</span><b className="text-cyan-300">{(orchestration as any).discoveryMs ?? 0}ms search · {(orchestration as any).fetchMs ?? 0}ms fetch</b></div>
           </div>
         </div>
       )}
 
       {/* Query Rewriting & Memory Diagnostics Card */}
       {retrievalQuery && (
-        <div className="bg-slate-900 border border-slate-800 rounded-2xl p-5 space-y-3 shadow-xl">
+        <div className="bg-surface border border-border rounded-2xl p-5 space-y-3 shadow-xl">
           <div className="flex items-center justify-between">
             <span className="text-xs font-bold text-indigo-400 uppercase tracking-wider">
               🧠 Query Preparation & Memory Diagnostic
@@ -279,10 +279,10 @@ export default function RAGDebugPage() {
             )}
           </div>
 
-          <div className="grid grid-cols-1 md:grid-cols-2 gap-4 bg-slate-950 p-4 rounded-xl border border-slate-800/80 text-xs font-mono">
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-4 bg-background p-4 rounded-xl border border-border/80 text-xs font-mono">
             <div>
-              <span className="text-slate-500 block text-[10px] uppercase font-bold mb-1">Original User Question:</span>
-              <p className="text-white bg-slate-900 p-2.5 rounded-lg border border-slate-800">{originalQuestion}</p>
+              <span className="text-muted-foreground block text-[10px] uppercase font-bold mb-1">Original User Question:</span>
+              <p className="text-foreground bg-surface p-2.5 rounded-lg border border-border">{originalQuestion}</p>
             </div>
             <div>
               <span className="text-indigo-400 block text-[10px] uppercase font-bold mb-1">Rewritten Retrieval Search Query:</span>
@@ -291,31 +291,31 @@ export default function RAGDebugPage() {
           </div>
 
           {/* Evidence Explorer Card */}
-          <div className="bg-slate-950 p-4 rounded-xl border border-indigo-800/80 space-y-3 font-mono text-xs">
-            <div className="flex items-center justify-between border-b border-slate-800 pb-2">
+          <div className="bg-background p-4 rounded-xl border border-indigo-800/80 space-y-3 font-mono text-xs">
+            <div className="flex items-center justify-between border-b border-border pb-2">
               <span className="font-bold text-indigo-400 flex items-center gap-2">
                 <span>🔍 Evidence Explorer</span>
                 <span className="text-[10px] bg-indigo-950 text-indigo-300 px-2 py-0.5 rounded border border-indigo-800">
                   Grounding & Citation Verification
                 </span>
               </span>
-              <span className="text-[10px] text-slate-500">Document Chunk Snippets • Rerank Confidence</span>
+              <span className="text-[10px] text-muted-foreground">Document Chunk Snippets • Rerank Confidence</span>
             </div>
             <div className="grid grid-cols-1 md:grid-cols-3 gap-3 text-[11px]">
-              <div className="bg-slate-900 p-2.5 rounded-lg border border-slate-800">
-                <span className="text-slate-500 block text-[10px]">Citation Mapping:</span>
+              <div className="bg-surface p-2.5 rounded-lg border border-border">
+                <span className="text-muted-foreground block text-[10px]">Citation Mapping:</span>
                 <span className="font-bold text-emerald-400">
                   {chunks.length > 0 ? `${chunks.length} Grounded Citations` : '0 Citations'}
                 </span>
               </div>
-              <div className="bg-slate-900 p-2.5 rounded-lg border border-slate-800">
-                <span className="text-slate-500 block text-[10px]">Evidence Coverage:</span>
+              <div className="bg-surface p-2.5 rounded-lg border border-border">
+                <span className="text-muted-foreground block text-[10px]">Evidence Coverage:</span>
                 <span className="font-bold text-sky-400">
                   {chunks.length > 0 ? '100% (Strong Coverage)' : '0%'}
                 </span>
               </div>
-              <div className="bg-slate-900 p-2.5 rounded-lg border border-slate-800">
-                <span className="text-slate-500 block text-[10px]">Top Evidence Score:</span>
+              <div className="bg-surface p-2.5 rounded-lg border border-border">
+                <span className="text-muted-foreground block text-[10px]">Top Evidence Score:</span>
                 <span className="font-bold text-amber-300">
                   {chunks[0] ? (chunks[0].rerankScore ? chunks[0].rerankScore.toFixed(3) : chunks[0].similarity.toFixed(3)) : 'N/A'}
                 </span>
@@ -324,21 +324,21 @@ export default function RAGDebugPage() {
           </div>
 
           {convDiagnostics && (
-            <div className="grid grid-cols-2 md:grid-cols-4 gap-3 text-[11px] font-mono text-slate-300 pt-1">
-              <div className="bg-slate-950 p-2.5 rounded-lg border border-slate-800">
-                <span className="text-slate-500 block text-[10px]">Context Turns:</span>
-                <span className="font-bold text-white">{convDiagnostics.includedMessagesCount} messages</span>
+            <div className="grid grid-cols-2 md:grid-cols-4 gap-3 text-[11px] font-mono text-foreground pt-1">
+              <div className="bg-background p-2.5 rounded-lg border border-border">
+                <span className="text-muted-foreground block text-[10px]">Context Turns:</span>
+                <span className="font-bold text-foreground">{convDiagnostics.includedMessagesCount} messages</span>
               </div>
-              <div className="bg-slate-950 p-2.5 rounded-lg border border-slate-800">
-                <span className="text-slate-500 block text-[10px]">Excluded Turns:</span>
-                <span className="font-bold text-slate-400">{convDiagnostics.excludedMessagesCount} messages</span>
+              <div className="bg-background p-2.5 rounded-lg border border-border">
+                <span className="text-muted-foreground block text-[10px]">Excluded Turns:</span>
+                <span className="font-bold text-muted-foreground">{convDiagnostics.excludedMessagesCount} messages</span>
               </div>
-              <div className="bg-slate-950 p-2.5 rounded-lg border border-slate-800">
-                <span className="text-slate-500 block text-[10px]">Context Tokens:</span>
+              <div className="bg-background p-2.5 rounded-lg border border-border">
+                <span className="text-muted-foreground block text-[10px]">Context Tokens:</span>
                 <span className="font-bold text-amber-300">~{convDiagnostics.estimatedTokens} tokens</span>
               </div>
-              <div className="bg-slate-950 p-2.5 rounded-lg border border-slate-800">
-                <span className="text-slate-500 block text-[10px]">Summary Present:</span>
+              <div className="bg-background p-2.5 rounded-lg border border-border">
+                <span className="text-muted-foreground block text-[10px]">Summary Present:</span>
                 <span className="font-bold text-emerald-400">{convDiagnostics.hasSummary ? 'Yes (Loaded)' : 'None'}</span>
               </div>
             </div>
@@ -350,56 +350,56 @@ export default function RAGDebugPage() {
       {trace && (
         <div className="space-y-6">
           <div className="grid grid-cols-2 md:grid-cols-5 gap-4">
-            <div className="bg-slate-900 border border-slate-800 rounded-xl p-4 space-y-1">
-              <span className="text-[10px] font-mono text-slate-500 uppercase">Vector Search</span>
-              <div className="text-lg font-bold text-white font-mono">{trace.metrics.vectorMs}ms</div>
+            <div className="bg-surface border border-border rounded-xl p-4 space-y-1">
+              <span className="text-[10px] font-mono text-muted-foreground uppercase">Vector Search</span>
+              <div className="text-lg font-bold text-foreground font-mono">{trace.metrics.vectorMs}ms</div>
               <span className="text-[10px] text-indigo-400">{trace.vectorCandidatesCount} candidates</span>
             </div>
 
-            <div className="bg-slate-900 border border-slate-800 rounded-xl p-4 space-y-1">
-              <span className="text-[10px] font-mono text-slate-500 uppercase">Keyword Search</span>
-              <div className="text-lg font-bold text-white font-mono">{trace.metrics.keywordMs}ms</div>
+            <div className="bg-surface border border-border rounded-xl p-4 space-y-1">
+              <span className="text-[10px] font-mono text-muted-foreground uppercase">Keyword Search</span>
+              <div className="text-lg font-bold text-foreground font-mono">{trace.metrics.keywordMs}ms</div>
               <span className="text-[10px] text-emerald-400">{trace.keywordCandidatesCount} candidates</span>
             </div>
 
-            <div className="bg-slate-900 border border-slate-800 rounded-xl p-4 space-y-1">
-              <span className="text-[10px] font-mono text-slate-500 uppercase">Merged Set</span>
-              <div className="text-lg font-bold text-white font-mono">{trace.deduplicatedCandidatesCount}</div>
+            <div className="bg-surface border border-border rounded-xl p-4 space-y-1">
+              <span className="text-[10px] font-mono text-muted-foreground uppercase">Merged Set</span>
+              <div className="text-lg font-bold text-foreground font-mono">{trace.deduplicatedCandidatesCount}</div>
               <span className="text-[10px] text-amber-400">deduplicated</span>
             </div>
 
-            <div className="bg-slate-900 border border-slate-800 rounded-xl p-4 space-y-1">
-              <span className="text-[10px] font-mono text-slate-500 uppercase">Rerank Latency</span>
-              <div className="text-lg font-bold text-white font-mono">{trace.metrics.rerankMs}ms</div>
+            <div className="bg-surface border border-border rounded-xl p-4 space-y-1">
+              <span className="text-[10px] font-mono text-muted-foreground uppercase">Rerank Latency</span>
+              <div className="text-lg font-bold text-foreground font-mono">{trace.metrics.rerankMs}ms</div>
               <span className="text-[10px] text-sky-400">LocalReranker</span>
             </div>
 
-            <div className="bg-slate-900 border border-slate-800 rounded-xl p-4 space-y-1 col-span-2 md:col-span-1">
-              <span className="text-[10px] font-mono text-slate-500 uppercase">Total Pipeline</span>
+            <div className="bg-surface border border-border rounded-xl p-4 space-y-1 col-span-2 md:col-span-1">
+              <span className="text-[10px] font-mono text-muted-foreground uppercase">Total Pipeline</span>
               <div className="text-lg font-bold text-emerald-400 font-mono">{trace.metrics.totalMs}ms</div>
-              <span className="text-[10px] text-slate-400">{trace.finalChunksCount} top K chunks</span>
+              <span className="text-[10px] text-muted-foreground">{trace.finalChunksCount} top K chunks</span>
             </div>
           </div>
 
           {/* Ranking Pipeline Visual Bar */}
-          <div className="bg-slate-900 border border-slate-800 rounded-2xl p-4 space-y-2">
-            <span className="text-xs font-semibold text-slate-400 uppercase tracking-wider block">
+          <div className="bg-surface border border-border rounded-2xl p-4 space-y-2">
+            <span className="text-xs font-semibold text-muted-foreground uppercase tracking-wider block">
               Retrieval Pipeline Execution Path
             </span>
             <div className="flex flex-wrap items-center gap-2 text-xs font-mono">
               <span className="px-3 py-1.5 rounded-lg bg-indigo-950 border border-indigo-800 text-indigo-300">
                 1. Context Load ({convDiagnostics ? `${convDiagnostics.contextLoadMs}ms` : 'N/A'})
               </span>
-              <span className="text-slate-600">→</span>
+              <span className="text-muted-foreground">→</span>
               <span className="px-3 py-1.5 rounded-lg bg-emerald-950 border border-emerald-800 text-emerald-300">
                 2. Hybrid Search ({trace.metrics.vectorMs + trace.metrics.keywordMs}ms)
               </span>
-              <span className="text-slate-600">→</span>
+              <span className="text-muted-foreground">→</span>
               <span className="px-3 py-1.5 rounded-lg bg-sky-950 border border-sky-800 text-sky-300">
                 3. Rerank ({trace.metrics.rerankMs}ms)
               </span>
-              <span className="text-slate-600">→</span>
-              <span className="px-3 py-1.5 rounded-lg bg-emerald-900 border border-emerald-700 text-white font-bold">
+              <span className="text-muted-foreground">→</span>
+              <span className="px-3 py-1.5 rounded-lg bg-emerald-900 border border-emerald-700 text-foreground font-bold">
                 4. Grounded Top K Context ({trace.finalChunksCount})
               </span>
             </div>
@@ -407,27 +407,27 @@ export default function RAGDebugPage() {
 
           {/* Retrieved Chunks Breakdown */}
           <div className="space-y-4">
-            <h3 className="text-sm font-bold text-white uppercase tracking-wider">
+            <h3 className="text-sm font-bold text-foreground uppercase tracking-wider">
               Final Grounded Chunks ({chunks.length})
             </h3>
 
             {chunks.length === 0 ? (
-              <div className="p-8 rounded-2xl bg-slate-900 border border-slate-800 text-center text-slate-500 font-mono text-xs">
+              <div className="p-8 rounded-2xl bg-surface border border-border text-center text-muted-foreground font-mono text-xs">
                 No document chunks passed the similarity threshold (RAG_MIN_SIMILARITY). Fallback triggered.
               </div>
             ) : (
               chunks.map((chunk, idx) => {
                 const isExpanded = expandedChunkId === chunk.id;
                 return (
-                  <div key={chunk.id} className="bg-slate-900 border border-slate-800 rounded-2xl p-5 space-y-3">
+                  <div key={chunk.id} className="bg-surface border border-border rounded-2xl p-5 space-y-3">
                     <div className="flex flex-col md:flex-row md:items-center justify-between gap-2">
                       <div className="flex items-center space-x-3">
                         <span className="w-6 h-6 rounded-lg bg-indigo-950 border border-indigo-800 text-indigo-400 font-mono text-xs font-bold flex items-center justify-center">
                           #{idx + 1}
                         </span>
                         <div>
-                          <span className="text-xs font-bold text-white">{chunk.filename}</span>
-                          <span className="text-xs text-slate-500 font-mono ml-2">• Page {chunk.pageNumber}</span>
+                          <span className="text-xs font-bold text-foreground">{chunk.filename}</span>
+                          <span className="text-xs text-muted-foreground font-mono ml-2">• Page {chunk.pageNumber}</span>
                         </div>
                       </div>
 
@@ -446,28 +446,28 @@ export default function RAGDebugPage() {
                     </div>
 
                     {/* Scores Breakdown */}
-                    <div className="grid grid-cols-2 md:grid-cols-4 gap-3 bg-slate-950 p-3 rounded-xl border border-slate-800/80 font-mono text-[11px]">
+                    <div className="grid grid-cols-2 md:grid-cols-4 gap-3 bg-background p-3 rounded-xl border border-border/80 font-mono text-[11px]">
                       <div>
-                        <span className="text-slate-500 block text-[10px]">Vector Score:</span>
+                        <span className="text-muted-foreground block text-[10px]">Vector Score:</span>
                         <span className="text-indigo-300 font-bold">{((chunk.vectorScore ?? chunk.similarity) * 100).toFixed(1)}%</span>
                       </div>
                       <div>
-                        <span className="text-slate-500 block text-[10px]">Keyword Score:</span>
+                        <span className="text-muted-foreground block text-[10px]">Keyword Score:</span>
                         <span className="text-emerald-300 font-bold">{((chunk.keywordScore ?? 0) * 100).toFixed(1)}%</span>
                       </div>
                       <div>
-                        <span className="text-slate-500 block text-[10px]">Hybrid Score:</span>
+                        <span className="text-muted-foreground block text-[10px]">Hybrid Score:</span>
                         <span className="text-amber-300 font-bold">{((chunk.hybridScore ?? chunk.similarity) * 100).toFixed(1)}%</span>
                       </div>
                       <div>
-                        <span className="text-slate-500 block text-[10px]">Rerank Score:</span>
+                        <span className="text-muted-foreground block text-[10px]">Rerank Score:</span>
                         <span className="text-sky-300 font-bold">{((chunk.rerankScore ?? chunk.hybridScore ?? chunk.similarity) * 100).toFixed(1)}%</span>
                       </div>
                     </div>
 
                     {/* Content Preview & Toggle */}
                     <div className="space-y-2">
-                      <p className={`text-xs text-slate-300 font-mono leading-relaxed bg-slate-950/60 p-3 rounded-xl border border-slate-800/60 ${!isExpanded ? 'line-clamp-3' : ''}`}>
+                      <p className={`text-xs text-foreground font-mono leading-relaxed bg-background/60 p-3 rounded-xl border border-border/60 ${!isExpanded ? 'line-clamp-3' : ''}`}>
                         {chunk.content}
                       </p>
                       <button

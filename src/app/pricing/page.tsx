@@ -105,37 +105,37 @@ export default function PricingPage() {
   };
 
   return (
-    <div className="min-h-screen bg-[#0a0e18] px-4 py-10 sm:px-8">
+    <div className="min-h-screen bg-background px-4 py-10 sm:px-8">
       <div className="mx-auto max-w-6xl space-y-10">
         <div className="text-center space-y-3">
-          <h1 className="text-3xl sm:text-4xl font-extrabold text-[#dfe2f1] font-sans">Plans & Pricing</h1>
-          <p className="text-sm text-[#8c909f] max-w-2xl mx-auto">
+          <h1 className="text-3xl sm:text-4xl font-extrabold text-foreground font-sans">Plans & Pricing</h1>
+          <p className="text-sm text-muted-foreground max-w-2xl mx-auto">
             Choose the plan that fits your team. Every plan includes access to the core platform — upgrade for
             collaboration, multimodal intelligence, and higher usage limits.
           </p>
         </div>
 
         {!billingEnabled && (
-          <div className="mx-auto max-w-2xl rounded-xl border border-[#4edea3]/30 bg-[#4edea3]/10 px-4 py-3 text-center text-sm font-mono text-[#4edea3]">
+          <div className="mx-auto max-w-2xl rounded-xl border border-success/30 bg-success/10 px-4 py-3 text-center text-sm font-mono text-success">
             Billing is not yet enabled for this workspace — every feature listed below is currently available to all
             users at no charge.
           </div>
         )}
 
         {actionMsg && (
-          <div className="mx-auto max-w-2xl rounded-xl border border-[#4d8eff]/30 bg-[#4d8eff]/10 px-4 py-3 text-center text-sm text-[#adc6ff]">
+          <div className="mx-auto max-w-2xl rounded-xl border border-primary/30 bg-primary/10 px-4 py-3 text-center text-sm text-primary">
             {actionMsg}
           </div>
         )}
 
         <div className="flex justify-center">
-          <div className="inline-flex rounded-xl border border-[#424754] bg-[#0f131d] p-1">
+          <div className="inline-flex rounded-xl border border-border bg-surface p-1">
             {(['MONTHLY', 'YEARLY'] as const).map((opt) => (
               <button
                 key={opt}
                 onClick={() => setInterval(opt)}
                 className={`px-4 py-1.5 text-xs font-bold rounded-lg transition font-mono ${
-                  interval === opt ? 'bg-[#4d8eff] text-[#0a0e18]' : 'text-[#8c909f] hover:text-[#dfe2f1]'
+                  interval === opt ? 'bg-primary text-primary-foreground' : 'text-muted-foreground hover:text-foreground'
                 }`}
               >
                 {opt === 'MONTHLY' ? 'Monthly' : 'Yearly (save ~17%)'}
@@ -147,7 +147,7 @@ export default function PricingPage() {
         {loading ? (
           <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
             {[0, 1, 2].map((i) => (
-              <div key={i} className="h-96 rounded-2xl border border-[#424754] bg-[#0a0e18]/60 animate-pulse" />
+              <div key={i} className="h-96 rounded-2xl border border-border bg-muted animate-pulse" />
             ))}
           </div>
         ) : (
@@ -162,36 +162,36 @@ export default function PricingPage() {
                 <div
                   key={plan.id}
                   className={`relative flex flex-col rounded-2xl border p-6 shadow-2xl space-y-5 ${
-                    isRecommended ? 'border-[#4d8eff] bg-gradient-to-b from-[#171b26] to-[#0a0e18]' : 'border-[#424754] bg-[#0a0e18]/95'
+                    isRecommended ? 'border-primary bg-gradient-to-b from-surface-hover to-background' : 'border-border bg-card'
                   }`}
                 >
                   {isRecommended && (
-                    <span className="absolute -top-3 left-1/2 -translate-x-1/2 text-[10px] font-mono font-bold bg-[#4d8eff] text-[#0a0e18] px-3 py-1 rounded-full">
+                    <span className="absolute -top-3 left-1/2 -translate-x-1/2 text-[10px] font-mono font-bold bg-primary text-primary-foreground px-3 py-1 rounded-full">
                       RECOMMENDED
                     </span>
                   )}
                   <div>
-                    <h3 className="text-lg font-extrabold text-[#dfe2f1] font-sans">{plan.name}</h3>
-                    <p className="text-xs text-[#8c909f] mt-1 min-h-[32px]">{plan.description}</p>
+                    <h3 className="text-lg font-extrabold text-foreground font-sans">{plan.name}</h3>
+                    <p className="text-xs text-muted-foreground mt-1 min-h-[32px]">{plan.description}</p>
                   </div>
                   <div>
-                    <span className="text-3xl font-extrabold text-[#dfe2f1] font-mono">{formatPrice(price, plan.currency)}</span>
-                    {price > 0 && <span className="text-xs text-[#8c909f] font-mono">/{interval === 'YEARLY' ? 'year' : 'month'}</span>}
+                    <span className="text-3xl font-extrabold text-foreground font-mono">{formatPrice(price, plan.currency)}</span>
+                    {price > 0 && <span className="text-xs text-muted-foreground font-mono">/{interval === 'YEARLY' ? 'year' : 'month'}</span>}
                   </div>
                   {plan.trialDays > 0 && (
-                    <span className="text-[10px] font-mono text-[#4edea3] bg-[#4edea3]/10 px-2 py-1 rounded-md border border-[#4edea3]/30 w-fit">
+                    <span className="text-[10px] font-mono text-success bg-success/10 px-2 py-1 rounded-md border border-success/30 w-fit">
                       {plan.trialDays}-day free trial
                     </span>
                   )}
-                  <ul className="space-y-2 text-xs text-[#c2c6d6] flex-1">
+                  <ul className="space-y-2 text-xs text-muted-foreground flex-1">
                     {enabledFeatures.slice(0, 8).map((f) => (
                       <li key={f.featureCode} className="flex items-start space-x-2">
-                        <span className="text-[#4edea3] mt-0.5">✓</span>
+                        <span className="text-success mt-0.5">✓</span>
                         <span>{FEATURE_LABELS[f.featureCode] || f.featureCode}</span>
                       </li>
                     ))}
                     {enabledFeatures.length > 8 && (
-                      <li className="text-[#8c909f]">+{enabledFeatures.length - 8} more capabilities</li>
+                      <li className="text-muted-foreground">+{enabledFeatures.length - 8} more capabilities</li>
                     )}
                   </ul>
                   <button
@@ -200,8 +200,8 @@ export default function PricingPage() {
                     onClick={() => handleSelectPlan(plan)}
                     className={`h-10 rounded-xl text-xs font-extrabold transition shadow-md disabled:opacity-60 ${
                       isCurrent
-                        ? 'bg-[#0f131d] border border-[#424754] text-[#8c909f] cursor-default'
-                        : 'bg-gradient-to-r from-[#4d8eff] to-[#adc6ff] text-[#0a0e18] hover:opacity-90'
+                        ? 'bg-surface border border-border text-muted-foreground cursor-default'
+                        : 'bg-gradient-to-r from-primary to-primary-hover text-primary-foreground hover:opacity-90'
                     }`}
                   >
                     {isCurrent ? 'Current Plan' : busyPlan === plan.code ? 'Please wait…' : billingEnabled ? `Choose ${plan.name}` : 'Available now'}

@@ -150,10 +150,10 @@ export const VoiceOrb: React.FC<VoiceOrbProps> = ({
 
       {/* State Label Text */}
       <div className="text-center space-y-0.5 max-w-xs">
-        <h3 className="text-sm font-bold text-[#dfe2f1] tracking-tight">
+        <h3 className="text-sm font-bold text-foreground tracking-tight">
           {current.statusText}
         </h3>
-        <p className="text-[11px] font-mono text-[#c2c6d6]">
+        <p className="text-[11px] font-mono text-muted-foreground">
           {VOICE_STATE_DESCRIPTIONS[state] || VOICE_STATE_DESCRIPTIONS.IDLE}
         </p>
       </div>

@@ -3,6 +3,7 @@
 import { useState, useEffect, useCallback } from 'react';
 import dynamic from 'next/dynamic';
 import type { Node } from '@xyflow/react';
+import { useTheme } from '@/context/ThemeContext';
 
 // Phase 77: @xyflow/react (the largest client-side dependency in this codebase) now loads as
 // its own async chunk instead of being bundled into this page's initial JS. `ssr: false`
@@ -12,7 +13,7 @@ import type { Node } from '@xyflow/react';
 const ArchitectureGraphCanvas = dynamic(() => import('./ArchitectureGraphCanvas'), {
   ssr: false,
   loading: () => (
-    <div className="flex items-center justify-center h-full text-xs text-slate-500 animate-pulse">
+    <div className="flex items-center justify-center h-full text-xs text-muted-foreground animate-pulse">
       Loading interactive architecture graph...
     </div>
   )
@@ -28,10 +29,17 @@ type SystemNodeData = {
 };
 
 export default function ArchitectureExplorerPage() {
+  // Phase 77A: this page previously had its own `useState(true)` "isDarkMode" toggle,
+  // completely disconnected from the app's real theme (ThemeContext) — it always defaulted to
+  // dark regardless of the user's actual site-wide preference, and offered a second, redundant
+  // toggle button. Now it reads the real resolved theme, so it follows the same light/dark
+  // switch as every other page instead of maintaining its own shadow state.
+  const { resolvedTheme } = useTheme();
+  const isDarkMode = resolvedTheme === 'dark';
+
   const [nodes, setNodes] = useState<Node[]>([]);
   const [edges, setEdges] = useState<any[]>([]);
   const [selectedNode, setSelectedNode] = useState<SystemNodeData | null>(null);
-  const [isDarkMode, setIsDarkMode] = useState(true);
   const [loading, setLoading] = useState(true);
 
   const fetchGraphData = useCallback(async () => {
@@ -42,6 +50,9 @@ export default function ArchitectureExplorerPage() {
         const rawNodes = json.data.nodes || [];
         const rawEdges = json.data.edges || [];
 
+        // ReactFlow node/edge `style` is plain inline CSS on the rendered graph nodes, not
+        // Tailwind-classed DOM — it genuinely needs a resolved JS color value here, sourced
+        // from the real theme rather than a hardcoded/fake one.
         const flowNodes: Node[] = rawNodes.map((n: any) => ({
           id: n.id,
           position: n.position || { x: 100, y: 100 },
@@ -93,40 +104,25 @@ export default function ArchitectureExplorerPage() {
   };
 
   return (
-    <div className={`min-h-screen ${isDarkMode ? 'bg-slate-950 text-slate-100' : 'bg-slate-50 text-slate-900'} p-6 space-y-4`}>
+    <div className="min-h-screen bg-background text-foreground p-6 space-y-4">
       {/* Top Controls Header */}
-      <div className={`flex flex-col md:flex-row md:items-center justify-between p-5 rounded-2xl border shadow-xl ${
-        isDarkMode ? 'bg-slate-900 border-slate-800' : 'bg-white border-slate-200'
-      }`}>
+      <div className="flex flex-col md:flex-row md:items-center justify-between p-5 rounded-2xl border border-border bg-surface shadow-xl">
         <div>
           <h1 className="text-xl font-extrabold flex items-center gap-2">
             🏗️ Live System Architecture Explorer
           </h1>
-          <p className="text-xs opacity-70 mt-0.5">
+          <p className="text-xs text-muted-foreground mt-0.5">
             Interactive visualization of active codebase modules, RAG pipelines, LLM gateways, and database infrastructure.
           </p>
-        </div>
-
-        <div className="flex items-center gap-3">
-          <button
-            onClick={() => setIsDarkMode(!isDarkMode)}
-            className={`px-3.5 py-1.5 rounded-xl border text-xs font-semibold transition-colors ${
-              isDarkMode ? 'bg-slate-800 border-slate-700 text-slate-200' : 'bg-slate-100 border-slate-300 text-slate-800'
-            }`}
-          >
-            {isDarkMode ? '🌙 Dark Mode' : '☀️ Light Mode'}
-          </button>
         </div>
       </div>
 
       {/* Main Canvas & Inspector Layout */}
       <div className="grid grid-cols-1 lg:grid-cols-4 gap-6 h-[720px]">
         {/* React Flow Graph Canvas */}
-        <div className={`lg:col-span-3 rounded-2xl border overflow-hidden relative shadow-2xl ${
-          isDarkMode ? 'bg-slate-900/90 border-slate-800' : 'bg-white border-slate-200'
-        }`}>
+        <div className="lg:col-span-3 rounded-2xl border border-border bg-surface/90 overflow-hidden relative shadow-2xl">
           {loading ? (
-            <div className="flex items-center justify-center h-full text-xs text-slate-500 animate-pulse">
+            <div className="flex items-center justify-center h-full text-xs text-muted-foreground animate-pulse">
               Loading interactive architecture graph...
             </div>
           ) : (
@@ -140,46 +136,44 @@ export default function ArchitectureExplorerPage() {
         </div>
 
         {/* Node Inspector Panel */}
-        <div className={`p-5 rounded-2xl border space-y-4 shadow-xl overflow-y-auto ${
-          isDarkMode ? 'bg-slate-900 border-slate-800' : 'bg-white border-slate-200'
-        }`}>
-          <h3 className="font-bold text-sm border-b pb-3 opacity-90">🔍 Node Inspector</h3>
+        <div className="p-5 rounded-2xl border border-border bg-surface space-y-4 shadow-xl overflow-y-auto">
+          <h3 className="font-bold text-sm border-b border-border pb-3 text-foreground">🔍 Node Inspector</h3>
 
           {selectedNode ? (
             <div className="space-y-4 text-xs">
               <div>
-                <span className="text-[10px] uppercase font-bold tracking-wider text-indigo-400 block mb-1">
+                <span className="text-[10px] uppercase font-bold tracking-wider text-primary block mb-1">
                   {selectedNode.category}
                 </span>
-                <h4 className="text-base font-extrabold">{selectedNode.label}</h4>
+                <h4 className="text-base font-extrabold text-foreground">{selectedNode.label}</h4>
               </div>
 
-              <div className="p-3 rounded-xl bg-slate-950/40 border border-slate-800/80 space-y-1">
-                <span className="text-[10px] opacity-60 block font-semibold">Purpose & Scope</span>
-                <p className="leading-relaxed opacity-90">{selectedNode.description}</p>
+              <div className="p-3 rounded-xl bg-muted border border-border space-y-1">
+                <span className="text-[10px] text-muted-foreground block font-semibold">Purpose & Scope</span>
+                <p className="leading-relaxed text-foreground">{selectedNode.description}</p>
               </div>
 
-              <div className="flex justify-between items-center p-3 rounded-xl bg-slate-950/40 border border-slate-800/80">
-                <span className="opacity-60">Status</span>
-                <span className="font-bold text-emerald-400">{selectedNode.status}</span>
+              <div className="flex justify-between items-center p-3 rounded-xl bg-muted border border-border">
+                <span className="text-muted-foreground">Status</span>
+                <span className="font-bold text-success">{selectedNode.status}</span>
               </div>
 
               {selectedNode.techStack && (
-                <div className="p-3 rounded-xl bg-slate-950/40 border border-slate-800/80 space-y-1">
-                  <span className="text-[10px] opacity-60 block font-semibold">Tech Stack</span>
-                  <p className="font-mono text-indigo-300">{selectedNode.techStack}</p>
+                <div className="p-3 rounded-xl bg-muted border border-border space-y-1">
+                  <span className="text-[10px] text-muted-foreground block font-semibold">Tech Stack</span>
+                  <p className="font-mono text-primary">{selectedNode.techStack}</p>
                 </div>
               )}
 
               {selectedNode.featureFlag && (
-                <div className="p-3 rounded-xl bg-slate-950/40 border border-slate-800/80 space-y-1">
-                  <span className="text-[10px] opacity-60 block font-semibold">Feature Flag</span>
-                  <p className="font-mono text-purple-300">{selectedNode.featureFlag}</p>
+                <div className="p-3 rounded-xl bg-muted border border-border space-y-1">
+                  <span className="text-[10px] text-muted-foreground block font-semibold">Feature Flag</span>
+                  <p className="font-mono text-accent-foreground">{selectedNode.featureFlag}</p>
                 </div>
               )}
             </div>
           ) : (
-            <div className="p-8 text-center text-xs opacity-50 space-y-2">
+            <div className="p-8 text-center text-xs text-muted-foreground space-y-2">
               <span className="text-2xl block">👆</span>
               <p>Click on any architecture node in the graph to inspect detailed module properties.</p>
             </div>

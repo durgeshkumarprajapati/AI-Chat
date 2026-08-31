@@ -148,15 +148,15 @@ export default function MeetingDetailPage() {
   };
 
   if (loading) {
-    return <div className="min-h-screen bg-slate-950 p-12 text-center text-slate-500">Loading meeting details...</div>;
+    return <div className="min-h-screen bg-background p-12 text-center text-muted-foreground">Loading meeting details...</div>;
   }
 
   if (!meeting) {
-    return <div className="min-h-screen bg-slate-950 p-12 text-center text-rose-400">Meeting not found.</div>;
+    return <div className="min-h-screen bg-background p-12 text-center text-rose-400">Meeting not found.</div>;
   }
 
   return (
-    <div className="min-h-screen bg-slate-950 text-slate-100 p-6 space-y-6">
+    <div className="min-h-screen bg-background text-foreground p-6 space-y-6">
       {/* Back button & Title Header */}
       <div className="flex items-center justify-between">
         <Link href="/meetings" className="text-xs text-indigo-400 hover:underline flex items-center gap-1">
@@ -168,25 +168,25 @@ export default function MeetingDetailPage() {
               ? 'bg-emerald-950 border border-emerald-800 text-emerald-400'
               : meeting.status === 'PROCESSING'
               ? 'bg-blue-950 border border-blue-800 text-blue-400 animate-pulse'
-              : 'bg-slate-800 text-slate-400'
+              : 'bg-surface-hover text-muted-foreground'
           }`}
         >
           {meeting.status}
         </span>
       </div>
 
-      <div className="bg-slate-900 border border-slate-800 rounded-2xl p-6 space-y-4 shadow-xl">
+      <div className="bg-surface border border-border rounded-2xl p-6 space-y-4 shadow-xl">
         <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">
           <div>
-            <h1 className="text-2xl font-extrabold text-white">{meeting.title}</h1>
-            <p className="text-xs text-slate-400 mt-1">📅 {new Date(meeting.meetingDate).toLocaleDateString()}</p>
+            <h1 className="text-2xl font-extrabold text-foreground">{meeting.title}</h1>
+            <p className="text-xs text-muted-foreground mt-1">📅 {new Date(meeting.meetingDate).toLocaleDateString()}</p>
           </div>
 
           <div className="flex items-center gap-3">
             <button
               onClick={handleSaveTranscript}
               disabled={ingesting}
-              className="px-4 py-2 rounded-xl bg-slate-800 hover:bg-slate-700 text-xs font-semibold text-slate-200 transition-colors"
+              className="px-4 py-2 rounded-xl bg-surface-hover hover:bg-muted text-xs font-semibold text-foreground transition-colors"
             >
               {ingesting ? 'Saving...' : '💾 Save Transcript'}
             </button>
@@ -194,7 +194,7 @@ export default function MeetingDetailPage() {
             <button
               onClick={handleRunAnalysis}
               disabled={analyzing || !meeting.transcript}
-              className="px-4 py-2 rounded-xl bg-indigo-600 hover:bg-indigo-500 text-white text-xs font-bold transition-all disabled:opacity-50 shadow-lg shadow-indigo-600/20"
+              className="px-4 py-2 rounded-xl bg-indigo-600 hover:bg-indigo-500 text-foreground text-xs font-bold transition-all disabled:opacity-50 shadow-lg shadow-indigo-600/20"
             >
               {analyzing ? 'Analyzing...' : '⚡ Run AI Analysis'}
             </button>
@@ -202,11 +202,11 @@ export default function MeetingDetailPage() {
         </div>
 
         {/* Tab Selection */}
-        <div className="flex border-b border-slate-800 gap-4 pt-2 text-xs font-bold text-slate-400">
+        <div className="flex border-b border-border gap-4 pt-2 text-xs font-bold text-muted-foreground">
           <button
             onClick={() => setActiveTab('overview')}
             className={`pb-2 border-b-2 transition-colors ${
-              activeTab === 'overview' ? 'border-indigo-500 text-indigo-400' : 'border-transparent hover:text-slate-200'
+              activeTab === 'overview' ? 'border-indigo-500 text-indigo-400' : 'border-transparent hover:text-foreground'
             }`}
           >
             Overview
@@ -214,7 +214,7 @@ export default function MeetingDetailPage() {
           <button
             onClick={() => setActiveTab('tasks')}
             className={`pb-2 border-b-2 transition-colors flex items-center gap-1.5 ${
-              activeTab === 'tasks' ? 'border-indigo-500 text-indigo-400' : 'border-transparent hover:text-slate-200'
+              activeTab === 'tasks' ? 'border-indigo-500 text-indigo-400' : 'border-transparent hover:text-foreground'
             }`}
           >
             ClickUp Tasks ({meeting.taskSuggestions.length})
@@ -222,7 +222,7 @@ export default function MeetingDetailPage() {
           <button
             onClick={() => setActiveTab('decisions')}
             className={`pb-2 border-b-2 transition-colors ${
-              activeTab === 'decisions' ? 'border-indigo-500 text-indigo-400' : 'border-transparent hover:text-slate-200'
+              activeTab === 'decisions' ? 'border-indigo-500 text-indigo-400' : 'border-transparent hover:text-foreground'
             }`}
           >
             Decisions & Risks
@@ -230,7 +230,7 @@ export default function MeetingDetailPage() {
           <button
             onClick={() => setActiveTab('transcript')}
             className={`pb-2 border-b-2 transition-colors ${
-              activeTab === 'transcript' ? 'border-indigo-500 text-indigo-400' : 'border-transparent hover:text-slate-200'
+              activeTab === 'transcript' ? 'border-indigo-500 text-indigo-400' : 'border-transparent hover:text-foreground'
             }`}
           >
             Transcript ({meeting.transcript?.wordCount || 0} words)
@@ -241,30 +241,30 @@ export default function MeetingDetailPage() {
       {/* Tab Contents */}
       {activeTab === 'overview' && (
         <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
-          <div className="lg:col-span-2 bg-slate-900 border border-slate-800 rounded-2xl p-6 space-y-4 shadow-lg">
-            <h3 className="text-base font-bold text-white flex items-center gap-2">📝 Executive Summary</h3>
+          <div className="lg:col-span-2 bg-surface border border-border rounded-2xl p-6 space-y-4 shadow-lg">
+            <h3 className="text-base font-bold text-foreground flex items-center gap-2">📝 Executive Summary</h3>
             {meeting.analysis?.summary ? (
-              <p className="text-xs text-slate-300 leading-relaxed bg-slate-950 border border-slate-800 p-4 rounded-xl">
+              <p className="text-xs text-foreground leading-relaxed bg-background border border-border p-4 rounded-xl">
                 {meeting.analysis.summary}
               </p>
             ) : (
-              <p className="text-xs text-slate-500 italic">No summary generated yet. Click &quot;Run AI Analysis&quot; to extract summary and action items.</p>
+              <p className="text-xs text-muted-foreground italic">No summary generated yet. Click &quot;Run AI Analysis&quot; to extract summary and action items.</p>
             )}
           </div>
 
-          <div className="bg-slate-900 border border-slate-800 rounded-2xl p-6 space-y-4 shadow-lg">
-            <h3 className="text-base font-bold text-white">📊 Key Metrics</h3>
+          <div className="bg-surface border border-border rounded-2xl p-6 space-y-4 shadow-lg">
+            <h3 className="text-base font-bold text-foreground">📊 Key Metrics</h3>
             <div className="space-y-3 text-xs">
-              <div className="flex justify-between p-3 rounded-xl bg-slate-950 border border-slate-800">
-                <span className="text-slate-400">Analysis Confidence</span>
+              <div className="flex justify-between p-3 rounded-xl bg-background border border-border">
+                <span className="text-muted-foreground">Analysis Confidence</span>
                 <span className="font-bold text-emerald-400">{Math.round((meeting.analysis?.confidence || 0) * 100)}%</span>
               </div>
-              <div className="flex justify-between p-3 rounded-xl bg-slate-950 border border-slate-800">
-                <span className="text-slate-400">Suggested Action Items</span>
+              <div className="flex justify-between p-3 rounded-xl bg-background border border-border">
+                <span className="text-muted-foreground">Suggested Action Items</span>
                 <span className="font-bold text-indigo-400">{meeting.taskSuggestions.length}</span>
               </div>
-              <div className="flex justify-between p-3 rounded-xl bg-slate-950 border border-slate-800">
-                <span className="text-slate-400">Decisions Recorded</span>
+              <div className="flex justify-between p-3 rounded-xl bg-background border border-border">
+                <span className="text-muted-foreground">Decisions Recorded</span>
                 <span className="font-bold text-purple-400">{meeting.analysis?.decisions?.length || 0}</span>
               </div>
             </div>
@@ -279,15 +279,15 @@ export default function MeetingDetailPage() {
           </div>
 
           {meeting.taskSuggestions.length === 0 ? (
-            <div className="p-8 text-center bg-slate-900 border border-slate-800 rounded-2xl text-xs text-slate-400">
+            <div className="p-8 text-center bg-surface border border-border rounded-2xl text-xs text-muted-foreground">
               No task suggestions found for this meeting.
             </div>
           ) : (
             <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
               {meeting.taskSuggestions.map((task) => (
-                <div key={task.id} className="p-5 rounded-2xl bg-slate-900 border border-slate-800 space-y-3 shadow-lg">
+                <div key={task.id} className="p-5 rounded-2xl bg-surface border border-border space-y-3 shadow-lg">
                   <div className="flex items-start justify-between">
-                    <h4 className="font-bold text-white text-sm">{task.title}</h4>
+                    <h4 className="font-bold text-foreground text-sm">{task.title}</h4>
                     <span
                       className={`px-2 py-0.5 rounded text-[10px] font-bold ${
                         task.status === 'CREATED'
@@ -299,16 +299,16 @@ export default function MeetingDetailPage() {
                     </span>
                   </div>
 
-                  {task.description && <p className="text-xs text-slate-400">{task.description}</p>}
+                  {task.description && <p className="text-xs text-muted-foreground">{task.description}</p>}
 
                   {task.suggestedAssignee && (
-                    <p className="text-[11px] text-slate-500">👤 Assignee: <strong className="text-slate-300">{task.suggestedAssignee}</strong></p>
+                    <p className="text-[11px] text-muted-foreground">👤 Assignee: <strong className="text-foreground">{task.suggestedAssignee}</strong></p>
                   )}
 
-                  <div className="pt-3 border-t border-slate-800/80 flex items-center justify-between">
+                  <div className="pt-3 border-t border-border/80 flex items-center justify-between">
                     <button
                       onClick={() => setEditingTask(task)}
-                      className="text-xs text-slate-400 hover:text-white"
+                      className="text-xs text-muted-foreground hover:text-foreground"
                     >
                       ✏️ Edit Card
                     </button>
@@ -326,7 +326,7 @@ export default function MeetingDetailPage() {
                       <button
                         onClick={() => handleCreateInClickUp(task.id)}
                         disabled={creatingClickUpTaskId === task.id}
-                        className="px-3.5 py-1.5 rounded-xl bg-purple-600 hover:bg-purple-500 text-xs font-bold text-white disabled:opacity-50 shadow-md shadow-purple-600/20"
+                        className="px-3.5 py-1.5 rounded-xl bg-purple-600 hover:bg-purple-500 text-xs font-bold text-foreground disabled:opacity-50 shadow-md shadow-purple-600/20"
                       >
                         {creatingClickUpTaskId === task.id ? 'Creating...' : 'Push to ClickUp'}
                       </button>
@@ -341,71 +341,71 @@ export default function MeetingDetailPage() {
 
       {activeTab === 'decisions' && (
         <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-          <div className="bg-slate-900 border border-slate-800 rounded-2xl p-6 space-y-3">
+          <div className="bg-surface border border-border rounded-2xl p-6 space-y-3">
             <h3 className="text-sm font-bold text-purple-400">✅ Key Decisions</h3>
-            <ul className="space-y-2 text-xs text-slate-300">
+            <ul className="space-y-2 text-xs text-foreground">
               {meeting.analysis?.decisions?.map((d, i) => (
-                <li key={i} className="p-2.5 rounded-xl bg-slate-950 border border-slate-800">• {d}</li>
-              )) || <p className="text-slate-500 italic">No decisions recorded.</p>}
+                <li key={i} className="p-2.5 rounded-xl bg-background border border-border">• {d}</li>
+              )) || <p className="text-muted-foreground italic">No decisions recorded.</p>}
             </ul>
           </div>
 
-          <div className="bg-slate-900 border border-slate-800 rounded-2xl p-6 space-y-3">
+          <div className="bg-surface border border-border rounded-2xl p-6 space-y-3">
             <h3 className="text-sm font-bold text-rose-400">⚠️ Risks & Blockers</h3>
-            <ul className="space-y-2 text-xs text-slate-300">
+            <ul className="space-y-2 text-xs text-foreground">
               {meeting.analysis?.risks?.map((r, i) => (
-                <li key={i} className="p-2.5 rounded-xl bg-slate-950 border border-slate-800">• {r}</li>
-              )) || <p className="text-slate-500 italic">No risks recorded.</p>}
+                <li key={i} className="p-2.5 rounded-xl bg-background border border-border">• {r}</li>
+              )) || <p className="text-muted-foreground italic">No risks recorded.</p>}
             </ul>
           </div>
         </div>
       )}
 
       {activeTab === 'transcript' && (
-        <div className="bg-slate-900 border border-slate-800 rounded-2xl p-6 space-y-3">
-          <h3 className="text-sm font-bold text-white">📜 Raw & Normalized Transcript Input</h3>
+        <div className="bg-surface border border-border rounded-2xl p-6 space-y-3">
+          <h3 className="text-sm font-bold text-foreground">📜 Raw & Normalized Transcript Input</h3>
           <textarea
             value={rawTranscriptInput}
             onChange={(e) => setRawTranscriptInput(e.target.value)}
             placeholder="Paste meeting transcript here..."
-            className="w-full bg-slate-950 border border-slate-800 rounded-xl p-4 text-xs font-mono text-slate-200 focus:outline-none focus:border-indigo-500 h-96"
+            className="w-full bg-background border border-border rounded-xl p-4 text-xs font-mono text-foreground focus:outline-none focus:border-indigo-500 h-96"
           />
         </div>
       )}
 
       {/* Edit Task Modal */}
       {editingTask && (
-        <div className="fixed inset-0 bg-slate-950/80 backdrop-blur-sm flex items-center justify-center p-4 z-50">
-          <form onSubmit={handleSaveEditedTask} className="bg-slate-900 border border-slate-800 rounded-2xl p-6 w-full max-w-md space-y-4 shadow-2xl">
-            <h3 className="text-base font-bold text-white">Edit Task Card</h3>
+        <div className="fixed inset-0 bg-background/80 backdrop-blur-sm flex items-center justify-center p-4 z-50">
+          <form onSubmit={handleSaveEditedTask} className="bg-surface border border-border rounded-2xl p-6 w-full max-w-md space-y-4 shadow-2xl">
+            <h3 className="text-base font-bold text-foreground">Edit Task Card</h3>
             <div className="space-y-1">
-              <label className="text-xs text-slate-400 font-semibold">Title</label>
+              <label className="text-xs text-muted-foreground font-semibold">Title</label>
               <input
                 type="text"
                 value={editingTask.title}
                 onChange={(e) => setEditingTask({ ...editingTask, title: e.target.value })}
-                className="w-full bg-slate-950 border border-slate-800 rounded-xl px-3 py-2 text-xs text-slate-100"
+                className="w-full bg-background border border-border rounded-xl px-3 py-2 text-xs text-foreground"
               />
             </div>
             <div className="space-y-1">
-              <label className="text-xs text-slate-400 font-semibold">Description</label>
+              <label className="text-xs text-muted-foreground font-semibold">Description</label>
               <textarea
                 value={editingTask.description || ''}
                 onChange={(e) => setEditingTask({ ...editingTask, description: e.target.value })}
-                className="w-full bg-slate-950 border border-slate-800 rounded-xl px-3 py-2 text-xs text-slate-100 h-20"
+                className="w-full bg-background border border-border rounded-xl px-3 py-2 text-xs text-foreground h-20"
               />
             </div>
             <div className="flex justify-end gap-2 pt-2">
               <button
                 type="button"
                 onClick={() => setEditingTask(null)}
-                className="px-4 py-2 rounded-xl bg-slate-800 text-xs font-semibold text-slate-300"
+                className="px-4 py-2 rounded-xl bg-surface-hover text-xs font-semibold text-foreground"
               >
                 Cancel
               </button>
               <button
                 type="submit"
-                className="px-4 py-2 rounded-xl bg-indigo-600 hover:bg-indigo-500 text-xs font-semibold text-white"
+                className="px-4 py-2 rounded-xl bg-indigo-600 hover:bg-indigo-500 text-xs font-semibold text-foreground"
               >
                 Save Edits
               </button>

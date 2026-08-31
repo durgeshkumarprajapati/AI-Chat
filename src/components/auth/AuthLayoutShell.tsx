@@ -15,16 +15,18 @@ export const AuthLayoutShell: React.FC<AuthLayoutShellProps> = ({ children }) =>
   }, []);
 
   return (
-    <div className="min-h-screen bg-[#0f131d] text-[#dfe2f1] font-sans flex flex-col justify-center items-center py-12 px-4 sm:px-6 lg:px-8 relative overflow-hidden select-none">
+    <div className="min-h-screen bg-surface text-foreground font-sans flex flex-col justify-center items-center py-12 px-4 sm:px-6 lg:px-8 relative overflow-hidden select-none">
       {/* Background Soft Blue Radial Glow */}
       <div
-        className={`absolute -top-32 w-[600px] h-[600px] rounded-full bg-gradient-to-b from-[#4d8eff]/12 via-[#1c1f2a]/10 to-transparent blur-3xl opacity-70 pointer-events-none ${
+        className={`absolute -top-32 w-[600px] h-[600px] rounded-full bg-gradient-to-b from-primary/10 via-surface-hover/10 to-transparent blur-3xl opacity-70 pointer-events-none ${
           reducedMotion ? '' : 'animate-pulse'
         }`}
         style={{ animationDuration: '8s' }}
       />
 
-      {/* Background Grid Pattern */}
+      {/* Background Grid Pattern — decorative dot-grid at 3% opacity; left as a literal hex
+          since it's embedded inside a raw radial-gradient() function, not a themeable
+          bg-[#hex] utility, and is too subtle to visibly differ between themes. */}
       <div className="absolute inset-0 bg-[radial-gradient(#4d8eff_1px,transparent_1px)] [background-size:32px_32px] opacity-[0.03] pointer-events-none" />
 
       {/* Main Content Container */}

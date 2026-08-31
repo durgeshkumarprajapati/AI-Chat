@@ -217,28 +217,28 @@ export function GroupSettingsModal({ isOpen, group, onClose, onUpdated }: GroupS
   };
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 backdrop-blur-sm p-4">
-      <div className="bg-slate-900 border border-slate-800 rounded-xl shadow-2xl w-full max-w-2xl overflow-hidden flex flex-col max-h-[90vh]">
-        <div className="p-4 border-b border-slate-800 flex justify-between items-center bg-slate-950/50">
+    <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-900/60 dark:bg-black/60 backdrop-blur-sm p-4">
+      <div className="bg-surface border border-border rounded-xl shadow-2xl w-full max-w-2xl overflow-hidden flex flex-col max-h-[90vh]">
+        <div className="p-4 border-b border-border flex justify-between items-center bg-background/50">
           <div>
-            <h2 className="text-lg font-bold text-white flex items-center gap-2">
+            <h2 className="text-lg font-bold text-foreground flex items-center gap-2">
               ⚙️ Manage Workspace: <span className="text-indigo-400">{group.title}</span>
             </h2>
-            <p className="text-xs text-slate-400">Your role: <span className="text-indigo-300 font-semibold">{group.userRole}</span></p>
+            <p className="text-xs text-muted-foreground">Your role: <span className="text-indigo-300 font-semibold">{group.userRole}</span></p>
           </div>
-          <button onClick={onClose} className="text-slate-400 hover:text-white transition-colors">
+          <button onClick={onClose} className="text-muted-foreground hover:text-foreground transition-colors">
             ✕
           </button>
         </div>
 
         {/* Tab Navigation */}
-        <div className="flex border-b border-slate-800 bg-slate-950/30 px-4 pt-2 gap-2">
+        <div className="flex border-b border-border bg-background/30 px-4 pt-2 gap-2">
           <button
             onClick={() => setActiveTab('members')}
             className={`px-4 py-2 text-xs font-semibold rounded-t-lg transition-colors ${
               activeTab === 'members'
-                ? 'bg-slate-800 text-indigo-400 border-t-2 border-indigo-500'
-                : 'text-slate-400 hover:text-slate-200'
+                ? 'bg-surface-hover text-indigo-400 border-t-2 border-indigo-500'
+                : 'text-muted-foreground hover:text-foreground'
             }`}
           >
             👥 Members ({group.members.length})
@@ -247,8 +247,8 @@ export function GroupSettingsModal({ isOpen, group, onClose, onUpdated }: GroupS
             onClick={() => setActiveTab('sources')}
             className={`px-4 py-2 text-xs font-semibold rounded-t-lg transition-colors ${
               activeTab === 'sources'
-                ? 'bg-slate-800 text-indigo-400 border-t-2 border-indigo-500'
-                : 'text-slate-400 hover:text-slate-200'
+                ? 'bg-surface-hover text-indigo-400 border-t-2 border-indigo-500'
+                : 'text-muted-foreground hover:text-foreground'
             }`}
           >
             📚 RAG Sources ({group.documentSources.length + group.knowledgeBaseSources.length})
@@ -258,8 +258,8 @@ export function GroupSettingsModal({ isOpen, group, onClose, onUpdated }: GroupS
               onClick={() => setActiveTab('general')}
               className={`px-4 py-2 text-xs font-semibold rounded-t-lg transition-colors ${
                 activeTab === 'general'
-                  ? 'bg-slate-800 text-indigo-400 border-t-2 border-indigo-500'
-                  : 'text-slate-400 hover:text-slate-200'
+                  ? 'bg-surface-hover text-indigo-400 border-t-2 border-indigo-500'
+                  : 'text-muted-foreground hover:text-foreground'
               }`}
             >
               ⚙️ Settings
@@ -278,11 +278,11 @@ export function GroupSettingsModal({ isOpen, group, onClose, onUpdated }: GroupS
           {activeTab === 'members' && (
             <div className="space-y-4">
               {canEdit && (
-                <div className="p-3 bg-slate-950/40 border border-slate-800 rounded-lg flex items-center gap-2">
+                <div className="p-3 bg-background/40 border border-border rounded-lg flex items-center gap-2">
                   <select
                     value={selectedAddUserId}
                     onChange={(e) => setSelectedAddUserId(e.target.value)}
-                    className="flex-1 bg-slate-800 border border-slate-700 rounded-lg px-3 py-1.5 text-xs text-white"
+                    className="flex-1 bg-surface-hover border border-border rounded-lg px-3 py-1.5 text-xs text-foreground"
                   >
                     <option value="">-- Select Member to Add --</option>
                     {availableUsers
@@ -296,7 +296,7 @@ export function GroupSettingsModal({ isOpen, group, onClose, onUpdated }: GroupS
                   <select
                     value={selectedRole}
                     onChange={(e) => setSelectedRole(e.target.value as any)}
-                    className="bg-slate-800 border border-slate-700 rounded-lg px-3 py-1.5 text-xs text-white"
+                    className="bg-surface-hover border border-border rounded-lg px-3 py-1.5 text-xs text-foreground"
                   >
                     <option value="EDITOR">EDITOR</option>
                     <option value="VIEWER">VIEWER</option>
@@ -304,27 +304,27 @@ export function GroupSettingsModal({ isOpen, group, onClose, onUpdated }: GroupS
                   <button
                     onClick={handleAddMember}
                     disabled={!selectedAddUserId || loading}
-                    className="px-3 py-1.5 bg-indigo-600 hover:bg-indigo-500 text-white text-xs font-semibold rounded-lg disabled:opacity-50"
+                    className="px-3 py-1.5 bg-indigo-600 hover:bg-indigo-500 text-foreground text-xs font-semibold rounded-lg disabled:opacity-50"
                   >
                     Add
                   </button>
                 </div>
               )}
 
-              <div className="divide-y divide-slate-800 border border-slate-800 rounded-lg overflow-hidden bg-slate-950/20">
+              <div className="divide-y divide-slate-800 border border-border rounded-lg overflow-hidden bg-background/20">
                 {group.members.map((m) => (
-                  <div key={m.id} className="p-3 flex items-center justify-between hover:bg-slate-800/30">
+                  <div key={m.id} className="p-3 flex items-center justify-between hover:bg-surface-hover/30">
                     <div className="flex items-center gap-3">
                       <div className="w-8 h-8 rounded-full bg-indigo-600/30 border border-indigo-500/30 flex items-center justify-center text-indigo-300 font-bold text-xs">
                         {((m.user?.name || m.user?.email || 'U'))[0]!.toUpperCase()}
                       </div>
                       <div>
-                        <div className="text-sm font-medium text-white">{m.user?.name || m.user?.email}</div>
-                        <div className="text-xs text-slate-400">{m.user.email}</div>
+                        <div className="text-sm font-medium text-foreground">{m.user?.name || m.user?.email}</div>
+                        <div className="text-xs text-muted-foreground">{m.user.email}</div>
                       </div>
                     </div>
                     <div className="flex items-center gap-3">
-                      <span className="text-xs px-2 py-0.5 rounded bg-slate-800 text-indigo-300 font-mono">
+                      <span className="text-xs px-2 py-0.5 rounded bg-surface-hover text-indigo-300 font-mono">
                         {m.role}
                       </span>
                       {canEdit && m.role !== 'OWNER' && (
@@ -347,16 +347,16 @@ export function GroupSettingsModal({ isOpen, group, onClose, onUpdated }: GroupS
             <div className="space-y-6">
               {/* Document Sources */}
               <div>
-                <h3 className="text-xs font-semibold text-slate-300 uppercase tracking-wider mb-2">
+                <h3 className="text-xs font-semibold text-foreground uppercase tracking-wider mb-2">
                   Attached Documents ({group.documentSources.length})
                 </h3>
 
                 {canEdit && (
-                  <div className="p-3 bg-slate-950/40 border border-slate-800 rounded-lg flex items-center gap-2 mb-3">
+                  <div className="p-3 bg-background/40 border border-border rounded-lg flex items-center gap-2 mb-3">
                     <select
                       value={selectedDocId}
                       onChange={(e) => setSelectedDocId(e.target.value)}
-                      className="flex-1 bg-slate-800 border border-slate-700 rounded-lg px-3 py-1.5 text-xs text-white"
+                      className="flex-1 bg-surface-hover border border-border rounded-lg px-3 py-1.5 text-xs text-foreground"
                     >
                       <option value="">-- Attach Document --</option>
                       {availableDocs
@@ -370,7 +370,7 @@ export function GroupSettingsModal({ isOpen, group, onClose, onUpdated }: GroupS
                     <button
                       onClick={handleAddDocSource}
                       disabled={!selectedDocId || loading}
-                      className="px-3 py-1.5 bg-indigo-600 hover:bg-indigo-500 text-white text-xs font-semibold rounded-lg disabled:opacity-50"
+                      className="px-3 py-1.5 bg-indigo-600 hover:bg-indigo-500 text-foreground text-xs font-semibold rounded-lg disabled:opacity-50"
                     >
                       Attach
                     </button>
@@ -379,11 +379,11 @@ export function GroupSettingsModal({ isOpen, group, onClose, onUpdated }: GroupS
 
                 <div className="space-y-2">
                   {group.documentSources.length === 0 ? (
-                    <p className="text-xs text-slate-500">No documents attached.</p>
+                    <p className="text-xs text-muted-foreground">No documents attached.</p>
                   ) : (
                     group.documentSources.map((ds) => (
-                      <div key={ds.id} className="p-2.5 bg-slate-950/30 border border-slate-800 rounded-lg flex justify-between items-center text-xs text-slate-200">
-                        <span>📄 {ds.document.filename} <span className="text-slate-500">(added by {ds.addedBy.name || ds.addedBy.email})</span></span>
+                      <div key={ds.id} className="p-2.5 bg-background/30 border border-border rounded-lg flex justify-between items-center text-xs text-foreground">
+                        <span>📄 {ds.document.filename} <span className="text-muted-foreground">(added by {ds.addedBy.name || ds.addedBy.email})</span></span>
                         {canEdit && (
                           <button onClick={() => handleRemoveDocSource(ds.id)} className="text-red-400 hover:text-red-300">
                             Detach
@@ -397,16 +397,16 @@ export function GroupSettingsModal({ isOpen, group, onClose, onUpdated }: GroupS
 
               {/* KB Sources */}
               <div>
-                <h3 className="text-xs font-semibold text-slate-300 uppercase tracking-wider mb-2">
+                <h3 className="text-xs font-semibold text-foreground uppercase tracking-wider mb-2">
                   Attached Knowledge Bases ({group.knowledgeBaseSources.length})
                 </h3>
 
                 {canEdit && (
-                  <div className="p-3 bg-slate-950/40 border border-slate-800 rounded-lg flex items-center gap-2 mb-3">
+                  <div className="p-3 bg-background/40 border border-border rounded-lg flex items-center gap-2 mb-3">
                     <select
                       value={selectedKbId}
                       onChange={(e) => setSelectedKbId(e.target.value)}
-                      className="flex-1 bg-slate-800 border border-slate-700 rounded-lg px-3 py-1.5 text-xs text-white"
+                      className="flex-1 bg-surface-hover border border-border rounded-lg px-3 py-1.5 text-xs text-foreground"
                     >
                       <option value="">-- Attach Knowledge Base --</option>
                       {availableKbs
@@ -420,7 +420,7 @@ export function GroupSettingsModal({ isOpen, group, onClose, onUpdated }: GroupS
                     <button
                       onClick={handleAddKbSource}
                       disabled={!selectedKbId || loading}
-                      className="px-3 py-1.5 bg-indigo-600 hover:bg-indigo-500 text-white text-xs font-semibold rounded-lg disabled:opacity-50"
+                      className="px-3 py-1.5 bg-indigo-600 hover:bg-indigo-500 text-foreground text-xs font-semibold rounded-lg disabled:opacity-50"
                     >
                       Attach
                     </button>
@@ -429,11 +429,11 @@ export function GroupSettingsModal({ isOpen, group, onClose, onUpdated }: GroupS
 
                 <div className="space-y-2">
                   {group.knowledgeBaseSources.length === 0 ? (
-                    <p className="text-xs text-slate-500">No Knowledge Bases attached.</p>
+                    <p className="text-xs text-muted-foreground">No Knowledge Bases attached.</p>
                   ) : (
                     group.knowledgeBaseSources.map((ks) => (
-                      <div key={ks.id} className="p-2.5 bg-slate-950/30 border border-slate-800 rounded-lg flex justify-between items-center text-xs text-slate-200">
-                        <span>📚 {ks.knowledgeBase.name} <span className="text-slate-500">(added by {ks.addedBy.name || ks.addedBy.email})</span></span>
+                      <div key={ks.id} className="p-2.5 bg-background/30 border border-border rounded-lg flex justify-between items-center text-xs text-foreground">
+                        <span>📚 {ks.knowledgeBase.name} <span className="text-muted-foreground">(added by {ks.addedBy.name || ks.addedBy.email})</span></span>
                         {canEdit && (
                           <button onClick={() => handleRemoveKbSource(ks.id)} className="text-red-400 hover:text-red-300">
                             Detach
@@ -451,31 +451,31 @@ export function GroupSettingsModal({ isOpen, group, onClose, onUpdated }: GroupS
           {activeTab === 'general' && canEdit && (
             <form onSubmit={handleUpdateGeneral} className="space-y-4">
               <div>
-                <label className="block text-xs font-semibold text-slate-300 uppercase tracking-wider mb-1">
+                <label className="block text-xs font-semibold text-foreground uppercase tracking-wider mb-1">
                   Title
                 </label>
                 <input
                   type="text"
                   value={title}
                   onChange={(e) => setTitle(e.target.value)}
-                  className="w-full bg-slate-800 border border-slate-700 rounded-lg px-3 py-2 text-white text-sm"
+                  className="w-full bg-surface-hover border border-border rounded-lg px-3 py-2 text-foreground text-sm"
                   required
                 />
               </div>
 
               <div>
-                <label className="block text-xs font-semibold text-slate-300 uppercase tracking-wider mb-1">
+                <label className="block text-xs font-semibold text-foreground uppercase tracking-wider mb-1">
                   Description / Goal
                 </label>
                 <textarea
                   value={summary}
                   onChange={(e) => setSummary(e.target.value)}
                   rows={3}
-                  className="w-full bg-slate-800 border border-slate-700 rounded-lg px-3 py-2 text-white text-sm resize-none"
+                  className="w-full bg-surface-hover border border-border rounded-lg px-3 py-2 text-foreground text-sm resize-none"
                 />
               </div>
 
-              <div className="flex justify-between items-center pt-3 border-t border-slate-800">
+              <div className="flex justify-between items-center pt-3 border-t border-border">
                 {isOwner ? (
                   <button
                     type="button"
@@ -489,7 +489,7 @@ export function GroupSettingsModal({ isOpen, group, onClose, onUpdated }: GroupS
                 <button
                   type="submit"
                   disabled={loading}
-                  className="px-4 py-2 bg-indigo-600 hover:bg-indigo-500 text-white text-sm font-semibold rounded-lg"
+                  className="px-4 py-2 bg-indigo-600 hover:bg-indigo-500 text-foreground text-sm font-semibold rounded-lg"
                 >
                   Save Changes
                 </button>

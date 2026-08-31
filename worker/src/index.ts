@@ -7,6 +7,7 @@ import { workerDocumentRepository } from './repositories/document.repository.js'
 import { workerCalendarSyncProcessor } from './processors/calendar-sync.processor.js';
 import { billingReconciliationProcessor } from './processors/billing-reconciliation.processor.js';
 import { projectIntelligenceAnalysisProcessor } from './processors/project-intelligence-analysis.processor.js';
+import { sarvamTranslationProcessor } from './processors/sarvam-translation.processor.js';
 import { MultimodalJobPayload, QUEUES } from '@/lib/rabbitmq';
 import { configService } from '@/features/config';
 import { prisma } from './lib/prisma.js';
@@ -17,6 +18,7 @@ dotenv.config();
 const QUEUE_NAME = 'document-processing';
 const KG_QUEUE_NAME = 'knowledge-graph-extraction';
 const MULTIMODAL_QUEUE_NAME = QUEUES.DOCUMENT_MULTIMODAL_EXTRACTION;
+const SARVAM_QUEUE_NAME = QUEUES.SARVAM_TRANSLATION;
 const RABBITMQ_URL = process.env.RABBITMQ_URL || 'amqp://guest:guest@localhost:5672';
 const MAX_RETRIES = 3;
 const TIMEOUT_MINUTES = process.env.DOCUMENT_PROCESSING_TIMEOUT_MINUTES
@@ -29,6 +31,7 @@ let channel2: Channel | null = null;
 let consumerTag: string | null = null;
 let kgConsumerTag: string | null = null;
 let multimodalConsumerTag: string | null = null;
+let sarvamConsumerTag: string | null = null;
 let isShuttingDown = false;
 let activeInFlightJobs = 0;
 
@@ -184,6 +187,33 @@ export async function startWorker() {
     );
     multimodalConsumerTag = mmConsumeResult.consumerTag;
 
+    // 4. Consume sarvam-translation queue
+    await channel2.assertQueue(SARVAM_QUEUE_NAME, { durable: true });
+    const sarvamConsumeRes = await channel2.consume(
+      SARVAM_QUEUE_NAME,
+      async (msg: ConsumeMessage | null) => {
+        if (!msg || isShuttingDown) return;
+
+        activeInFlightJobs++;
+        try {
+          const payload = JSON.parse(msg.content.toString());
+          console.log(`[Worker-Sarvam] Translation job received: ${payload.translationId} for doc ${payload.documentId}`);
+
+          await sarvamTranslationProcessor.process(payload);
+          channel2?.ack(msg);
+        } catch (error) {
+          console.error('[Worker-Sarvam] Unexpected job execution error:', error instanceof Error ? error.message : error);
+          if (msg && channel2) {
+            channel2.ack(msg);
+          }
+        } finally {
+          activeInFlightJobs--;
+        }
+      },
+      { noAck: false }
+    );
+    sarvamConsumerTag = sarvamConsumeRes.consumerTag;
+
     // Start periodic Google Calendar Sync Retry loop
     const syncInterval = setInterval(async () => {
       if (isShuttingDown) return;
@@ -245,6 +275,10 @@ export async function shutdownWorker(signal?: string) {
     if (multimodalConsumerTag && channel2) {
       await channel2.cancel(multimodalConsumerTag).catch(() => {});
       multimodalConsumerTag = null;
+    }
+    if (sarvamConsumerTag && channel2) {
+      await channel2.cancel(sarvamConsumerTag).catch(() => {});
+      sarvamConsumerTag = null;
     }
     console.log('[Worker] RabbitMQ consumers stopped.');
 

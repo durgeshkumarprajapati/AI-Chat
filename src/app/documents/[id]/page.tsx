@@ -98,6 +98,14 @@ export default function DocumentDetailPage() {
 
   // Decoupled from fetchDetail: intelligence data is optional and must never block or delay the
   // core document/chunks view (old documents will simply get `intelligence: null` back).
+  // Sarvam Indic Intelligence State
+  const [sarvamTranslations, setSarvamTranslations] = useState<any[]>([]);
+  const [_digitisationResult, setDigitisationResult] = useState<any>(null);
+  const [digitising, setDigitising] = useState(false);
+  const [translating, setTranslating] = useState(false);
+  const [selectedLangs, setSelectedLangs] = useState<string[]>(['hi-IN']);
+  const [showTranslationModal, setShowTranslationModal] = useState(false);
+
   useEffect(() => {
     let cancelled = false;
     fetch(`/api/documents/${documentId}/intelligence`)
@@ -109,6 +117,16 @@ export default function DocumentDetailPage() {
         }
       })
       .catch((err) => console.error('Failed to fetch document intelligence:', err));
+
+    fetch(`/api/documents/${documentId}/translations`)
+      .then((res) => res.json())
+      .then((json) => {
+        if (!cancelled && json.success) {
+          setSarvamTranslations(json.data || []);
+        }
+      })
+      .catch(() => {});
+
     return () => {
       cancelled = true;
     };
@@ -545,7 +563,149 @@ export default function DocumentDetailPage() {
               </div>
             </div>
           </div>
+
+          {/* Phase 79 — Sarvam Indic Document Intelligence & Translation Card */}
+          <div className="rounded-2xl bg-surface border border-border p-6 space-y-4 shadow-xl">
+            <div className="flex items-center justify-between border-b border-border pb-3">
+              <h2 className="text-lg font-bold text-foreground flex items-center gap-2">
+                <span>🇮🇳</span> Sarvam Indic Intelligence
+              </h2>
+              <span className="text-[11px] font-mono px-2 py-0.5 rounded-full bg-amber-950 text-amber-300 border border-amber-800">
+                Phase 79 Active
+              </span>
+            </div>
+
+            <div className="space-y-3">
+              <div className="flex items-center justify-between p-3 rounded-xl bg-background border border-border">
+                <div>
+                  <div className="text-xs font-semibold text-foreground">Document Digitisation</div>
+                  <div className="text-[10px] text-muted-foreground">Indic OCR & Layout Segmentation</div>
+                </div>
+                <button
+                  onClick={async () => {
+                    setDigitising(true);
+                    try {
+                      const res = await fetch(`/api/documents/${documentId}/digitise`, { method: 'POST' });
+                      const json = await res.json();
+                      if (json.success) setDigitisationResult(json.data);
+                    } catch (e) {
+                      console.error(e);
+                    } finally {
+                      setDigitising(false);
+                    }
+                  }}
+                  disabled={digitising}
+                  className="px-3 py-1.5 rounded-lg bg-amber-600 hover:bg-amber-500 text-white text-xs font-medium transition disabled:opacity-50"
+                >
+                  {digitising ? 'Digitising...' : 'Digitise Document'}
+                </button>
+              </div>
+
+              <div className="flex items-center justify-between p-3 rounded-xl bg-background border border-border">
+                <div>
+                  <div className="text-xs font-semibold text-foreground">Document Translation</div>
+                  <div className="text-[10px] text-muted-foreground">Translate into Hindi, Gujarati, Marathi, etc.</div>
+                </div>
+                <button
+                  onClick={() => setShowTranslationModal(true)}
+                  className="px-3 py-1.5 rounded-lg bg-indigo-600 hover:bg-indigo-500 text-white text-xs font-medium transition"
+                >
+                  Translate Document
+                </button>
+              </div>
+
+              {sarvamTranslations.length > 0 && (
+                <div className="pt-2 border-t border-border space-y-2">
+                  <span className="text-[11px] font-semibold text-muted-foreground">Translations:</span>
+                  <div className="space-y-1.5">
+                    {sarvamTranslations.map((tr: any) => (
+                      <div key={tr.id} className="flex items-center justify-between p-2 rounded-lg bg-background text-xs border border-border">
+                        <span className="font-mono text-foreground font-medium">{tr.targetLanguage}</span>
+                        <span className={`px-2 py-0.5 text-[10px] rounded-full font-mono ${
+                          tr.status === 'COMPLETED' ? 'bg-emerald-950 text-emerald-300 border border-emerald-800' : 'bg-amber-950 text-amber-300 border border-amber-800'
+                        }`}>
+                          {tr.status}
+                        </span>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              )}
+            </div>
+          </div>
         </div>
+
+        {/* Translation Modal */}
+        {showTranslationModal && (
+          <div className="fixed inset-0 z-50 bg-black/60 backdrop-blur-sm flex items-center justify-center p-4">
+            <div className="bg-surface border border-border rounded-2xl p-6 max-w-md w-full space-y-4 shadow-2xl">
+              <div className="flex items-center justify-between border-b border-border pb-3">
+                <h3 className="text-base font-bold text-foreground">Translate Document (Sarvam AI)</h3>
+                <button onClick={() => setShowTranslationModal(false)} className="text-muted-foreground hover:text-foreground text-sm font-bold">✕</button>
+              </div>
+
+              <div className="space-y-2">
+                <label className="text-xs font-semibold text-muted-foreground">Select Target Indic Languages:</label>
+                <div className="grid grid-cols-2 gap-2 text-xs">
+                  {[
+                    { code: 'hi-IN', name: 'Hindi (हिंदी)' },
+                    { code: 'gu-IN', name: 'Gujarati (ગુજરાતી)' },
+                    { code: 'mr-IN', name: 'Marathi (मराठी)' },
+                    { code: 'bn-IN', name: 'Bengali (বাংলা)' },
+                    { code: 'ta-IN', name: 'Tamil (தமிழ்)' },
+                    { code: 'te-IN', name: 'Telugu (తెలుగు)' },
+                    { code: 'kn-IN', name: 'Kannada (ಕನ್ನಡ)' },
+                    { code: 'ml-IN', name: 'Malayalam (മലയാളം)' },
+                    { code: 'pa-IN', name: 'Punjabi (ਪੰਜਾਬੀ)' },
+                    { code: 'or-IN', name: 'Odia (ଓଡ଼ିଆ)' }
+                  ].map((lang) => (
+                    <label key={lang.code} className="flex items-center space-x-2 p-2 rounded-lg bg-background border border-border cursor-pointer hover:border-indigo-500 transition">
+                      <input
+                        type="checkbox"
+                        checked={selectedLangs.includes(lang.code)}
+                        onChange={(e) => {
+                          if (e.target.checked) setSelectedLangs([...selectedLangs, lang.code]);
+                          else setSelectedLangs(selectedLangs.filter((c) => c !== lang.code));
+                        }}
+                        className="rounded border-border text-indigo-600 focus:ring-indigo-500"
+                      />
+                      <span className="text-foreground font-medium">{lang.name}</span>
+                    </label>
+                  ))}
+                </div>
+              </div>
+
+              <div className="flex items-center justify-end space-x-3 pt-3 border-t border-border">
+                <button onClick={() => setShowTranslationModal(false)} className="px-4 py-2 rounded-xl bg-background border border-border text-muted-foreground hover:text-foreground text-xs font-semibold">Cancel</button>
+                <button
+                  onClick={async () => {
+                    setTranslating(true);
+                    try {
+                      const res = await fetch(`/api/documents/${documentId}/translations`, {
+                        method: 'POST',
+                        headers: { 'Content-Type': 'application/json' },
+                        body: JSON.stringify({ targetLanguages: selectedLangs })
+                      });
+                      const json = await res.json();
+                      if (json.success) {
+                        setSarvamTranslations(json.data);
+                        setShowTranslationModal(false);
+                      }
+                    } catch (e) {
+                      console.error(e);
+                    } finally {
+                      setTranslating(false);
+                    }
+                  }}
+                  disabled={translating || selectedLangs.length === 0}
+                  className="px-4 py-2 rounded-xl bg-indigo-600 hover:bg-indigo-500 text-white text-xs font-semibold transition disabled:opacity-50"
+                >
+                  {translating ? 'Submitting...' : 'Start Translation'}
+                </button>
+              </div>
+            </div>
+          </div>
+        )}
 
         {/* Right Column: Live Pipeline Steps & Developer Panel */}
         <div className="lg:col-span-2 space-y-6">

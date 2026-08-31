@@ -5,7 +5,8 @@ import { InfrastructureError } from '@/errors';
 export const QUEUES = {
   DOCUMENT_PROCESSING: 'document-processing',
   KNOWLEDGE_GRAPH_EXTRACTION: 'knowledge-graph-extraction',
-  DOCUMENT_MULTIMODAL_EXTRACTION: 'document-multimodal-extraction'
+  DOCUMENT_MULTIMODAL_EXTRACTION: 'document-multimodal-extraction',
+  SARVAM_TRANSLATION: 'sarvam-translation'
 } as const;
 
 export type QueueName = typeof QUEUES[keyof typeof QUEUES];

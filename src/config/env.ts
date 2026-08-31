@@ -47,6 +47,7 @@ const serverEnvSchema = z
       .positive({ message: 'OLLAMA_EMBEDDING_DIMENSIONS must be greater than 0' })
       .default(768),
     OPENAI_API_KEY: z.string().optional().default('sk-mock-key-for-development'),
+    SARVAM_API_KEY: z.string().optional(),
     OPENAI_EMBEDDING_MODEL: z
       .string()
       .default('text-embedding-3-small'),

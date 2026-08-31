@@ -154,6 +154,8 @@ model User {
   insightReviews                InsightReview[]
   agentRuns                     AgentRun[]
   agentApprovalsGiven           AgentPlanStep[]
+  sarvamDigitisationRuns        SarvamDigitisationRun[]
+  documentTranslations          DocumentTranslation[]
 
   @@index([email])
   @@map("users")
@@ -214,6 +216,8 @@ model Document {
   lineageTargetRelations DocumentLineage[]                @relation("LineageTarget")
   lifecycleEvents        DocumentLifecycleEvent[]
   retentionJobs          DocumentRetentionJob[]
+  sarvamDigitisationRuns SarvamDigitisationRun[]
+  documentTranslations   DocumentTranslation[]
 
   @@index([userId])
   @@index([status])
@@ -592,6 +596,61 @@ model DocumentChart {
   @@index([documentId, pageNumber])
   @@index([chunkId])
   @@map("document_charts")
+}
+
+// PHASE 79 — SARVAM AI INDIC LANGUAGE & DOCUMENT INTELLIGENCE
+
+model SarvamDigitisationRun {
+  id           String    @id @default(uuid())
+  documentId   String    @map("document_id")
+  userId       String    @map("user_id")
+  status       String    @default("PENDING")
+  pageCount    Int       @default(0) @map("page_count")
+  tableCount   Int       @default(0) @map("table_count")
+  blockCount   Int       @default(0) @map("block_count")
+  language     String?
+  layoutOutput Json?     @map("layout_output")
+  errorMessage String?   @map("error_message") @db.Text
+  durationMs   Int?      @map("duration_ms")
+  createdAt    DateTime  @default(now()) @map("created_at")
+  updatedAt    DateTime  @updatedAt @map("updated_at")
+  completedAt  DateTime? @map("completed_at")
+
+  document Document @relation(fields: [documentId], references: [id], onDelete: Cascade)
+  user     User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([documentId])
+  @@index([userId])
+  @@index([status])
+  @@map("sarvam_digitisation_runs")
+}
+
+model DocumentTranslation {
+  id              String    @id @default(uuid())
+  documentId      String    @map("document_id")
+  userId          String    @map("user_id")
+  sourceVersionId String?   @map("source_version_id")
+  sourceLanguage  String    @map("source_language")
+  targetLanguage  String    @map("target_language")
+  status          String    @default("PENDING")
+  jobId           String?   @map("job_id")
+  translatedTitle String?   @map("translated_title")
+  storageKey      String?   @map("storage_key")
+  translatedText  String?   @map("translated_text") @db.Text
+  errorMessage    String?   @map("error_message") @db.Text
+  durationMs      Int?      @map("duration_ms")
+  createdAt       DateTime  @default(now()) @map("created_at")
+  updatedAt       DateTime  @updatedAt @map("updated_at")
+  completedAt     DateTime? @map("completed_at")
+
+  document Document @relation(fields: [documentId], references: [id], onDelete: Cascade)
+  user     User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([documentId])
+  @@index([userId])
+  @@index([documentId, targetLanguage, sourceVersionId])
+  @@index([status])
+  @@map("document_translations")
 }
 
 // PHASE 69D — ENTERPRISE DOCUMENT MANAGEMENT (versioning, duplicate detection, re-indexing)

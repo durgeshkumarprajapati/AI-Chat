@@ -1317,6 +1317,185 @@ export const CONFIG_REGISTRY: Record<string, RegistryConfigItem> = {
     isEditable: true,
     isHighImpact: false,
     requiresRestart: false
+  },
+
+  // SARVAM AI INDIC LANGUAGE & DOCUMENT INTELLIGENCE
+  SARVAM_ENABLED: {
+    key: 'SARVAM_ENABLED',
+    valueType: ConfigValueType.BOOLEAN,
+    category: ConfigCategory.FEATURE_FLAG,
+    defaultValue: 'false',
+    purpose: 'Master flag enabling Sarvam AI Indic language & document intelligence integration.',
+    description: 'Sarvam AI feature flag.',
+    isEditable: true,
+    isHighImpact: true,
+    requiresRestart: false
+  },
+  SARVAM_DIGITISATION_ENABLED: {
+    key: 'SARVAM_DIGITISATION_ENABLED',
+    valueType: ConfigValueType.BOOLEAN,
+    category: ConfigCategory.OCR,
+    defaultValue: 'false',
+    purpose: 'Controls Sarvam document layout digitisation and Indic OCR processing.',
+    description: 'Sarvam Document Digitisation flag.',
+    isEditable: true,
+    isHighImpact: false,
+    requiresRestart: false
+  },
+  SARVAM_TRANSLATION_ENABLED: {
+    key: 'SARVAM_TRANSLATION_ENABLED',
+    valueType: ConfigValueType.BOOLEAN,
+    category: ConfigCategory.FEATURE_FLAG,
+    defaultValue: 'false',
+    purpose: 'Controls Sarvam text and document translation features.',
+    description: 'Sarvam Translation flag.',
+    isEditable: true,
+    isHighImpact: false,
+    requiresRestart: false
+  },
+  SARVAM_TEXT_TRANSLATION_ENABLED: {
+    key: 'SARVAM_TEXT_TRANSLATION_ENABLED',
+    valueType: ConfigValueType.BOOLEAN,
+    category: ConfigCategory.FEATURE_FLAG,
+    defaultValue: 'false',
+    purpose: 'Controls Sarvam real-time text translation API availability.',
+    description: 'Sarvam Text Translation flag.',
+    isEditable: true,
+    isHighImpact: false,
+    requiresRestart: false
+  },
+  SARVAM_DOCUMENT_TRANSLATION_ENABLED: {
+    key: 'SARVAM_DOCUMENT_TRANSLATION_ENABLED',
+    valueType: ConfigValueType.BOOLEAN,
+    category: ConfigCategory.FEATURE_FLAG,
+    defaultValue: 'false',
+    purpose: 'Controls Sarvam asynchronous document translation workflow.',
+    description: 'Sarvam Document Translation flag.',
+    isEditable: true,
+    isHighImpact: true,
+    requiresRestart: false
+  },
+  SARVAM_MULTILINGUAL_RAG_ENABLED: {
+    key: 'SARVAM_MULTILINGUAL_RAG_ENABLED',
+    valueType: ConfigValueType.BOOLEAN,
+    category: ConfigCategory.RAG,
+    defaultValue: 'false',
+    purpose: 'Controls Sarvam Indic query language detection and translation in RAG pipelines.',
+    description: 'Sarvam Multilingual RAG flag.',
+    isEditable: true,
+    isHighImpact: true,
+    requiresRestart: false
+  },
+  SARVAM_TIMEOUT_MS: {
+    key: 'SARVAM_TIMEOUT_MS',
+    valueType: ConfigValueType.NUMBER,
+    category: ConfigCategory.PERFORMANCE,
+    defaultValue: '30000',
+    purpose: 'Timeout budget in milliseconds for HTTP API requests to Sarvam services.',
+    description: 'Sarvam API timeout budget.',
+    isEditable: true,
+    isHighImpact: true,
+    requiresRestart: false,
+    minValue: 1000,
+    maxValue: 120000
+  },
+  SARVAM_MAX_DOCUMENT_SIZE_MB: {
+    key: 'SARVAM_MAX_DOCUMENT_SIZE_MB',
+    valueType: ConfigValueType.NUMBER,
+    category: ConfigCategory.DOCUMENT,
+    defaultValue: '25',
+    purpose: 'Maximum document file size in megabytes allowable for Sarvam digitisation and translation.',
+    description: 'Max document size limit for Sarvam.',
+    isEditable: true,
+    isHighImpact: false,
+    requiresRestart: false,
+    minValue: 1,
+    maxValue: 100
+  },
+  SARVAM_MAX_TRANSLATION_LANGUAGES: {
+    key: 'SARVAM_MAX_TRANSLATION_LANGUAGES',
+    valueType: ConfigValueType.NUMBER,
+    category: ConfigCategory.FEATURE_FLAG,
+    defaultValue: '10',
+    purpose: 'Maximum simultaneous target Indic languages per document translation job.',
+    description: 'Max target translation languages.',
+    isEditable: true,
+    isHighImpact: false,
+    requiresRestart: false,
+    minValue: 1,
+    maxValue: 20
+  },
+  SARVAM_MAX_CONCURRENT_JOBS: {
+    key: 'SARVAM_MAX_CONCURRENT_JOBS',
+    valueType: ConfigValueType.NUMBER,
+    category: ConfigCategory.WORKER,
+    defaultValue: '3',
+    purpose: 'Maximum concurrent background worker jobs allocated for Sarvam document processing.',
+    description: 'Sarvam worker concurrency limit.',
+    isEditable: true,
+    isHighImpact: false,
+    requiresRestart: false,
+    minValue: 1,
+    maxValue: 10
+  },
+  SARVAM_RETRY_LIMIT: {
+    key: 'SARVAM_RETRY_LIMIT',
+    valueType: ConfigValueType.NUMBER,
+    category: ConfigCategory.WORKER,
+    defaultValue: '3',
+    purpose: 'Maximum retries for transient Sarvam API errors during background jobs.',
+    description: 'Sarvam retry limit.',
+    isEditable: true,
+    isHighImpact: false,
+    requiresRestart: false,
+    minValue: 0,
+    maxValue: 10
+  },
+  SARVAM_POLL_INTERVAL_MS: {
+    key: 'SARVAM_POLL_INTERVAL_MS',
+    valueType: ConfigValueType.NUMBER,
+    category: ConfigCategory.PERFORMANCE,
+    defaultValue: '2000',
+    purpose: 'Polling interval in milliseconds when checking status of asynchronous Sarvam jobs.',
+    description: 'Sarvam job status poll interval.',
+    isEditable: true,
+    isHighImpact: false,
+    requiresRestart: false,
+    minValue: 500,
+    maxValue: 10000
+  },
+  SARVAM_DEFAULT_SOURCE_LANGUAGE: {
+    key: 'SARVAM_DEFAULT_SOURCE_LANGUAGE',
+    valueType: ConfigValueType.STRING,
+    category: ConfigCategory.FEATURE_FLAG,
+    defaultValue: 'hi-IN',
+    purpose: 'Default source Indic language code for translation and OCR fallback.',
+    description: 'Default Sarvam source language code.',
+    isEditable: true,
+    isHighImpact: false,
+    requiresRestart: false
+  },
+  SARVAM_DEFAULT_TRANSLATION_LANGUAGE: {
+    key: 'SARVAM_DEFAULT_TRANSLATION_LANGUAGE',
+    valueType: ConfigValueType.STRING,
+    category: ConfigCategory.FEATURE_FLAG,
+    defaultValue: 'en-IN',
+    purpose: 'Default target language code for translation output.',
+    description: 'Default Sarvam target language code.',
+    isEditable: true,
+    isHighImpact: false,
+    requiresRestart: false
+  },
+  SARVAM_FALLBACK_ENABLED: {
+    key: 'SARVAM_FALLBACK_ENABLED',
+    valueType: ConfigValueType.BOOLEAN,
+    category: ConfigCategory.PERFORMANCE,
+    defaultValue: 'true',
+    purpose: 'Controls whether Sarvam failures fall back gracefully to existing OCR and translation chains.',
+    description: 'Sarvam fallback enablement flag.',
+    isEditable: true,
+    isHighImpact: true,
+    requiresRestart: false
   }
 };
 

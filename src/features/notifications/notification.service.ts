@@ -1,10 +1,20 @@
 import { prisma } from '@/lib/prisma';
-import { NotificationType, Prisma } from '@prisma/client';
+import { NotificationType, NotificationPriority, Prisma } from '@prisma/client';
 import { notificationPreferencesService } from './notification-preferences.service';
 import { notificationPubSubService } from './notification.pubsub.service';
 import { webPushService } from './web-push.service';
 import { configService } from '@/features/config';
-import { NotificationPayload } from './notification.types';
+import { NotificationPayload, NotificationFilter } from './notification.types';
+
+// Phase 86 — fixed severity ordering used to resolve `minPriority` filter into the concrete set
+// of `priority` enum values that qualify (Prisma has no native ">=" comparison over an enum).
+const PRIORITY_ORDER: NotificationPriority[] = ['LOW', 'NORMAL', 'HIGH', 'CRITICAL'];
+
+function prioritiesAtOrAbove(minPriority: NotificationPriority): NotificationPriority[] {
+  const idx = PRIORITY_ORDER.indexOf(minPriority);
+  if (idx === -1) return PRIORITY_ORDER;
+  return PRIORITY_ORDER.slice(idx);
+}
 
 export class NotificationService {
   /**
@@ -19,6 +29,14 @@ export class NotificationService {
     messageId?: string | null;
     actorUserId?: string | null;
     metadata?: Record<string, unknown> | null;
+    // Phase 86 — additive, all optional. Every existing call site omits these and gets
+    // byte-identical behavior to before this change (priority defaults to 'NORMAL', matching the
+    // schema column's own default; the rest default to null).
+    priority?: NotificationPriority;
+    projectId?: string | null;
+    snapshotId?: string | null;
+    insightId?: string | null;
+    dedupeKey?: string | null;
   }): Promise<NotificationPayload | null> {
     // Check if notification is enabled in user preferences
     const isEnabled = await notificationPreferencesService.isNotificationEnabled(data.userId, data.type);
@@ -36,7 +54,12 @@ export class NotificationService {
         channelId: data.channelId || null,
         messageId: data.messageId || null,
         actorUserId: data.actorUserId || null,
-        metadata: (data.metadata as Prisma.InputJsonValue) || undefined
+        metadata: (data.metadata as Prisma.InputJsonValue) || undefined,
+        priority: data.priority ?? 'NORMAL',
+        projectId: data.projectId || null,
+        snapshotId: data.snapshotId || null,
+        insightId: data.insightId || null,
+        dedupeKey: data.dedupeKey || null
       },
       include: {
         actor: {
@@ -60,7 +83,11 @@ export class NotificationService {
       readAt: notification.readAt,
       metadata: notification.metadata as Record<string, unknown> | null,
       createdAt: notification.createdAt,
-      actor: notification.actor
+      actor: notification.actor,
+      priority: notification.priority,
+      projectId: notification.projectId,
+      snapshotId: notification.snapshotId,
+      insightId: notification.insightId
     };
 
     // Dispatch realtime SSE event (in-app bell/badge — always fires; independent of push).
@@ -105,14 +132,29 @@ export class NotificationService {
   public async getUserNotifications(
     userId: string,
     limit: number = 20,
-    offset: number = 0
+    offset: number = 0,
+    filter?: NotificationFilter
   ): Promise<{ notifications: NotificationPayload[]; total: number; unreadCount: number }> {
     const safeLimit = Math.min(Math.max(limit, 1), 100);
     const safeOffset = Math.max(offset, 0);
 
+    // Phase 86 — additive optional filter. When `filter` is omitted entirely (every pre-existing
+    // call site), `where` is identical to `{ userId }`, so behavior is byte-identical to before
+    // this change.
+    const where: Prisma.NotificationWhereInput = { userId };
+    if (filter?.types?.length) {
+      where.type = { in: filter.types };
+    }
+    if (filter?.unreadOnly) {
+      where.isRead = false;
+    }
+    if (filter?.minPriority) {
+      where.priority = { in: prioritiesAtOrAbove(filter.minPriority) };
+    }
+
     const [notifications, total, unreadCount] = await Promise.all([
       prisma.notification.findMany({
-        where: { userId },
+        where,
         orderBy: { createdAt: 'desc' },
         take: safeLimit,
         skip: safeOffset,
@@ -122,7 +164,7 @@ export class NotificationService {
           }
         }
       }),
-      prisma.notification.count({ where: { userId } }),
+      prisma.notification.count({ where }),
       prisma.notification.count({ where: { userId, isRead: false } })
     ]);
 
@@ -139,7 +181,11 @@ export class NotificationService {
       readAt: n.readAt,
       metadata: n.metadata as Record<string, unknown> | null,
       createdAt: n.createdAt,
-      actor: n.actor
+      actor: n.actor,
+      priority: n.priority,
+      projectId: n.projectId,
+      snapshotId: n.snapshotId,
+      insightId: n.insightId
     }));
 
     return { notifications: formatted, total, unreadCount };

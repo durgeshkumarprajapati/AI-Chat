@@ -8,7 +8,9 @@ export const QUEUES = {
   DOCUMENT_MULTIMODAL_EXTRACTION: 'document-multimodal-extraction',
   SARVAM_TRANSLATION: 'sarvam-translation',
   AI_INTELLIGENCE_DAILY: 'ai-intelligence-daily',
-  AI_INTELLIGENCE_WEEKLY: 'ai-intelligence-weekly'
+  AI_INTELLIGENCE_WEEKLY: 'ai-intelligence-weekly',
+  NOTIFICATION_DISPATCH: 'notification-dispatch',
+  NOTIFICATION_EMAIL: 'notification-email'
 } as const;
 
 export type QueueName = typeof QUEUES[keyof typeof QUEUES];
@@ -71,6 +73,35 @@ export interface AIIntelligenceJobPayload {
   jobId: string;
   userId: string;
   projectId?: string | null;
+  attempt: number;
+  createdAt: string;
+}
+
+/**
+ * Phase 86 — AI Intelligence Delivery worker job, published by the new, independent delivery
+ * scheduler tick (see worker/src/index.ts) once per user found due by
+ * notificationSchedulerService.findUsersDueForDailyDelivery/findUsersDueForWeeklyDelivery.
+ * Consumed by worker/src/processors/notification-dispatch.processor.ts.
+ */
+export interface NotificationDispatchJobPayload {
+  jobType: 'NOTIFICATION_DISPATCH_DAILY' | 'NOTIFICATION_DISPATCH_WEEKLY';
+  version: number;
+  jobId: string;
+  userId: string;
+  attempt: number;
+  createdAt: string;
+}
+
+/**
+ * Phase 86 — email dispatch job for a single already-created Notification row, published by
+ * intelligence-delivery.service.ts when a user has emailEnabled. Consumed by
+ * worker/src/processors/notification-email.processor.ts.
+ */
+export interface NotificationEmailJobPayload {
+  jobType: 'NOTIFICATION_EMAIL';
+  version: number;
+  jobId: string;
+  notificationId: string;
   attempt: number;
   createdAt: string;
 }

@@ -2,6 +2,7 @@ import React, { useState, useEffect, useCallback, useRef } from 'react';
 import Link from 'next/link';
 import { NotificationPayload, UserNotificationPreferences } from '@/features/notifications/notification.types';
 import { isPushSupported, getPushPermission, isPushSubscribedLocally, enablePushNotifications, disablePushNotifications } from '@/lib/push-notifications';
+import { getNotificationIcon, getNotificationDeepLink } from '@/components/notifications/notification-display';
 
 export default function NotificationCenter() {
   const [isOpen, setIsOpen] = useState(false);
@@ -182,15 +183,10 @@ export default function NotificationCenter() {
     }
   };
 
-  const getDeepLink = (n: NotificationPayload): string => {
-    if (n.channelId) {
-      return `/collab-chat?channel=${n.channelId}${n.messageId ? `&message=${n.messageId}` : ''}`;
-    }
-    if (n.type === 'ROADMAP_SHARED' && n.metadata?.roadmapId) {
-      return `/roadmaps/${n.metadata.roadmapId}`;
-    }
-    return '/collab-chat';
-  };
+  // Phase 86 — resolution logic (metadata.deepLink first, then the pre-existing channelId /
+  // ROADMAP_SHARED / fallback checks) now lives in notification-display.ts, shared with the new
+  // /notifications page; behavior for every pre-existing notification type is unchanged.
+  const getDeepLink = getNotificationDeepLink;
 
   return (
     <div className="relative inline-block" ref={containerRef} data-tour="notification-center">
@@ -269,15 +265,7 @@ export default function NotificationCenter() {
                   }`}
                 >
                   <div className="w-8 h-8 rounded-lg bg-indigo-100 dark:bg-indigo-950 text-indigo-600 dark:text-indigo-400 text-sm flex items-center justify-center flex-shrink-0 mt-0.5">
-                    {n.type === 'MESSAGE_RECEIVED'
-                      ? '💬'
-                      : n.type === 'GROUP_MEMBER_REMOVED'
-                      ? '🚫'
-                      : n.type === 'GROUP_OWNER_CHANGED'
-                      ? '👑'
-                      : n.type === 'ROADMAP_SHARED'
-                      ? '🚀'
-                      : '🔔'}
+                    {getNotificationIcon(n.type)}
                   </div>
 
                   <div className="flex-1 min-w-0">

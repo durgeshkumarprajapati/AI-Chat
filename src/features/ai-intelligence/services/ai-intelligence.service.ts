@@ -257,14 +257,33 @@ export class AiIntelligenceService {
     if (!row) {
       // Design decision: do NOT auto-create a preference row on every read — only materialize a
       // real row lazily, on the first PATCH. A read with no row simply returns the schema defaults.
-      return { dailyEnabled: true, weeklyEnabled: true, preferredHour: 8, timezone: 'UTC', deliveryMode: 'IN_APP' };
+      return {
+        dailyEnabled: true,
+        weeklyEnabled: true,
+        preferredHour: 8,
+        timezone: 'UTC',
+        deliveryMode: 'IN_APP',
+        // Phase 86 additive defaults — match the schema column defaults exactly.
+        emailEnabled: false,
+        inAppEnabled: true,
+        riskAlertsEnabled: true,
+        deadlineAlertsEnabled: true,
+        meetingAlertsEnabled: true,
+        knowledgeChangeAlertsEnabled: true
+      };
     }
     return {
       dailyEnabled: row.dailyEnabled,
       weeklyEnabled: row.weeklyEnabled,
       preferredHour: row.preferredHour,
       timezone: row.timezone,
-      deliveryMode: row.deliveryMode
+      deliveryMode: row.deliveryMode,
+      emailEnabled: row.emailEnabled,
+      inAppEnabled: row.inAppEnabled,
+      riskAlertsEnabled: row.riskAlertsEnabled,
+      deadlineAlertsEnabled: row.deadlineAlertsEnabled,
+      meetingAlertsEnabled: row.meetingAlertsEnabled,
+      knowledgeChangeAlertsEnabled: row.knowledgeChangeAlertsEnabled
     };
   }
 
@@ -286,6 +305,19 @@ export class AiIntelligenceService {
     if (patch.weeklyEnabled !== undefined && typeof patch.weeklyEnabled !== 'boolean') {
       throw new ValidationError('weeklyEnabled must be a boolean.');
     }
+    // Phase 86 — additive validation for the new notification-delivery preference fields.
+    for (const key of [
+      'emailEnabled',
+      'inAppEnabled',
+      'riskAlertsEnabled',
+      'deadlineAlertsEnabled',
+      'meetingAlertsEnabled',
+      'knowledgeChangeAlertsEnabled'
+    ] as const) {
+      if (patch[key] !== undefined && typeof patch[key] !== 'boolean') {
+        throw new ValidationError(`${key} must be a boolean.`);
+      }
+    }
 
     const row = await prisma.aIIntelligencePreference.upsert({
       where: { userId },
@@ -295,14 +327,28 @@ export class AiIntelligenceService {
         weeklyEnabled: patch.weeklyEnabled ?? true,
         preferredHour: patch.preferredHour ?? 8,
         timezone: patch.timezone ?? 'UTC',
-        deliveryMode: patch.deliveryMode ?? 'IN_APP'
+        deliveryMode: patch.deliveryMode ?? 'IN_APP',
+        emailEnabled: patch.emailEnabled ?? false,
+        inAppEnabled: patch.inAppEnabled ?? true,
+        riskAlertsEnabled: patch.riskAlertsEnabled ?? true,
+        deadlineAlertsEnabled: patch.deadlineAlertsEnabled ?? true,
+        meetingAlertsEnabled: patch.meetingAlertsEnabled ?? true,
+        knowledgeChangeAlertsEnabled: patch.knowledgeChangeAlertsEnabled ?? true
       },
       update: {
         ...(patch.dailyEnabled !== undefined ? { dailyEnabled: patch.dailyEnabled } : {}),
         ...(patch.weeklyEnabled !== undefined ? { weeklyEnabled: patch.weeklyEnabled } : {}),
         ...(patch.preferredHour !== undefined ? { preferredHour: patch.preferredHour } : {}),
         ...(patch.timezone !== undefined ? { timezone: patch.timezone } : {}),
-        ...(patch.deliveryMode !== undefined ? { deliveryMode: patch.deliveryMode } : {})
+        ...(patch.deliveryMode !== undefined ? { deliveryMode: patch.deliveryMode } : {}),
+        ...(patch.emailEnabled !== undefined ? { emailEnabled: patch.emailEnabled } : {}),
+        ...(patch.inAppEnabled !== undefined ? { inAppEnabled: patch.inAppEnabled } : {}),
+        ...(patch.riskAlertsEnabled !== undefined ? { riskAlertsEnabled: patch.riskAlertsEnabled } : {}),
+        ...(patch.deadlineAlertsEnabled !== undefined ? { deadlineAlertsEnabled: patch.deadlineAlertsEnabled } : {}),
+        ...(patch.meetingAlertsEnabled !== undefined ? { meetingAlertsEnabled: patch.meetingAlertsEnabled } : {}),
+        ...(patch.knowledgeChangeAlertsEnabled !== undefined
+          ? { knowledgeChangeAlertsEnabled: patch.knowledgeChangeAlertsEnabled }
+          : {})
       }
     });
 
@@ -319,7 +365,13 @@ export class AiIntelligenceService {
       weeklyEnabled: row.weeklyEnabled,
       preferredHour: row.preferredHour,
       timezone: row.timezone,
-      deliveryMode: row.deliveryMode
+      deliveryMode: row.deliveryMode,
+      emailEnabled: row.emailEnabled,
+      inAppEnabled: row.inAppEnabled,
+      riskAlertsEnabled: row.riskAlertsEnabled,
+      deadlineAlertsEnabled: row.deadlineAlertsEnabled,
+      meetingAlertsEnabled: row.meetingAlertsEnabled,
+      knowledgeChangeAlertsEnabled: row.knowledgeChangeAlertsEnabled
     };
   }
 

@@ -38,6 +38,7 @@
     "../src/features/calendar/**/*",
     "../src/features/integrations/**/*",
     "../src/features/ai-intelligence/**/*",
-    "../src/features/knowledge-intelligence/confidence.util.ts"
+    "../src/features/knowledge-intelligence/confidence.util.ts",
+    "../src/features/notifications/**/*"
   ]
 }

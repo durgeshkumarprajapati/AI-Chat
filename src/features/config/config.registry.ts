@@ -1566,6 +1566,232 @@ export const CONFIG_REGISTRY: Record<string, RegistryConfigItem> = {
     minValue: 1,
     maxValue: 60
   },
+  // ==========================================
+  // PHASE 86 — AI INTELLIGENCE DELIVERY & PROACTIVE NOTIFICATIONS (delivers Phase 85's already-
+  // generated snapshots through the existing notification system). NOTIFICATIONS_ENABLED defaults
+  // OFF for a conservative, production-safe rollout, matching AI_INTELLIGENCE_ENABLED's precedent
+  // for a new schema+worker+delivery feature — per spec, ALL new flags in this phase default to
+  // false/off unless the spec explicitly says otherwise (rate/retention/timing limits below are
+  // not on/off flags, so they carry sane operational defaults instead).
+  // ==========================================
+  NOTIFICATIONS_ENABLED: {
+    key: 'NOTIFICATIONS_ENABLED',
+    valueType: ConfigValueType.BOOLEAN,
+    category: ConfigCategory.FEATURE_FLAG,
+    defaultValue: 'false',
+    purpose: 'Master flag enabling Phase 86 proactive AI-intelligence-digest delivery (daily/weekly digests, alert notifications, email dispatch, and their worker scheduler/processors). Existing collab-chat notifications are unaffected either way.',
+    description: 'AI intelligence notification delivery feature flag.',
+    isEditable: true,
+    isHighImpact: true,
+    requiresRestart: false
+  },
+  NOTIFICATION_IN_APP_ENABLED: {
+    key: 'NOTIFICATION_IN_APP_ENABLED',
+    valueType: ConfigValueType.BOOLEAN,
+    category: ConfigCategory.FEATURE_FLAG,
+    defaultValue: 'true',
+    purpose: 'Controls whether in-app (bell/badge) delivery of Phase 86 notifications is permitted (subordinate to NOTIFICATIONS_ENABLED).',
+    description: 'In-app notification channel enablement.',
+    isEditable: true,
+    isHighImpact: false,
+    requiresRestart: false
+  },
+  NOTIFICATION_EMAIL_ENABLED: {
+    key: 'NOTIFICATION_EMAIL_ENABLED',
+    valueType: ConfigValueType.BOOLEAN,
+    category: ConfigCategory.FEATURE_FLAG,
+    defaultValue: 'false',
+    purpose: 'Controls whether email delivery of Phase 86 notifications is permitted (subordinate to NOTIFICATIONS_ENABLED). Also gates whether getEmailProvider() ever returns a real HTTP provider instead of the safe no-op fallback.',
+    description: 'Email notification channel enablement.',
+    isEditable: true,
+    isHighImpact: false,
+    requiresRestart: false
+  },
+  NOTIFICATION_DAILY_DIGEST_ENABLED: {
+    key: 'NOTIFICATION_DAILY_DIGEST_ENABLED',
+    valueType: ConfigValueType.BOOLEAN,
+    category: ConfigCategory.FEATURE_FLAG,
+    defaultValue: 'true',
+    purpose: 'Controls whether daily AI-intelligence digest delivery is permitted (subordinate to NOTIFICATIONS_ENABLED).',
+    description: 'Daily digest delivery enablement.',
+    isEditable: true,
+    isHighImpact: false,
+    requiresRestart: false
+  },
+  NOTIFICATION_WEEKLY_DIGEST_ENABLED: {
+    key: 'NOTIFICATION_WEEKLY_DIGEST_ENABLED',
+    valueType: ConfigValueType.BOOLEAN,
+    category: ConfigCategory.FEATURE_FLAG,
+    defaultValue: 'true',
+    purpose: 'Controls whether weekly AI-intelligence digest delivery is permitted (subordinate to NOTIFICATIONS_ENABLED).',
+    description: 'Weekly digest delivery enablement.',
+    isEditable: true,
+    isHighImpact: false,
+    requiresRestart: false
+  },
+  NOTIFICATION_QUIET_HOURS_ENABLED: {
+    key: 'NOTIFICATION_QUIET_HOURS_ENABLED',
+    valueType: ConfigValueType.BOOLEAN,
+    category: ConfigCategory.FEATURE_FLAG,
+    defaultValue: 'true',
+    purpose: 'Controls whether NORMAL/LOW priority notification delivery is deferred during a user\'s local quiet hours window.',
+    description: 'Quiet hours enforcement.',
+    isEditable: true,
+    isHighImpact: false,
+    requiresRestart: false
+  },
+  NOTIFICATION_QUIET_HOURS_START: {
+    key: 'NOTIFICATION_QUIET_HOURS_START',
+    valueType: ConfigValueType.NUMBER,
+    category: ConfigCategory.FEATURE_FLAG,
+    defaultValue: '22',
+    purpose: 'Local hour (0-23) at which quiet hours begin.',
+    description: 'Quiet hours start (local hour).',
+    isEditable: true,
+    isHighImpact: false,
+    requiresRestart: false,
+    minValue: 0,
+    maxValue: 23
+  },
+  NOTIFICATION_QUIET_HOURS_END: {
+    key: 'NOTIFICATION_QUIET_HOURS_END',
+    valueType: ConfigValueType.NUMBER,
+    category: ConfigCategory.FEATURE_FLAG,
+    defaultValue: '7',
+    purpose: 'Local hour (0-23) at which quiet hours end.',
+    description: 'Quiet hours end (local hour).',
+    isEditable: true,
+    isHighImpact: false,
+    requiresRestart: false,
+    minValue: 0,
+    maxValue: 23
+  },
+  NOTIFICATION_CRITICAL_BYPASS_QUIET_HOURS: {
+    key: 'NOTIFICATION_CRITICAL_BYPASS_QUIET_HOURS',
+    valueType: ConfigValueType.BOOLEAN,
+    category: ConfigCategory.FEATURE_FLAG,
+    defaultValue: 'true',
+    purpose: 'When true, CRITICAL/HIGH priority notifications are delivered immediately even during quiet hours instead of being deferred.',
+    description: 'Critical notification quiet-hours bypass.',
+    isEditable: true,
+    isHighImpact: false,
+    requiresRestart: false
+  },
+  NOTIFICATION_MAX_PER_HOUR: {
+    key: 'NOTIFICATION_MAX_PER_HOUR',
+    valueType: ConfigValueType.NUMBER,
+    category: ConfigCategory.SECURITY,
+    defaultValue: '10',
+    purpose: 'Maximum Phase 86 notifications delivered to a single user within a rolling hour, protecting against notification spam/floods.',
+    description: 'Per-user hourly notification cap.',
+    isEditable: true,
+    isHighImpact: false,
+    requiresRestart: false,
+    minValue: 1,
+    maxValue: 100
+  },
+  NOTIFICATION_MAX_PER_DAY: {
+    key: 'NOTIFICATION_MAX_PER_DAY',
+    valueType: ConfigValueType.NUMBER,
+    category: ConfigCategory.SECURITY,
+    defaultValue: '30',
+    purpose: 'Maximum Phase 86 notifications delivered to a single user within a rolling day.',
+    description: 'Per-user daily notification cap.',
+    isEditable: true,
+    isHighImpact: false,
+    requiresRestart: false,
+    minValue: 1,
+    maxValue: 500
+  },
+  NOTIFICATION_MAX_CRITICAL_PER_DAY: {
+    key: 'NOTIFICATION_MAX_CRITICAL_PER_DAY',
+    valueType: ConfigValueType.NUMBER,
+    category: ConfigCategory.SECURITY,
+    defaultValue: '10',
+    purpose: 'Maximum CRITICAL priority Phase 86 notifications delivered to a single user within a rolling day (a separate, typically-lower-friction cap from the general hourly/daily caps).',
+    description: 'Per-user daily critical-notification cap.',
+    isEditable: true,
+    isHighImpact: false,
+    requiresRestart: false,
+    minValue: 1,
+    maxValue: 100
+  },
+  NOTIFICATION_RETENTION_DAYS: {
+    key: 'NOTIFICATION_RETENTION_DAYS',
+    valueType: ConfigValueType.NUMBER,
+    category: ConfigCategory.PERFORMANCE,
+    defaultValue: '90',
+    purpose: 'Number of days a Notification row is retained before being eligible for the retention sweep.',
+    description: 'Notification retention window.',
+    isEditable: true,
+    isHighImpact: false,
+    requiresRestart: false,
+    minValue: 7,
+    maxValue: 730
+  },
+  NOTIFICATION_DELIVERY_TIMEOUT_MS: {
+    key: 'NOTIFICATION_DELIVERY_TIMEOUT_MS',
+    valueType: ConfigValueType.NUMBER,
+    category: ConfigCategory.PERFORMANCE,
+    defaultValue: '10000',
+    purpose: 'Timeout budget in milliseconds for a single notification delivery attempt (e.g. the email provider HTTP call).',
+    description: 'Notification delivery attempt timeout.',
+    isEditable: true,
+    isHighImpact: false,
+    requiresRestart: false,
+    minValue: 1000,
+    maxValue: 60000
+  },
+  NOTIFICATION_MAX_RETRIES: {
+    key: 'NOTIFICATION_MAX_RETRIES',
+    valueType: ConfigValueType.NUMBER,
+    category: ConfigCategory.PERFORMANCE,
+    defaultValue: '3',
+    purpose: 'Maximum retry attempts for a failed (transient) email delivery before it is left in FAILED status.',
+    description: 'Notification delivery max retries.',
+    isEditable: true,
+    isHighImpact: false,
+    requiresRestart: false,
+    minValue: 0,
+    maxValue: 10
+  },
+  NOTIFICATION_DELIVERY_SCHEDULER_INTERVAL_MS: {
+    key: 'NOTIFICATION_DELIVERY_SCHEDULER_INTERVAL_MS',
+    valueType: ConfigValueType.NUMBER,
+    category: ConfigCategory.WORKER,
+    defaultValue: '900000',
+    purpose: 'Interval in milliseconds between worker ticks that check which users are due for daily/weekly digest DELIVERY (independent of Phase 85\'s own generation-scheduler tick).',
+    description: 'Notification delivery scheduler tick cadence.',
+    isEditable: true,
+    isHighImpact: false,
+    requiresRestart: true,
+    minValue: 60000,
+    maxValue: 3600000
+  },
+  NOTIFICATION_RETENTION_SWEEP_INTERVAL_MS: {
+    key: 'NOTIFICATION_RETENTION_SWEEP_INTERVAL_MS',
+    valueType: ConfigValueType.NUMBER,
+    category: ConfigCategory.WORKER,
+    defaultValue: '86400000',
+    purpose: 'Interval in milliseconds between worker ticks that sweep expired Notification rows past NOTIFICATION_RETENTION_DAYS.',
+    description: 'Notification retention sweep cadence.',
+    isEditable: true,
+    isHighImpact: false,
+    requiresRestart: true,
+    minValue: 3600000,
+    maxValue: 604800000
+  },
+  EMAIL_FROM_ADDRESS: {
+    key: 'EMAIL_FROM_ADDRESS',
+    valueType: ConfigValueType.STRING,
+    category: ConfigCategory.FEATURE_FLAG,
+    defaultValue: 'notifications@example.com',
+    purpose: 'Non-secret "from" display address for outbound notification emails. The actual provider API credential is a separate env secret (EMAIL_API_KEY), never stored here.',
+    description: 'Notification email "from" address.',
+    isEditable: true,
+    isHighImpact: false,
+    requiresRestart: false
+  },
   AGENT_MAX_PLAN_STEPS: {
     key: 'AGENT_MAX_PLAN_STEPS',
     valueType: ConfigValueType.NUMBER,

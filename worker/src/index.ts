@@ -9,9 +9,20 @@ import { billingReconciliationProcessor } from './processors/billing-reconciliat
 import { projectIntelligenceAnalysisProcessor } from './processors/project-intelligence-analysis.processor.js';
 import { sarvamTranslationProcessor } from './processors/sarvam-translation.processor.js';
 import { aiIntelligenceProcessor } from './processors/ai-intelligence.processor.js';
-import { MultimodalJobPayload, AIIntelligenceJobPayload, QUEUES, rabbitmq } from '@/lib/rabbitmq';
+import { notificationDispatchProcessor } from './processors/notification-dispatch.processor.js';
+import { notificationEmailProcessor } from './processors/notification-email.processor.js';
+import {
+  MultimodalJobPayload,
+  AIIntelligenceJobPayload,
+  NotificationDispatchJobPayload,
+  NotificationEmailJobPayload,
+  QUEUES,
+  rabbitmq
+} from '@/lib/rabbitmq';
 import { configService } from '@/features/config';
 import { aiIntelligenceSchedulerService } from '@/features/ai-intelligence/scheduling/ai-intelligence-scheduler.service';
+import { notificationSchedulerService } from '@/features/notifications/notification-scheduler.service';
+import { sweepExpiredNotifications } from '@/features/notifications/notification-retention.service';
 import { randomUUID } from 'crypto';
 import { prisma } from './lib/prisma.js';
 
@@ -24,6 +35,8 @@ const MULTIMODAL_QUEUE_NAME = QUEUES.DOCUMENT_MULTIMODAL_EXTRACTION;
 const SARVAM_QUEUE_NAME = QUEUES.SARVAM_TRANSLATION;
 const AI_INTELLIGENCE_DAILY_QUEUE_NAME = QUEUES.AI_INTELLIGENCE_DAILY;
 const AI_INTELLIGENCE_WEEKLY_QUEUE_NAME = QUEUES.AI_INTELLIGENCE_WEEKLY;
+const NOTIFICATION_DISPATCH_QUEUE_NAME = QUEUES.NOTIFICATION_DISPATCH;
+const NOTIFICATION_EMAIL_QUEUE_NAME = QUEUES.NOTIFICATION_EMAIL;
 const RABBITMQ_URL = process.env.RABBITMQ_URL || 'amqp://guest:guest@localhost:5672';
 const MAX_RETRIES = 3;
 const TIMEOUT_MINUTES = process.env.DOCUMENT_PROCESSING_TIMEOUT_MINUTES
@@ -39,6 +52,8 @@ let multimodalConsumerTag: string | null = null;
 let sarvamConsumerTag: string | null = null;
 let aiIntelligenceDailyConsumerTag: string | null = null;
 let aiIntelligenceWeeklyConsumerTag: string | null = null;
+let notificationDispatchConsumerTag: string | null = null;
+let notificationEmailConsumerTag: string | null = null;
 let isShuttingDown = false;
 let activeInFlightJobs = 0;
 
@@ -301,6 +316,87 @@ export async function startWorker() {
     );
     aiIntelligenceWeeklyConsumerTag = aiWeeklyConsumeResult.consumerTag;
 
+    // 6. Consume notification-dispatch (channel2 — same isolation as multimodal/sarvam/AI
+    // Intelligence). Mirrors the AI-Intelligence consumers' ack/nack-with-retry pattern exactly.
+    await channel2.assertQueue(NOTIFICATION_DISPATCH_QUEUE_NAME, { durable: true });
+    const notificationDispatchConsumeResult = await channel2.consume(
+      NOTIFICATION_DISPATCH_QUEUE_NAME,
+      async (msg: ConsumeMessage | null) => {
+        if (!msg || isShuttingDown) return;
+
+        activeInFlightJobs++;
+        let payload: NotificationDispatchJobPayload | null = null;
+
+        try {
+          payload = JSON.parse(msg.content.toString()) as NotificationDispatchJobPayload;
+          console.log(`[Worker-NotificationDispatch] Job received for user: ${payload.userId} (Job ID: ${payload.jobId})`);
+
+          const result = await notificationDispatchProcessor.process(payload);
+
+          if (result.status === 'SUCCESS' || result.status === 'STALE_DISCARD' || result.action === 'PERMANENT_ERROR') {
+            channel2?.ack(msg);
+          } else if (result.action === 'TRANSIENT_ERROR') {
+            const attemptCount = payload.attempt || 1;
+            if (attemptCount >= MAX_RETRIES) {
+              console.error(`[Worker-NotificationDispatch] Max retries (${MAX_RETRIES}) reached for job: ${payload.jobId}`);
+              channel2?.ack(msg);
+            } else {
+              channel2?.nack(msg, false, true);
+            }
+          }
+        } catch (error) {
+          console.error('[Worker-NotificationDispatch] Unexpected job execution error:', error instanceof Error ? error.message : error);
+          if (msg && channel2) {
+            channel2.ack(msg);
+          }
+        } finally {
+          activeInFlightJobs--;
+        }
+      },
+      { noAck: false }
+    );
+    notificationDispatchConsumerTag = notificationDispatchConsumeResult.consumerTag;
+
+    // 7. Consume notification-email (channel2).
+    await channel2.assertQueue(NOTIFICATION_EMAIL_QUEUE_NAME, { durable: true });
+    const notificationEmailConsumeResult = await channel2.consume(
+      NOTIFICATION_EMAIL_QUEUE_NAME,
+      async (msg: ConsumeMessage | null) => {
+        if (!msg || isShuttingDown) return;
+
+        activeInFlightJobs++;
+        let payload: NotificationEmailJobPayload | null = null;
+
+        try {
+          payload = JSON.parse(msg.content.toString()) as NotificationEmailJobPayload;
+          console.log(`[Worker-NotificationEmail] Job received for notification: ${payload.notificationId} (Job ID: ${payload.jobId})`);
+
+          const result = await notificationEmailProcessor.process(payload);
+
+          if (result.status === 'SUCCESS' || result.status === 'STALE_DISCARD' || result.action === 'PERMANENT_ERROR') {
+            channel2?.ack(msg);
+          } else if (result.action === 'TRANSIENT_ERROR') {
+            const attemptCount = payload.attempt || 1;
+            if (attemptCount >= MAX_RETRIES) {
+              console.error(`[Worker-NotificationEmail] Max retries (${MAX_RETRIES}) reached for job: ${payload.jobId}`);
+              channel2?.ack(msg);
+            } else {
+              channel2?.nack(msg, false, true);
+            }
+          }
+        } catch (error) {
+          console.error('[Worker-NotificationEmail] Unexpected job execution error:', error instanceof Error ? error.message : error);
+          if (msg && channel2) {
+            channel2.ack(msg);
+          }
+        } finally {
+          activeInFlightJobs--;
+        }
+      },
+      { noAck: false }
+    );
+    notificationEmailConsumerTag = notificationEmailConsumeResult.consumerTag;
+
     // Start periodic Google Calendar Sync Retry loop
     const syncInterval = setInterval(async () => {
       if (isShuttingDown) return;
@@ -393,6 +489,89 @@ export async function startWorker() {
       }
     }, aiIntelligenceSchedulerIntervalMs);
     aiIntelligenceSchedulerInterval.unref();
+
+    // Phase 86 — periodic notification DELIVERY scheduler tick: an INDEPENDENT, separate
+    // scheduler from Phase 85's generation scheduler above. Finds users due for daily/weekly
+    // digest DELIVERY (per their own AIIntelligencePreference row/timezone/preferredHour, but
+    // tracking lastNotificationDeliveredAt rather than lastDailyRunAt/lastWeeklyRunAt) and
+    // enqueues one dispatch job per due user. A user's digest is delivered whenever a READY
+    // snapshot exists and they're due, independent of exactly when/how generation happened — see
+    // notification-scheduler.service.ts and intelligence-delivery.service.ts for the full
+    // rationale. A failure here never affects any other worker job; the scheduling-layer "due"
+    // check is a best-effort filter — the Notification.dedupeKey DB-unique constraint is the
+    // authoritative idempotency gate.
+    const notificationDeliverySchedulerIntervalMs = await configService.getNumber(
+      'NOTIFICATION_DELIVERY_SCHEDULER_INTERVAL_MS',
+      900000
+    );
+    const notificationDeliverySchedulerInterval = setInterval(async () => {
+      if (isShuttingDown) return;
+      try {
+        const notificationsEnabled = await configService.getBoolean('NOTIFICATIONS_ENABLED', false);
+        if (!notificationsEnabled) return;
+
+        const now = new Date();
+        const [dueDaily, dueWeekly] = await Promise.all([
+          notificationSchedulerService.findUsersDueForDailyDelivery(now),
+          notificationSchedulerService.findUsersDueForWeeklyDelivery(now)
+        ]);
+
+        for (const userId of dueDaily) {
+          try {
+            await rabbitmq.publishToQueue<NotificationDispatchJobPayload>(QUEUES.NOTIFICATION_DISPATCH, {
+              jobType: 'NOTIFICATION_DISPATCH_DAILY',
+              version: 1,
+              jobId: randomUUID(),
+              userId,
+              attempt: 1,
+              createdAt: new Date().toISOString()
+            });
+          } catch (err) {
+            console.error(`[Worker] Failed to enqueue daily notification dispatch job for user ${userId}:`, err);
+          }
+        }
+
+        for (const userId of dueWeekly) {
+          try {
+            await rabbitmq.publishToQueue<NotificationDispatchJobPayload>(QUEUES.NOTIFICATION_DISPATCH, {
+              jobType: 'NOTIFICATION_DISPATCH_WEEKLY',
+              version: 1,
+              jobId: randomUUID(),
+              userId,
+              attempt: 1,
+              createdAt: new Date().toISOString()
+            });
+          } catch (err) {
+            console.error(`[Worker] Failed to enqueue weekly notification dispatch job for user ${userId}:`, err);
+          }
+        }
+      } catch (err) {
+        console.error('[Worker] Periodic notification delivery scheduler error:', err);
+      }
+    }, notificationDeliverySchedulerIntervalMs);
+    notificationDeliverySchedulerInterval.unref();
+
+    // Phase 86 — periodic notification retention sweep: bounded-batch deletion of Notification
+    // rows past NOTIFICATION_RETENTION_DAYS. Never a single unbounded DELETE — see
+    // notification-retention.service.ts. Capped at 20 batches per invocation so one tick can
+    // never run forever.
+    const notificationRetentionSweepIntervalMs = await configService.getNumber(
+      'NOTIFICATION_RETENTION_SWEEP_INTERVAL_MS',
+      86400000
+    );
+    const notificationRetentionSweepInterval = setInterval(async () => {
+      if (isShuttingDown) return;
+      try {
+        const retentionDays = await configService.getNumber('NOTIFICATION_RETENTION_DAYS', 90);
+        const { deleted } = await sweepExpiredNotifications(retentionDays, 500);
+        if (deleted > 0) {
+          console.log(`[Worker] Notification retention sweep deleted ${deleted} expired notification(s).`);
+        }
+      } catch (err) {
+        console.error('[Worker] Periodic notification retention sweep error:', err);
+      }
+    }, notificationRetentionSweepIntervalMs);
+    notificationRetentionSweepInterval.unref();
   } catch (error) {
     console.error('[Worker] Failed to start worker:', error);
     process.exit(1);
@@ -429,6 +608,14 @@ export async function shutdownWorker(signal?: string) {
     if (aiIntelligenceWeeklyConsumerTag && channel2) {
       await channel2.cancel(aiIntelligenceWeeklyConsumerTag).catch(() => {});
       aiIntelligenceWeeklyConsumerTag = null;
+    }
+    if (notificationDispatchConsumerTag && channel2) {
+      await channel2.cancel(notificationDispatchConsumerTag).catch(() => {});
+      notificationDispatchConsumerTag = null;
+    }
+    if (notificationEmailConsumerTag && channel2) {
+      await channel2.cancel(notificationEmailConsumerTag).catch(() => {});
+      notificationEmailConsumerTag = null;
     }
     console.log('[Worker] RabbitMQ consumers stopped.');
 

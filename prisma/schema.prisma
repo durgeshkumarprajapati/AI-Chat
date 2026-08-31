@@ -2023,6 +2023,7 @@ model Project {
   healthSnapshots        ProjectHealthSnapshot[]
   agentRuns              AgentRun[]
   aiIntelligenceSnapshots AIIntelligenceSnapshot[]
+  notifications          Notification[]
 
   @@index([ownerId])
   @@index([status])
@@ -2715,6 +2716,39 @@ enum NotificationType {
   MOCK_TEST_RESULT
   CALL_INCOMING
   CALL_MISSED
+  // Phase 86 — AI Intelligence Delivery & Proactive Notifications (additive; see Notification
+  // model below for the new priority/dedupe/source-linkage columns these types rely on).
+  DAILY_INTELLIGENCE
+  WEEKLY_INTELLIGENCE
+  CRITICAL_RISK
+  BLOCKER_DETECTED
+  DEADLINE_APPROACHING
+  DEADLINE_MISSED
+  TASK_OVERDUE
+  MEETING_FOLLOW_UP
+  KNOWLEDGE_CHANGE
+  DOCUMENT_CHANGE
+  PROJECT_HEALTH_CHANGE
+}
+
+// Phase 86 — additive enums for the new proactive AI-intelligence delivery layer.
+enum NotificationPriority {
+  LOW
+  NORMAL
+  HIGH
+  CRITICAL
+}
+
+enum NotificationChannel {
+  IN_APP
+  EMAIL
+}
+
+enum NotificationDeliveryStatus {
+  PENDING
+  SENT
+  FAILED
+  SKIPPED
 }
 
 model Notification {
@@ -2732,12 +2766,49 @@ model Notification {
   createdAt   DateTime         @default(now()) @map("created_at")
   updatedAt   DateTime         @updatedAt @map("updated_at")
 
-  user  User  @relation("UserNotifications", fields: [userId], references: [id], onDelete: Cascade)
-  actor User? @relation("TriggeredNotifications", fields: [actorUserId], references: [id], onDelete: SetNull)
+  // Phase 86 — additive. `dedupeKey` is unique but nullable; Postgres allows multiple NULLs in a
+  // unique index, so every pre-existing/collab-chat notification (dedupeKey: null) never
+  // collides — only Phase 86-created notifications set a real dedup key.
+  priority   NotificationPriority @default(NORMAL) @map("priority")
+  projectId  String?              @map("project_id")
+  snapshotId String?              @map("snapshot_id")
+  insightId  String?              @map("insight_id")
+  dedupeKey  String?              @unique @map("dedupe_key")
+
+  user      User                    @relation("UserNotifications", fields: [userId], references: [id], onDelete: Cascade)
+  actor     User?                   @relation("TriggeredNotifications", fields: [actorUserId], references: [id], onDelete: SetNull)
+  project   Project?                @relation(fields: [projectId], references: [id], onDelete: SetNull)
+  snapshot  AIIntelligenceSnapshot? @relation(fields: [snapshotId], references: [id], onDelete: SetNull)
+  insight   IntelligenceInsight?    @relation(fields: [insightId], references: [id], onDelete: SetNull)
+  deliveries NotificationDelivery[]
 
   @@index([userId, isRead, createdAt])
   @@index([userId, createdAt])
+  @@index([userId, priority, createdAt])
+  @@index([projectId, createdAt])
   @@map("notifications")
+}
+
+// Phase 86 — tracks per-channel delivery attempts/outcomes for a Notification (in-app delivery
+// is the Notification row itself, effectively instant; EMAIL delivery is async via the worker).
+model NotificationDelivery {
+  id                String                     @id @default(uuid())
+  notificationId    String                     @map("notification_id")
+  channel           NotificationChannel
+  status            NotificationDeliveryStatus @default(PENDING)
+  attemptCount      Int                        @default(0) @map("attempt_count")
+  lastAttemptAt     DateTime?                  @map("last_attempt_at")
+  deliveredAt       DateTime?                  @map("delivered_at")
+  failureReason     String?                    @db.Text @map("failure_reason")
+  providerMessageId String?                    @map("provider_message_id")
+  createdAt         DateTime                   @default(now()) @map("created_at")
+  updatedAt         DateTime                   @updatedAt @map("updated_at")
+
+  notification Notification @relation(fields: [notificationId], references: [id], onDelete: Cascade)
+
+  @@index([notificationId])
+  @@index([status])
+  @@map("notification_deliveries")
 }
 
 model NotificationPreference {
@@ -3751,6 +3822,7 @@ model IntelligenceInsight {
   snapshot AIIntelligenceSnapshot?  @relation(fields: [snapshotId], references: [id], onDelete: SetNull)
   evidence IntelligenceEvidence[]
   reviews  InsightReview[]
+  notifications Notification[]
 
   @@index([userId, status])
   @@index([projectId, status])
@@ -3871,6 +3943,7 @@ model AIIntelligenceSnapshot {
   user     User                  @relation(fields: [userId], references: [id], onDelete: Cascade)
   project  Project?              @relation(fields: [projectId], references: [id], onDelete: Cascade)
   insights IntelligenceInsight[]
+  notifications Notification[]
 
   @@unique([userId, projectId, type, periodStart])
   @@index([userId, type])
@@ -3889,6 +3962,17 @@ model AIIntelligencePreference {
   deliveryMode    String    @default("IN_APP") @map("delivery_mode")
   lastDailyRunAt  DateTime? @map("last_daily_run_at")
   lastWeeklyRunAt DateTime? @map("last_weekly_run_at")
+  // Phase 86 — additive: per-channel/per-category delivery opt-in and delivery-scheduler
+  // bookkeeping. `lastNotificationDeliveredAt` tracks DELIVERY (this phase's independent
+  // scheduler), distinct from `lastDailyRunAt`/`lastWeeklyRunAt` above which track GENERATION
+  // (Phase 85's own scheduler) — see notification-scheduler.service.ts for why these are separate.
+  emailEnabled                 Boolean   @default(false) @map("email_enabled")
+  inAppEnabled                 Boolean   @default(true) @map("in_app_enabled")
+  riskAlertsEnabled             Boolean   @default(true) @map("risk_alerts_enabled")
+  deadlineAlertsEnabled         Boolean   @default(true) @map("deadline_alerts_enabled")
+  meetingAlertsEnabled          Boolean   @default(true) @map("meeting_alerts_enabled")
+  knowledgeChangeAlertsEnabled  Boolean   @default(true) @map("knowledge_change_alerts_enabled")
+  lastNotificationDeliveredAt   DateTime? @map("last_notification_delivered_at")
   createdAt       DateTime  @default(now()) @map("created_at")
   updatedAt       DateTime  @updatedAt @map("updated_at")
 

@@ -60,4 +60,15 @@ export interface PreferenceDTO {
   preferredHour: number;
   timezone: string;
   deliveryMode: string;
+  // Phase 86 — additive. Every pre-existing caller of getPreferences/updatePreferences that only
+  // reads/writes the fields above is unaffected; these simply pass through the corresponding
+  // AIIntelligencePreference columns added in Phase 86 (see notification-scheduler.service.ts and
+  // intelligence-delivery.service.ts, which read the raw AIIntelligencePreference row directly
+  // rather than through this DTO).
+  emailEnabled: boolean;
+  inAppEnabled: boolean;
+  riskAlertsEnabled: boolean;
+  deadlineAlertsEnabled: boolean;
+  meetingAlertsEnabled: boolean;
+  knowledgeChangeAlertsEnabled: boolean;
 }

@@ -1,4 +1,4 @@
-import { NotificationType } from '@prisma/client';
+import { NotificationType, NotificationPriority } from '@prisma/client';
 
 export interface NotificationPayload {
   id: string;
@@ -19,6 +19,21 @@ export interface NotificationPayload {
     email: string;
     avatarUrl?: string | null;
   } | null;
+  // Phase 86 — additive. Always present on rows created through the extended
+  // notificationService.createNotification path; every pre-existing (collab-chat) notification
+  // still returns `priority: 'NORMAL'` (the schema column default) and null for the rest.
+  priority?: NotificationPriority;
+  projectId?: string | null;
+  snapshotId?: string | null;
+  insightId?: string | null;
+}
+
+/** Phase 86 — optional filter accepted by notificationService.getUserNotifications's 4th param.
+ * Omitting it entirely preserves byte-identical behavior to every pre-existing call site. */
+export interface NotificationFilter {
+  types?: NotificationType[];
+  unreadOnly?: boolean;
+  minPriority?: NotificationPriority;
 }
 
 export interface UserNotificationPreferences {

@@ -704,7 +704,15 @@ const serverEnvSchema = z
     // and other runtime behavior live in the Config registry)
     VAPID_PUBLIC_KEY: z.string().optional(),
     VAPID_PRIVATE_KEY: z.string().optional(),
-    VAPID_SUBJECT: z.string().default('mailto:admin@example.com')
+    VAPID_SUBJECT: z.string().default('mailto:admin@example.com'),
+
+    // PHASE 86 — AI INTELLIGENCE DELIVERY & PROACTIVE NOTIFICATIONS. EMAIL_API_KEY is a true
+    // secret (transactional email provider credential) and lives here, never in the Config
+    // registry; no default (genuinely absent means email sending is inert — see
+    // src/features/notifications/email/email-provider.ts's NoopEmailProvider fallback). The
+    // non-secret "from" address and every on/off behavior flag live in CONFIG_REGISTRY instead
+    // (EMAIL_FROM_ADDRESS, NOTIFICATION_EMAIL_ENABLED, etc).
+    EMAIL_API_KEY: z.string().optional()
   })
   .refine(
     (data) => {

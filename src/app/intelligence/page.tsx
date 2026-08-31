@@ -79,6 +79,15 @@ interface PreferenceDTO {
   preferredHour: number;
   timezone: string;
   deliveryMode: string;
+  // Phase 86 — notification-delivery preferences, additive to the Phase 85 briefing fields above.
+  // Optional: the backend extension lands in parallel, so an in-flight GET response may not
+  // include these yet — rendered defensively (defaulting to false) below.
+  emailEnabled?: boolean;
+  inAppEnabled?: boolean;
+  riskAlertsEnabled?: boolean;
+  deadlineAlertsEnabled?: boolean;
+  meetingAlertsEnabled?: boolean;
+  knowledgeChangeAlertsEnabled?: boolean;
 }
 
 type TabKey = 'today' | 'week' | 'all';
@@ -713,7 +722,15 @@ function PreferencesModal({ isOpen, onClose }: { isOpen: boolean; onClose: () =>
         dailyEnabled: prefs.dailyEnabled,
         weeklyEnabled: prefs.weeklyEnabled,
         preferredHour: prefs.preferredHour,
-        timezone: prefs.timezone
+        timezone: prefs.timezone,
+        // Phase 86 — notification-delivery fields, sent alongside the existing briefing fields
+        // in the same PATCH body per the phase brief.
+        emailEnabled: !!prefs.emailEnabled,
+        inAppEnabled: !!prefs.inAppEnabled,
+        riskAlertsEnabled: !!prefs.riskAlertsEnabled,
+        deadlineAlertsEnabled: !!prefs.deadlineAlertsEnabled,
+        meetingAlertsEnabled: !!prefs.meetingAlertsEnabled,
+        knowledgeChangeAlertsEnabled: !!prefs.knowledgeChangeAlertsEnabled
       })
     });
     if (r.ok) {
@@ -752,6 +769,63 @@ function PreferencesModal({ isOpen, onClose }: { isOpen: boolean; onClose: () =>
               className="h-4 w-4 accent-primary"
             />
           </label>
+          <div className="border-t border-border pt-4 space-y-4">
+            <p className="text-[10px] font-bold uppercase tracking-wide text-muted-foreground">Notification delivery</p>
+            <label className="flex items-center justify-between text-xs font-semibold text-foreground">
+              Email digest
+              <input
+                type="checkbox"
+                checked={!!prefs.emailEnabled}
+                onChange={(e) => setPrefs({ ...prefs, emailEnabled: e.target.checked })}
+                className="h-4 w-4 accent-primary"
+              />
+            </label>
+            <label className="flex items-center justify-between text-xs font-semibold text-foreground">
+              In-app notifications
+              <input
+                type="checkbox"
+                checked={!!prefs.inAppEnabled}
+                onChange={(e) => setPrefs({ ...prefs, inAppEnabled: e.target.checked })}
+                className="h-4 w-4 accent-primary"
+              />
+            </label>
+            <label className="flex items-center justify-between text-xs font-semibold text-foreground">
+              Risk alerts
+              <input
+                type="checkbox"
+                checked={!!prefs.riskAlertsEnabled}
+                onChange={(e) => setPrefs({ ...prefs, riskAlertsEnabled: e.target.checked })}
+                className="h-4 w-4 accent-primary"
+              />
+            </label>
+            <label className="flex items-center justify-between text-xs font-semibold text-foreground">
+              Deadline alerts
+              <input
+                type="checkbox"
+                checked={!!prefs.deadlineAlertsEnabled}
+                onChange={(e) => setPrefs({ ...prefs, deadlineAlertsEnabled: e.target.checked })}
+                className="h-4 w-4 accent-primary"
+              />
+            </label>
+            <label className="flex items-center justify-between text-xs font-semibold text-foreground">
+              Meeting alerts
+              <input
+                type="checkbox"
+                checked={!!prefs.meetingAlertsEnabled}
+                onChange={(e) => setPrefs({ ...prefs, meetingAlertsEnabled: e.target.checked })}
+                className="h-4 w-4 accent-primary"
+              />
+            </label>
+            <label className="flex items-center justify-between text-xs font-semibold text-foreground">
+              Knowledge change alerts
+              <input
+                type="checkbox"
+                checked={!!prefs.knowledgeChangeAlertsEnabled}
+                onChange={(e) => setPrefs({ ...prefs, knowledgeChangeAlertsEnabled: e.target.checked })}
+                className="h-4 w-4 accent-primary"
+              />
+            </label>
+          </div>
           <label className="block space-y-1">
             <span className="text-xs font-semibold text-foreground">Preferred hour (0-23)</span>
             <input

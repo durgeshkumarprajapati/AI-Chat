@@ -27,4 +27,11 @@ describe('Phase 79 — Sarvam Provider & Error Classification', () => {
     expect(status).toHaveProperty('digitisationEnabled');
     expect(status).toHaveProperty('translationEnabled');
   });
+
+  it('exposes job digitisation API helper methods on sarvamClient', () => {
+    const { sarvamClient } = require('@/features/sarvam/sarvam.client');
+    expect(typeof sarvamClient.createDigitisationJob).toBe('function');
+    expect(typeof sarvamClient.getDigitisationJobStatus).toBe('function');
+    expect(typeof sarvamClient.getDigitisationJobDownloadUrl).toBe('function');
+  });
 });

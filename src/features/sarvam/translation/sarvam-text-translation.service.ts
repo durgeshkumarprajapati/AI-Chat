@@ -63,7 +63,10 @@ export class SarvamTextTranslationService {
         {
           input: request.text,
           source_language_code: sourceLang,
-          target_language_code: targetLang
+          target_language_code: targetLang,
+          mode: request.mode,
+          numerals_format: request.numeralsFormat,
+          model: request.model || 'mayura:v1'
         },
         config.timeoutMs
       );

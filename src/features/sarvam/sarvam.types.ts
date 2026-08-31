@@ -55,7 +55,9 @@ export interface TranslationRequestDTO {
   text: string;
   sourceLanguage?: string;
   targetLanguage: string;
-  mode?: string;
+  mode?: 'formal' | 'modern_colloquial' | 'classical_colloquial' | 'code_mixed';
+  numeralsFormat?: 'native' | 'international';
+  model?: string;
   userId?: string;
 }
 

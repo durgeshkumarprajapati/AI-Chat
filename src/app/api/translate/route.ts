@@ -13,6 +13,9 @@ export async function POST(req: NextRequest) {
     const text = typeof body.text === 'string' ? body.text.trim() : '';
     const targetLanguage = typeof body.targetLanguage === 'string' ? body.targetLanguage.trim() : '';
     const sourceLanguage = typeof body.sourceLanguage === 'string' ? body.sourceLanguage.trim() : undefined;
+    const mode = typeof body.mode === 'string' ? (body.mode as any) : undefined;
+    const numeralsFormat = typeof body.numeralsFormat === 'string' ? (body.numeralsFormat as any) : undefined;
+    const model = typeof body.model === 'string' ? body.model : undefined;
 
     if (!text || !targetLanguage) {
       return NextResponse.json(
@@ -25,6 +28,9 @@ export async function POST(req: NextRequest) {
       text,
       sourceLanguage,
       targetLanguage,
+      mode,
+      numeralsFormat,
+      model,
       userId: authUser.id
     });
 

@@ -6,8 +6,9 @@ export interface SarvamTranslateTextPayload {
   source_language_code?: string;
   target_language_code: string;
   speaker_gender?: 'Male' | 'Female';
-  mode?: 'formal' | 'informal';
-  model?: 'mayura:v1';
+  mode?: 'formal' | 'modern_colloquial' | 'classical_colloquial' | 'code_mixed' | 'informal';
+  numerals_format?: 'native' | 'international';
+  model?: string;
 }
 
 export interface SarvamTranslateTextResponse {
@@ -22,8 +23,12 @@ export interface SarvamDetectLanguageResponse {
 
 export interface SarvamDigitisationJobResponse {
   job_id: string;
-  status: 'PENDING' | 'PROCESSING' | 'COMPLETED' | 'FAILED';
+  status: 'PENDING' | 'PROCESSING' | 'COMPLETED' | 'FAILED' | 'completed' | 'partially_completed' | 'failed' | 'rejected';
   page_count?: number;
+  usage?: {
+    pages_processed: number;
+    pages_total: number;
+  };
   result?: {
     pages: Array<{
       page_number: number;
@@ -41,6 +46,11 @@ export interface SarvamDigitisationJobResponse {
     }>;
   };
   error?: string;
+}
+
+export interface SarvamDownloadUrlResponse {
+  url: string;
+  headers?: Record<string, string>;
 }
 
 export interface SarvamDocTranslationJobResponse {
@@ -91,17 +101,23 @@ export class SarvamClient {
     const timer = setTimeout(() => controller.abort(), timeoutMs);
 
     try {
+      const bodyPayload: Record<string, unknown> = {
+        input: payload.input,
+        source_language_code: payload.source_language_code || 'auto',
+        target_language_code: payload.target_language_code,
+        speaker_gender: payload.speaker_gender || 'Male',
+        mode: payload.mode || 'formal',
+        model: payload.model || 'mayura:v1'
+      };
+
+      if (payload.numerals_format) {
+        bodyPayload.numerals_format = payload.numerals_format;
+      }
+
       const res = await fetch(`${this.baseUrl}/translate`, {
         method: 'POST',
         headers: this.getHeaders(),
-        body: JSON.stringify({
-          input: payload.input,
-          source_language_code: payload.source_language_code || 'auto',
-          target_language_code: payload.target_language_code,
-          speaker_gender: payload.speaker_gender || 'Male',
-          mode: payload.mode || 'formal',
-          model: payload.model || 'mayura:v1'
-        }),
+        body: JSON.stringify(bodyPayload),
         signal: controller.signal
       });
 
@@ -178,6 +194,137 @@ export class SarvamClient {
       }
 
       return (await res.json()) as SarvamDigitisationJobResponse;
+    } catch (err) {
+      clearTimeout(timer);
+      const classified = classifySarvamError(err);
+      throw classified.originalError instanceof Error ? classified.originalError : new Error(classified.message);
+    }
+  }
+
+  /**
+   * Official Sarvam Doc-AI v1 Multipart Digitisation Job Creation (`POST /doc-ai/v1/job/digitise`)
+   */
+  public async createDigitisationJob(
+    fileBlobOrBuffer: Blob | Buffer,
+    options: {
+      language?: string;
+      outputFormat?: string;
+      contentType?: string;
+      autoOrient?: boolean;
+    } = {},
+    filename: string = 'document.pdf',
+    timeoutMs: number = 30000
+  ): Promise<{ job_id: string }> {
+    if (!this.isConfigured()) {
+      throw new Error('Sarvam API is not configured.');
+    }
+
+    const controller = new AbortController();
+    const timer = setTimeout(() => controller.abort(), timeoutMs);
+
+    try {
+      const form = new FormData();
+      const fileObj =
+        fileBlobOrBuffer instanceof Blob
+          ? fileBlobOrBuffer
+          : new Blob([new Uint8Array(fileBlobOrBuffer)], { type: 'application/pdf' });
+
+      form.append('file', fileObj, filename);
+      form.append('language', options.language || 'hi-IN');
+      form.append('output_format', options.outputFormat || 'html');
+      form.append('content_type', options.contentType || 'printed');
+      form.append('auto_orient', options.autoOrient !== false ? 'true' : 'false');
+
+      const apiKey = this.getApiKey()!;
+      const res = await fetch(`${this.baseUrl}/doc-ai/v1/job/digitise`, {
+        method: 'POST',
+        headers: {
+          'api-subscription-key': apiKey
+        },
+        body: form,
+        signal: controller.signal
+      });
+
+      clearTimeout(timer);
+
+      if (!res.ok) {
+        const errText = await res.text().catch(() => '');
+        throw new Error(`Sarvam digitise job create HTTP ${res.status}: ${errText}`);
+      }
+
+      return (await res.json()) as { job_id: string };
+    } catch (err) {
+      clearTimeout(timer);
+      const classified = classifySarvamError(err);
+      throw classified.originalError instanceof Error ? classified.originalError : new Error(classified.message);
+    }
+  }
+
+  /**
+   * Gets job status (`GET /doc-ai/v1/job/{jobId}/status`)
+   */
+  public async getDigitisationJobStatus(
+    jobId: string,
+    timeoutMs: number = 10000
+  ): Promise<SarvamDigitisationJobResponse> {
+    if (!this.isConfigured()) {
+      throw new Error('Sarvam API is not configured.');
+    }
+
+    const controller = new AbortController();
+    const timer = setTimeout(() => controller.abort(), timeoutMs);
+
+    try {
+      const res = await fetch(`${this.baseUrl}/doc-ai/v1/job/${encodeURIComponent(jobId)}/status`, {
+        method: 'GET',
+        headers: this.getHeaders(),
+        signal: controller.signal
+      });
+
+      clearTimeout(timer);
+
+      if (!res.ok) {
+        const errText = await res.text().catch(() => '');
+        throw new Error(`Sarvam digitise job status HTTP ${res.status}: ${errText}`);
+      }
+
+      return (await res.json()) as SarvamDigitisationJobResponse;
+    } catch (err) {
+      clearTimeout(timer);
+      const classified = classifySarvamError(err);
+      throw classified.originalError instanceof Error ? classified.originalError : new Error(classified.message);
+    }
+  }
+
+  /**
+   * Mints a download URL for completed digitisation output (`GET /doc-ai/v1/job/{jobId}/download-url`)
+   */
+  public async getDigitisationJobDownloadUrl(
+    jobId: string,
+    timeoutMs: number = 10000
+  ): Promise<SarvamDownloadUrlResponse> {
+    if (!this.isConfigured()) {
+      throw new Error('Sarvam API is not configured.');
+    }
+
+    const controller = new AbortController();
+    const timer = setTimeout(() => controller.abort(), timeoutMs);
+
+    try {
+      const res = await fetch(`${this.baseUrl}/doc-ai/v1/job/${encodeURIComponent(jobId)}/download-url`, {
+        method: 'GET',
+        headers: this.getHeaders(),
+        signal: controller.signal
+      });
+
+      clearTimeout(timer);
+
+      if (!res.ok) {
+        const errText = await res.text().catch(() => '');
+        throw new Error(`Sarvam digitise download url HTTP ${res.status}: ${errText}`);
+      }
+
+      return (await res.json()) as SarvamDownloadUrlResponse;
     } catch (err) {
       clearTimeout(timer);
       const classified = classifySarvamError(err);

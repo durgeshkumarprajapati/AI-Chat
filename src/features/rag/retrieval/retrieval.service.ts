@@ -5,6 +5,7 @@ import { env } from '@/config/env';
 import { DocumentProcessingError, NotFoundError } from '@/errors';
 import { RetrievedChunk, RetrievalOptions, RetrievalResultWithTrace } from './retrieval.types';
 import { localReranker, Reranker } from './reranker';
+import { getRAGCacheProvider } from '../cache/rag-cache.factory';
 
 export class RetrievalService {
   private embeddingProvider: EmbeddingProvider;
@@ -37,7 +38,7 @@ export class RetrievalService {
     const model = provider === 'openai'
       ? (env.server?.OPENAI_EMBEDDING_MODEL || 'text-embedding-3-small')
       : (env.server?.OLLAMA_EMBEDDING_MODEL || 'nomic-embed-text');
-    const cacheProvider = (await import('../cache/rag-cache.factory')).getRAGCacheProvider();
+    const cacheProvider = getRAGCacheProvider();
     const cached = await cacheProvider.getEmbedding(provider, model, question);
     if (cached) return { vector: cached, cacheHit: true, generationMs: 0 };
     const start = Date.now();

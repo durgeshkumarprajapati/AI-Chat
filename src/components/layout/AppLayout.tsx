@@ -334,7 +334,7 @@ function InnerAppLayout({ children }: { children: React.ReactNode }) {
 
                 {/* Collapsible Submenu */}
                 {isExpanded && (
-                  <div id={`submenu-${group.id}`} className="pl-2 space-y-1 animate-in fade-in duration-150">
+                  <div id={`submenu-${group.id}`} className="pl-2 space-y-1 animate-fade-in">
                     {group.items.map((item) => {
                       const isActive =
                         item.href === '/'

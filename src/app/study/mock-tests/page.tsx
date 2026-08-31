@@ -193,15 +193,15 @@ export default function MockTestLibraryPage() {
   };
 
   return (
-    <div className="min-h-screen bg-slate-950 text-slate-100 p-6 md:p-10">
+    <div className="min-h-screen bg-background text-foreground p-6 md:p-10">
       <div className="max-w-6xl mx-auto space-y-6">
         {/* Header */}
-        <div className="flex flex-col md:flex-row md:items-center justify-between gap-4 border-b border-slate-800 pb-5">
+        <div className="flex flex-col md:flex-row md:items-center justify-between gap-4 border-b border-border pb-5">
           <div>
-            <h1 className="text-2xl font-bold text-white flex items-center gap-3" data-tour="mock-test-library-header">
+            <h1 className="text-2xl font-bold text-foreground flex items-center gap-3" data-tour="mock-test-library-header">
               <span>📝 Centralized Mock Test & MCQ Library</span>
             </h1>
-            <p className="text-slate-400 text-sm mt-1">Discover, create, schedule, share, and review AI-generated multiple-choice assessment tests.</p>
+            <p className="text-muted-foreground text-sm mt-1">Discover, create, schedule, share, and review AI-generated multiple-choice assessment tests.</p>
           </div>
           <div className="flex items-center gap-3">
             <button
@@ -210,14 +210,14 @@ export default function MockTestLibraryPage() {
                 setNewScheduleTime(future.toISOString().slice(0, 16));
                 setShowScheduleModal(true);
               }}
-              className="px-4 py-2 bg-emerald-600 hover:bg-emerald-500 text-white font-semibold text-xs rounded-xl shadow-md transition flex items-center gap-2"
+              className="px-4 py-2 bg-emerald-600 hover:bg-emerald-500 text-foreground font-semibold text-xs rounded-xl shadow-md transition flex items-center gap-2"
               data-tour="schedule-test-modal-btn"
             >
               <span>➕ Schedule AI Mock Test</span>
             </button>
             <Link
               href="/collab-chat"
-              className="px-4 py-2 bg-slate-800 hover:bg-slate-700 text-slate-300 font-medium text-xs rounded-xl transition"
+              className="px-4 py-2 bg-surface-hover hover:bg-muted text-foreground font-medium text-xs rounded-xl transition"
             >
               Collab Chat
             </Link>
@@ -241,8 +241,8 @@ export default function MockTestLibraryPage() {
                 onClick={() => setActiveTab(tab.id as any)}
                 className={`px-3.5 py-1.5 rounded-lg text-xs font-semibold whitespace-nowrap transition ${
                   activeTab === tab.id
-                    ? 'bg-emerald-600 text-white shadow-sm shadow-emerald-500/20'
-                    : 'bg-slate-900 text-slate-400 hover:bg-slate-800 hover:text-slate-200'
+                    ? 'bg-emerald-600 text-foreground shadow-sm shadow-emerald-500/20'
+                    : 'bg-surface text-muted-foreground hover:bg-surface-hover hover:text-foreground'
                 }`}
               >
                 {tab.label}
@@ -257,11 +257,11 @@ export default function MockTestLibraryPage() {
               placeholder="Search tests by title or topic..."
               value={searchQuery}
               onChange={(e) => setSearchQuery(e.target.value)}
-              className="px-3.5 py-1.5 bg-slate-900 border border-slate-800 rounded-lg text-xs text-slate-200 focus:outline-none focus:border-emerald-500 w-64"
+              className="px-3.5 py-1.5 bg-surface border border-border rounded-lg text-xs text-foreground focus:outline-none focus:border-emerald-500 w-64"
             />
             <button
               type="submit"
-              className="px-3.5 py-1.5 bg-slate-800 hover:bg-slate-700 text-slate-200 text-xs font-semibold rounded-lg transition"
+              className="px-3.5 py-1.5 bg-surface-hover hover:bg-muted text-foreground text-xs font-semibold rounded-lg transition"
             >
               Search
             </button>
@@ -270,17 +270,17 @@ export default function MockTestLibraryPage() {
 
         {/* Mock Test Cards Grid */}
         {loading && tests.length === 0 ? (
-          <div className="text-center py-20 text-slate-500 text-sm">Loading mock tests library...</div>
+          <div className="text-center py-20 text-muted-foreground text-sm">Loading mock tests library...</div>
         ) : tests.length === 0 ? (
-          <div className="text-center py-20 bg-slate-900/50 rounded-2xl border border-slate-800 p-8">
+          <div className="text-center py-20 bg-surface/50 rounded-2xl border border-border p-8">
             <div className="text-4xl mb-3">📝</div>
-            <h3 className="text-slate-300 font-semibold mb-1">No mock tests found</h3>
-            <p className="text-slate-500 text-xs max-w-sm mx-auto mb-4">
+            <h3 className="text-foreground font-semibold mb-1">No mock tests found</h3>
+            <p className="text-muted-foreground text-xs max-w-sm mx-auto mb-4">
               Schedule your first AI Mock Test using Gemini or search with different keywords.
             </p>
             <button
               onClick={() => setShowScheduleModal(true)}
-              className="px-4 py-2 bg-emerald-600 hover:bg-emerald-500 text-white text-xs font-semibold rounded-xl transition"
+              className="px-4 py-2 bg-emerald-600 hover:bg-emerald-500 text-foreground text-xs font-semibold rounded-xl transition"
             >
               Create New Test
             </button>
@@ -296,7 +296,7 @@ export default function MockTestLibraryPage() {
               return (
                 <div
                   key={test.id}
-                  className="bg-slate-900/80 border border-slate-800 rounded-2xl p-5 flex flex-col justify-between hover:border-slate-700 transition shadow-sm space-y-4"
+                  className="bg-surface/80 border border-border rounded-2xl p-5 flex flex-col justify-between hover:border-border transition shadow-sm space-y-4"
                 >
                   <div className="space-y-2">
                     <div className="flex items-center justify-between">
@@ -307,14 +307,14 @@ export default function MockTestLibraryPage() {
                             : isCompleted
                             ? 'bg-emerald-500/20 text-emerald-400 border border-emerald-500/30'
                             : isExpired
-                            ? 'bg-slate-800 text-slate-400'
+                            ? 'bg-surface-hover text-muted-foreground'
                             : 'bg-indigo-500/20 text-indigo-400 border border-indigo-500/30'
                         }`}
                       >
                         {isLive ? '🔴 LIVE NOW' : isCompleted ? '✅ COMPLETED' : isExpired ? '⏰ EXPIRED' : '📅 SCHEDULED'}
                       </span>
                       <div className="flex items-center gap-2">
-                        <span className="text-[11px] text-slate-500 font-mono">By {test.creatorName}</span>
+                        <span className="text-[11px] text-muted-foreground font-mono">By {test.creatorName}</span>
                         {isCreator && (
                           <button
                             onClick={() => handleDeleteTest(test.id)}
@@ -328,12 +328,12 @@ export default function MockTestLibraryPage() {
                       </div>
                     </div>
 
-                    <h3 className="text-base font-bold text-slate-100 line-clamp-1">{test.title}</h3>
-                    <p className="text-xs text-slate-400 line-clamp-2">{test.topic || test.description || 'AI-generated MCQ Assessment'}</p>
+                    <h3 className="text-base font-bold text-foreground line-clamp-1">{test.title}</h3>
+                    <p className="text-xs text-muted-foreground line-clamp-2">{test.topic || test.description || 'AI-generated MCQ Assessment'}</p>
                   </div>
 
-                  <div className="space-y-3 pt-3 border-t border-slate-800/80 text-xs">
-                    <div className="grid grid-cols-2 gap-2 text-slate-400">
+                  <div className="space-y-3 pt-3 border-t border-border/80 text-xs">
+                    <div className="grid grid-cols-2 gap-2 text-muted-foreground">
                       <div>⏱ {test.durationMinutes} Minutes</div>
                       <div>❓ {test.totalQuestions} Questions</div>
                       <div>👥 {test.participantCount} Participants</div>
@@ -342,14 +342,14 @@ export default function MockTestLibraryPage() {
                       )}
                     </div>
 
-                    <div className="flex items-center justify-between text-[11px] text-slate-500 pt-1">
+                    <div className="flex items-center justify-between text-[11px] text-muted-foreground pt-1">
                       <span>Starts: {new Date(test.scheduledStartTime).toLocaleString([], { month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit' })}</span>
                     </div>
 
                     <div className="flex items-center gap-2 pt-2">
                       <Link
                         href={`/study/mock-tests/${test.id}`}
-                        className="flex-1 text-center px-3 py-2 rounded-xl bg-emerald-600 hover:bg-emerald-500 text-white font-semibold text-xs transition"
+                        className="flex-1 text-center px-3 py-2 rounded-xl bg-emerald-600 hover:bg-emerald-500 text-foreground font-semibold text-xs transition"
                       >
                         {isCompleted ? 'View Questions' : isLive ? 'Take Test Now' : 'View Test Details'}
                       </Link>
@@ -365,7 +365,7 @@ export default function MockTestLibraryPage() {
                           href={test.googleCalendarLink}
                           target="_blank"
                           rel="noopener noreferrer"
-                          className="px-2.5 py-2 rounded-xl bg-slate-800 hover:bg-slate-700 text-slate-300 text-xs transition"
+                          className="px-2.5 py-2 rounded-xl bg-surface-hover hover:bg-muted text-foreground text-xs transition"
                           title="Add to Google Calendar"
                         >
                           📅
@@ -384,7 +384,7 @@ export default function MockTestLibraryPage() {
             <button
               onClick={() => fetchTests(page + 1, activeTab, searchQuery)}
               disabled={loading}
-              className="px-5 py-2.5 rounded-xl bg-slate-800 hover:bg-slate-700 text-slate-300 text-xs font-semibold transition"
+              className="px-5 py-2.5 rounded-xl bg-surface-hover hover:bg-muted text-foreground text-xs font-semibold transition"
             >
               {loading ? 'Loading...' : 'Load More Tests'}
             </button>
@@ -393,89 +393,89 @@ export default function MockTestLibraryPage() {
 
         {/* Schedule Test Modal */}
         {showScheduleModal && (
-          <div className="fixed inset-0 z-50 bg-black/70 backdrop-blur-xs flex items-center justify-center p-4">
-            <div className="bg-slate-900 border border-slate-800 rounded-2xl max-w-md w-full p-6 space-y-4 shadow-2xl">
-              <div className="flex items-center justify-between border-b border-slate-800 pb-3">
-                <h3 className="text-base font-bold text-white flex items-center gap-2">
+          <div className="fixed inset-0 z-50 bg-slate-900/60 dark:bg-black/70 backdrop-blur-xs flex items-center justify-center p-4">
+            <div className="bg-surface border border-border rounded-2xl max-w-md w-full p-6 space-y-4 shadow-2xl">
+              <div className="flex items-center justify-between border-b border-border pb-3">
+                <h3 className="text-base font-bold text-foreground flex items-center gap-2">
                   <span>📝 Schedule AI Mock Test</span>
                 </h3>
-                <button onClick={() => setShowScheduleModal(false)} className="text-slate-400 hover:text-white font-bold text-sm">
+                <button onClick={() => setShowScheduleModal(false)} className="text-muted-foreground hover:text-foreground font-bold text-sm">
                   ✕
                 </button>
               </div>
 
               <form onSubmit={handleScheduleTest} className="space-y-4 text-xs">
                 <div className="space-y-1">
-                  <label className="text-slate-300 font-semibold">Test Title</label>
+                  <label className="text-foreground font-semibold">Test Title</label>
                   <input
                     type="text"
                     required
                     placeholder="e.g. Distributed Systems & Microservices Quiz"
                     value={newTitle}
                     onChange={(e) => setNewTitle(e.target.value)}
-                    className="w-full px-3.5 py-2 rounded-xl bg-slate-950 border border-slate-800 text-slate-200 focus:outline-none focus:border-emerald-500"
+                    className="w-full px-3.5 py-2 rounded-xl bg-background border border-border text-foreground focus:outline-none focus:border-emerald-500"
                   />
                 </div>
 
                 <div className="space-y-1">
-                  <label className="text-slate-300 font-semibold">Topic / Domain</label>
+                  <label className="text-foreground font-semibold">Topic / Domain</label>
                   <input
                     type="text"
                     placeholder="e.g. System Design & Data Structures"
                     value={newTopic}
                     onChange={(e) => setNewTopic(e.target.value)}
-                    className="w-full px-3.5 py-2 rounded-xl bg-slate-950 border border-slate-800 text-slate-200 focus:outline-none focus:border-emerald-500"
+                    className="w-full px-3.5 py-2 rounded-xl bg-background border border-border text-foreground focus:outline-none focus:border-emerald-500"
                   />
                 </div>
 
                 <div className="grid grid-cols-2 gap-3">
                   <div className="space-y-1">
-                    <label className="text-slate-300 font-semibold">Duration (Mins)</label>
+                    <label className="text-foreground font-semibold">Duration (Mins)</label>
                     <input
                       type="number"
                       min={5}
                       max={180}
                       value={newDuration}
                       onChange={(e) => setNewDuration(Number(e.target.value))}
-                      className="w-full px-3.5 py-2 rounded-xl bg-slate-950 border border-slate-800 text-slate-200 focus:outline-none focus:border-emerald-500"
+                      className="w-full px-3.5 py-2 rounded-xl bg-background border border-border text-foreground focus:outline-none focus:border-emerald-500"
                     />
                   </div>
                   <div className="space-y-1">
-                    <label className="text-slate-300 font-semibold">Questions Count</label>
+                    <label className="text-foreground font-semibold">Questions Count</label>
                     <input
                       type="number"
                       min={1}
                       max={50}
                       value={newQuestionsCount}
                       onChange={(e) => setNewQuestionsCount(Number(e.target.value))}
-                      className="w-full px-3.5 py-2 rounded-xl bg-slate-950 border border-slate-800 text-slate-200 focus:outline-none focus:border-emerald-500"
+                      className="w-full px-3.5 py-2 rounded-xl bg-background border border-border text-foreground focus:outline-none focus:border-emerald-500"
                     />
                   </div>
                 </div>
 
                 <div className="space-y-1">
-                  <label className="text-slate-300 font-semibold">Scheduled Start Time</label>
+                  <label className="text-foreground font-semibold">Scheduled Start Time</label>
                   <input
                     type="datetime-local"
                     required
                     value={newScheduleTime}
                     onChange={(e) => setNewScheduleTime(e.target.value)}
-                    className="w-full px-3.5 py-2 rounded-xl bg-slate-950 border border-slate-800 text-slate-200 focus:outline-none focus:border-emerald-500"
+                    className="w-full px-3.5 py-2 rounded-xl bg-background border border-border text-foreground focus:outline-none focus:border-emerald-500"
                   />
                 </div>
 
-                <div className="pt-3 border-t border-slate-800 flex justify-end gap-2">
+                <div className="pt-3 border-t border-border flex justify-end gap-2">
                   <button
                     type="button"
                     onClick={() => setShowScheduleModal(false)}
-                    className="px-4 py-2 rounded-xl bg-slate-800 text-slate-300 hover:bg-slate-700 transition font-semibold"
+                    className="px-4 py-2 rounded-xl bg-surface-hover text-foreground hover:bg-muted transition font-semibold"
                   >
                     Cancel
                   </button>
                   <button
                     type="submit"
                     disabled={isCreating}
-                    className="px-4 py-2 rounded-xl bg-emerald-600 hover:bg-emerald-500 text-white font-semibold transition"
+                    className="px-4 py-2 rounded-xl bg-emerald-600 hover:bg-emerald-500 text-foreground font-semibold transition"
                   >
                     {isCreating ? 'Generating & Scheduling...' : 'Create AI Test'}
                   </button>
@@ -487,34 +487,34 @@ export default function MockTestLibraryPage() {
 
         {/* Share Mock Test Modal */}
         {shareTargetTest && (
-          <div className="fixed inset-0 z-50 bg-black/70 backdrop-blur-xs flex items-center justify-center p-4">
-            <div className="bg-slate-900 border border-slate-800 rounded-2xl max-w-md w-full p-6 space-y-4 shadow-2xl">
-              <div className="flex items-center justify-between border-b border-slate-800 pb-3">
-                <h3 className="text-base font-bold text-white flex items-center gap-2">
+          <div className="fixed inset-0 z-50 bg-slate-900/60 dark:bg-black/70 backdrop-blur-xs flex items-center justify-center p-4">
+            <div className="bg-surface border border-border rounded-2xl max-w-md w-full p-6 space-y-4 shadow-2xl">
+              <div className="flex items-center justify-between border-b border-border pb-3">
+                <h3 className="text-base font-bold text-foreground flex items-center gap-2">
                   <span>🔗 Share Mock Test with Friend or Channel</span>
                 </h3>
-                <button onClick={() => setShareTargetTest(null)} className="text-slate-400 hover:text-white font-bold text-sm">
+                <button onClick={() => setShareTargetTest(null)} className="text-muted-foreground hover:text-foreground font-bold text-sm">
                   ✕
                 </button>
               </div>
 
               <form onSubmit={handleExecuteShare} className="space-y-4 text-xs">
-                <div className="p-3 bg-slate-950 border border-slate-800 rounded-xl space-y-1">
-                  <p className="font-bold text-slate-200">{shareTargetTest.title}</p>
-                  <p className="text-[11px] text-slate-400">
+                <div className="p-3 bg-background border border-border rounded-xl space-y-1">
+                  <p className="font-bold text-foreground">{shareTargetTest.title}</p>
+                  <p className="text-[11px] text-muted-foreground">
                     ⏱ {shareTargetTest.durationMinutes} mins • ❓ {shareTargetTest.totalQuestions} questions
                   </p>
                 </div>
 
                 <div className="space-y-1">
-                  <label className="text-slate-300 font-semibold">Select Destination Channel / Direct Message</label>
+                  <label className="text-foreground font-semibold">Select Destination Channel / Direct Message</label>
                   {channels.length === 0 ? (
-                    <p className="text-slate-500 py-2 text-[11px]">No active channels found. Start a new DM or group in Collab Chat first!</p>
+                    <p className="text-muted-foreground py-2 text-[11px]">No active channels found. Start a new DM or group in Collab Chat first!</p>
                   ) : (
                     <select
                       value={selectedChannelId}
                       onChange={(e) => setSelectedChannelId(e.target.value)}
-                      className="w-full px-3.5 py-2 rounded-xl bg-slate-950 border border-slate-800 text-slate-200 focus:outline-none focus:border-indigo-500"
+                      className="w-full px-3.5 py-2 rounded-xl bg-background border border-border text-foreground focus:outline-none focus:border-indigo-500"
                     >
                       {channels.map((ch) => {
                         const name = ch.type === 'DIRECT'
@@ -531,28 +531,28 @@ export default function MockTestLibraryPage() {
                 </div>
 
                 <div className="space-y-1">
-                  <label className="text-slate-300 font-semibold">Optional Note to Chat</label>
+                  <label className="text-foreground font-semibold">Optional Note to Chat</label>
                   <input
                     type="text"
                     value={shareMessage}
                     onChange={(e) => setShareMessage(e.target.value)}
-                    className="w-full px-3.5 py-2 rounded-xl bg-slate-950 border border-slate-800 text-slate-200 focus:outline-none focus:border-indigo-500"
+                    className="w-full px-3.5 py-2 rounded-xl bg-background border border-border text-foreground focus:outline-none focus:border-indigo-500"
                     placeholder="e.g. Join this quiz with me!"
                   />
                 </div>
 
-                <div className="pt-3 border-t border-slate-800 flex justify-end gap-2">
+                <div className="pt-3 border-t border-border flex justify-end gap-2">
                   <button
                     type="button"
                     onClick={() => setShareTargetTest(null)}
-                    className="px-4 py-2 rounded-xl bg-slate-800 text-slate-300 hover:bg-slate-700 transition font-semibold"
+                    className="px-4 py-2 rounded-xl bg-surface-hover text-foreground hover:bg-muted transition font-semibold"
                   >
                     Cancel
                   </button>
                   <button
                     type="submit"
                     disabled={isSharing || !selectedChannelId}
-                    className="px-4 py-2 rounded-xl bg-indigo-600 hover:bg-indigo-500 text-white font-semibold transition"
+                    className="px-4 py-2 rounded-xl bg-indigo-600 hover:bg-indigo-500 text-foreground font-semibold transition"
                   >
                     {isSharing ? 'Sharing...' : 'Send to Chat 🚀'}
                   </button>

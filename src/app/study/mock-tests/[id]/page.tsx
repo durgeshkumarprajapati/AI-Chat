@@ -233,36 +233,36 @@ export default function MockTestDetailPage({ params }: { params: { id: string } 
   };
 
   if (loading && !test) {
-    return <div className="min-h-screen bg-slate-950 text-slate-400 p-10 text-center">Loading mock test...</div>;
+    return <div className="min-h-screen bg-background text-muted-foreground p-10 text-center">Loading mock test...</div>;
   }
 
   if (!test) {
-    return <div className="min-h-screen bg-slate-950 text-rose-400 p-10 text-center">Mock test not found</div>;
+    return <div className="min-h-screen bg-background text-rose-400 p-10 text-center">Mock test not found</div>;
   }
 
   const isCompleted = test.status === 'COMPLETED' || Boolean(userParticipant?.submittedAt);
   const isCreator = currentUser?.id && test.createdById === currentUser.id;
 
   return (
-    <div className="min-h-screen bg-slate-950 text-slate-100 p-6 md:p-10">
+    <div className="min-h-screen bg-background text-foreground p-6 md:p-10">
       <div className="max-w-4xl mx-auto space-y-6">
         {/* Header */}
-        <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 border-b border-slate-800 pb-5">
+        <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 border-b border-border pb-5">
           <div>
             <div className="flex items-center gap-2 mb-1">
               <span className="text-xs px-2.5 py-0.5 rounded-full font-bold uppercase bg-emerald-500/20 text-emerald-400 border border-emerald-500/30">
                 {test.status}
               </span>
-              <span className="text-xs text-slate-400">Created by {test.createdBy?.name || 'Instructor'}</span>
+              <span className="text-xs text-muted-foreground">Created by {test.createdBy?.name || 'Instructor'}</span>
             </div>
-            <h1 className="text-2xl font-bold text-white">{test.title}</h1>
-            <p className="text-xs text-slate-400 mt-1">{test.topic || test.description || 'AI MCQ Assessment'}</p>
+            <h1 className="text-2xl font-bold text-foreground">{test.title}</h1>
+            <p className="text-xs text-muted-foreground mt-1">{test.topic || test.description || 'AI MCQ Assessment'}</p>
           </div>
 
           <div className="flex items-center gap-2 flex-wrap sm:flex-nowrap">
             <Link
               href="/study/mock-tests"
-              className="px-3.5 py-2 bg-slate-800 hover:bg-slate-700 text-slate-300 text-xs font-semibold rounded-xl transition"
+              className="px-3.5 py-2 bg-surface-hover hover:bg-muted text-foreground text-xs font-semibold rounded-xl transition"
             >
               ← Back
             </Link>
@@ -285,7 +285,7 @@ export default function MockTestDetailPage({ params }: { params: { id: string } 
             {!isTakingTest && !isCompleted && (
               <button
                 onClick={handleStartSession}
-                className="px-4 py-2 bg-emerald-600 hover:bg-emerald-500 text-white text-xs font-bold rounded-xl shadow-md transition"
+                className="px-4 py-2 bg-emerald-600 hover:bg-emerald-500 text-foreground text-xs font-bold rounded-xl shadow-md transition"
               >
                 🚀 Take Test Now
               </button>
@@ -295,19 +295,19 @@ export default function MockTestDetailPage({ params }: { params: { id: string } 
 
         {/* Share Modal */}
         {showShareModal && (
-          <div className="fixed inset-0 bg-black/70 z-50 flex items-center justify-center p-4">
-            <div className="bg-slate-900 border border-slate-700 p-6 rounded-2xl w-full max-w-sm space-y-4">
-              <h3 className="font-bold text-white">Share Mock Test</h3>
+          <div className="fixed inset-0 bg-slate-900/60 dark:bg-black/70 z-50 flex items-center justify-center p-4">
+            <div className="bg-surface border border-border p-6 rounded-2xl w-full max-w-sm space-y-4">
+              <h3 className="font-bold text-foreground">Share Mock Test</h3>
               <form onSubmit={handleExecuteShare} className="space-y-4">
                 <select
-                  className="w-full bg-slate-800 text-xs p-2.5 rounded-lg border border-slate-700"
+                  className="w-full bg-surface-hover text-xs p-2.5 rounded-lg border border-border"
                   value={selectedChannelId}
                   onChange={(e) => setSelectedChannelId(e.target.value)}
                 >
                   {channels.map((c) => <option key={c.id} value={c.id}>{c.name || 'Channel'}</option>)}
                 </select>
                 <textarea
-                  className="w-full bg-slate-800 text-xs p-2.5 rounded-lg border border-slate-700"
+                  className="w-full bg-surface-hover text-xs p-2.5 rounded-lg border border-border"
                   value={shareMessage}
                   onChange={(e) => setShareMessage(e.target.value)}
                 />
@@ -332,7 +332,7 @@ export default function MockTestDetailPage({ params }: { params: { id: string } 
               href={test.googleCalendarEventUrl || test.googleCalendarLink}
               target="_blank"
               rel="noopener noreferrer"
-              className="px-3.5 py-1.5 bg-emerald-600 hover:bg-emerald-500 text-white font-bold rounded-xl transition"
+              className="px-3.5 py-1.5 bg-emerald-600 hover:bg-emerald-500 text-foreground font-bold rounded-xl transition"
             >
               Open in Google Calendar ↗
             </a>
@@ -344,7 +344,7 @@ export default function MockTestDetailPage({ params }: { params: { id: string } 
             </span>
             <a
               href="/api/integrations/google/connect"
-              className="px-3.5 py-1.5 bg-amber-600 hover:bg-amber-500 text-white font-bold rounded-xl transition"
+              className="px-3.5 py-1.5 bg-amber-600 hover:bg-amber-500 text-foreground font-bold rounded-xl transition"
             >
               Connect Google Calendar
             </a>
@@ -357,7 +357,7 @@ export default function MockTestDetailPage({ params }: { params: { id: string } 
             </span>
             <a
               href="/api/integrations/google/connect"
-              className="px-3.5 py-1.5 bg-amber-600 hover:bg-amber-500 text-white font-bold rounded-xl transition"
+              className="px-3.5 py-1.5 bg-amber-600 hover:bg-amber-500 text-foreground font-bold rounded-xl transition"
             >
               Reconnect Google Calendar
             </a>
@@ -375,7 +375,7 @@ export default function MockTestDetailPage({ params }: { params: { id: string } 
             <button
               onClick={handleRetryCalendarSync}
               disabled={isRetryingCalendar}
-              className="px-3.5 py-1.5 bg-rose-600 hover:bg-rose-500 text-white font-bold rounded-xl transition"
+              className="px-3.5 py-1.5 bg-rose-600 hover:bg-rose-500 text-foreground font-bold rounded-xl transition"
             >
               {isRetryingCalendar ? 'Retrying...' : 'Retry Sync'}
             </button>
@@ -387,8 +387,8 @@ export default function MockTestDetailPage({ params }: { params: { id: string } 
           <div className="p-5 bg-gradient-to-r from-emerald-950/60 to-slate-900 border border-emerald-500/30 rounded-2xl flex items-center justify-between">
             <div>
               <h3 className="text-sm font-bold text-emerald-400">Quiz Submitted & Evaluated</h3>
-              <p className="text-xs text-slate-300 mt-0.5">
-                Score: <span className="font-bold text-white">{scoreResult?.scorePercentage || userParticipant?.score || 100}%</span> •{' '}
+              <p className="text-xs text-foreground mt-0.5">
+                Score: <span className="font-bold text-foreground">{scoreResult?.scorePercentage || userParticipant?.score || 100}%</span> •{' '}
                 {scoreResult?.passed || userParticipant?.passed ? 'PASSED ✅' : 'NEEDS IMPROVEMENT ⚠'}
               </p>
             </div>
@@ -398,16 +398,16 @@ export default function MockTestDetailPage({ params }: { params: { id: string } 
 
         {/* Active Quiz Taking Session */}
         {isTakingTest ? (
-          <div className="bg-slate-900 border border-slate-800 rounded-2xl p-6 space-y-6">
-            <div className="flex items-center justify-between border-b border-slate-800 pb-3">
-              <h3 className="text-base font-bold text-white">Active Test Session</h3>
+          <div className="bg-surface border border-border rounded-2xl p-6 space-y-6">
+            <div className="flex items-center justify-between border-b border-border pb-3">
+              <h3 className="text-base font-bold text-foreground">Active Test Session</h3>
               <span className="text-xs text-amber-400 font-mono font-semibold">⏱ Time Remaining: Server Authoritative</span>
             </div>
 
             <div className="space-y-6">
               {questions.map((q, idx) => (
-                <div key={q.id || `q_${idx}`} className="p-4 rounded-xl bg-slate-950 border border-slate-800 space-y-3">
-                  <h4 className="text-sm font-bold text-slate-100">
+                <div key={q.id || `q_${idx}`} className="p-4 rounded-xl bg-background border border-border space-y-3">
+                  <h4 className="text-sm font-bold text-foreground">
                     Q{idx + 1}. {q.questionText || (q as any).question || 'Question unavailable'}
                   </h4>
                   <div className="space-y-2">
@@ -422,7 +422,7 @@ export default function MockTestDetailPage({ params }: { params: { id: string } 
                           className={`w-full text-left p-3 rounded-lg text-xs transition border ${
                             isSelected
                               ? 'bg-emerald-600/20 border-emerald-500 text-emerald-300 font-semibold'
-                              : 'bg-slate-900 border-slate-800 text-slate-300 hover:bg-slate-800'
+                              : 'bg-surface border-border text-foreground hover:bg-surface-hover'
                           }`}
                         >
                           {optText}
@@ -434,11 +434,11 @@ export default function MockTestDetailPage({ params }: { params: { id: string } 
               ))}
             </div>
 
-            <div className="pt-4 border-t border-slate-800 flex justify-end">
+            <div className="pt-4 border-t border-border flex justify-end">
               <button
                 onClick={handleSubmitTest}
                 disabled={submitting}
-                className="px-6 py-2.5 bg-emerald-600 hover:bg-emerald-500 text-white font-bold text-xs rounded-xl transition"
+                className="px-6 py-2.5 bg-emerald-600 hover:bg-emerald-500 text-foreground font-bold text-xs rounded-xl transition"
               >
                 {submitting ? 'Submitting...' : 'Submit Answers Now'}
               </button>
@@ -448,7 +448,7 @@ export default function MockTestDetailPage({ params }: { params: { id: string } 
           /* Question Bank Inspector View */
           <div className="space-y-4">
             <div className="flex items-center justify-between">
-              <h3 className="text-base font-bold text-slate-200">Question Bank Inspector ({questions.length} MCQs)</h3>
+              <h3 className="text-base font-bold text-foreground">Question Bank Inspector ({questions.length} MCQs)</h3>
               {isSanitized && (
                 <span className="text-[11px] text-amber-400 font-mono bg-amber-500/10 px-2.5 py-1 rounded border border-amber-500/20">
                   🔒 Correct answers hidden for active/scheduled test
@@ -458,12 +458,12 @@ export default function MockTestDetailPage({ params }: { params: { id: string } 
 
             <div className="space-y-4">
               {questions.map((q, idx) => (
-                <div key={q.id || `q_insp_${idx}`} className="p-4 rounded-xl bg-slate-900/80 border border-slate-800 space-y-3">
+                <div key={q.id || `q_insp_${idx}`} className="p-4 rounded-xl bg-surface/80 border border-border space-y-3">
                   <div className="flex items-start justify-between gap-3">
-                    <h4 className="text-sm font-bold text-slate-100">
+                    <h4 className="text-sm font-bold text-foreground">
                       Q{idx + 1}. {q.questionText || (q as any).question || 'Question unavailable'}
                     </h4>
-                    <span className="text-[10px] bg-slate-800 text-slate-400 px-2 py-0.5 rounded font-mono shrink-0">
+                    <span className="text-[10px] bg-surface-hover text-muted-foreground px-2 py-0.5 rounded font-mono shrink-0">
                       {q.type || 'MCQ_SINGLE'}
                     </span>
                   </div>
@@ -478,7 +478,7 @@ export default function MockTestDetailPage({ params }: { params: { id: string } 
                           className={`p-2.5 rounded-lg text-xs border ${
                             isCorrect
                               ? 'bg-emerald-950/40 border-emerald-500/50 text-emerald-300 font-semibold'
-                              : 'bg-slate-950 border-slate-800/80 text-slate-300'
+                              : 'bg-background border-border/80 text-foreground'
                           }`}
                         >
                           <span>{optText}</span>
@@ -496,9 +496,9 @@ export default function MockTestDetailPage({ params }: { params: { id: string } 
                   )}
 
                   {q.groundingSource && (
-                    <div className="text-[11px] text-slate-500 font-mono">
+                    <div className="text-[11px] text-muted-foreground font-mono">
                       <span>Source Evidence: </span>
-                      <span className="text-slate-400">{q.groundingSource}</span>
+                      <span className="text-muted-foreground">{q.groundingSource}</span>
                     </div>
                   )}
                 </div>

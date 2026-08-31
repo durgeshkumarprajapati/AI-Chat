@@ -74,7 +74,7 @@ export function UserProfileMenu() {
       </button>
 
       {isOpen && (
-        <div className="absolute right-0 mt-2 w-56 rounded-2xl bg-white dark:bg-[#0a0e18] border border-slate-200 dark:border-[#424754] shadow-2xl py-2 z-50 animate-in fade-in zoom-in-95 duration-100 space-y-1 font-sans">
+        <div className="absolute right-0 mt-2 w-56 rounded-2xl bg-white dark:bg-[#0a0e18] border border-slate-200 dark:border-[#424754] shadow-2xl py-2 z-50 animate-dropdown-in space-y-1 font-sans">
           {/* User Info Header */}
           <div className="px-4 py-2 border-b border-slate-100 dark:border-[#424754]/60 space-y-0.5">
             <p className="text-xs font-bold text-slate-900 dark:text-[#dfe2f1] truncate">{currentUser.name}</p>

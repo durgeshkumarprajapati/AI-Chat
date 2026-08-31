@@ -13,7 +13,7 @@ export function TourHelpButton() {
     <div className="relative inline-block text-left">
       <button
         onClick={() => setIsOpen(!isOpen)}
-        className="flex items-center justify-center w-8 h-8 rounded-full bg-slate-900 border border-slate-800 text-slate-400 hover:text-white hover:border-slate-700 text-xs font-bold transition"
+        className="flex items-center justify-center w-8 h-8 rounded-full bg-surface border border-border text-muted-foreground hover:text-foreground hover:border-primary/50 text-xs font-bold transition-colors duration-150"
         title="Help & Tour Guidance"
         aria-label="Help and Module Guidance"
       >
@@ -21,15 +21,15 @@ export function TourHelpButton() {
       </button>
 
       {isOpen && (
-        <div className="absolute right-0 mt-2 w-72 rounded-2xl bg-slate-900 border border-slate-800 p-4 shadow-2xl z-50 animate-in fade-in zoom-in-95 duration-150 space-y-3 text-slate-200">
-          <div className="flex items-center justify-between border-b border-slate-800 pb-2">
-            <h4 className="font-bold text-sm text-white">{activeTour.module} Guidance</h4>
-            <button onClick={() => setIsOpen(false)} className="text-slate-400 hover:text-white text-xs">
+        <div className="absolute right-0 mt-2 w-72 rounded-2xl bg-surface border border-border p-4 shadow-2xl z-50 animate-dropdown-in space-y-3 text-foreground">
+          <div className="flex items-center justify-between border-b border-border pb-2">
+            <h4 className="font-bold text-sm text-foreground">{activeTour.module} Guidance</h4>
+            <button onClick={() => setIsOpen(false)} className="text-muted-foreground hover:text-foreground text-xs">
               ✕
             </button>
           </div>
 
-          <p className="text-xs text-slate-300 leading-relaxed">
+          <p className="text-xs text-muted-foreground leading-relaxed">
             {activeTour.description || `Learn how to use ${activeTour.module} effectively.`}
           </p>
 
@@ -39,7 +39,7 @@ export function TourHelpButton() {
                 setIsOpen(false);
                 startTour(activeTour.id);
               }}
-              className="w-full py-1.5 bg-indigo-600 hover:bg-indigo-500 text-white rounded-xl text-xs font-semibold shadow-md shadow-indigo-600/20 transition"
+              className="w-full py-1.5 bg-primary hover:bg-primary-hover text-primary-foreground rounded-xl text-xs font-semibold shadow-md shadow-primary/20 transition-colors duration-150"
             >
               Take {activeTour.module} Tour ✨
             </button>
@@ -48,7 +48,7 @@ export function TourHelpButton() {
                 setIsOpen(false);
                 restartTour();
               }}
-              className="w-full py-1.5 bg-slate-800 hover:bg-slate-700 text-slate-300 text-xs font-medium rounded-xl transition"
+              className="w-full py-1.5 bg-muted hover:bg-surface-hover text-muted-foreground text-xs font-medium rounded-xl transition-colors duration-150"
             >
               Restart Tour 🔄
             </button>

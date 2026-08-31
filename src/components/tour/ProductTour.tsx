@@ -100,7 +100,7 @@ export function ProductTour({ legacyIsOpen, legacyOnClose }: { legacyIsOpen?: bo
 
   return (
     <div
-      className="fixed inset-0 z-50 flex items-center justify-center bg-slate-950/80 backdrop-blur-sm p-4 animate-in fade-in duration-200"
+      className="fixed inset-0 z-50 flex items-center justify-center bg-slate-900/60 dark:bg-slate-950/80 backdrop-blur-sm p-4 animate-fade-in"
       role="dialog"
       aria-modal="true"
       aria-labelledby="tour-step-title"
@@ -120,30 +120,30 @@ export function ProductTour({ legacyIsOpen, legacyOnClose }: { legacyIsOpen?: bo
       )}
 
       {/* Main Tour Card Dialog */}
-      <div className="relative w-full max-w-lg rounded-2xl bg-slate-900 border border-slate-800 p-6 shadow-2xl space-y-5 text-slate-100 z-50">
+      <div className="relative w-full max-w-lg rounded-2xl bg-surface border border-border p-6 shadow-2xl space-y-5 text-foreground z-50">
         {/* Step Header */}
-        <div className="flex items-center justify-between border-b border-slate-800 pb-3.5">
+        <div className="flex items-center justify-between border-b border-border pb-3.5">
           <div className="flex items-center space-x-3">
             <span className="text-2xl">{currentStep.icon || '✨'}</span>
             <div>
               <div className="flex items-center space-x-2">
-                <h3 id="tour-step-title" className="text-lg font-bold text-white tracking-tight">
+                <h3 id="tour-step-title" className="text-lg font-bold text-foreground tracking-tight">
                   {currentStep.title}
                 </h3>
                 {activeTour.badge && (
-                  <span className="text-[10px] font-semibold px-2 py-0.5 rounded bg-indigo-950 text-indigo-300 border border-indigo-800">
+                  <span className="text-[10px] font-semibold px-2 py-0.5 rounded bg-accent text-accent-foreground border border-primary/30">
                     {activeTour.badge}
                   </span>
                 )}
               </div>
-              <p className="text-xs text-slate-400">
+              <p className="text-xs text-muted-foreground">
                 Step {currentStepIndex + 1} of {totalSteps} • {activeTour.module}
               </p>
             </div>
           </div>
           <button
             onClick={handleClose}
-            className="text-slate-400 hover:text-white text-xs font-semibold p-1 rounded-lg hover:bg-slate-800 transition"
+            className="text-muted-foreground hover:text-foreground text-xs font-semibold p-1 rounded-lg hover:bg-surface-hover transition-colors duration-150"
             aria-label="Close tour"
           >
             ✕
@@ -153,19 +153,19 @@ export function ProductTour({ legacyIsOpen, legacyOnClose }: { legacyIsOpen?: bo
         {/* Step Content */}
         <div className="space-y-3 py-1">
           {!targetFound && (
-            <div className="p-3 rounded-xl bg-amber-950/60 border border-amber-800/60 text-amber-300 text-xs">
+            <div className="p-3 rounded-xl bg-warning/10 border border-warning/30 text-warning text-xs">
               ⚠️ {currentStep.emptyStateExplanation || 'This feature step is not currently visible on screen.'}
             </div>
           )}
 
-          <p id="tour-step-description" className="text-sm text-slate-200 leading-relaxed">
+          <p id="tour-step-description" className="text-sm text-foreground leading-relaxed">
             {currentStep.description}
           </p>
 
           {currentStep.technicalDetails && (
-            <div className="rounded-xl bg-slate-950 border border-slate-800 p-3 space-y-1">
-              <span className="text-[10px] font-bold text-indigo-400 uppercase tracking-wider">Under The Hood</span>
-              <p className="text-xs font-mono text-slate-300">{currentStep.technicalDetails}</p>
+            <div className="rounded-xl bg-background border border-border p-3 space-y-1">
+              <span className="text-[10px] font-bold text-primary uppercase tracking-wider">Under The Hood</span>
+              <p className="text-xs font-mono text-muted-foreground">{currentStep.technicalDetails}</p>
             </div>
           )}
         </div>

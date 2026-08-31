@@ -61,8 +61,8 @@ export default function RegisterPage() {
       <AuthLayoutShell>
         <AuthCard>
           <div className="flex flex-col items-center justify-center py-12 space-y-3 font-sans">
-            <div className="w-8 h-8 rounded-full border-2 border-[#4d8eff] border-t-transparent animate-spin" />
-            <p className="text-xs text-[#adc6ff] font-mono animate-pulse">
+            <div className="w-8 h-8 rounded-full border-2 border-primary border-t-transparent animate-spin" />
+            <p className="text-xs text-primary font-mono animate-pulse">
               {authStatus === 'AUTHENTICATED' ? 'Redirecting to Dashboard...' : 'Verifying Session...'}
             </p>
           </div>
@@ -87,68 +87,68 @@ export default function RegisterPage() {
 
         <form className="space-y-4 font-sans" onSubmit={handleSubmit}>
           <div className="space-y-1.5">
-            <label className="block text-[10px] font-mono font-bold text-[#adc6ff] uppercase tracking-wider">
+            <label className="block text-[10px] font-mono font-bold text-primary uppercase tracking-wider">
               Full Name
             </label>
             <div className="relative">
-              <span className="absolute left-3.5 top-1/2 -translate-y-1/2 text-xs text-[#8c909f]">👤</span>
+              <span className="absolute left-3.5 top-1/2 -translate-y-1/2 text-xs text-muted-foreground">👤</span>
               <input
                 type="text"
                 required
                 value={name}
                 onChange={(e) => setName(e.target.value)}
-                className="w-full h-12 pl-10 pr-4 bg-[#0f131d] border border-[#424754] rounded-xl text-xs text-[#dfe2f1] placeholder-[#8c909f] focus:outline-none focus:border-[#4d8eff] shadow-inner transition"
+                className="w-full h-12 pl-10 pr-4 bg-surface border border-border rounded-xl text-xs text-foreground placeholder-text-disabled focus:outline-none focus:border-primary shadow-inner transition"
                 placeholder="John Doe"
               />
             </div>
           </div>
 
           <div className="space-y-1.5">
-            <label className="block text-[10px] font-mono font-bold text-[#adc6ff] uppercase tracking-wider">
+            <label className="block text-[10px] font-mono font-bold text-primary uppercase tracking-wider">
               Email Address
             </label>
             <div className="relative">
-              <span className="absolute left-3.5 top-1/2 -translate-y-1/2 text-xs text-[#8c909f]">✉</span>
+              <span className="absolute left-3.5 top-1/2 -translate-y-1/2 text-xs text-muted-foreground">✉</span>
               <input
                 type="email"
                 required
                 value={email}
                 onChange={(e) => setEmail(e.target.value)}
-                className="w-full h-12 pl-10 pr-4 bg-[#0f131d] border border-[#424754] rounded-xl text-xs text-[#dfe2f1] placeholder-[#8c909f] focus:outline-none focus:border-[#4d8eff] shadow-inner transition"
+                className="w-full h-12 pl-10 pr-4 bg-surface border border-border rounded-xl text-xs text-foreground placeholder-text-disabled focus:outline-none focus:border-primary shadow-inner transition"
                 placeholder="you@example.com"
               />
             </div>
           </div>
 
           <div className="space-y-1.5">
-            <label className="block text-[10px] font-mono font-bold text-[#adc6ff] uppercase tracking-wider">
+            <label className="block text-[10px] font-mono font-bold text-primary uppercase tracking-wider">
               Password
             </label>
             <div className="relative">
-              <span className="absolute left-3.5 top-1/2 -translate-y-1/2 text-xs text-[#8c909f]">🔒</span>
+              <span className="absolute left-3.5 top-1/2 -translate-y-1/2 text-xs text-muted-foreground">🔒</span>
               <input
                 type="password"
                 required
                 value={password}
                 onChange={(e) => setPassword(e.target.value)}
-                className="w-full h-12 pl-10 pr-4 bg-[#0f131d] border border-[#424754] rounded-xl text-xs text-[#dfe2f1] placeholder-[#8c909f] focus:outline-none focus:border-[#4d8eff] shadow-inner transition"
+                className="w-full h-12 pl-10 pr-4 bg-surface border border-border rounded-xl text-xs text-foreground placeholder-text-disabled focus:outline-none focus:border-primary shadow-inner transition"
                 placeholder="At least 8 characters"
               />
             </div>
           </div>
 
           <div className="space-y-1.5">
-            <label className="block text-[10px] font-mono font-bold text-[#adc6ff] uppercase tracking-wider">
+            <label className="block text-[10px] font-mono font-bold text-primary uppercase tracking-wider">
               Confirm Password
             </label>
             <div className="relative">
-              <span className="absolute left-3.5 top-1/2 -translate-y-1/2 text-xs text-[#8c909f]">🔒</span>
+              <span className="absolute left-3.5 top-1/2 -translate-y-1/2 text-xs text-muted-foreground">🔒</span>
               <input
                 type="password"
                 required
                 value={confirmPassword}
                 onChange={(e) => setConfirmPassword(e.target.value)}
-                className="w-full h-12 pl-10 pr-4 bg-[#0f131d] border border-[#424754] rounded-xl text-xs text-[#dfe2f1] placeholder-[#8c909f] focus:outline-none focus:border-[#4d8eff] shadow-inner transition"
+                className="w-full h-12 pl-10 pr-4 bg-surface border border-border rounded-xl text-xs text-foreground placeholder-text-disabled focus:outline-none focus:border-primary shadow-inner transition"
                 placeholder="Repeat password"
               />
             </div>
@@ -157,16 +157,16 @@ export default function RegisterPage() {
           <button
             type="submit"
             disabled={loading}
-            className="w-full h-12 mt-2 bg-gradient-to-r from-[#4d8eff] via-[#4d8eff] to-[#adc6ff] hover:opacity-95 disabled:opacity-50 text-[#0a0e18] font-extrabold text-xs rounded-xl shadow-lg shadow-[#4d8eff]/20 transition flex items-center justify-center space-x-2"
+            className="w-full h-12 mt-2 bg-gradient-to-r from-primary via-primary to-primary-hover hover:opacity-95 disabled:opacity-50 text-primary-foreground font-extrabold text-xs rounded-xl shadow-lg shadow-primary/20 transition flex items-center justify-center space-x-2"
           >
             <span>{loading ? 'Creating Account...' : 'Create Account'}</span>
             <span>→</span>
           </button>
         </form>
 
-        <div className="pt-2 text-center text-xs text-[#8c909f] font-sans">
+        <div className="pt-2 text-center text-xs text-muted-foreground font-sans">
           Already have an account?{' '}
-          <Link href="/login" className="text-[#4d8eff] hover:text-[#adc6ff] font-bold transition">
+          <Link href="/login" className="text-primary hover:text-primary font-bold transition">
             Sign in
           </Link>
         </div>

@@ -38,22 +38,22 @@ export default function VoiceTutorHistoryPage() {
   };
 
   return (
-    <div className="p-4 sm:p-6 lg:p-8 max-w-[1200px] mx-auto space-y-8 w-full font-sans selection:bg-[#4d8eff] selection:text-white">
+    <div className="p-4 sm:p-6 lg:p-8 max-w-[1200px] mx-auto space-y-8 w-full font-sans selection:bg-primary selection:text-white">
       {/* Header */}
-      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 border-b border-[#424754]/60 pb-5">
+      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 border-b border-border/60 pb-5">
         <div>
           <div className="flex items-center space-x-3">
             <span className="text-3xl">📜</span>
-            <h1 className="text-2xl sm:text-3xl font-extrabold text-[#dfe2f1] tracking-tight">Voice Tutor Session History</h1>
+            <h1 className="text-2xl sm:text-3xl font-extrabold text-foreground tracking-tight">Voice Tutor Session History</h1>
           </div>
-          <p className="text-xs sm:text-sm text-[#c2c6d6] mt-1">
+          <p className="text-xs sm:text-sm text-muted-foreground mt-1">
             Review your past interactive AI Voice Tutoring conversations, duration, and performance scores.
           </p>
         </div>
 
         <Link
           href="/study/voice-tutor"
-          className="px-5 py-2.5 rounded-xl bg-gradient-to-r from-[#4d8eff] to-[#adc6ff] text-[#0a0e18] font-bold text-xs shadow-lg shadow-[#4d8eff]/20 hover:scale-[1.02] transition flex items-center justify-center space-x-2 self-start sm:self-auto"
+          className="px-5 py-2.5 rounded-xl bg-gradient-to-r from-primary to-primary-hover text-primary-foreground font-bold text-xs shadow-lg shadow-primary/20 hover:scale-[1.02] transition flex items-center justify-center space-x-2 self-start sm:self-auto"
         >
           <span>+ Start New Session</span>
         </Link>
@@ -61,19 +61,19 @@ export default function VoiceTutorHistoryPage() {
 
       {/* History List Table / Cards */}
       {loading ? (
-        <div className="bg-[#0a0e18] border border-[#424754] rounded-3xl p-12 text-center text-xs text-[#8c909f] font-mono shadow-xl">
+        <div className="bg-card border border-border rounded-3xl p-12 text-center text-xs text-muted-foreground font-mono shadow-xl">
           Loading session history...
         </div>
       ) : sessions.length === 0 ? (
-        <div className="bg-[#0a0e18] border border-[#424754] rounded-3xl p-12 text-center space-y-4 max-w-md mx-auto shadow-2xl">
+        <div className="bg-card border border-border rounded-3xl p-12 text-center space-y-4 max-w-md mx-auto shadow-2xl">
           <span className="text-4xl">🎙️</span>
           <div className="space-y-1">
-            <h3 className="text-base font-extrabold text-[#dfe2f1]">No Voice Tutoring Sessions Yet</h3>
-            <p className="text-xs text-[#c2c6d6]">Start your first interactive AI voice conversation to build your learning history.</p>
+            <h3 className="text-base font-extrabold text-foreground">No Voice Tutoring Sessions Yet</h3>
+            <p className="text-xs text-muted-foreground">Start your first interactive AI voice conversation to build your learning history.</p>
           </div>
           <Link
             href="/study/voice-tutor"
-            className="inline-block px-5 py-2.5 bg-gradient-to-r from-[#4d8eff] to-[#adc6ff] text-[#0a0e18] font-bold text-xs rounded-xl shadow-lg shadow-[#4d8eff]/30 hover:scale-[1.02] transition"
+            className="inline-block px-5 py-2.5 bg-gradient-to-r from-primary to-primary-hover text-primary-foreground font-bold text-xs rounded-xl shadow-lg shadow-primary/30 hover:scale-[1.02] transition"
           >
             Start First Voice Session 🎤
           </Link>
@@ -85,11 +85,11 @@ export default function VoiceTutorHistoryPage() {
             return (
               <div
                 key={s.id}
-                className="bg-[#0a0e18] border border-[#424754] hover:border-[#4d8eff] rounded-3xl p-5 space-y-4 shadow-xl transition flex flex-col justify-between"
+                className="bg-card border border-border hover:border-primary rounded-3xl p-5 space-y-4 shadow-xl transition flex flex-col justify-between"
               >
                 <div className="space-y-2">
                   <div className="flex items-center justify-between">
-                    <span className="text-[10px] font-mono text-[#adc6ff] bg-[#4d8eff]/10 px-2.5 py-0.5 rounded-full border border-[#4d8eff]/30">
+                    <span className="text-[10px] font-mono text-primary bg-primary/10 px-2.5 py-0.5 rounded-full border border-primary/30">
                       {s.mode}
                     </span>
                     <span
@@ -103,27 +103,27 @@ export default function VoiceTutorHistoryPage() {
                     </span>
                   </div>
 
-                  <h3 className="text-sm font-bold text-[#dfe2f1] line-clamp-1">{s.title}</h3>
-                  <p className="text-xs text-[#8c909f] font-mono">
+                  <h3 className="text-sm font-bold text-foreground line-clamp-1">{s.title}</h3>
+                  <p className="text-xs text-muted-foreground font-mono">
                     Started: {new Date(s.startedAt).toLocaleDateString()} at {new Date(s.startedAt).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
                   </p>
                 </div>
 
-                <div className="grid grid-cols-2 gap-2 text-[11px] font-mono bg-[#0f131d] p-3 rounded-2xl border border-[#424754]/60">
+                <div className="grid grid-cols-2 gap-2 text-[11px] font-mono bg-surface p-3 rounded-2xl border border-border/60">
                   <div>
-                    <span className="text-[#8c909f] block text-[9px] uppercase">Duration</span>
-                    <span className="text-[#dfe2f1] font-bold">{minutes} mins</span>
+                    <span className="text-muted-foreground block text-[9px] uppercase">Duration</span>
+                    <span className="text-foreground font-bold">{minutes} mins</span>
                   </div>
                   <div>
-                    <span className="text-[#8c909f] block text-[9px] uppercase">Messages</span>
-                    <span className="text-[#dfe2f1] font-bold">{s.totalMessages} turns</span>
+                    <span className="text-muted-foreground block text-[9px] uppercase">Messages</span>
+                    <span className="text-foreground font-bold">{s.totalMessages} turns</span>
                   </div>
                 </div>
 
-                <div className="flex items-center justify-between pt-2 border-t border-[#424754]/60">
+                <div className="flex items-center justify-between pt-2 border-t border-border/60">
                   <Link
                     href="/study/voice-tutor"
-                    className="text-xs font-bold text-[#4d8eff] hover:text-[#adc6ff] transition"
+                    className="text-xs font-bold text-primary hover:text-primary transition"
                   >
                     Open Session →
                   </Link>

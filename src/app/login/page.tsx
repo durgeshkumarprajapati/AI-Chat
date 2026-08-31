@@ -57,8 +57,8 @@ export default function LoginPage() {
       <AuthLayoutShell>
         <AuthCard>
           <div className="flex flex-col items-center justify-center py-12 space-y-3 font-sans">
-            <div className="w-8 h-8 rounded-full border-2 border-[#4d8eff] border-t-transparent animate-spin" />
-            <p className="text-xs text-[#adc6ff] font-mono animate-pulse">
+            <div className="w-8 h-8 rounded-full border-2 border-primary border-t-transparent animate-spin" />
+            <p className="text-xs text-primary font-mono animate-pulse">
               {authStatus === 'AUTHENTICATED' ? 'Redirecting to Dashboard...' : 'Verifying Session...'}
             </p>
           </div>
@@ -83,7 +83,7 @@ export default function LoginPage() {
 
         <form className="space-y-5 font-sans" onSubmit={handleSubmit}>
           <div className="space-y-1.5">
-            <label className="block text-[10px] font-mono font-bold text-[#adc6ff] uppercase tracking-wider">
+            <label className="block text-[10px] font-mono font-bold text-primary uppercase tracking-wider">
               Email Address
             </label>
             <input
@@ -91,13 +91,13 @@ export default function LoginPage() {
               required
               value={email}
               onChange={(e) => setEmail(e.target.value)}
-              className="w-full h-12 px-4 bg-[#0f131d] border border-[#424754] rounded-xl text-xs text-[#dfe2f1] placeholder-[#8c909f] focus:outline-none focus:border-[#4d8eff] shadow-inner transition"
+              className="w-full h-12 px-4 bg-surface border border-border rounded-xl text-xs text-foreground placeholder-text-disabled focus:outline-none focus:border-primary shadow-inner transition"
               placeholder="you@example.com"
             />
           </div>
 
           <div className="space-y-1.5">
-            <label className="block text-[10px] font-mono font-bold text-[#adc6ff] uppercase tracking-wider">
+            <label className="block text-[10px] font-mono font-bold text-primary uppercase tracking-wider">
               Password
             </label>
             <input
@@ -105,7 +105,7 @@ export default function LoginPage() {
               required
               value={password}
               onChange={(e) => setPassword(e.target.value)}
-              className="w-full h-12 px-4 bg-[#0f131d] border border-[#424754] rounded-xl text-xs text-[#dfe2f1] placeholder-[#8c909f] focus:outline-none focus:border-[#4d8eff] shadow-inner transition"
+              className="w-full h-12 px-4 bg-surface border border-border rounded-xl text-xs text-foreground placeholder-text-disabled focus:outline-none focus:border-primary shadow-inner transition"
               placeholder="••••••••"
             />
           </div>
@@ -113,7 +113,7 @@ export default function LoginPage() {
           <div className="flex items-center justify-end text-xs pt-0.5">
             <Link
               href="/forgot-password"
-              className="text-xs font-semibold text-[#4d8eff] hover:text-[#adc6ff] transition"
+              className="text-xs font-semibold text-primary hover:text-primary transition"
             >
               Forgot password?
             </Link>
@@ -122,7 +122,7 @@ export default function LoginPage() {
           <button
             type="submit"
             disabled={loading}
-            className="w-full h-12 bg-gradient-to-r from-[#4d8eff] via-[#4d8eff] to-[#adc6ff] hover:opacity-95 disabled:opacity-50 text-[#0a0e18] font-extrabold text-xs rounded-xl shadow-lg shadow-[#4d8eff]/20 transition flex items-center justify-center space-x-2"
+            className="w-full h-12 bg-gradient-to-r from-primary via-primary to-primary-hover hover:opacity-95 disabled:opacity-50 text-primary-foreground font-extrabold text-xs rounded-xl shadow-lg shadow-primary/20 transition flex items-center justify-center space-x-2"
           >
             <span>{loading ? 'Signing in...' : 'Sign In'}</span>
           </button>
@@ -131,17 +131,17 @@ export default function LoginPage() {
         <div className="space-y-4 pt-1">
           <div className="relative">
             <div className="absolute inset-0 flex items-center">
-              <div className="w-full border-t border-[#424754]/60" />
+              <div className="w-full border-t border-border/60" />
             </div>
             <div className="relative flex justify-center text-[10px] font-mono uppercase tracking-wider">
-              <span className="bg-[#0a0e18] px-3 text-[#8c909f]">Or continue with</span>
+              <span className="bg-card px-3 text-muted-foreground">Or continue with</span>
             </div>
           </div>
 
           <button
             onClick={handleGoogleAuth}
             type="button"
-            className="w-full h-12 bg-[#0f131d] hover:bg-[#141926] border border-[#424754] rounded-xl text-xs font-bold text-[#dfe2f1] flex items-center justify-center space-x-3 transition shadow-sm"
+            className="w-full h-12 bg-surface hover:bg-surface-hover border border-border rounded-xl text-xs font-bold text-foreground flex items-center justify-center space-x-3 transition shadow-sm"
           >
             <svg className="h-4 w-4" viewBox="0 0 24 24">
               <path fill="#4285F4" d="M22.56 12.25c0-.78-.07-1.53-.2-2.25H12v4.26h5.92c-.26 1.37-1.04 2.53-2.21 3.31v2.77h3.57c2.08-1.92 3.28-4.74 3.28-8.09z" />
@@ -153,9 +153,9 @@ export default function LoginPage() {
           </button>
         </div>
 
-        <div className="pt-2 text-center text-xs text-[#8c909f] font-sans">
+        <div className="pt-2 text-center text-xs text-muted-foreground font-sans">
           Don&apos;t have an account?{' '}
-          <Link href="/register" className="text-[#4d8eff] hover:text-[#adc6ff] font-bold transition">
+          <Link href="/register" className="text-primary hover:text-primary font-bold transition">
             Create account
           </Link>
         </div>

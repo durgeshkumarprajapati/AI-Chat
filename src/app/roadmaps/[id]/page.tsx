@@ -157,7 +157,7 @@ export default function RoadmapDetailPage() {
 
   if (loading) {
     return (
-      <div className="min-h-screen bg-slate-950 text-slate-100 flex items-center justify-center p-6 font-mono text-xs text-indigo-400 animate-pulse">
+      <div className="min-h-screen bg-background text-foreground flex items-center justify-center p-6 font-mono text-xs text-indigo-400 animate-pulse">
         Loading Roadmap Architecture...
       </div>
     );
@@ -165,11 +165,11 @@ export default function RoadmapDetailPage() {
 
   if (errorMsg || !roadmap) {
     return (
-      <div className="min-h-screen bg-slate-950 text-slate-100 p-8 flex flex-col items-center justify-center space-y-4 text-center">
+      <div className="min-h-screen bg-background text-foreground p-8 flex flex-col items-center justify-center space-y-4 text-center">
         <div className="text-4xl">🗺️</div>
-        <h2 className="text-xl font-bold text-white">Roadmap Not Found</h2>
-        <p className="text-xs text-slate-400">{errorMsg || 'You may not have permission to view this roadmap.'}</p>
-        <Link href="/roadmaps" className="px-4 py-2 bg-indigo-600 text-white rounded-xl text-xs font-medium">
+        <h2 className="text-xl font-bold text-foreground">Roadmap Not Found</h2>
+        <p className="text-xs text-muted-foreground">{errorMsg || 'You may not have permission to view this roadmap.'}</p>
+        <Link href="/roadmaps" className="px-4 py-2 bg-indigo-600 text-foreground rounded-xl text-xs font-medium">
           Return to My Roadmaps
         </Link>
       </div>
@@ -177,13 +177,13 @@ export default function RoadmapDetailPage() {
   }
 
   return (
-    <div className="min-h-screen bg-slate-950 text-slate-100 p-6 sm:p-10">
+    <div className="min-h-screen bg-background text-foreground p-6 sm:p-10">
       <div className="w-full max-w-[1600px] mx-auto space-y-8">
         {/* Header Navigation */}
-        <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 border-b border-slate-800 pb-6">
+        <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 border-b border-border pb-6">
           <div>
             <div className="flex items-center space-x-3">
-              <Link href="/roadmaps" className="text-xs text-slate-400 hover:text-slate-200">
+              <Link href="/roadmaps" className="text-xs text-muted-foreground hover:text-foreground">
                 ← Roadmaps
               </Link>
               <span className="px-2.5 py-0.5 rounded-full bg-indigo-950 text-indigo-300 border border-indigo-800 text-[10px] font-mono">
@@ -193,7 +193,7 @@ export default function RoadmapDetailPage() {
             <h1 className="text-2xl font-bold bg-gradient-to-r from-white via-indigo-200 to-indigo-400 bg-clip-text text-transparent mt-2">
               {roadmap.title}
             </h1>
-            <p className="text-xs text-slate-400 mt-1 max-w-2xl">{roadmap.description}</p>
+            <p className="text-xs text-muted-foreground mt-1 max-w-2xl">{roadmap.description}</p>
           </div>
 
           <div className="flex items-center space-x-3">
@@ -207,7 +207,7 @@ export default function RoadmapDetailPage() {
             )}
             <Link
               href={`/chat?q=Explain ${encodeURIComponent(roadmap.targetSkill)} core concepts and best practices&sourceMode=web_search`}
-              className="px-4 py-2 bg-indigo-600 hover:bg-indigo-500 text-white text-xs font-medium rounded-xl shadow-lg transition"
+              className="px-4 py-2 bg-indigo-600 hover:bg-indigo-500 text-foreground text-xs font-medium rounded-xl shadow-lg transition"
             >
               Ask AI Assistant ✨
             </Link>
@@ -215,27 +215,27 @@ export default function RoadmapDetailPage() {
         </div>
 
         {/* Progress Overview Card */}
-        <div className="bg-gradient-to-r from-slate-900 via-indigo-950/30 to-slate-900 border border-slate-800 rounded-2xl p-6 shadow-xl space-y-4">
+        <div className="bg-gradient-to-r from-slate-900 via-indigo-950/30 to-slate-900 border border-border rounded-2xl p-6 shadow-xl space-y-4">
           <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
             <div>
-              <div className="text-xs text-slate-400 font-mono">Overall Completion</div>
-              <div className="text-3xl font-bold text-white font-mono mt-0.5">{roadmap.currentProgress}%</div>
+              <div className="text-xs text-muted-foreground font-mono">Overall Completion</div>
+              <div className="text-3xl font-bold text-foreground font-mono mt-0.5">{roadmap.currentProgress}%</div>
             </div>
 
-            <div className="flex flex-wrap gap-4 text-xs font-mono text-slate-300">
-              <div className="px-3 py-1.5 rounded-xl bg-slate-950 border border-slate-800">
-                🎯 Goal: <span className="text-white font-semibold">{roadmap.goal}</span>
+            <div className="flex flex-wrap gap-4 text-xs font-mono text-foreground">
+              <div className="px-3 py-1.5 rounded-xl bg-background border border-border">
+                🎯 Goal: <span className="text-foreground font-semibold">{roadmap.goal}</span>
               </div>
-              <div className="px-3 py-1.5 rounded-xl bg-slate-950 border border-slate-800">
-                ⏱️ Schedule: <span className="text-white font-semibold">{roadmap.dailyTimeCommitment}</span>
+              <div className="px-3 py-1.5 rounded-xl bg-background border border-border">
+                ⏱️ Schedule: <span className="text-foreground font-semibold">{roadmap.dailyTimeCommitment}</span>
               </div>
-              <div className="px-3 py-1.5 rounded-xl bg-slate-950 border border-slate-800">
-                📅 Duration: <span className="text-white font-semibold">{roadmap.targetDurationWeeks} Weeks</span>
+              <div className="px-3 py-1.5 rounded-xl bg-background border border-border">
+                📅 Duration: <span className="text-foreground font-semibold">{roadmap.targetDurationWeeks} Weeks</span>
               </div>
             </div>
           </div>
 
-          <div className="w-full h-3 bg-slate-950 rounded-full overflow-hidden border border-slate-800">
+          <div className="w-full h-3 bg-background rounded-full overflow-hidden border border-border">
             <div
               className="h-full bg-gradient-to-r from-indigo-600 via-sky-400 to-emerald-400 transition-all duration-500"
               style={{ width: `${roadmap.currentProgress}%` }}
@@ -248,24 +248,24 @@ export default function RoadmapDetailPage() {
           {roadmap.phases.map((phase) => (
             <div
               key={phase.id}
-              className="bg-slate-900/80 border border-slate-800 rounded-2xl p-6 shadow-xl space-y-4"
+              className="bg-surface/80 border border-border rounded-2xl p-6 shadow-xl space-y-4"
             >
-              <div className="flex items-start justify-between border-b border-slate-800/80 pb-4">
+              <div className="flex items-start justify-between border-b border-border/80 pb-4">
                 <div>
                   <div className="flex items-center space-x-2">
                     <span className="px-2 py-0.5 rounded bg-indigo-950 text-indigo-300 border border-indigo-800 text-[10px] font-mono">
                       Phase {phase.order} ({phase.durationWeeks} Wks)
                     </span>
-                    <h3 className="text-base font-bold text-white">{phase.title}</h3>
+                    <h3 className="text-base font-bold text-foreground">{phase.title}</h3>
                   </div>
-                  <p className="text-xs text-slate-400 mt-1">{phase.description}</p>
+                  <p className="text-xs text-muted-foreground mt-1">{phase.description}</p>
                 </div>
 
                 {permission !== 'VIEW' && (
                   <button
                     onClick={() => handleRegeneratePhase(phase.id)}
                     disabled={regeneratingPhases[phase.id]}
-                    className="px-3 py-1.5 bg-slate-800 hover:bg-slate-700 disabled:opacity-50 text-xs text-indigo-300 rounded-lg transition whitespace-nowrap"
+                    className="px-3 py-1.5 bg-surface-hover hover:bg-muted disabled:opacity-50 text-xs text-indigo-300 rounded-lg transition whitespace-nowrap"
                   >
                     {regeneratingPhases[phase.id] ? 'Refreshing...' : 'Regenerate Phase 🔄'}
                   </button>
@@ -281,8 +281,8 @@ export default function RoadmapDetailPage() {
                       key={task.id}
                       className={`p-4 rounded-xl border transition space-y-2 ${
                         isDone
-                          ? 'bg-slate-950/40 border-slate-800/50 opacity-75'
-                          : 'bg-slate-950/80 border-slate-800 hover:border-slate-700'
+                          ? 'bg-background/40 border-border/50 opacity-75'
+                          : 'bg-background/80 border-border hover:border-border'
                       }`}
                     >
                       <div className="flex items-start justify-between gap-3">
@@ -292,17 +292,17 @@ export default function RoadmapDetailPage() {
                             checked={isDone}
                             disabled={permission === 'VIEW'}
                             onChange={() => handleToggleTask(task.id, task.status)}
-                            className="mt-1 h-4 w-4 rounded border-slate-700 bg-slate-900 text-indigo-600 focus:ring-indigo-500 cursor-pointer"
+                            className="mt-1 h-4 w-4 rounded border-border bg-surface text-indigo-600 focus:ring-indigo-500 cursor-pointer"
                           />
                           <div>
-                            <span className={`text-xs font-semibold ${isDone ? 'line-through text-slate-400' : 'text-white'}`}>
+                            <span className={`text-xs font-semibold ${isDone ? 'line-through text-muted-foreground' : 'text-foreground'}`}>
                               {task.title}
                             </span>
-                            <p className="text-[11px] text-slate-400 mt-0.5">{task.description}</p>
+                            <p className="text-[11px] text-muted-foreground mt-0.5">{task.description}</p>
                           </div>
                         </div>
 
-                        <span className="text-[10px] font-mono text-slate-400 bg-slate-900 border border-slate-800 px-2 py-0.5 rounded whitespace-nowrap">
+                        <span className="text-[10px] font-mono text-muted-foreground bg-surface border border-border px-2 py-0.5 rounded whitespace-nowrap">
                           ~{task.estimatedHours}h
                         </span>
                       </div>
@@ -310,7 +310,7 @@ export default function RoadmapDetailPage() {
                       {/* Resource Recommendations */}
                       {task.resources && task.resources.length > 0 && (
                         <div className="pt-2 flex flex-wrap gap-2 text-[11px]">
-                          <span className="text-slate-500">Resources:</span>
+                          <span className="text-muted-foreground">Resources:</span>
                           {task.resources.map((res, idx) => (
                             <a
                               key={idx}
@@ -345,10 +345,10 @@ export default function RoadmapDetailPage() {
 
       {/* Share Modal */}
       {showShareModal && (
-        <div className="fixed inset-0 z-50 bg-slate-950/80 backdrop-blur-sm flex items-center justify-center p-4">
-          <div className="bg-slate-900 border border-slate-800 rounded-2xl p-6 max-w-md w-full space-y-4 shadow-2xl">
-            <h3 className="text-base font-bold text-white">Share Roadmap</h3>
-            <p className="text-xs text-slate-400">
+        <div className="fixed inset-0 z-50 bg-background/80 backdrop-blur-sm flex items-center justify-center p-4">
+          <div className="bg-surface border border-border rounded-2xl p-6 max-w-md w-full space-y-4 shadow-2xl">
+            <h3 className="text-base font-bold text-foreground">Share Roadmap</h3>
+            <p className="text-xs text-muted-foreground">
               Grant another registered user access to view or edit this roadmap.
             </p>
 
@@ -360,23 +360,23 @@ export default function RoadmapDetailPage() {
 
             <form onSubmit={handleShareSubmit} className="space-y-4">
               <div>
-                <label className="block text-xs font-medium text-slate-400 mb-1">User Email</label>
+                <label className="block text-xs font-medium text-muted-foreground mb-1">User Email</label>
                 <input
                   type="email"
                   required
                   value={shareEmail}
                   onChange={(e) => setShareEmail(e.target.value)}
                   placeholder="user@example.com"
-                  className="w-full bg-slate-950 border border-slate-800 rounded-xl p-2.5 text-xs text-white focus:outline-none focus:border-indigo-500"
+                  className="w-full bg-background border border-border rounded-xl p-2.5 text-xs text-foreground focus:outline-none focus:border-indigo-500"
                 />
               </div>
 
               <div>
-                <label className="block text-xs font-medium text-slate-400 mb-1">Permission</label>
+                <label className="block text-xs font-medium text-muted-foreground mb-1">Permission</label>
                 <select
                   value={sharePermission}
                   onChange={(e) => setSharePermission(e.target.value as any)}
-                  className="w-full bg-slate-950 border border-slate-800 rounded-xl p-2.5 text-xs text-white focus:outline-none"
+                  className="w-full bg-background border border-border rounded-xl p-2.5 text-xs text-foreground focus:outline-none"
                 >
                   <option value="VIEW">VIEW (Read-only)</option>
                   <option value="EDIT">EDIT (Modify tasks & phases)</option>
@@ -387,13 +387,13 @@ export default function RoadmapDetailPage() {
                 <button
                   type="button"
                   onClick={() => setShowShareModal(false)}
-                  className="px-4 py-2 bg-slate-800 text-slate-300 text-xs rounded-xl hover:bg-slate-700"
+                  className="px-4 py-2 bg-surface-hover text-foreground text-xs rounded-xl hover:bg-muted"
                 >
                   Cancel
                 </button>
                 <button
                   type="submit"
-                  className="px-5 py-2 bg-indigo-600 hover:bg-indigo-500 text-white font-medium text-xs rounded-xl shadow-lg"
+                  className="px-5 py-2 bg-indigo-600 hover:bg-indigo-500 text-foreground font-medium text-xs rounded-xl shadow-lg"
                 >
                   Grant Share Access
                 </button>

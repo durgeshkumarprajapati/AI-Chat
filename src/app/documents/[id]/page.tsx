@@ -192,7 +192,7 @@ export default function DocumentDetailPage() {
 
   if (loading) {
     return (
-      <div className="max-w-7xl mx-auto py-12 text-center text-slate-400 font-mono">
+      <div className="max-w-7xl mx-auto py-12 text-center text-muted-foreground font-mono">
         Loading document pipeline details...
       </div>
     );
@@ -202,7 +202,7 @@ export default function DocumentDetailPage() {
     return (
       <div className="max-w-7xl mx-auto py-12 text-center space-y-4">
         <p className="text-rose-400 font-semibold">Document not found or access denied.</p>
-        <Link href="/documents" className="inline-block px-4 py-2 rounded-lg bg-slate-800 text-indigo-400 text-xs font-semibold">
+        <Link href="/documents" className="inline-block px-4 py-2 rounded-lg bg-surface-hover text-indigo-400 text-xs font-semibold">
           ← Back to Documents
         </Link>
       </div>
@@ -219,17 +219,17 @@ export default function DocumentDetailPage() {
   return (
     <div className="w-full max-w-[1600px] mx-auto space-y-8">
       {/* Top Header */}
-      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 border-b border-slate-800 pb-6">
+      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 border-b border-border pb-6">
         <div>
           <div className="flex items-center space-x-3">
-            <Link href="/documents" className="text-slate-400 hover:text-white text-sm">
+            <Link href="/documents" className="text-muted-foreground hover:text-foreground text-sm">
               ← Documents
             </Link>
-            <span className="text-slate-600">/</span>
-            <span className="text-xs font-mono text-slate-400">{document.id}</span>
+            <span className="text-muted-foreground">/</span>
+            <span className="text-xs font-mono text-muted-foreground">{document.id}</span>
           </div>
           <div className="flex items-center space-x-3 mt-1">
-            <h1 className="text-2xl font-bold text-white tracking-tight">{document.filename}</h1>
+            <h1 className="text-2xl font-bold text-foreground tracking-tight">{document.filename}</h1>
             <span className="px-2.5 py-0.5 rounded bg-indigo-950 text-indigo-300 border border-indigo-800 font-mono text-xs font-semibold uppercase">
               {storageProvider} Storage
             </span>
@@ -241,7 +241,7 @@ export default function DocumentDetailPage() {
           {isCompleted && (
             <Link
               href="/chat"
-              className="px-3.5 py-2 rounded-xl bg-indigo-600 hover:bg-indigo-500 text-white text-xs font-semibold shadow-lg shadow-indigo-900/30 transition-all flex items-center space-x-1.5"
+              className="px-3.5 py-2 rounded-xl bg-indigo-600 hover:bg-indigo-500 text-foreground text-xs font-semibold shadow-lg shadow-indigo-900/30 transition-all flex items-center space-x-1.5"
             >
               <span>💬 Ask in Chat</span>
             </Link>
@@ -251,7 +251,7 @@ export default function DocumentDetailPage() {
             href={`/api/documents/${document.id}/download`}
             target="_blank"
             rel="noopener noreferrer"
-            className="px-3.5 py-2 rounded-xl bg-slate-900 border border-slate-800 text-xs font-semibold text-slate-200 hover:bg-slate-800 transition-colors"
+            className="px-3.5 py-2 rounded-xl bg-surface border border-border text-xs font-semibold text-foreground hover:bg-surface-hover transition-colors"
           >
             ⬇ Download PDF
           </a>
@@ -270,7 +270,7 @@ export default function DocumentDetailPage() {
             <button
               disabled={actionLoading}
               onClick={handleReprocess}
-              className="px-3.5 py-2 rounded-xl bg-slate-900 border border-slate-800 text-xs font-semibold text-slate-300 hover:bg-slate-800 transition-colors disabled:opacity-50"
+              className="px-3.5 py-2 rounded-xl bg-surface border border-border text-xs font-semibold text-foreground hover:bg-surface-hover transition-colors disabled:opacity-50"
             >
               ⚡ Reprocess
             </button>
@@ -371,35 +371,35 @@ export default function DocumentDetailPage() {
         {/* Left Column: Metadata & Embedding Card */}
         <div className="space-y-6">
           {/* Metadata Card */}
-          <div className="rounded-2xl bg-slate-900 border border-slate-800 p-6 space-y-4 shadow-xl">
-            <h2 className="text-lg font-bold text-white border-b border-slate-800 pb-3">Document Information</h2>
+          <div className="rounded-2xl bg-surface border border-border p-6 space-y-4 shadow-xl">
+            <h2 className="text-lg font-bold text-foreground border-b border-border pb-3">Document Information</h2>
 
             <div className="space-y-3 text-xs">
               <div>
-                <span className="text-slate-500 font-mono block">Original Filename:</span>
-                <span className="text-slate-200 font-medium break-all">{document.originalFilename}</span>
+                <span className="text-muted-foreground font-mono block">Original Filename:</span>
+                <span className="text-foreground font-medium break-all">{document.originalFilename}</span>
               </div>
               <div>
-                <span className="text-slate-500 font-mono block">File Size:</span>
-                <span className="text-slate-200 font-mono">{(document.fileSize / 1024 / 1024).toFixed(2)} MB ({document.fileSize.toLocaleString()} bytes)</span>
+                <span className="text-muted-foreground font-mono block">File Size:</span>
+                <span className="text-foreground font-mono">{(document.fileSize / 1024 / 1024).toFixed(2)} MB ({document.fileSize.toLocaleString()} bytes)</span>
               </div>
               <div>
-                <span className="text-slate-500 font-mono block">MIME Type:</span>
-                <span className="text-slate-200 font-mono">{document.mimeType}</span>
+                <span className="text-muted-foreground font-mono block">MIME Type:</span>
+                <span className="text-foreground font-mono">{document.mimeType}</span>
               </div>
               <div>
-                <span className="text-slate-500 font-mono block">Storage Key ({storageProvider.toUpperCase()}):</span>
-                <span className="text-slate-300 font-mono text-[11px] break-all bg-slate-950 p-2 rounded-lg border border-slate-800 block">
+                <span className="text-muted-foreground font-mono block">Storage Key ({storageProvider.toUpperCase()}):</span>
+                <span className="text-foreground font-mono text-[11px] break-all bg-background p-2 rounded-lg border border-border block">
                   {document.storageKey}
                 </span>
               </div>
               <div>
-                <span className="text-slate-500 font-mono block">Uploaded Date:</span>
-                <span className="text-slate-300 font-mono">{new Date(document.createdAt).toLocaleString()}</span>
+                <span className="text-muted-foreground font-mono block">Uploaded Date:</span>
+                <span className="text-foreground font-mono">{new Date(document.createdAt).toLocaleString()}</span>
               </div>
               <div>
-                <span className="text-slate-500 font-mono block">Last Updated:</span>
-                <span className="text-slate-300 font-mono">{new Date(document.updatedAt).toLocaleString()}</span>
+                <span className="text-muted-foreground font-mono block">Last Updated:</span>
+                <span className="text-foreground font-mono">{new Date(document.updatedAt).toLocaleString()}</span>
               </div>
             </div>
 
@@ -412,42 +412,42 @@ export default function DocumentDetailPage() {
           </div>
 
           {/* Real Embedding Progress Card */}
-          <div className="rounded-2xl bg-slate-900 border border-slate-800 p-6 space-y-4 shadow-xl">
-            <div className="flex items-center justify-between border-b border-slate-800 pb-3">
-              <h2 className="text-lg font-bold text-white">Embedding Progress</h2>
+          <div className="rounded-2xl bg-surface border border-border p-6 space-y-4 shadow-xl">
+            <div className="flex items-center justify-between border-b border-border pb-3">
+              <h2 className="text-lg font-bold text-foreground">Embedding Progress</h2>
               <span className="text-xs font-mono text-emerald-400 font-bold">{embeddingPercentage}%</span>
             </div>
 
             {/* Progress bar */}
             <div className="space-y-2">
-              <div className="w-full bg-slate-950 rounded-full h-3 overflow-hidden border border-slate-800">
+              <div className="w-full bg-background rounded-full h-3 overflow-hidden border border-border">
                 <div
                   className="bg-gradient-to-r from-indigo-500 to-emerald-400 h-3 rounded-full transition-all duration-500"
                   style={{ width: `${embeddingPercentage}%` }}
                 />
               </div>
-              <div className="flex items-center justify-between text-xs font-mono text-slate-400">
+              <div className="flex items-center justify-between text-xs font-mono text-muted-foreground">
                 <span>{chunkStats.embeddedChunks} of {chunkStats.totalChunks} chunks embedded</span>
                 <span>{chunkStats.totalChunks - chunkStats.embeddedChunks} pending</span>
               </div>
             </div>
 
-            <div className="rounded-xl bg-slate-950 border border-slate-800/80 p-3.5 space-y-2 text-xs font-mono">
+            <div className="rounded-xl bg-background border border-border/80 p-3.5 space-y-2 text-xs font-mono">
               <div className="flex justify-between">
-                <span className="text-slate-500">Provider:</span>
+                <span className="text-muted-foreground">Provider:</span>
                 <span className="text-indigo-400 font-semibold">Ollama / OpenAI Dual</span>
               </div>
               <div className="flex justify-between">
-                <span className="text-slate-500">Model:</span>
-                <span className="text-slate-200">nomic-embed-text</span>
+                <span className="text-muted-foreground">Model:</span>
+                <span className="text-foreground">nomic-embed-text</span>
               </div>
               <div className="flex justify-between">
-                <span className="text-slate-500">Dimensions:</span>
-                <span className="text-slate-200">768d</span>
+                <span className="text-muted-foreground">Dimensions:</span>
+                <span className="text-foreground">768d</span>
               </div>
               <div className="flex justify-between">
-                <span className="text-slate-500">Vector Index:</span>
-                <span className="text-slate-200">HNSW (vector_cosine_ops)</span>
+                <span className="text-muted-foreground">Vector Index:</span>
+                <span className="text-foreground">HNSW (vector_cosine_ops)</span>
               </div>
             </div>
           </div>
@@ -455,9 +455,9 @@ export default function DocumentDetailPage() {
           {/* Document Intelligence Card (Phase 69A) — renders nothing but a "not available" hint
               for documents with no intelligence data (pre-69A, disabled flag, or still pending). */}
           {intelligence && intelligence.status === 'COMPLETED' ? (
-            <div className="rounded-2xl bg-slate-900 border border-slate-800 p-6 space-y-4 shadow-xl">
-              <div className="flex items-center justify-between border-b border-slate-800 pb-3">
-                <h2 className="text-lg font-bold text-white">Document Intelligence</h2>
+            <div className="rounded-2xl bg-surface border border-border p-6 space-y-4 shadow-xl">
+              <div className="flex items-center justify-between border-b border-border pb-3">
+                <h2 className="text-lg font-bold text-foreground">Document Intelligence</h2>
                 <span className="text-[11px] font-mono px-2 py-0.5 rounded-full bg-emerald-950 text-emerald-300 border border-emerald-800">
                   {intelligence.chunkingStrategy === 'semantic' ? 'Semantic Chunking' : 'Legacy Chunking'}
                 </span>
@@ -465,7 +465,7 @@ export default function DocumentDetailPage() {
 
               {intelligence.documentType && (
                 <div className="flex items-center justify-between text-xs">
-                  <span className="text-slate-500 font-mono">Classification:</span>
+                  <span className="text-muted-foreground font-mono">Classification:</span>
                   <span className="px-2.5 py-0.5 rounded bg-indigo-950 text-indigo-300 border border-indigo-800 font-mono font-semibold uppercase">
                     {intelligence.documentType}
                     {typeof intelligence.classificationConfidence === 'number' &&
@@ -476,29 +476,29 @@ export default function DocumentDetailPage() {
 
               {intelligence.extractedMetadata?.title && (
                 <div>
-                  <span className="text-slate-500 font-mono block text-xs">Title:</span>
-                  <span className="text-slate-200 text-xs font-medium">{intelligence.extractedMetadata.title}</span>
+                  <span className="text-muted-foreground font-mono block text-xs">Title:</span>
+                  <span className="text-foreground text-xs font-medium">{intelligence.extractedMetadata.title}</span>
                 </div>
               )}
 
               {intelligence.extractedMetadata?.author && (
                 <div>
-                  <span className="text-slate-500 font-mono block text-xs">Author:</span>
-                  <span className="text-slate-200 text-xs">{intelligence.extractedMetadata.author}</span>
+                  <span className="text-muted-foreground font-mono block text-xs">Author:</span>
+                  <span className="text-foreground text-xs">{intelligence.extractedMetadata.author}</span>
                 </div>
               )}
 
               {intelligence.extractedMetadata?.summary && (
                 <div>
-                  <span className="text-slate-500 font-mono block text-xs">Summary:</span>
-                  <p className="text-slate-300 text-xs leading-relaxed">{intelligence.extractedMetadata.summary}</p>
+                  <span className="text-muted-foreground font-mono block text-xs">Summary:</span>
+                  <p className="text-foreground text-xs leading-relaxed">{intelligence.extractedMetadata.summary}</p>
                 </div>
               )}
 
               {intelligence.extractedMetadata?.keywords && intelligence.extractedMetadata.keywords.length > 0 && (
                 <div className="flex flex-wrap gap-1.5">
                   {intelligence.extractedMetadata.keywords.map((kw) => (
-                    <span key={kw} className="px-2 py-0.5 rounded-full bg-slate-950 border border-slate-800 text-[11px] text-slate-300">
+                    <span key={kw} className="px-2 py-0.5 rounded-full bg-background border border-border text-[11px] text-foreground">
                       {kw}
                     </span>
                   ))}
@@ -508,9 +508,9 @@ export default function DocumentDetailPage() {
           ) : null}
 
           {/* Multimodal Document Intelligence Card (Phase 69C) */}
-          <div className="rounded-2xl bg-slate-900 border border-slate-800 p-6 space-y-4 shadow-xl">
-            <div className="flex items-center justify-between border-b border-slate-800 pb-3">
-              <h2 className="text-lg font-bold text-white flex items-center gap-2">
+          <div className="rounded-2xl bg-surface border border-border p-6 space-y-4 shadow-xl">
+            <div className="flex items-center justify-between border-b border-border pb-3">
+              <h2 className="text-lg font-bold text-foreground flex items-center gap-2">
                 <span>✨</span> Multimodal Intelligence
               </h2>
               <span className="text-[11px] font-mono px-2 py-0.5 rounded-full bg-indigo-950 text-indigo-300 border border-indigo-800">
@@ -519,26 +519,26 @@ export default function DocumentDetailPage() {
             </div>
 
             <div className="grid grid-cols-2 gap-3 text-xs font-mono">
-              <div className="p-3 rounded-xl bg-slate-950 border border-slate-800 space-y-1">
-                <span className="text-slate-500 text-[10px] block">OCR Status</span>
+              <div className="p-3 rounded-xl bg-background border border-border space-y-1">
+                <span className="text-muted-foreground text-[10px] block">OCR Status</span>
                 <span className="text-emerald-400 font-semibold flex items-center gap-1">
                   ✓ {multimodalRun?.ocrEnabled ? 'Active' : 'Completed'}
                 </span>
               </div>
-              <div className="p-3 rounded-xl bg-slate-950 border border-slate-800 space-y-1">
-                <span className="text-slate-500 text-[10px] block">Tables Extracted</span>
+              <div className="p-3 rounded-xl bg-background border border-border space-y-1">
+                <span className="text-muted-foreground text-[10px] block">Tables Extracted</span>
                 <span className="text-indigo-400 font-semibold flex items-center gap-1">
                   📊 {multimodalRun?.tablesExtracted ?? 0} Tables
                 </span>
               </div>
-              <div className="p-3 rounded-xl bg-slate-950 border border-slate-800 space-y-1">
-                <span className="text-slate-500 text-[10px] block">Images Analyzed</span>
+              <div className="p-3 rounded-xl bg-background border border-border space-y-1">
+                <span className="text-muted-foreground text-[10px] block">Images Analyzed</span>
                 <span className="text-emerald-400 font-semibold flex items-center gap-1">
                   🖼 {multimodalRun?.imagesAnalyzed ?? 0} Images
                 </span>
               </div>
-              <div className="p-3 rounded-xl bg-slate-950 border border-slate-800 space-y-1">
-                <span className="text-slate-500 text-[10px] block">Charts Detected</span>
+              <div className="p-3 rounded-xl bg-background border border-border space-y-1">
+                <span className="text-muted-foreground text-[10px] block">Charts Detected</span>
                 <span className="text-indigo-400 font-semibold flex items-center gap-1">
                   📈 {multimodalRun?.chartsExtracted ?? 0} Charts
                 </span>
@@ -550,46 +550,46 @@ export default function DocumentDetailPage() {
         {/* Right Column: Live Pipeline Steps & Developer Panel */}
         <div className="lg:col-span-2 space-y-6">
           {/* Pipeline Step Checklist */}
-          <div className="rounded-2xl bg-slate-900 border border-slate-800 p-6 space-y-4 shadow-xl">
-            <h2 className="text-lg font-bold text-white border-b border-slate-800 pb-3">
+          <div className="rounded-2xl bg-surface border border-border p-6 space-y-4 shadow-xl">
+            <h2 className="text-lg font-bold text-foreground border-b border-border pb-3">
               Processing Pipeline Milestones
             </h2>
 
             <div className="space-y-3">
-              <div className="flex items-center justify-between p-3 rounded-xl bg-slate-950 border border-slate-800">
+              <div className="flex items-center justify-between p-3 rounded-xl bg-background border border-border">
                 <div className="flex items-center space-x-3">
                   <span className="text-emerald-400 text-lg">✓</span>
                   <div>
-                    <p className="text-xs font-semibold text-white">Step 1: Document Upload</p>
-                    <p className="text-[11px] text-slate-400">Multipart PDF upload validated</p>
+                    <p className="text-xs font-semibold text-foreground">Step 1: Document Upload</p>
+                    <p className="text-[11px] text-muted-foreground">Multipart PDF upload validated</p>
                   </div>
                 </div>
                 <span className="text-[11px] font-mono text-emerald-400">Completed</span>
               </div>
 
-              <div className="flex items-center justify-between p-3 rounded-xl bg-slate-950 border border-slate-800">
+              <div className="flex items-center justify-between p-3 rounded-xl bg-background border border-border">
                 <div className="flex items-center space-x-3">
                   <span className="text-emerald-400 text-lg">✓</span>
                   <div>
-                    <p className="text-xs font-semibold text-white">Step 2: Storage Persistence ({storageProvider.toUpperCase()})</p>
-                    <p className="text-[11px] text-slate-400">Persisted via StorageProvider abstraction</p>
+                    <p className="text-xs font-semibold text-foreground">Step 2: Storage Persistence ({storageProvider.toUpperCase()})</p>
+                    <p className="text-[11px] text-muted-foreground">Persisted via StorageProvider abstraction</p>
                   </div>
                 </div>
                 <span className="text-[11px] font-mono text-emerald-400">Completed</span>
               </div>
 
-              <div className="flex items-center justify-between p-3 rounded-xl bg-slate-950 border border-slate-800">
+              <div className="flex items-center justify-between p-3 rounded-xl bg-background border border-border">
                 <div className="flex items-center space-x-3">
                   <span className="text-emerald-400 text-lg">✓</span>
                   <div>
-                    <p className="text-xs font-semibold text-white">Step 3: RabbitMQ Job Enqueued</p>
-                    <p className="text-[11px] text-slate-400">Dispatched to &quot;document-processing&quot; queue</p>
+                    <p className="text-xs font-semibold text-foreground">Step 3: RabbitMQ Job Enqueued</p>
+                    <p className="text-[11px] text-muted-foreground">Dispatched to &quot;document-processing&quot; queue</p>
                   </div>
                 </div>
                 <span className="text-[11px] font-mono text-emerald-400">Completed</span>
               </div>
 
-              <div className="flex items-center justify-between p-3 rounded-xl bg-slate-950 border border-slate-800">
+              <div className="flex items-center justify-between p-3 rounded-xl bg-background border border-border">
                 <div className="flex items-center space-x-3">
                   {document.pageCount > 0 ? (
                     <span className="text-emerald-400 text-lg">✓</span>
@@ -599,8 +599,8 @@ export default function DocumentDetailPage() {
                     <span className="text-amber-400 text-lg animate-pulse">⏳</span>
                   )}
                   <div>
-                    <p className="text-xs font-semibold text-white">Step 4: PDF Text Extraction</p>
-                    <p className="text-[11px] text-slate-400">
+                    <p className="text-xs font-semibold text-foreground">Step 4: PDF Text Extraction</p>
+                    <p className="text-[11px] text-muted-foreground">
                       {document.pageCount > 0
                         ? `Extracted ${document.pageCount} pages using pdfjs-dist`
                         : isFailed
@@ -609,12 +609,12 @@ export default function DocumentDetailPage() {
                     </p>
                   </div>
                 </div>
-                <span className="text-[11px] font-mono text-slate-300">
+                <span className="text-[11px] font-mono text-foreground">
                   {document.pageCount > 0 ? `${document.pageCount} Pages` : isFailed ? 'Failed' : 'Processing'}
                 </span>
               </div>
 
-              <div className="flex items-center justify-between p-3 rounded-xl bg-slate-950 border border-slate-800">
+              <div className="flex items-center justify-between p-3 rounded-xl bg-background border border-border">
                 <div className="flex items-center space-x-3">
                   {chunkStats.totalChunks > 0 ? (
                     <span className="text-emerald-400 text-lg">✓</span>
@@ -624,8 +624,8 @@ export default function DocumentDetailPage() {
                     <span className="text-amber-400 text-lg animate-pulse">⏳</span>
                   )}
                   <div>
-                    <p className="text-xs font-semibold text-white">Step 5: Smart Token Chunking</p>
-                    <p className="text-[11px] text-slate-400">
+                    <p className="text-xs font-semibold text-foreground">Step 5: Smart Token Chunking</p>
+                    <p className="text-[11px] text-muted-foreground">
                       {chunkStats.totalChunks > 0
                         ? `Generated ${chunkStats.totalChunks} chunks (cl100k_base 800/120)`
                         : isFailed
@@ -634,12 +634,12 @@ export default function DocumentDetailPage() {
                     </p>
                   </div>
                 </div>
-                <span className="text-[11px] font-mono text-slate-300">
+                <span className="text-[11px] font-mono text-foreground">
                   {chunkStats.totalChunks > 0 ? `${chunkStats.totalChunks} Chunks` : 'Pending'}
                 </span>
               </div>
 
-              <div className="flex items-center justify-between p-3 rounded-xl bg-slate-950 border border-slate-800">
+              <div className="flex items-center justify-between p-3 rounded-xl bg-background border border-border">
                 <div className="flex items-center space-x-3">
                   {chunkStats.embeddedChunks > 0 && chunkStats.embeddedChunks === chunkStats.totalChunks ? (
                     <span className="text-emerald-400 text-lg">✓</span>
@@ -648,11 +648,11 @@ export default function DocumentDetailPage() {
                   ) : isProcessing ? (
                     <span className="text-amber-400 text-lg animate-pulse">⏳</span>
                   ) : (
-                    <span className="text-slate-500 text-lg">○</span>
+                    <span className="text-muted-foreground text-lg">○</span>
                   )}
                   <div>
-                    <p className="text-xs font-semibold text-white">Step 6 & 7: Vector Embeddings & pgvector</p>
-                    <p className="text-[11px] text-slate-400">
+                    <p className="text-xs font-semibold text-foreground">Step 6 & 7: Vector Embeddings & pgvector</p>
+                    <p className="text-[11px] text-muted-foreground">
                       {chunkStats.embeddedChunks > 0
                         ? `Embedded ${chunkStats.embeddedChunks} / ${chunkStats.totalChunks} chunks in vector(768)`
                         : 'Waiting for embedding batch process...'}
@@ -664,16 +664,16 @@ export default function DocumentDetailPage() {
                 </span>
               </div>
 
-              <div className="flex items-center justify-between p-3 rounded-xl bg-slate-950 border border-slate-800">
+              <div className="flex items-center justify-between p-3 rounded-xl bg-background border border-border">
                 <div className="flex items-center space-x-3">
                   {isCompleted ? (
                     <span className="text-emerald-400 text-lg">✓</span>
                   ) : (
-                    <span className="text-slate-500 text-lg">○</span>
+                    <span className="text-muted-foreground text-lg">○</span>
                   )}
                   <div>
-                    <p className="text-xs font-semibold text-white">Step 8: Ready for Grounded RAG</p>
-                    <p className="text-[11px] text-slate-400">
+                    <p className="text-xs font-semibold text-foreground">Step 8: Ready for Grounded RAG</p>
+                    <p className="text-[11px] text-muted-foreground">
                       {isCompleted ? 'Document ready for similarity search & streaming chat' : 'Awaiting completion'}
                     </p>
                   </div>
@@ -686,50 +686,50 @@ export default function DocumentDetailPage() {
           </div>
 
           {/* Developer Verification Panel (Collapsible) */}
-          <div className="rounded-2xl bg-slate-900 border border-slate-800 p-6 space-y-4 shadow-xl">
+          <div className="rounded-2xl bg-surface border border-border p-6 space-y-4 shadow-xl">
             <button
               onClick={() => setShowDevPanel(!showDevPanel)}
               className="flex items-center justify-between w-full text-left"
             >
               <div className="flex items-center space-x-2">
                 <span className="text-lg">🛠️</span>
-                <h2 className="text-lg font-bold text-white">Developer Pipeline Verification Panel</h2>
+                <h2 className="text-lg font-bold text-foreground">Developer Pipeline Verification Panel</h2>
               </div>
               <span className="text-xs text-indigo-400 font-mono">{showDevPanel ? 'Collapse ▲' : 'Expand ▼'}</span>
             </button>
 
             {showDevPanel && (
               <div className="grid grid-cols-2 sm:grid-cols-4 gap-3 pt-2 text-xs font-mono">
-                <div className="p-3 rounded-xl bg-slate-950 border border-slate-800">
-                  <span className="text-slate-500 block text-[10px]">Storage Driver</span>
-                  <span className="text-slate-200 font-semibold">{storageProvider.toUpperCase()}</span>
+                <div className="p-3 rounded-xl bg-background border border-border">
+                  <span className="text-muted-foreground block text-[10px]">Storage Driver</span>
+                  <span className="text-foreground font-semibold">{storageProvider.toUpperCase()}</span>
                 </div>
-                <div className="p-3 rounded-xl bg-slate-950 border border-slate-800">
-                  <span className="text-slate-500 block text-[10px]">Message Queue</span>
-                  <span className="text-slate-200 font-semibold">RabbitMQ Broker</span>
+                <div className="p-3 rounded-xl bg-background border border-border">
+                  <span className="text-muted-foreground block text-[10px]">Message Queue</span>
+                  <span className="text-foreground font-semibold">RabbitMQ Broker</span>
                 </div>
-                <div className="p-3 rounded-xl bg-slate-950 border border-slate-800">
-                  <span className="text-slate-500 block text-[10px]">PDF Engine</span>
-                  <span className="text-slate-200 font-semibold">pdfjs-dist</span>
+                <div className="p-3 rounded-xl bg-background border border-border">
+                  <span className="text-muted-foreground block text-[10px]">PDF Engine</span>
+                  <span className="text-foreground font-semibold">pdfjs-dist</span>
                 </div>
-                <div className="p-3 rounded-xl bg-slate-950 border border-slate-800">
-                  <span className="text-slate-500 block text-[10px]">Tokenizer</span>
-                  <span className="text-slate-200 font-semibold">cl100k_base</span>
+                <div className="p-3 rounded-xl bg-background border border-border">
+                  <span className="text-muted-foreground block text-[10px]">Tokenizer</span>
+                  <span className="text-foreground font-semibold">cl100k_base</span>
                 </div>
-                <div className="p-3 rounded-xl bg-slate-950 border border-slate-800">
-                  <span className="text-slate-500 block text-[10px]">Chunk Size / Overlap</span>
-                  <span className="text-slate-200 font-semibold">800 / 120 tokens</span>
+                <div className="p-3 rounded-xl bg-background border border-border">
+                  <span className="text-muted-foreground block text-[10px]">Chunk Size / Overlap</span>
+                  <span className="text-foreground font-semibold">800 / 120 tokens</span>
                 </div>
-                <div className="p-3 rounded-xl bg-slate-950 border border-slate-800">
-                  <span className="text-slate-500 block text-[10px]">Embedding Provider</span>
+                <div className="p-3 rounded-xl bg-background border border-border">
+                  <span className="text-muted-foreground block text-[10px]">Embedding Provider</span>
                   <span className="text-indigo-400 font-semibold">Ollama / OpenAI</span>
                 </div>
-                <div className="p-3 rounded-xl bg-slate-950 border border-slate-800">
-                  <span className="text-slate-500 block text-[10px]">Vector Column</span>
+                <div className="p-3 rounded-xl bg-background border border-border">
+                  <span className="text-muted-foreground block text-[10px]">Vector Column</span>
                   <span className="text-emerald-400 font-semibold">vector(768)</span>
                 </div>
-                <div className="p-3 rounded-xl bg-slate-950 border border-slate-800">
-                  <span className="text-slate-500 block text-[10px]">Vector Index</span>
+                <div className="p-3 rounded-xl bg-background border border-border">
+                  <span className="text-muted-foreground block text-[10px]">Vector Index</span>
                   <span className="text-emerald-400 font-semibold">HNSW cosine_ops</span>
                 </div>
               </div>
@@ -739,11 +739,11 @@ export default function DocumentDetailPage() {
       </div>
 
       {/* Chunk Inspection UI Section */}
-      <div className="rounded-2xl bg-slate-900 border border-slate-800 p-6 space-y-4 shadow-xl">
-        <div className="flex items-center justify-between border-b border-slate-800 pb-4">
+      <div className="rounded-2xl bg-surface border border-border p-6 space-y-4 shadow-xl">
+        <div className="flex items-center justify-between border-b border-border pb-4">
           <div>
-            <h2 className="text-xl font-bold text-white">Chunk Inspection UI</h2>
-            <p className="text-xs text-slate-400 mt-0.5">
+            <h2 className="text-xl font-bold text-foreground">Chunk Inspection UI</h2>
+            <p className="text-xs text-muted-foreground mt-0.5">
               Inspect token-aware extracted chunks, page numbers, metadata, and 768-dim embedding status.
             </p>
           </div>
@@ -753,7 +753,7 @@ export default function DocumentDetailPage() {
         </div>
 
         {chunks.length === 0 ? (
-          <div className="text-center py-8 text-slate-500 text-xs font-mono">
+          <div className="text-center py-8 text-muted-foreground text-xs font-mono">
             No chunks extracted yet. Document is processing or worker pipeline hasn&apos;t finished.
           </div>
         ) : (
@@ -763,15 +763,15 @@ export default function DocumentDetailPage() {
               return (
                 <div
                   key={chunk.id}
-                  className="rounded-xl bg-slate-950 border border-slate-800/80 p-4 space-y-3 transition-all"
+                  className="rounded-xl bg-background border border-border/80 p-4 space-y-3 transition-all"
                 >
-                  <div className="flex flex-wrap items-center justify-between gap-2 border-b border-slate-900 pb-3">
+                  <div className="flex flex-wrap items-center justify-between gap-2 border-b border-border pb-3">
                     <div className="flex items-center space-x-3">
-                      <span className="text-xs font-bold px-2.5 py-1 rounded bg-slate-900 text-indigo-300 font-mono">
+                      <span className="text-xs font-bold px-2.5 py-1 rounded bg-surface text-indigo-300 font-mono">
                         Chunk #{chunk.chunkIndex}
                       </span>
-                      <span className="text-xs font-mono text-slate-400">Page {chunk.pageNumber}</span>
-                      <span className="text-xs font-mono text-slate-400">• {chunk.tokenCount} Tokens</span>
+                      <span className="text-xs font-mono text-muted-foreground">Page {chunk.pageNumber}</span>
+                      <span className="text-xs font-mono text-muted-foreground">• {chunk.tokenCount} Tokens</span>
                     </div>
 
                     <div className="flex items-center space-x-3">
@@ -795,14 +795,14 @@ export default function DocumentDetailPage() {
                   </div>
 
                   {/* Content snippet */}
-                  <p className={`text-xs text-slate-300 leading-relaxed font-sans ${isExpanded ? '' : 'line-clamp-2'}`}>
+                  <p className={`text-xs text-foreground leading-relaxed font-sans ${isExpanded ? '' : 'line-clamp-2'}`}>
                     {chunk.content}
                   </p>
 
                   {isExpanded && (
-                    <div className="pt-2 space-y-2 border-t border-slate-900 text-[11px] font-mono">
-                      <span className="text-slate-500 block">Metadata JSON:</span>
-                      <pre className="p-3 rounded-lg bg-slate-900 text-slate-300 overflow-x-auto">
+                    <div className="pt-2 space-y-2 border-t border-border text-[11px] font-mono">
+                      <span className="text-muted-foreground block">Metadata JSON:</span>
+                      <pre className="p-3 rounded-lg bg-surface text-foreground overflow-x-auto">
                         {JSON.stringify(chunk.metadata, null, 2)}
                       </pre>
                     </div>
@@ -816,27 +816,27 @@ export default function DocumentDetailPage() {
 
       {/* Delete Confirmation Modal */}
       {isDeleteModalOpen && (
-        <div className="fixed inset-0 z-50 bg-black/80 backdrop-blur-sm flex items-center justify-center p-4">
-          <div className="max-w-md w-full rounded-2xl bg-slate-900 border border-slate-800 p-6 space-y-4 shadow-2xl">
+        <div className="fixed inset-0 z-50 bg-slate-900/60 dark:bg-black/70 backdrop-blur-sm flex items-center justify-center p-4">
+          <div className="max-w-md w-full rounded-2xl bg-surface border border-border p-6 space-y-4 shadow-2xl">
             <div className="flex items-center space-x-3 text-rose-400">
               <span className="text-2xl">⚠️</span>
-              <h3 className="text-lg font-bold text-white">Delete Document?</h3>
+              <h3 className="text-lg font-bold text-foreground">Delete Document?</h3>
             </div>
-            <p className="text-xs text-slate-300 leading-relaxed font-sans">
-              Are you sure you want to delete <strong className="text-white">&quot;{document.filename}&quot;</strong>?
+            <p className="text-xs text-foreground leading-relaxed font-sans">
+              Are you sure you want to delete <strong className="text-foreground">&quot;{document.filename}&quot;</strong>?
               This will permanently remove the document from <span className="font-mono text-indigo-400">{storageProvider.toUpperCase()} Storage</span> and delete all associated page chunks and vector embeddings.
             </p>
             <div className="flex items-center justify-end space-x-3 pt-2">
               <button
                 onClick={() => setIsDeleteModalOpen(false)}
-                className="px-4 py-2 rounded-xl bg-slate-800 hover:bg-slate-700 text-slate-300 text-xs font-semibold"
+                className="px-4 py-2 rounded-xl bg-surface-hover hover:bg-muted text-foreground text-xs font-semibold"
               >
                 Cancel
               </button>
               <button
                 onClick={handleDelete}
                 disabled={actionLoading}
-                className="px-4 py-2 rounded-xl bg-rose-600 hover:bg-rose-500 text-white text-xs font-semibold transition-colors disabled:opacity-50"
+                className="px-4 py-2 rounded-xl bg-rose-600 hover:bg-rose-500 text-foreground text-xs font-semibold transition-colors disabled:opacity-50"
               >
                 {actionLoading ? 'Deleting...' : 'Delete Document'}
               </button>

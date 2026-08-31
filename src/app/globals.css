@@ -2,6 +2,15 @@
 @tailwind components;
 @tailwind utilities;
 
+/*
+ * Phase 77A — centralized design tokens. This block (and its `.light` counterpart below) is
+ * the single source of truth for every color used across the app: change a value here and it
+ * updates everywhere that references the matching Tailwind token (see tailwind.config.ts).
+ *
+ * The 7 original variables (background/foreground/surface/surface-hover/border/text-muted/
+ * card-bg) keep their exact existing values — dark mode's visual identity is unchanged. Every
+ * variable below that line is new and purely additive.
+ */
 :root,
 [data-theme='dark'],
 .dark {
@@ -13,6 +22,41 @@
   --text-muted: #94a3b8;
   --card-bg: rgba(15, 23, 42, 0.85);
   color-scheme: dark;
+
+  /* Phase 77A additions — dark mode (extends the existing indigo accent already used on
+     /admin/*, matching Tailwind's indigo-400/300, so the sidebar/buttons/focus rings converge
+     on the same blue family that was already the most consistent existing pattern). */
+  --text-disabled: #64748b;
+  --card-border: #334155;
+
+  --primary: #818cf8;
+  --primary-hover: #a5b4fc;
+  --primary-foreground: #0b1120;
+  --ring: #818cf8;
+  --accent: rgba(129, 140, 248, 0.15);
+  --accent-foreground: #c7d2fe;
+
+  --success: #34d399;
+  --success-foreground: #052e16;
+  --warning: #fbbf24;
+  --warning-foreground: #451a03;
+  --destructive: #f87171;
+  --destructive-foreground: #450a0a;
+  --info: #38bdf8;
+  --info-foreground: #0c2d48;
+
+  --muted: #1e293b;
+  --muted-foreground: #94a3b8;
+
+  --sidebar-bg: #0b1120;
+  --sidebar-foreground: #c2c6d6;
+  --sidebar-hover-bg: #1e293b;
+  --sidebar-active-bg: rgba(129, 140, 248, 0.15);
+  --sidebar-active-foreground: #c7d2fe;
+  --sidebar-border: #334155;
+
+  --input-bg: #0f172a;
+  --input-border: #334155;
 }
 
 [data-theme='light'],
@@ -25,6 +69,40 @@
   --text-muted: #64748b;
   --card-bg: #ffffff;
   color-scheme: light;
+
+  /* Phase 77A additions — light mode: white-first backgrounds, near-black text, blue-tinted
+     borders, indigo/blue as the primary interactive color (spec sections 2-3). */
+  --text-disabled: #94a3b8;
+  --card-border: #e0e7ff;
+
+  --primary: #4f46e5;
+  --primary-hover: #4338ca;
+  --primary-foreground: #ffffff;
+  --ring: #6366f1;
+  --accent: #eef2ff;
+  --accent-foreground: #4338ca;
+
+  --success: #059669;
+  --success-foreground: #ffffff;
+  --warning: #d97706;
+  --warning-foreground: #ffffff;
+  --destructive: #dc2626;
+  --destructive-foreground: #ffffff;
+  --info: #0284c7;
+  --info-foreground: #ffffff;
+
+  --muted: #f1f5f9;
+  --muted-foreground: #64748b;
+
+  --sidebar-bg: #ffffff;
+  --sidebar-foreground: #334155;
+  --sidebar-hover-bg: #f1f5f9;
+  --sidebar-active-bg: #eef2ff;
+  --sidebar-active-foreground: #4338ca;
+  --sidebar-border: #e0e7ff;
+
+  --input-bg: #ffffff;
+  --input-border: #c7d2fe;
 }
 
 html, body {
@@ -73,4 +151,22 @@ button, input, textarea, select, option {
 .scrollbar-none {
   -ms-overflow-style: none;
   scrollbar-width: none;
+}
+
+/*
+ * Phase 77A — global prefers-reduced-motion safety net. Previously this preference was only
+ * honored ad hoc by 6 components with their own JS `matchMedia` checks (WebGL canvases,
+ * voice-orb visualizations); every plain Tailwind `transition`/`animate-*` class elsewhere in
+ * the app ignored it entirely. This CSS-level fallback catches everything else without
+ * requiring each component to opt in individually.
+ */
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
+    scroll-behavior: auto !important;
+  }
 }

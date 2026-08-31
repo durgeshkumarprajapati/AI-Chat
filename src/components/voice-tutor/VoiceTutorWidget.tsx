@@ -157,7 +157,7 @@ export const VoiceTutorWidget: React.FC<VoiceTutorWidgetProps> = ({
   };
 
   return (
-    <div className="bg-[#0a0e18] border border-[#424754] rounded-3xl p-6 sm:p-8 space-y-6 shadow-2xl flex flex-col items-center text-center font-sans">
+    <div className="bg-card border border-border rounded-3xl p-6 sm:p-8 space-y-6 shadow-2xl flex flex-col items-center text-center font-sans">
       {/* Central Voice Orb Component */}
       <VoiceOrb
         state={state}
@@ -181,12 +181,12 @@ export const VoiceTutorWidget: React.FC<VoiceTutorWidgetProps> = ({
             value={textInput}
             onChange={(e) => setTextInput(e.target.value)}
             disabled={disabled || !sessionId || state === 'LISTENING'}
-            className="flex-1 bg-[#0f131d] border border-[#424754] rounded-xl px-4 py-2.5 text-xs text-[#dfe2f1] placeholder-[#8c909f] focus:outline-none focus:border-[#4d8eff] transition"
+            className="flex-1 bg-surface border border-border rounded-xl px-4 py-2.5 text-xs text-foreground placeholder-text-disabled focus:outline-none focus:border-primary transition"
           />
           <button
             type="submit"
             disabled={!textInput.trim() || disabled || !sessionId}
-            className="px-4 py-2.5 bg-gradient-to-r from-[#4d8eff] to-[#adc6ff] hover:opacity-90 disabled:opacity-50 text-[#0a0e18] font-bold text-xs rounded-xl transition shadow-md shadow-[#4d8eff]/20"
+            className="px-4 py-2.5 bg-gradient-to-r from-primary to-primary-hover hover:opacity-90 disabled:opacity-50 text-primary-foreground font-bold text-xs rounded-xl transition shadow-md shadow-primary/20"
           >
             Send 🚀
           </button>

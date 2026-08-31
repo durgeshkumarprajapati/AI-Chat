@@ -5,6 +5,8 @@ import { sarvamConfigService } from '../sarvam.config';
 import { sarvamTelemetryService } from '../telemetry/sarvam-telemetry.service';
 import { DocumentTranslationJobDTO, DocumentTranslationRequestInput } from '../sarvam.types';
 
+import { AuthorizationError, NotFoundError } from '@/errors';
+
 export interface SarvamTranslationJobPayload {
   jobType: 'SARVAM_DOCUMENT_TRANSLATION';
   translationId: string;
@@ -26,8 +28,12 @@ export class SarvamDocumentTranslationService {
   ): Promise<DocumentTranslationJobDTO[]> {
     const config = await sarvamConfigService.getConfig();
 
+    if (!sarvamClient.isConfigured()) {
+      throw new AuthorizationError('Sarvam API key is not configured in .env file (SARVAM_API_KEY).');
+    }
+
     if (!config.enabled || !config.translationEnabled || !config.documentTranslationEnabled) {
-      throw new Error('Sarvam Document Translation is currently disabled in Admin Configuration.');
+      throw new AuthorizationError('Sarvam Document Translation is currently disabled in Admin Configuration.');
     }
 
     // Fetch active document version if available
@@ -36,7 +42,7 @@ export class SarvamDocumentTranslationService {
     });
 
     if (!doc) {
-      throw new Error(`Document not found: ${input.documentId}`);
+      throw new NotFoundError(`Document not found: ${input.documentId}`);
     }
 
     const currentVersionId = doc.version ? String(doc.version) : null;

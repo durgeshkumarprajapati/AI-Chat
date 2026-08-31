@@ -1,4 +1,5 @@
 import { configService } from '@/features/config';
+import { sarvamClient } from './sarvam.client';
 
 export interface SarvamRuntimeConfig {
   enabled: boolean;
@@ -20,13 +21,15 @@ export interface SarvamRuntimeConfig {
 
 export class SarvamConfigService {
   public async getConfig(): Promise<SarvamRuntimeConfig> {
+    const isClientConfigured = sarvamClient.isConfigured();
+
     const [
-      enabled,
-      digitisationEnabled,
-      translationEnabled,
-      textTranslationEnabled,
-      documentTranslationEnabled,
-      multilingualRagEnabled,
+      enabledRaw,
+      digitisationEnabledRaw,
+      translationEnabledRaw,
+      textTranslationEnabledRaw,
+      documentTranslationEnabledRaw,
+      multilingualRagEnabledRaw,
       timeoutMs,
       maxDocumentSizeMb,
       maxTranslationLanguages,
@@ -37,12 +40,12 @@ export class SarvamConfigService {
       defaultTranslationLanguage,
       fallbackEnabled
     ] = await Promise.all([
-      configService.getBoolean('SARVAM_ENABLED').catch(() => false),
-      configService.getBoolean('SARVAM_DIGITISATION_ENABLED').catch(() => false),
-      configService.getBoolean('SARVAM_TRANSLATION_ENABLED').catch(() => false),
-      configService.getBoolean('SARVAM_TEXT_TRANSLATION_ENABLED').catch(() => false),
-      configService.getBoolean('SARVAM_DOCUMENT_TRANSLATION_ENABLED').catch(() => false),
-      configService.getBoolean('SARVAM_MULTILINGUAL_RAG_ENABLED').catch(() => false),
+      configService.getBoolean('SARVAM_ENABLED').catch(() => isClientConfigured),
+      configService.getBoolean('SARVAM_DIGITISATION_ENABLED').catch(() => isClientConfigured),
+      configService.getBoolean('SARVAM_TRANSLATION_ENABLED').catch(() => isClientConfigured),
+      configService.getBoolean('SARVAM_TEXT_TRANSLATION_ENABLED').catch(() => isClientConfigured),
+      configService.getBoolean('SARVAM_DOCUMENT_TRANSLATION_ENABLED').catch(() => isClientConfigured),
+      configService.getBoolean('SARVAM_MULTILINGUAL_RAG_ENABLED').catch(() => isClientConfigured),
       configService.getNumber('SARVAM_TIMEOUT_MS').catch(() => 30000),
       configService.getNumber('SARVAM_MAX_DOCUMENT_SIZE_MB').catch(() => 25),
       configService.getNumber('SARVAM_MAX_TRANSLATION_LANGUAGES').catch(() => 10),
@@ -53,6 +56,13 @@ export class SarvamConfigService {
       configService.getString('SARVAM_DEFAULT_TRANSLATION_LANGUAGE').catch(() => 'en-IN'),
       configService.getBoolean('SARVAM_FALLBACK_ENABLED').catch(() => true)
     ]);
+
+    const enabled = typeof enabledRaw === 'boolean' ? enabledRaw : isClientConfigured;
+    const digitisationEnabled = typeof digitisationEnabledRaw === 'boolean' ? digitisationEnabledRaw : isClientConfigured;
+    const translationEnabled = typeof translationEnabledRaw === 'boolean' ? translationEnabledRaw : isClientConfigured;
+    const textTranslationEnabled = typeof textTranslationEnabledRaw === 'boolean' ? textTranslationEnabledRaw : isClientConfigured;
+    const documentTranslationEnabled = typeof documentTranslationEnabledRaw === 'boolean' ? documentTranslationEnabledRaw : isClientConfigured;
+    const multilingualRagEnabled = typeof multilingualRagEnabledRaw === 'boolean' ? multilingualRagEnabledRaw : isClientConfigured;
 
     return {
       enabled,

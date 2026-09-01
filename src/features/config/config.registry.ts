@@ -465,7 +465,7 @@ export const CONFIG_REGISTRY: Record<string, RegistryConfigItem> = {
     key: 'OLLAMA_TIMEOUT_MS',
     valueType: ConfigValueType.NUMBER,
     category: ConfigCategory.LLM,
-    defaultValue: '15000',
+    defaultValue: '5000',
     purpose: 'HTTP request timeout in ms for Ollama local API calls.',
     description: 'Ollama API timeout budget.',
     isEditable: true,

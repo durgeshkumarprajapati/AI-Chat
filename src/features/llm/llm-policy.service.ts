@@ -36,7 +36,7 @@ export class LLMPolicyService {
       (env.server?.LLM_KIMI_ENABLED ?? (process.env.LLM_KIMI_ENABLED === 'true')) &&
       !!(env.server?.LLM_KIMI_API_KEY || process.env.LLM_KIMI_API_KEY);
     const isOllamaEnabled =
-      (env.server?.OLLAMA_ENABLED ?? (process.env.OLLAMA_ENABLED !== 'false'));
+      process.env.OLLAMA_ENABLED !== undefined ? process.env.OLLAMA_ENABLED === 'true' : (env.server?.OLLAMA_ENABLED ?? true);
 
     const isGeminiAvailable = isGeminiEnabled && llmCircuitBreakerService.isAvailable('gemini');
     const isDeepSeekAvailable = isDeepSeekEnabled && llmCircuitBreakerService.isAvailable('deepseek');

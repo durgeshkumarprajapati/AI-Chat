@@ -23,8 +23,8 @@ export class OllamaProvider implements LLMProvider {
     this.baseUrl = rawUrl.replace(/\/+$/, '');
     this.defaultModel = options?.defaultModel || env.server?.OLLAMA_CHAT_MODEL || process.env.OLLAMA_CHAT_MODEL || 'llama3.2';
     this.fastModel = options?.fastModel || env.server?.LLM_OLLAMA_FAST_MODEL || this.defaultModel;
-    this.timeoutMs = options?.timeoutMs || env.server?.OLLAMA_TIMEOUT_MS || (process.env.OLLAMA_TIMEOUT_MS ? parseInt(process.env.OLLAMA_TIMEOUT_MS, 10) : 15000);
-    this.isEnabled = options?.enabled ?? (env.server?.OLLAMA_ENABLED ?? (process.env.OLLAMA_ENABLED !== 'false'));
+    this.timeoutMs = options?.timeoutMs || env.server?.OLLAMA_TIMEOUT_MS || (process.env.OLLAMA_TIMEOUT_MS ? parseInt(process.env.OLLAMA_TIMEOUT_MS, 10) : 5000);
+    this.isEnabled = options?.enabled ?? (process.env.OLLAMA_ENABLED !== undefined ? process.env.OLLAMA_ENABLED === 'true' : (env.server?.OLLAMA_ENABLED ?? true));
   }
 
   public supports(capability: LLMCapability): boolean {
@@ -83,9 +83,24 @@ export class OllamaProvider implements LLMProvider {
 
   public async generate(request: LLMRequest): Promise<LLMResponse> {
     const startTime = Date.now();
+    if (!this.isEnabled) {
+      throw new Error('Ollama provider is disabled.');
+    }
     if (request.images?.length) {
       throw new Error(`${this.name} provider does not support multimodal image input.`);
     }
+
+    // Fast pre-flight reachability check (1.5s timeout) to prevent 15s worker delays when Ollama is down/unresponsive
+    try {
+      const ping = await fetch(`${this.baseUrl}/api/version`, { signal: AbortSignal.timeout(1500) }).catch(() => null);
+      if (!ping || !ping.ok) {
+        throw new Error(`Ollama service is unreachable at ${this.baseUrl}`);
+      }
+    } catch (err: any) {
+      if (err.message?.includes('unreachable')) throw err;
+      throw new Error(`Ollama service is unreachable at ${this.baseUrl}`);
+    }
+
     const fallbackModel = request.feature === 'CITY_EXPLORER' ? this.fastModel : this.defaultModel;
     const model = resolveModelForProvider(this.name, request.modelOverride, fallbackModel);
     const systemPrompt = request.systemPrompt || 'You are an authoritative AI assistant. Provide concise, accurate responses.';

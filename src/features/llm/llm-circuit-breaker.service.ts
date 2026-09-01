@@ -92,7 +92,16 @@ export class LLMCircuitBreakerService {
     }
 
     const circuit = this.getOrCreateCircuit(providerName);
-    circuit.consecutiveFailures++;
+    const msg = (err?.message || String(err || '')).toLowerCase();
+    const isUnreachable = msg.includes('unreachable') || msg.includes('econnrefused') || msg.includes('timed out');
+
+    // Immediately trip circuit for local provider connection failures or timeouts
+    if (providerName.toLowerCase() === 'ollama' && isUnreachable) {
+      circuit.consecutiveFailures = Math.max(circuit.consecutiveFailures + 1, this.getThreshold());
+    } else {
+      circuit.consecutiveFailures++;
+    }
+
     circuit.lastFailureMs = Date.now();
     const threshold = this.getThreshold();
 

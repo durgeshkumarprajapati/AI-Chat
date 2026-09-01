@@ -1,714 +1,543 @@
-# Document AI / RAG Platform
+# Enterprise AI Workspace Platform
 
-A production-grade, enterprise-ready Retrieval-Augmented Generation (RAG) and Document AI platform built with Next.js App Router, TypeScript, Prisma ORM, PostgreSQL with `pgvector`, RabbitMQ, Redis, AWS S3, and OpenAI.
+A production-grade enterprise AI workspace: document intelligence and Retrieval-Augmented
+Generation (RAG), a Knowledge Graph, proactive AI Intelligence, human-approved AI Agents,
+trigger-based Workflow Automation, a Global AI Assistant, and persistent AI Memory —
+built on Next.js (App Router), TypeScript, PostgreSQL (`pgvector`), Redis, RabbitMQ, and a
+closed, provider-routed LLM Gateway.
+
+This document describes the system **as implemented**. It does not describe planned or
+aspirational functionality; where something is not implemented, that is stated explicitly.
 
 ---
 
-## 1. Architecture Overview
+## Table of Contents
 
-The system is decoupled into a web application (running on Next.js/Vercel) and an independent asynchronous Document Processing Worker node service.
+1. [Project Overview](#1-project-overview)
+2. [Core Features](#2-core-features)
+3. [System Architecture](#3-system-architecture)
+4. [AI Architecture](#4-ai-architecture)
+5. [Global AI Assistant Flow](#5-global-ai-assistant-flow)
+6. [AI Memory Architecture](#6-ai-memory-architecture)
+7. [RAG Architecture](#7-rag-architecture)
+8. [Knowledge Graph Architecture](#8-knowledge-graph-architecture)
+9. [AI Agent Architecture](#9-ai-agent-architecture)
+10. [Workflow Automation Architecture](#10-workflow-automation-architecture)
+11. [Configuration Architecture](#11-configuration-architecture)
+12. [Billing Architecture](#12-billing-architecture)
+13. [Security Architecture](#13-security-architecture)
+14. [Performance Architecture](#14-performance-architecture)
+15. [Technology Stack](#15-technology-stack)
+16. [Project Structure](#16-project-structure)
+17. [Environment Variables](#17-environment-variables)
+18. [Local Development](#18-local-development)
+19. [Database and Migrations](#19-database-and-migrations)
+20. [Testing](#20-testing)
+21. [Deployment Architecture](#21-deployment-architecture)
+
+---
+
+## 1. Project Overview
+
+The platform lets a team upload and process documents, ask grounded questions over them,
+extract a structured Knowledge Graph, receive proactive AI-generated intelligence (risks,
+blockers, deadlines, daily/weekly briefs), delegate bounded actions to an approval-gated AI
+Agent, automate multi-step workflows in response to real workspace events, and interact with
+all of the above through one Global AI Assistant that remembers relevant context across
+conversations. Every AI-driven action that has an external or state-changing effect (creating
+a ClickUp task, a Calendar event, publishing an Automation) goes through the same closed tool
+registry and human-approval gate — the system does not permit unrestricted autonomous action.
+
+## 2. Core Features
+
+| Area | Implemented capability |
+|---|---|
+| **Auth & RBAC** | Session-based authentication, `ADMIN`/`USER` platform roles, per-project `OWNER`/`EDITOR`/`VIEWER` membership roles enforced by `projectAuthorizationService`. |
+| **Configuration governance** | A typed `CONFIG_REGISTRY` → PostgreSQL `Config` table → Redis-cached `ConfigService`, with pub/sub invalidation. Secrets never enter this table — see [§11](#11-configuration-architecture). |
+| **RAG / document intelligence** | Upload → OCR/parse → chunk → embed (`pgvector`) → hybrid vector+keyword retrieval → rerank → cited, streamed answers. Private, Group, and Project-scoped conversations. |
+| **Knowledge Bases** | Multi-document collections scoped to RAG retrieval. |
+| **Knowledge Graph** | Entity/relationship/claim extraction from documents, contradiction detection, and an interactive React Flow **Knowledge Graph Explorer**. |
+| **AI Intelligence** | Evidence-backed risk/blocker/deadline/knowledge-change insights, deterministic Project Health scoring, and daily/weekly AI-generated workspace briefs delivered via notifications and email digest. |
+| **Notifications** | In-app bell + SSE real-time delivery + optional email digest, with quiet hours, deduplication, and rate limiting. |
+| **AI Agents** | Goal → bounded LLM plan → closed tool registry → human approval (for anything above `READ_ONLY` risk) → execution → notification. |
+| **Workflow Automation** | Real workspace events (meeting analysis completed, risk detected, document processed, etc.) trigger a versioned node graph that can call the same AI Agent engine, always through the same approval gate. |
+| **Global AI Assistant** | One floating, streaming chat surface on every authenticated page, routing questions to RAG, Knowledge Graph, Intelligence, Agents, Automation, ClickUp, Calendar, or Sarvam AI. |
+| **AI Memory & personalization** | Privacy-controlled, per-user (optionally per-project) persistent memory that the Assistant retrieves and ranks into its context, with async, non-blocking candidate extraction. |
+| **Translation & digitization** | Sarvam AI integration for document translation, text translation, scanned-document digitization, and multilingual RAG answers. |
+| **Billing & entitlements** | Plan/feature/limit model, `EntitlementService` feature gating, Razorpay webhook-driven subscription lifecycle — fully inert while `BILLING_ENABLED=false`. |
+| **ClickUp integration** | OAuth-connected task read/create/update, reused by both the Agent tool registry and Automation. |
+| **Google Calendar integration** | OAuth-connected event read/create, with Google Meet conferencing support, reused the same way. |
+| **Performance & observability** | Multi-layer caching (L1 in-process + Redis L2), per-feature telemetry, a cross-cutting telemetry aggregation service, and an `/admin/performance` operational dashboard. |
+
+## 3. System Architecture
 
 ```mermaid
 flowchart TD
-    subgraph Client Layer
-        Browser[Browser / Web Client]
-    end
-
-    subgraph Application Layer
-        NextApp[Next.js App Router]
-        UploadSvc[Upload Service]
-        ChatSvc[Chat Service]
-    end
-
-    subgraph Infrastructure Services
-        S3[(AWS S3 Storage)]
-        RabbitMQ[RabbitMQ Message Broker]
-        Redis[(Redis Cache & State)]
-        Postgres[(PostgreSQL + pgvector)]
-        OpenAI[OpenAI API]
-    end
-
-    subgraph Asynchronous Processing Layer
-        Worker[Document Processing Worker Process]
-        PDFParser[PDF Extractor / OCR]
-        Chunker[Text Cleaning & Chunker]
-        Embedder[Embedding Generator]
-    end
-
-    Browser -->|Upload PDF / Trigger| NextApp
-    NextApp --> UploadSvc
-    NextApp --> ChatSvc
-
-    UploadSvc -->|Store Original PDF| S3
-    UploadSvc -->|Publish Job| RabbitMQ
-
-    RabbitMQ -->|Consume Message| Worker
-    Worker -->|Fetch PDF| S3
-    Worker --> PDFParser
-    PDFParser --> Chunker
-    Chunker --> Embedder
-    Embedder -->|Generate Vector| OpenAI
-    Embedder -->|Save Chunks & Vectors| Postgres
-
-    ChatSvc -->|Exact / Semantic Cache| Redis
-    ChatSvc -->|Generate Question Vector| OpenAI
-    ChatSvc -->|Similarity Search| Postgres
-    ChatSvc -->|Generate Grounded Answer| OpenAI
+    Browser[Browser] --> NextApp[Next.js App Router<br/>Pages + API Routes]
+    NextApp --> Services[Feature Services<br/>src/features/**]
+    Services --> AuthZ[Authorization / Entitlements<br/>RBAC, Project Auth, EntitlementService]
+    Services --> AI[AI / RAG / Agents / Automation<br/>LLM Gateway + Tool Registry]
+    Services --> Data[(PostgreSQL + pgvector)]
+    Services --> Cache[(Redis)]
+    Services --> MQ[RabbitMQ]
+    MQ --> Worker[Independent Worker Process]
+    Worker --> Data
+    Worker --> Cache
+    AI --> LLMProviders[LLM Providers<br/>Ollama / OpenAI / Gemini / Groq / DeepSeek]
 ```
 
----
+The application is two independent Node processes sharing the same PostgreSQL/Redis/RabbitMQ
+infrastructure: the Next.js web process (interactive requests, streaming responses) and a
+separate `worker/` process (document processing, Knowledge Graph extraction, Intelligence
+generation, Automation execution, Notification dispatch, Memory candidate extraction). Nothing
+CPU/latency-heavy runs inline in an HTTP request handler — it is queued to RabbitMQ and
+processed by the worker, with the caller getting an immediate acknowledgement or a streamed
+response.
 
-## 2. Ingestion & RAG Pipelines
+## 4. AI Architecture
 
-### Upload & Processing Pipeline
-1. User requests presigned upload URL via Next.js Server Action.
-2. File is uploaded directly & securely to AWS S3.
-3. Next.js creates `Document` record in PostgreSQL (`status = UPLOADING`) and publishes job to `document-processing` RabbitMQ queue.
-4. Independent Node.js Worker consumes job:
-   - Sets document status to `PROCESSING`.
-   - Downloads PDF from S3.
-   - Extracts text (supports OCR fallback for scanned PDFs).
-   - Cleans text and splits into semantic chunks.
-   - Batch generates vector embeddings using OpenAI (`text-embedding-3-small`).
-   - Atomically saves chunks and vectors into `document_chunks` with `pgvector`.
-   - Updates document status to `COMPLETED`.
+```mermaid
+flowchart LR
+    Doc[Documents] --> Proc[Processing<br/>OCR / Parse / Chunk / Embed]
+    Proc --> RAG[RAG Retrieval]
+    Proc --> KG[Knowledge Graph<br/>Extraction]
+    RAG --> Intel[AI Intelligence]
+    KG --> Intel
+    Intel --> Agent[AI Agent]
+    Intel --> Automation[Workflow Automation]
+    Agent --> Automation
+    RAG --> Assistant[Global AI Assistant]
+    KG --> Assistant
+    Intel --> Assistant
+    Agent --> Assistant
+    Automation --> Assistant
+    Assistant --> Memory[AI Memory]
+    Memory --> Assistant
+```
 
-### RAG Chat Pipeline
-1. User sends question to Next.js Chat Service.
-2. Authorization check ensures `currentUser -> authorized document -> document chunks`.
-3. Redis checks for exact cached answer.
-4. OpenAI generates question vector embedding.
-5. `pgvector` performs cosine similarity search over user's authorized chunks.
-6. Context chunks are injected into system prompt.
-7. OpenAI LLM generates answer with `[Doc X, Page Y]` citations.
-8. Response & citations are saved and cached in Redis.
+Each layer has one clear responsibility and is built as an **additive** layer on top of the one
+below it — later phases integrate with earlier ones by calling their existing services, never by
+duplicating them:
 
-### Semantic answer cache
+- **Documents → Processing**: upload, OCR/parsing, chunking, embedding generation (see [§7](#7-rag-architecture)).
+- **RAG**: grounded, cited retrieval over a user's authorized documents/knowledge bases.
+- **Knowledge Graph**: structured entities/relationships/claims extracted from the same processed documents (see [§8](#8-knowledge-graph-architecture)).
+- **AI Intelligence**: evidence-backed insights and health scores computed from RAG, Knowledge Graph, meetings, tasks, and project data — deterministic where the metric allows, LLM-narrated where a summary genuinely needs one.
+- **AI Agent**: a bounded planner + closed tool registry + human approval gate that can act on Intelligence's findings (see [§9](#9-ai-agent-architecture)).
+- **Workflow Automation**: reacts to real domain events and drives the same Agent engine on a schedule/trigger basis instead of a manual prompt (see [§10](#10-workflow-automation-architecture)).
+- **Global AI Assistant**: the single conversational entry point that classifies intent and routes to whichever of the above systems the question actually requires (see [§5](#5-global-ai-assistant-flow)).
+- **AI Memory**: cross-conversation personalization that the Assistant reads before responding and writes to asynchronously after responding (see [§6](#6-ai-memory-architecture)).
 
-Grounded responses are cached both exactly and semantically. Semantic matching is scoped to the user, Knowledge Base (or global search), selected model/provider, and answer mode; it also requires validated citations and evidence. The default similarity threshold is `0.90`, intentionally conservative to favor correctness over hit rate. Tune it with `RAG_SEMANTIC_CACHE_THRESHOLD`; `RAG_SEMANTIC_CACHE_TTL_SECONDS` defaults to `3600`, and `RAG_SEMANTIC_CACHE_MAX_CANDIDATES` defaults to `20` per compatible scope. Contextual follow-ups bypass global semantic preflight and are first rewritten using conversation context.
+## 5. Global AI Assistant Flow
 
----
+```mermaid
+sequenceDiagram
+    participant U as User
+    participant W as Assistant Widget (floating button + drawer)
+    participant API as POST /api/assistant/chat
+    participant Auth as Authorization
+    participant Mem as AI Memory
+    participant Intent as Intent Classifier
+    participant Sys as Routed System (RAG / KG / Intelligence / Agent / ClickUp / Calendar / Automation / Sarvam)
+    participant LLM as LLM Gateway
 
-## 3. Prerequisites & Environment Setup
+    U->>W: Ask a question (with page context hints)
+    W->>API: POST (message, contextHint, conversationId?)
+    API->>Auth: Re-validate every context id server-side
+    Auth->>Mem: Retrieve ranked, budgeted memories
+    Mem->>Intent: Classify intent (LLM Gateway, feature "COPILOT")
+    Intent->>Sys: Route to the one relevant capability
+    Sys->>LLM: Generate / stream the answer
+    LLM-->>W: SSE stream (stage, delta, evidence, done)
+    API-->>W: approval_required event if an action needs sign-off
+    API--)Worker: Fire-and-forget: memory candidate extraction
+```
 
-- **Node.js**: `v20.x` or higher
-- **npm**: `v10.x` or higher
-- **Docker & Docker Compose**: Installed and running
+The Assistant is a **new surface, not a rename** of the pre-existing `/copilot` page — that
+page is a separate, single-shot "plan and execute" tool with no chat/turn persistence, kept
+unchanged. The Assistant is the turn-based, streaming, globally-mounted chat widget
+(`GlobalAssistantProvider`, mounted once in the root authenticated layout). Every client-supplied
+context hint (`projectId`, `documentId`, `meetingId`, etc.) is treated as a hint only and
+independently re-authorized server-side before it can influence retrieval or routing — the
+Assistant never trusts a client-asserted identifier as proof of access. Mutating actions
+(creating a ClickUp task, a Calendar event, or a broader Agent action) always go through the
+same Agent planner → tool registry → human approval flow described in [§9](#9-ai-agent-architecture) — the
+Assistant never executes a side-effecting action directly.
 
-### Environment Variables
-Copy `.env.example` to `.env`:
+## 6. AI Memory Architecture
+
+AI Memory extends the pre-existing `CopilotMemory` model (originally built as a lightweight,
+cross-surface personalization store) into a full production memory engine, rather than
+introducing a second, competing model.
+
+```mermaid
+flowchart TD
+    Turn[Assistant Turn Completes] -->|fire-and-forget| Queue[RabbitMQ: memory-candidate-extraction]
+    Queue --> Worker[Memory Extraction Worker]
+    Worker --> Detect[Deterministic candidate detection<br/>preferences / decisions / facts / patterns]
+    Detect -->|ambiguous only| Classify[Bounded LLM classification<br/>at most one call per turn]
+    Classify --> Secret[Secret-pattern rejection]
+    Detect --> Secret
+    Secret --> Dedup[Upsert by normalized key<br/>existing DB-unique constraint]
+    Dedup --> Store[(CopilotMemory)]
+    Store --> Invalidate[Cache invalidation]
+
+    Request[Assistant Chat Turn] --> Settings{Memory enabled?}
+    Settings -->|no| Skip[Skip — return no memory]
+    Settings -->|yes| CacheCheck{Cache hit?}
+    CacheCheck -->|yes| Ranked[Ranked memories]
+    CacheCheck -->|no| Query[Bounded, indexed query]
+    Query --> Rank[Deterministic ranking:<br/>recency + importance + confidence + access count + term overlap]
+    Rank --> Budget[Token/length budget + relevance threshold]
+    Budget --> Ranked
+    Ranked --> Wrap["Wrapped as untrusted content<br/>before reaching the LLM"]
+```
+
+**Creation**: memory is never written synchronously inside a chat response. After a turn
+completes, the Assistant fires-and-forgets one RabbitMQ job carrying only the bounded
+user/assistant message pair (never full history). The worker runs cheap, deterministic
+keyword/pattern detection first; an LLM classification call is used only when the deterministic
+pass is ambiguous, and never more than once per turn.
+
+**Deduplication**: candidates are normalized into a stable key and upserted against the
+existing `@@unique([userId, key, projectId])` constraint on `CopilotMemory` — a duplicate
+candidate collides on that constraint and is treated as a successful no-op, not an error. This
+reuses the model's original dedup mechanism rather than adding a second one.
+
+**Retrieval & ranking**: bounded (`AI_MEMORY_MAX_RETRIEVAL_RESULTS`), timeout-protected
+(`AI_MEMORY_RETRIEVAL_TIMEOUT_MS` — a failed or slow lookup returns no memory rather than
+delaying or failing the chat turn), and ranked deterministically by recency, importance,
+confidence, access frequency, and lexical term overlap with the current question.
+
+**Privacy controls**: `/settings/copilot-memory` (the spec's suggested `/settings/memory` URL
+redirects here) lets a user enable/disable memory, auto-learning, project memory, and
+conversation memory; search/filter/edit/delete individual memories; clear conversation-derived,
+project-specific, or all memories; and export their own memory data as JSON. All settings and
+deletions invalidate the relevant cache entries immediately.
+
+**Security boundary**: memory content is always wrapped in an explicit untrusted-content
+boundary before being placed in an LLM prompt — the system policy states that instructions
+found inside memory content must never override system instructions, mirroring the same
+convention used for document evidence and meeting transcripts elsewhere in the platform.
+Memory content is validated against the platform's existing secret-pattern list before storage;
+a candidate matching a secret pattern is rejected outright, never partially stored.
+
+## 7. RAG Architecture
+
+Documents are uploaded, stored, parsed (with OCR fallback for scanned content), split into
+semantic chunks, and embedded via a pluggable embedding provider into `pgvector`. A chat
+question is answered by: an exact/semantic Redis answer-cache check, hybrid vector + keyword
+retrieval over the user's authorized chunks, reranking, evidence assessment, prompt
+construction with cited context, and a streamed, cited LLM answer. Group and Project-scoped
+conversations compose the same retrieval primitives across multiple document owners rather than
+forking the retrieval algorithm. Retrieval authorization is always server-side and scoped to
+the requesting user's own documents (or an explicitly authorized project's document set) —
+never a client-asserted scope.
+
+## 8. Knowledge Graph Architecture
+
+Entity, relationship, and claim extraction runs asynchronously (in the worker) against
+processed document chunks, producing `KnowledgeEntity`/`KnowledgeRelationship`/`KnowledgeClaim`
+rows with confidence scores and `KnowledgeEvidence` rows tracing each fact back to its source
+document/chunk. A syntactic contradiction detector flags conflicting claims about the same
+subject. The **Knowledge Graph Explorer** (`/knowledge-graph/explorer`) is a React Flow
+visualization with bounded graph traversal (depth/node/edge caps enforced server-side, never
+just in the UI), natural-language graph search, and the same evidence-backed, never-fabricated
+principle as the rest of the platform. All graph reads are authorized per-entity, respecting
+project membership where the graph is project-scoped.
+
+## 9. AI Agent Architecture
+
+```mermaid
+flowchart LR
+    Goal[User or Automation goal] --> Plan[Bounded LLM Planner]
+    Plan --> Registry[Closed Tool Registry]
+    Registry --> Risk{Risk level}
+    Risk -->|READ_ONLY, auto-execute enabled| Exec[Worker Execution]
+    Risk -->|LOW / MEDIUM / HIGH / CRITICAL| Approval[Human Approval Required]
+    Approval -->|approved| Exec
+    Approval -->|rejected| Stop[Run stops — no side effect]
+    Exec --> Notify[Notification]
+```
+
+The planner never invents which tools exist — it selects from a fixed, server-defined registry
+(currently document search, project/meeting/knowledge-graph reads, ClickUp task read/create/
+update, and Calendar event read/create), and the risk level / approval requirement of each step
+is always taken from the registry's own definition, never from the LLM's output. Any step above
+`READ_ONLY` risk is blocked until the run's owner explicitly approves it through the Agent Runs
+UI or an inline approval card in the Assistant — a rejected or un-approved step is never
+executed. Every external tool call is idempotency-keyed so a retried or duplicated execution
+can never create two ClickUp tasks or two Calendar events for the same step.
+
+## 10. Workflow Automation Architecture
+
+```mermaid
+flowchart LR
+    Event[Real Domain Event<br/>meeting analyzed, risk detected,<br/>document processed, etc.] --> MQ[RabbitMQ]
+    MQ --> Match[Trigger Matching<br/>against active Automations]
+    Match --> Exec[Automation Execution<br/>versioned node graph]
+    Exec --> Agent[AI Agent Engine]
+    Agent --> Approval[Human Approval]
+    Approval --> Action[External Action<br/>ClickUp / Calendar]
+```
+
+Automation (`/automations`) is a distinct feature from the pre-existing `/workflows` AI
+Workflow Builder (an unrelated, earlier document-generation tool with its own model namespace)
+— named `Automation*` throughout specifically to avoid colliding with that existing feature.
+An Automation is a versioned, immutable-once-published node graph (trigger → condition →
+AI analysis → AI agent action → approval → notification → end) matched against real,
+already-existing domain events (meeting analysis completion, AI Intelligence risk/blocker/
+deadline detection, document processing completion, Knowledge Graph contradiction detection).
+Trigger matching and execution are two separately queued, idempotent worker stages so a
+duplicate event can never produce a duplicate execution. Any node that would take an external
+action routes through the exact same AI Agent planner/tool-registry/approval engine described
+in [§9](#9-ai-agent-architecture) — Automation does not have, and is explicitly forbidden from having, a second
+execution or approval engine.
+
+## 11. Configuration Architecture
+
+```mermaid
+flowchart TD
+    Env[.env — secrets & bootstrap only] --> Bootstrap[App bootstrap]
+    Registry[CONFIG_REGISTRY — typed TS source of truth] --> Seed[Idempotent seed]
+    Seed --> PG[(PostgreSQL Config table)]
+    PG --> RedisCache[(Redis L2 cache)]
+    RedisCache --> L1[In-process L1 cache]
+    L1 --> App[Application instances]
+    PG -.pub/sub invalidation.-> RedisCache
+```
+
+All non-secret runtime configuration is declared once in `src/features/config/config.registry.ts`
+as a typed `RegistryConfigItem` (purpose, category, type, default, bounds, `isEditable`,
+`isHighImpact`, `requiresRestart`), synced idempotently into PostgreSQL by `prisma/seed.ts`, and
+read through `ConfigService`, which layers an in-process L1 cache in front of a Redis L2 cache
+in front of the database, invalidated via Redis pub/sub the moment a value changes so every
+running instance picks up an admin-edited value without a restart (unless the item is flagged
+`requiresRestart`). Secrets (API keys, OAuth credentials, database/queue URLs) are never
+permitted into this table — they are validated once at boot via a Zod schema in
+`src/config/env.ts` and are never logged, cached, or exposed to the client. A dedicated
+secret-pattern list (`SECRET_KEY_PATTERNS`) is reused across the config validator, audit
+sanitizer, and AI Memory's secret-rejection check, rather than each maintaining its own list.
+
+## 12. Billing Architecture
+
+```mermaid
+flowchart LR
+    Plan[SubscriptionPlan] --> Feat[SubscriptionPlanFeature]
+    Plan --> Limit[SubscriptionPlanLimit]
+    Feat --> Sub[UserSubscription]
+    Limit --> Sub
+    Sub --> Entitlement[EntitlementService]
+    Entitlement --> Guard[Feature Guard<br/>canAccessFeature / requireFeature]
+```
+
+Plans, features, and usage limits are modeled explicitly; `EntitlementService` is the single
+gate every paid feature checks through (`canAccessFeature`/`requireFeature`), backed by
+Razorpay for payment/subscription lifecycle webhooks. Critically: **while `BILLING_ENABLED=false`
+(the default in this environment), `EntitlementService` always grants access** — every feature
+added since billing was introduced (Knowledge Intelligence, Project Intelligence, AI Agent,
+Knowledge Graph Explorer, AI Workspace Intelligence, Assistant, Automation) was built and tested
+against this same fail-open behavior and does not alter it. No `UserSubscription` record is
+created or mutated while billing is disabled.
+
+## 13. Security Architecture
+
+- **Authentication & RBAC**: session-based auth; platform `ADMIN`/`USER` roles; project-level `OWNER`/`EDITOR`/`VIEWER` membership, enforced server-side on every project-scoped operation via `projectAuthorizationService` — never inferred from a client-supplied role.
+- **404-vs-403 convention**: a resource the requester doesn't own or isn't authorized for returns `404 Not Found`, never a `403` that would confirm the resource's existence to an unauthorized party. Applied consistently across Agent runs, Automations, Assistant conversations, and AI Memory.
+- **Context re-authorization**: every client-supplied contextual identifier (project, document, conversation, memory, meeting, knowledge-entity id) is independently re-validated server-side against the actual owning system before use — a client hint is never trusted as proof of access, including inside the Global AI Assistant's context-resolution step.
+- **Prompt injection boundaries**: any content that originates outside the system's own instructions (document text, meeting transcripts, Knowledge Graph evidence, ClickUp/Calendar content, AI Memory) is wrapped in an explicit untrusted-content boundary before reaching an LLM, with a system policy stating that instructions found inside such content must never override system instructions.
+- **Closed tool execution**: the AI Agent and Automation engines only ever invoke a tool from a fixed, server-defined registry — an LLM's output can select which registered tool to call and with what input, but never invents a new tool, bypasses approval, or executes arbitrary code.
+- **Human approval for side effects**: every external, state-changing action (ClickUp task, Calendar event, and any Agent step above `READ_ONLY` risk) requires explicit human approval before execution, whether the action originated from a manual Agent goal, an Automation trigger, or the Assistant.
+- **Idempotency**: RabbitMQ jobs and external tool calls carry idempotency keys enforced by database uniqueness — a duplicated message or retried delivery can never create a duplicate external side effect.
+- **Webhook verification**: Razorpay webhook signatures are verified before any subscription state change is applied.
+- **Audit logging**: security- and privacy-sensitive operations (entitlement denials, memory export/clear, automation/agent approval decisions, preference changes) are recorded via a shared `AuditService` with automatic secret-pattern redaction — routine reads are not audited, to avoid audit noise.
+
+## 14. Performance Architecture
+
+- **Caching**: a two-layer cache (in-process L1 + Redis L2) is used across RAG answers, LLM Gateway responses, Knowledge Graph queries, AI Memory retrieval, and configuration — every cache key is scoped to include user/project/scope identifiers to prevent cross-tenant leakage, and every Redis-backed cache degrades gracefully (falls back to the database) if Redis is unavailable rather than failing the request.
+- **Asynchronous processing**: document parsing/OCR, Knowledge Graph extraction, Intelligence generation, Automation execution, Notification dispatch, and AI Memory candidate extraction all run in the separate worker process via RabbitMQ — none of them run inline inside an interactive HTTP request.
+- **Streaming**: the RAG chat and Global AI Assistant both stream responses over Server-Sent Events so the user sees the first token as soon as it's generated rather than waiting for the full answer.
+- **Bounded retrieval**: every retrieval path (RAG chunks, Knowledge Graph traversal, AI Memory) enforces explicit result-count caps, token budgets, and timeouts server-side — a slow or over-limit lookup degrades to a partial or empty result rather than blocking the response.
+- **Database**: indexes are added only against real, observed query patterns (e.g. `(userId, category)` on memory lookups, `(userId, status)` on Automation executions); N+1 patterns found during review (e.g. a Knowledge Base list endpoint) were fixed by batching into a fixed small number of queries.
+- **Telemetry**: each feature maintains its own structured, bounded-memory telemetry log (never logging secrets or full document/message content), and a cross-cutting `telemetry-aggregation.service.ts` computes p50/p95/p99 latency, slowest operations, and cache-hit ratios for the `/admin/performance` dashboard — figures shown as "Unavailable" with a stated reason when no real data source exists, never a fabricated number.
+
+No fixed response-time guarantee is claimed for operations that inherently cannot bound their
+own latency (large document analysis, external provider calls, full Agent/Automation
+execution) — the architectural goal for those is a fast *first* response (an acknowledgement,
+a stream start, a progress event) followed by asynchronous completion, not a synchronous
+guarantee.
+
+## 15. Technology Stack
+
+- **Framework**: Next.js 14 (App Router), React 18, TypeScript
+- **Database**: PostgreSQL with the `pgvector` extension, accessed via Prisma ORM
+- **Cache**: Redis
+- **Message queue**: RabbitMQ (`amqplib`)
+- **Background processing**: an independent Node.js worker process (separate `worker/` package)
+- **LLM providers**: routed through an internal LLM Gateway supporting Ollama (local), OpenAI, Google Gemini, Groq, and DeepSeek
+- **Object storage**: pluggable local/S3-compatible document storage
+- **Graph visualization**: `@xyflow/react` (dynamically loaded, used only on the pages that need it)
+- **Styling**: Tailwind CSS with a centralized design-token system (`src/lib/design-system`)
+- **Validation**: Zod (environment/config validation)
+- **Testing**: Jest (`ts-jest`), plus a legacy `tsx`-script test runner for early-phase test files
+- **Payments**: Razorpay
+
+## 16. Project Structure
+
+```
+src/
+  app/                 Next.js App Router — pages and API routes
+    api/                 Route handlers, one directory per feature
+    <feature pages>/     e.g. /projects, /intelligence, /automations, /notifications
+  components/          Shared UI (design-system primitives, layout, feature-specific widgets)
+  features/            Feature services — the bulk of the business logic
+    rag/                 Retrieval, caching, orchestration, streaming
+    knowledge-graph/      Extraction, retrieval, reasoning
+    knowledge-graph-explorer/  Explorer-specific query/authorization/cache layer
+    ai-intelligence/      Aggregation, generation, scheduling for Intelligence snapshots
+    ai-agent/             Planner, tool registry, execution engine, approval
+    automation/           Node registry, execution engine, domain-event dispatch
+    assistant/             Global Assistant orchestration, context authorization, streaming
+    copilot/               The pre-existing single-shot Copilot tool, and (memory/) AI Memory
+    notifications/         In-app + email notification delivery
+    billing/                Entitlements, plans, Razorpay
+    config/                 CONFIG_REGISTRY, ConfigService, cache invalidation
+    audit/                  AuditService
+  lib/                  Cross-cutting infrastructure clients (prisma, redis, rabbitmq)
+  context/             React context providers (Workspace, Theme, Assistant context registration)
+worker/                Independent background-processing process
+  src/processors/        One processor per queue/job type
+prisma/
+  schema.prisma          Single source of truth for the data model
+  migrations/             Hand-authored, strictly additive migrations
+  seed.ts                 Idempotent CONFIG_REGISTRY + plan/feature seed
+tests/                 Jest test suites, one file family per phase
+```
+
+## 17. Environment Variables
+
+Actual secrets/credentials only — see `.env.example` for the full, current list with inline
+comments. Non-secret runtime behavior is controlled through `CONFIG_REGISTRY`, not environment
+variables. Major groups (examples, not real values):
 
 ```bash
-cp .env.example .env
+# Infrastructure
+DATABASE_URL=postgresql://user:password@localhost:5433/document_ai
+REDIS_URL=redis://localhost:6379
+RABBITMQ_URL=amqp://guest:guest@localhost:5672
+
+# LLM providers (only the ones you intend to enable need real keys)
+OPENAI_API_KEY=
+GEMINI_API_KEY=
+GROQ_API_KEY=
+DEEPSEEK_API_KEY=
+OLLAMA_BASE_URL=http://localhost:11434
+
+# Object storage
+AWS_ACCESS_KEY_ID=
+AWS_SECRET_ACCESS_KEY=
+AWS_S3_BUCKET=
+
+# Integrations
+CLICKUP_API_BASE_URL=
+GOOGLE_CLIENT_ID=
+GOOGLE_CLIENT_SECRET=
+SARVAM_API_KEY=
+
+# Billing
+RAZORPAY_KEY_ID=
+RAZORPAY_KEY_SECRET=
+RAZORPAY_WEBHOOK_SECRET=
+
+# Notifications
+EMAIL_API_KEY=
 ```
 
-Ensure `.env` contains:
-```env
-DATABASE_URL="postgresql://postgres:postgres@localhost:5432/document_ai?schema=public"
-RABBITMQ_URL="amqp://guest:guest@localhost:5672"
-REDIS_URL="redis://localhost:6379"
-AWS_REGION="us-east-1"
-AWS_ACCESS_KEY_ID="your-access-key-id"
-AWS_SECRET_ACCESS_KEY="your-secret-access-key"
-AWS_S3_BUCKET_NAME="document-ai-rag-bucket"
-OPENAI_API_KEY="sk-proj-your-key"
-OPENAI_EMBEDDING_MODEL="text-embedding-3-small"
-OPENAI_CHAT_MODEL="gpt-4o-mini"
-APP_URL="http://localhost:3000"
-```
+Never commit a real `.env` file. `.env.example` documents the shape and purpose of each variable
+without containing real credentials.
 
----
-
-## 4. Local Development Instructions
-
-### Step 1: Start Infrastructure Containers (PostgreSQL + pgvector, RabbitMQ, Redis)
+## 18. Local Development
 
 ```bash
+# 1. Start infrastructure (PostgreSQL+pgvector, RabbitMQ, Redis, Ollama)
 docker compose up -d
-```
 
-### Step 2: Install Project Dependencies
-
-```bash
+# 2. Install dependencies (root app + worker)
 npm install
 npm --prefix worker install
-```
 
-### Step 3: Run Database Migrations & Generate Prisma Client
+# 3. Configure environment
+cp .env.example .env
+# fill in DATABASE_URL / REDIS_URL / RABBITMQ_URL and any provider keys you plan to use
 
-```bash
+# 4. Prisma: generate client, apply migrations, seed config/plans
 npm run db:generate
-npm run db:push
-```
+npm run db:migrate
+npm run db:seed
 
-To run the custom pgvector SQL migration manually if required:
-```bash
-npx prisma db execute --file ./prisma/migrations/0_init_vector/migration.sql --schema ./prisma/schema.prisma
-```
-
-### Step 4: Start Next.js App
-
-```bash
+# 5. Run the web app and worker together
 npm run dev
+# or separately:
+npm run dev:web
+npm --prefix worker run dev
 ```
-Open [http://localhost:3000](http://localhost:3000) in your browser.
 
-### Step 5: Start Asynchronous Document Worker
+`npm run dev` runs the Next.js dev server and the worker concurrently (labeled `NEXT`/`WORKER`
+output). The worker is a required, separate process — document processing, Knowledge Graph
+extraction, Intelligence generation, Automation, Notifications, and AI Memory extraction do not
+run without it.
 
-In a separate terminal window:
+## 19. Database and Migrations
+
+Migrations under `prisma/migrations/` are hand-authored additive SQL (this repository does not
+run `prisma migrate dev` against a shared development database as its primary workflow) — every
+migration since Phase 78 follows the same convention: `ALTER TYPE ... ADD VALUE` for enum
+extension, new tables, new nullable/defaulted columns on existing tables, and justified new
+indexes only. No migration in this history drops a table, renames an existing column, or
+changes an existing column's semantics.
 
 ```bash
-npm run worker
+npx prisma validate     # validate schema.prisma
+npx prisma generate     # regenerate the Prisma client
+npm run db:migrate      # apply pending migrations (interactive `prisma migrate dev`)
+npm run db:seed         # idempotent: syncs CONFIG_REGISTRY + default plans/features
+npm run db:studio       # Prisma Studio GUI
 ```
 
----
+`prisma/seed.ts` is idempotent: it creates missing `CONFIG_REGISTRY` rows, refreshes metadata on
+existing ones, and never overwrites an admin-edited `value` — running it twice produces no
+diff.
 
-## 5. Health Checks & Verification Commands
-
-Verify code quality and type safety:
+## 20. Testing
 
 ```bash
-# Type check web app and worker
-npm run typecheck
-
-# Lint codebase
-npm run lint
-
-# Build Next.js production bundle
-npm run build
+npm test                 # full Jest suite
+npm run test:unit        # tests/unit
+npm run test:integration # tests/integration
+npm run test:api         # tests/api
+npm run test:security    # tests/security
+npm run test:components  # tests/components
+npm run test:coverage    # with coverage report
+npm run typecheck        # root + worker TypeScript, no emit
 ```
 
-Health Check Endpoint:
-[http://localhost:3000/api/health](http://localhost:3000/api/health)
-
-Returns:
-```json
-{
-  "status": "ok",
-  "timestamp": "2026-08-11T15:14:08.000Z",
-  "services": {
-    "database": "healthy",
-    "redis": "healthy",
-    "rabbitmq": "healthy"
-  }
-}
-```
-
----
-
----
-
-## 7. Phase 13 — Streaming RAG Chat
-
-### Overview
-Phase 13 delivers a real-time, progressive LLM response streaming experience over Server-Sent Events (SSE). Instead of waiting for the full answer to generate, tokens stream incrementally into the UI with real-time caret animations, instant stop generation controls, and citation badges.
-
-### Architecture
-
-```mermaid
-flowchart TD
-    A[User Question] --> B[POST /api/chat/stream]
-    B --> C[Authentication]
-    C --> D[Question Embedding]
-    D --> E[pgvector Retrieval]
-    E --> F{Relevant Chunks?}
-    F -->|No| G[Grounded Fallback]
-    F -->|Yes| H[Build Context]
-    H --> I[LLM Provider]
-    I -->|Ollama / OpenAI| J[Streaming Deltas]
-    J --> K[Browser Chat UI]
-    K --> L[Final Answer + Citations]
-    L --> M[Persist Message to PostgreSQL]
-```
-
-### Streaming Lifecycle
-`START` → `RETRIEVE` → `STREAM` → `FINALIZE` → `PERSIST` → `DONE`
-
-If `pgvector` retrieval returns 0 chunks passing `RAG_MIN_SIMILARITY`, the LLM is **not** called. The API emits the deterministic fallback response with zero citations (`[]`).
-
-### API Specification
-
-```http
-POST /api/chat/stream
-Content-Type: application/json
-
-{
-  "conversationId": "optional-uuid",
-  "question": "What are the major deployment steps?"
-}
-```
-
-Server-Sent Events emitted:
-- `event: start` -> `{"conversationId": "...", "citations": [...]}`
-- `event: delta` -> `{"text": "According"}`
-- `event: done` -> `{"messageId": "...", "answer": "...", "citations": [...]}`
-- `event: error` -> `{"message": "..."}`
-
-### Provider Support
-- **Ollama**: Default local provider (`OLLAMA_CHAT_MODEL="llama3.2"`). Streams line-delimited JSON chunks from `/api/generate`.
-- **OpenAI**: Optional provider (`OPENAI_CHAT_MODEL="gpt-4o-mini"`). Streams delta completion tokens via OpenAI SDK.
-
-### Security & Privacy
-- Vector embeddings and database credentials remain strictly server-side.
-- Tenant isolation (`WHERE d.user_id = $2`) is enforced before retrieval.
-- Citations originate exclusively from retrieved chunks.
-
-### Testing Commands
-```bash
-# Automated mocked streaming test suite (23 test cases)
-npm run test:phase13
-
-# Optional real Ollama streaming test script
-npm run test:ollama-chat-stream
-```
-
----
-
-## 8. Phase 14 — Hybrid Retrieval, Reranking & Observability
-
-### Overview
-Phase 14 improves retrieval quality by combining semantic vector search (`pgvector`) with lexical keyword search (`PostgreSQL Full-Text Search`). Results are merged, deduplicated, and scored using a zero-overhead local reranker with term coverage and exact phrase match bonuses.
-
-### Architecture
-
-```mermaid
-flowchart TD
-    A[User Question] --> B[Question Embedding]
-    B --> C[Vector Search pgvector]
-    A --> D[Keyword Search tsvector]
-
-    C --> E[Candidate Merge]
-    D --> E
-
-    E --> F[Deduplication by chunkId]
-    F --> G[Hybrid Scoring 0.70/0.30]
-    G --> H[Local Reranker]
-    H --> I[Top K Grounded Chunks]
-    I --> J[Grounded LLM Context]
-    J --> K[Streaming / Non-Streaming Chat]
-    K --> L[Answer + Citations]
-```
-
-### Hybrid Scoring Formula
-$$\text{hybridScore} = 0.70 \cdot \text{vectorScore} + 0.30 \cdot \text{normalizedKeywordScore}$$
-
-$$\text{rerankScore} = \min(1.0, 0.65 \cdot \text{hybridScore} + 0.25 \cdot \text{termCoverage} + 0.25 \cdot \text{phraseMatch})$$
-
-### Developer RAG Inspector
-- **Route**: `/rag-debug`
-- **Debug API**: `POST /api/rag/debug`
-- Displays candidate breakdown (`vector`/`keyword`/`hybrid`), candidate pipeline step bar, score comparison, and execution timing metrics (`vectorMs`, `keywordMs`, `mergeMs`, `rerankMs`, `totalMs`).
-
-### Testing Commands
-```bash
-# Automated Hybrid Retrieval & Local Reranker Test Suite
-npm run test:phase14
-```
-
----
-
-## 9. Phase 15 — Pluggable Document Storage (Amazon S3)
-
-### Overview
-Phase 15 introduces pluggable document storage support for Amazon S3 while preserving 100% backward compatibility for local file storage. The document processing pipeline and database records depend strictly on the `StorageProvider` abstraction, maintaining uniform logical storage keys across both drivers.
-
-### Architecture
-
-```mermaid
-flowchart TD
-    A[PDF Upload Request] --> B[Document API]
-    B --> C[StorageProvider Resolver]
-    C -->|AWS_STORAGE_PROVIDER=local| D[LocalStorageProvider]
-    C -->|AWS_STORAGE_PROVIDER=s3| E[S3StorageProvider]
-
-    D --> F[Local Filesystem storage/]
-    E --> G[Amazon S3 Private Bucket]
-
-    F --> H[RabbitMQ Job Message]
-    G --> H
-
-    H --> I[Decoupled Worker]
-    I --> C
-```
-
-### Configuration & Fail-Fast Validation
-- **Local Storage (Default)**:
-  `AWS_STORAGE_PROVIDER="local"` — Operates without AWS credentials. Suitable for local development.
-- **Amazon S3 Storage (Production)**:
-  `AWS_STORAGE_PROVIDER="s3"` — Uses `@aws-sdk/client-s3`. Fails fast with `ConfigurationError` if `AWS_REGION` or `AWS_S3_BUCKET` is missing.
-
-```ini
-AWS_STORAGE_PROVIDER="s3"
-AWS_REGION="us-east-1"
-AWS_S3_BUCKET="my-private-document-bucket"
-AWS_ACCESS_KEY_ID="AKIA..."
-AWS_SECRET_ACCESS_KEY="..."
-AWS_SESSION_TOKEN="" # Optional
-```
-
-### Security Guidelines
-- S3 Bucket remains private (Block Public Access enabled).
-- Pre-signed URLs are generated server-side with strict expiration.
-- AWS credentials are never exposed to client-side bundles or health check responses.
-
-### Testing Commands
-```bash
-# Automated Mocked Storage Provider Test Suite
-npm run test:phase15
-
-# Real S3 Connectivity Verification Script (Requires live AWS credentials & bucket)
-npm run test:s3-storage
-```
-
----
-
-## 10. Phase 16 — Document Management & Knowledge Base
-
-### Overview
-Phase 16 transforms the platform into a SaaS-style Document Management & Knowledge Base experience. Users can search, filter, sort, paginate, inspect, retry, reprocess, preview, download, and delete documents with complete tenant isolation and storage-provider transparency.
-
-### Architecture
-
-```mermaid
-flowchart TD
-    User[Authenticated Client] --> API[Document API /api/documents]
-    API --> Svc[DocumentService]
-    Svc --> Rep[DocumentRepository]
-    Svc --> Storage[Canonical StorageProvider]
-
-    Storage -->|AWS_STORAGE_PROVIDER=local| LocalStorage[LocalStorageProvider]
-    Storage -->|AWS_STORAGE_PROVIDER=s3| S3Storage[S3StorageProvider]
-
-    Svc -->|Publish Job| RabbitMQ[RabbitMQ Broker]
-    RabbitMQ --> Worker[Document Processing Worker]
-    Worker --> Extractor[pdfjs-dist PDF Parser]
-    Extractor --> Chunker[cl100k_base Chunker]
-    Chunker --> Embedder[Ollama / OpenAI Embeddings]
-    Embedder --> Postgres[(PostgreSQL + pgvector)]
-```
-
-### Endpoints Implemented
-- `GET /api/documents` — Paginated catalog with debounced case-insensitive search (`filename` & `originalFilename`), status filter (`ALL`, `PROCESSING`, `COMPLETED`, `FAILED`, `UPLOADING`), sort order (`createdAt`, `filename`, `fileSize`, `status`, `updatedAt`), Knowledge Base summary stats, and current storage driver badge (`local` vs `s3`).
-- `GET /api/documents/[id]` — Returns document metadata, pipeline steps checklist, chunk metrics, chunks detail, and storage driver information.
-- `POST /api/documents/[id]/retry` — Safely retries a `FAILED` document by resetting status to `PROCESSING` and publishing a new RabbitMQ processing job.
-- `POST /api/documents/[id]/reprocess` — Explicitly reprocesses a `COMPLETED` or `FAILED` document by transactionally clearing old chunks/embeddings, resetting status to `PROCESSING`, and re-enqueuing worker job.
-- `DELETE /api/documents/[id]` — Deletes document database record, chunks, and storage object via `StorageProvider.delete(storageKey)`.
-- `GET /api/documents/[id]/download` — Securely streams file content to authorized owners with `Content-Disposition` headers.
-
-### Testing Commands
-```bash
-# Automated Document Management & Knowledge Base Test Suite
-npm run test:phase16
-```
-
----
-
-## 11. Phase 17 — Multi-Document Knowledge Bases / Collections
-
-### Overview
-Phase 17 introduces a first-class Knowledge Base / Collection abstraction. Documents, chunks, vector embeddings, and storage files remain 100% single-instance (zero duplication). A document can belong to multiple Knowledge Bases via a junction table (`KnowledgeBaseDocument`).
-
-RAG retrieval can be dynamically scoped to a selected Knowledge Base or run globally across all user documents while preserving vector search, keyword search, hybrid scoring, local reranking, streaming SSE responses, citations, and complete tenant isolation.
-
-### Scoped RAG Architecture
-
-```mermaid
-flowchart TD
-    U[User / Web Client] --> UI[Knowledge Base & Chat UI]
-    UI --> KB[Knowledge Base Scope]
-    KB -->|Junction Filter| KBD[KnowledgeBaseDocument]
-    KBD --> D[Documents]
-    D --> C[Document Chunks]
-    C --> V[pgvector 768d]
-
-    UI -->|Question| ScopedRAG[RetrievalService]
-    ScopedRAG -->|Vector Search + SQL EXISTS| V
-    ScopedRAG -->|Keyword Search + SQL EXISTS| Lexical[PostgreSQL Full-Text Search]
-    V --> CandidateMerge[Candidate Merge & Hybrid Score]
-    Lexical --> CandidateMerge
-    CandidateMerge --> Reranker[LocalReranker]
-    Reranker --> TopK[Top-K Context]
-    TopK --> LLM[Streaming LLM Provider]
-```
-
-### Endpoints Implemented
-- `GET /api/knowledge-bases` — Paginated list of user Knowledge Bases with search, sorting, and stats.
-- `POST /api/knowledge-bases` — Create new Knowledge Base collection.
-- `GET /api/knowledge-bases/[id]` — Retrieve Knowledge Base metadata and statistics.
-- `PATCH /api/knowledge-bases/[id]` — Update Knowledge Base name or description.
-- `DELETE /api/knowledge-bases/[id]` — Delete Knowledge Base (deletes collection record and join rows; member documents, chunks, embeddings, and storage files remain 100% intact).
-- `GET /api/knowledge-bases/[id]/documents` — List documents belonging to Knowledge Base.
-- `POST /api/knowledge-bases/[id]/documents` — Add existing document to Knowledge Base (prevents duplicate membership).
-- `DELETE /api/knowledge-bases/[id]/documents/[documentId]` — Remove document from Knowledge Base (removes join row; document remains intact).
-- `POST /api/chat` & `POST /api/chat/stream` — Grounded & SSE streaming chat supporting optional `knowledgeBaseId`.
-- `POST /api/rag/debug` — RAG Inspector supporting optional `knowledgeBaseId`.
-
-### Testing Commands
-```bash
-# Automated Knowledge Bases & Scoped RAG Test Suite
-npm run test:phase17
-```
-
----
-
-## 12. Phase 18 — Conversation Memory & Context Management
-
-### Overview
-Phase 18 adds multi-turn RAG conversation memory, follow-up retrieval query contextualization, token-bounded context management, background conversation summarization, auto-titling, and paginated conversation CRUD management while strictly enforcing document-grounded zero-hallucination policies and user tenant isolation.
-
-### Conversation Memory Architecture
-
-```mermaid
-flowchart TD
-    A[User Question] --> B[Authentication & Ownership]
-    B --> C[ConversationContextService]
-    C -->|Query Rewriting| D[Standalone Retrieval Query]
-    D --> E[Knowledge Base / Tenant Scope]
-    E --> F[Hybrid Retrieval & Local Reranking]
-    F --> G[Retrieved Document Evidence]
-
-    C -->|Token Bounded Context| H[Conversation Memory & Summary]
-    G --> I[Grounded LLM Generation]
-    H --> I
-    A --> I
-
-    I --> J[Streaming SSE / JSON Response]
-    J --> K[Persist Messages & Auto-Title]
-```
-
-### Key Capabilities & Environment Configuration
-- **Follow-up Query Contextualization**: Automatically rewrites ambiguous follow-up questions (e.g. *"Explain the third requirement in more detail"*) into standalone retrieval search queries.
-- **Zero-Hallucination Guardrail**: When `retrievedChunks.length === 0`, the system returns the deterministic fallback message without calling the LLM.
-- **Strict Evidence Separation**: Citations are derived exclusively from retrieved document chunks — conversation turns are never cited as document evidence.
-- **Environment Variables**:
-  - `CONVERSATION_MAX_MESSAGES` (default `12`)
-  - `CONVERSATION_MAX_CONTEXT_TOKENS` (default `6000`)
-  - `CONVERSATION_SUMMARY_ENABLED` (default `true`)
-  - `CONVERSATION_SUMMARY_TRIGGER_TOKENS` (default `4500`)
-
-### Endpoints Implemented
-- `GET /api/conversations` — Paginated list of conversations (`page`, `pageSize`, `search`, `knowledgeBaseId`, `sortBy`, `sortOrder`).
-- `GET /api/conversations/[id]` — Detailed conversation history with summary and messages.
-- `PATCH /api/conversations/[id]` — Rename conversation title.
-- `DELETE /api/conversations/[id]` — Delete conversation and messages with ownership verification.
-- `POST /api/chat` & `POST /api/chat/stream` — Grounded chat with multi-turn conversation memory.
-- `POST /api/rag/debug` — RAG Inspector with memory diagnostics (retrieval query rewrite, context message counts, token estimates).
-
-### Testing Commands
-```bash
-# Automated Conversation Memory Test Suite
-npm run test:phase18
-```
-
----
-
-## 13. Phase 19 — RAG Evaluation, User Feedback & Quality Analytics
-
-### Overview
-Phase 19 adds a production-grade RAG evaluation, answer quality measurement, and user feedback layer. It enables users to rate responses with 👍/👎 feedback, calculates sentence-level groundedness and citation coverage scores, records end-to-end response and retrieval latency, and provides developers with a quality analytics dashboard (`/rag-evaluation`).
-
-### RAG Evaluation & Feedback Architecture
-
-```mermaid
-flowchart TD
-    A[User Question] --> B[Conversation Memory]
-    B --> C[Hybrid Retrieval & Local Reranking]
-    C --> D[Grounded LLM Streaming Response]
-    D --> E[Persist Assistant Message]
-    E --> F[Async Non-Blocking Evaluation]
-
-    F --> G[LocalHeuristicEvaluator]
-    G --> H[Groundedness & Citation Coverage Scores]
-    H --> I[RagEvaluation Record]
-
-    User[User Chat UI] -->|👍 / 👎 Rating| J[UserFeedback Record]
-    I --> K[RAG Evaluation Dashboard /rag-evaluation]
-    J --> K
-```
-
-### Key Capabilities & Environment Configuration
-- **User Answer Feedback**: Rate responses with 👍 Helpful or 👎 Not Helpful buttons, reason tags, and optional comments.
-- **Sentence-Level Groundedness**: Measures lexical statement overlap against retrieved document evidence.
-- **Citation Coverage Ratio**: Calculates cited chunk ratio against retrieved chunks.
-- **Non-Blocking Telemetry**: Background evaluation runs asynchronously after message persistence — chat streaming and non-streaming responses deliver with zero added latency.
-- **Environment Variables**:
-  - `RAG_EVALUATOR`: `heuristic` (default) or `llm`
-  - `RAG_EVALUATION_ENABLED`: `true` (default)
-  - `RAG_EVALUATION_ASYNC`: `true` (default)
-  - `RAG_EVALUATION_RETENTION_DAYS`: `90` (default)
-
-### Endpoints Implemented
-- `POST /api/rag/feedback` — Submit or update user feedback rating (upsert).
-- `GET /api/rag/feedback` — List user feedback history for authenticated user.
-- `GET /api/rag/evaluations` — Paginated list of RAG evaluation records.
-- `GET /api/rag/evaluations/[id]` — Detailed evaluation breakdown.
-- `GET /api/rag/metrics` — Aggregated RAG quality & performance metrics supporting `timeRange` (`24h`, `7d`, `30d`, `90d`, `all`) and `knowledgeBaseId` filters.
-- `POST /api/rag/evaluate/[messageId]` — Manually trigger re-evaluation of a message.
-
-### Testing Commands
-```bash
-# Automated Phase 19 RAG Evaluation & Feedback Test Suite
-npm run test:phase19
-```
-
-## Phase 20 — RAG Performance & LLM Inference Optimization
-
-Phase 20 addresses measured inference latency without weakening retrieval, grounding, citations, conversation memory, or asynchronous evaluation. The verified baseline was 188,259ms for a historical full response; a fresh grounded request measured 5,958ms, with 5,883ms in local LLM generation and roughly 50ms in embedding/retrieval. A local CPU Ollama stream measured 973ms TTFT and 5,363ms total, so LLM inference—not pgvector—is the dominant bottleneck.
-
-The pipeline now applies deterministic prompt budgets (`RAG_LLM_PROMPT_MAX_TOKENS`, default 3000), retains highest-ranked evidence and its real citation identity, and bounds generation through `RAG_LLM_MAX_OUTPUT_TOKENS` (512) and `RAG_LLM_TEMPERATURE` (0.1). Both Ollama and OpenAI providers use these controls. The latency trace records prompt/context estimates alongside memory, retrieval, TTFT, generation, persistence, and asynchronous evaluation.
-
-```text
-User → Chat API → Conversation Context → Hybrid Retrieval → Reranking
-     → Context Optimization → LLM Provider (Ollama | OpenAI) → SSE → Persistence
-
-RAG Pipeline → Latency Trace → Memory | Retrieval | Context | TTFT | LLM | Persistence | Async Evaluation
-```
-
-## Phase 23 — Web RAG & External Knowledge Sources
-
-Phase 23 extends the platform's knowledge scope to include public web pages and documentation as an optional, explicitly selected knowledge source alongside uploaded PDF documents.
-
-### Key Capabilities
-- **Strict SSRF Security Protection**: Pre-fetch hostname validation and asynchronous DNS IP lookup rejecting loopback (`127.0.0.1`, `localhost`), private IPs (`10.0.0.0/8`, `172.16.0.0/12`, `192.168.0.0/16`, `169.254.0.0/16`), cloud metadata (`169.254.169.254`), and non-HTTP/HTTPS schemes.
-- **Unified Hybrid Vector Search**: Web pages are ingested as first-class `Document` records (`sourceType: WEB`) with token-aware chunking and pgvector embeddings.
-- **Explicit Knowledge Source Modes**: `📄 Uploaded Documents` (`documents_only`), `🌐 Web Sources` (`web_only`), and `🔎 Documents + Web` (`all_sources`). Defaults strictly to `documents_only`.
-- **Idempotent Refresh**: SHA-256 `contentHash` tracking avoids redundant chunking and embedding when re-fetching web pages.
-- **External Web Citations**: Citation markers (`🌐 Title • host.com ↗`) open original web pages safely in new browser tabs (`target="_blank" rel="noopener noreferrer"`).
-
-```bash
-# Automated Phase 23 Web RAG Test Suite
-npm run test:phase23
-```
-
-## Phase 25 — Intelligent Web Search & Multi-Source Evidence Fusion
-
-Phase 25 enables automatic live web search and multi-source evidence fusion. Users can obtain real-time web answers without manually entering a target website URL.
-
-### Key Capabilities
-- **Query Classification & Routing**: `WebSearchDecisionService` deterministically classifies questions into `DOCUMENT_SUFFICIENT`, `WEB_REQUIRED`, `WEB_OPTIONAL`, `MULTI_SOURCE`, and `CLARIFICATION_REQUIRED`.
-- **Multi-Query Search Planning**: `WebSearchPlanner` generates up to 3 deduplicated search queries for multi-intent research questions.
-- **Bounded Parallel Search & Safe Fetching**: Bounded concurrency fetching using `SearchEngineWebProvider` and Phase 24 SSRF / Robots.txt protection stack.
-- **Source Quality Ranking & Diversity**: Domain authority scoring (`docs.python.org`, `react.dev`, `owasp.org`, `.gov`, `.edu`) combined with search engine rank signals and source diversity reranking.
-- **Evidence Fusion**: `EvidenceFusionService` merges internal documents, saved web sources, and live web discovery passages with explicit source tagging (`[DOCUMENT]`, `[LIVE_WEB]`).
-- **Source & Cache Isolation**: Absolute tenant, Knowledge Base, and source-mode cache isolation for `auto` and `web_search` modes.
-
-```bash
-# Automated Phase 25 Test Suite
-npm run test:phase25
-```
-
-## Phase 26 — Multi-Modal Document RAG (Tables, OCR & Vision)
-
-Phase 26 extends the document RAG platform to process, retrieve, and ground answers on visual document content including tables, charts, diagrams, scanned pages, figures, and images.
-
-### Key Capabilities
-- **Visual Content Parsing**: Automatically detects and extracts Markdown/structured tables, embedded images, and figures during worker PDF ingestion.
-- **OCR & Vision Provider Abstractions**: `OCRProvider` and `VisionProvider` generate searchable text representations for scanned PDF pages, architecture diagrams, and financial charts.
-- **Visual Evidence Database Model**: Dedicated `DocumentVisual` Prisma model tracking page numbers, content hashes, storage keys, captions, and confidence scores.
-- **Visual Query Classifier**: `VisualQueryClassifier` automatically identifies questions requesting visual understanding ("chart on page 18", "table revenue values", "architecture diagram").
-- **Visual Citations**: Citations format visual evidence clearly (`Financial_Report.pdf — Page 18 — Chart`, `Annual_Report.pdf — Page 12 — Table`).
-- **Zero Hallucination Policy**: If zero visual evidence exists for a visual query, returns structured safe response without vision guessing.
-
-## Phase 31 — AI Roadmap Builder & Personal Learning Workspace
-
-Phase 31 introduces a production-grade AI Roadmap Builder and Personal Learning Workspace. Users can generate structured, personalized learning roadmaps through a guided questionnaire, track task completion, regenerate individual phases, access evidence-aware web resources, and share roadmaps with peers.
-
-### Key Capabilities
-- **Guided Questionnaire Engine**: Interactive 7-step wizard (`goal`, `targetSkill`, `experienceLevel`, `dailyTimeCommitment`, `targetDurationWeeks`, `learningStyle`, `interviewRole`/`certification`) with server-side validation.
-- **Curated Baseline Catalog**: Baseline curriculum templates for Next.js, React, TypeScript, Python, and System Design Architecture.
-- **Controlled AI Architecture**: LLM generates structured JSON plans validated against strict schemas (`RoadmapValidatorService`) and business constraints.
-- **Relational Domain Model**: `Roadmap`, `RoadmapPhase`, `RoadmapTask`, and `RoadmapShare` schema with PostgreSQL cascade constraints and indexes.
-- **Workspace Progress Tracking**: Real-time progress calculation (`0-100%`) based on server-validated task status updates.
-- **Controlled Phase Regeneration**: Regenerate specific roadmap phases without destroying the overall roadmap context.
-- **Granular Peer Sharing & RBAC**: Share roadmaps with registered users using `VIEW` or `EDIT` permissions, with owner-only revocation.
-- **Evidence-Aware Web Search Integration**: Integrates Phase 25 live web search to attach official documentation and tutorial links to tasks.
-- **User Session & Cache Isolation**: User-scoped cache keys (`docai_user_<id>_preferred_city`, `roadmap:cache:user:<id>`), IDOR protection, and tenant state sync.
-
-## Phase 32 — Voice Input Assistant & Global Theme System
-
-Phase 32 introduces a production-grade Voice Input Speech-to-Text Assistant and an application-wide Global Light / Dark / System Theme System.
-
-### Key Capabilities
-- **Voice Input / Speech-to-Text**: Browser Web Speech API provider abstraction (`SpeechToTextService`, `BrowserSpeechProvider`) allowing users to speak questions in RAG Chat.
-- **Multilingual Voice Support**: Supports English (`en-US`), Hindi (`hi-IN`), and Gujarati (`gu-IN`) with locale fallback.
-- **Interim & Final Transcription**: Live transcript rendering into the chat input allowing user review and editing before submission.
-- **Privacy & Security**: Zero raw audio persistence or audio upload to backend/LLMs; voice input converts to standard chat question text.
-- **TTS & Pipeline Compatibility**: Full compatibility with Phase 29 TTS, streaming chat, web search, multimodal queries, and conversation memory.
-- **Global Theme System**: Centralized `ThemeContext` supporting `Light`, `Dark`, and `System` theme modes across all 41 application pages and components.
-- **User-Scoped Theme Isolation**: Persists user-scoped theme preferences (`docai_user_<id>_theme`) to avoid cross-user theme leakage on login/logout.
-- **Zero-Flash Hydration**: Inline `<script>` execution in `<head>` ensures theme attributes apply before initial browser paint.
-
-## Phase 33 — AI Study / Tutor Mode
-
-Phase 33 transforms the platform into an AI-powered personalized study and tutoring workspace. Users can select authorized Knowledge Bases, Documents, or Roadmaps to create interactive study sessions with grounded tutoring, adaptive mastery tracking, and Socratic questioning.
-
-### Key Capabilities
-- **6 Interactive Study Modes**: Teach, Socratic, Quiz, Flashcards, Practice, and Review modes.
-- **Grounded Evidence Boundary**: Questions and explanations strictly generated from authorized documents/KBs. If evidence is insufficient, returns `NO_STUDY_EVIDENCE`.
-- **Adaptive Learning Engine**: Dynamically calculates topic mastery (`0-100%`), adjusts difficulty (`Beginner`, `Intermediate`, `Advanced`), and schedules review dates (`1`, `3`, `7` days).
-- **Grounded Answer Evaluation**: Objective & LLM grounded evaluation returning scores (`0-10`), feedback, missing concepts, strengths, and citations.
-- **Anti-Cheating & Security**: Correct answers remain server-side during initial question payload delivery.
-- **Progressive Hint System**: 3-level hints providing clues without revealing exact answer text.
-- **Multimodal & Voice Integration**: Full support for Phase 26 multimodal document questions and Phase 32 Speech-to-Text voice answers.
-- **Roadmap Integration**: Connects with Phase 31 roadmaps to convert incomplete learning tasks into study sessions.
-
-```bash
-# Automated Phase 33 Test Suite
-npm run test:phase33
-
-# AI Study Performance Benchmark
-npx tsx scripts/test-ai-study-performance.ts
-```
-
-## Phase 34 — Agentic Research & Autonomous Evidence Investigation
-
-Phase 34 adds an autonomous, bounded, observable, and multi-source research investigation subsystem. It transforms single-shot RAG answers into iterative evidence collection, claim extraction, conflict detection, gap analysis, and synthesis of cited research reports.
-
-### Key Capabilities
-- **Bounded Agent Engine**: Strictly controls maximum steps, searches, LLM calls, concurrent tasks, SSRF rules, and timeouts (`QUICK`, `STANDARD`, `DEEP` modes).
-- **Multi-Source Evidence Collection**: Investigates across authorized uploaded documents, Knowledge Bases, and live web search.
-- **Deduplication & Quality Ranking**: Canonical URL normalization, SHA-256 evidence hashing, and combined relevance/authority/freshness scoring.
-- **Claim Extraction & Conflict Detection**: Identifies atomic claims and discloses contradictions, numeric disagreements, or date disagreements.
-- **Gap Analysis & Follow-up**: Detects evidence gaps and triggers bounded follow-up searches.
-- **Real-Time Execution Timeline**: Streams progress events (`PLAN_CREATED`, `SEARCH_STARTED`, `CONFLICT_DETECTED`, `REPORT_READY`).
-- **Export & Security**: Markdown and JSON exports; strict prompt injection defense and SSRF blocklists.
-
-```bash
-# Automated Phase 34 Test Suite
-npm run test:phase34
-
-# Agentic Research Performance Benchmark
-npx tsx scripts/test-agentic-research-performance.ts
-
-## Phase 35 — AI Workflow Builder & Automation Engine
-
-Phase 35 adds a production-grade, secure, observable, versioned, resumable, and backward-compatible AI Workflow Builder & Automation Engine. It allows users to build, visually edit, validate, publish, and automate complex pipelines connecting Document AI, RAG, Web Search, Multimodal parsing, and Agentic Research.
-
-### Key Capabilities
-- **Dual Creation Methods**: Supports (1) Visual Drag-and-Drop Canvas Editor and (2) Natural Language AI Workflow Generator.
-- **Controlled Node Registry**: 30 controlled node types across 8 categories (`TRIGGERS`, `DATA`, `AI`, `LOGIC`, `DOCUMENT`, `RESEARCH`, `OUTPUT`, `CONTROL`).
-- **Graph & Schema Validation**: Server-side DAG validation, orphan node detection, loop bounds (`maxIterations <= 20`), and schema verification via `WorkflowValidatorService`.
-- **Immutable Versioning**: Workflows are immutable once published. Edits create new versions (e.g. Version 2), and runs reference the exact published version.
-- **Deterministic Resumable Engine**: Controlled execution engine with server step limits (`WORKFLOW_MAX_EXECUTION_STEPS=200`), concurrency caps, backoff retries, and cancellation support.
-- **Safe Conditions & Variables**: Expression evaluator (`==`, `!=`, `>`, `>=`, `<`, `<=`, `AND`, `OR`, `IN`, `CONTAINS`) without `eval()`, mustache variable interpolation, and secret redaction.
-- **Real-Time Execution Monitoring**: Live execution view (`/workflows/[id]/runs/[runId]`) displaying node status highlights, input/output inspection, and step log.
-
-```bash
-# Automated Phase 35 Test Suite (110+ Tests)
-npm run test:phase35
-
-# Workflow Engine Performance Benchmark
-npx tsx scripts/test-workflow-performance.ts
-
-# Universal 29-Phase Regression Test Suite (Phase 7 through 35)
-npm run test:all-phases
-```
-
-
-
-
-
-
-
-
-
+Feature-phase test suites live at `tests/phase<N>-*.test.ts` (Jest, from roughly Phase 40
+onward — earlier phases used standalone `tsx`-executed scripts, still runnable via the
+`test:phase<N>` scripts in `package.json` for historical reference). There is no single
+`test:phase90`-style script wired into `package.json` for every phase — target a specific
+phase's suite directly, e.g. `npx jest tests/phase90 --no-coverage`.
+
+## 21. Deployment Architecture
+
+This repository provides `docker-compose.yml` for **local infrastructure only**
+(PostgreSQL+pgvector, RabbitMQ, Redis, Ollama) — it is a development convenience, not a
+production deployment manifest. No production orchestration (Kubernetes manifests, a
+production Dockerfile for the app/worker images, CI/CD pipeline definitions, or an
+infrastructure-as-code setup) is implemented in this repository as of this phase.
+
+For a production deployment, you would need to independently provision: a managed PostgreSQL
+instance with the `pgvector` extension, a managed Redis instance, a managed or self-hosted
+RabbitMQ cluster, container images (or another deployment target) for the Next.js app and the
+`worker/` process running as two independently-scaled services, object storage (S3 or
+compatible), and secrets management for everything currently read from `.env`. This is deployment
+guidance, not a description of implemented functionality.

@@ -37,7 +37,13 @@ export type CopilotMemoryCategory =
   | 'PROJECT_CONTEXT'
   | 'GOAL'
   | 'TECHNICAL_CONTEXT'
-  | 'WORKFLOW_PREFERENCE';
+  | 'WORKFLOW_PREFERENCE'
+  // Phase 90 — additive categories, see prisma schema CopilotMemoryCategory enum.
+  | 'USER_PROFILE'
+  | 'TECHNICAL_DECISION'
+  | 'IMPORTANT_FACT'
+  | 'CONVERSATION_MEMORY'
+  | 'WORKING_PATTERN';
 
 export type CopilotCapability =
   | 'DOCUMENT_RAG'

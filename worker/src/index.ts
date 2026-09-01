@@ -14,6 +14,7 @@ import { notificationEmailProcessor } from './processors/notification-email.proc
 import { aiAgentExecutionProcessor } from './processors/ai-agent-execution.processor.js';
 import { automationTriggerMatcherProcessor } from './processors/automation-trigger-matcher.processor.js';
 import { automationExecutionProcessor } from './processors/automation-execution.processor.js';
+import { memoryExtractionProcessor } from './processors/memory-extraction.processor.js';
 import {
   MultimodalJobPayload,
   AIIntelligenceJobPayload,
@@ -22,6 +23,7 @@ import {
   AIAgentExecutionJobPayload,
   AutomationDomainEventPayload,
   AutomationExecutionJobPayload,
+  MemoryCandidateExtractionJobPayload,
   QUEUES,
   rabbitmq
 } from '@/lib/rabbitmq';
@@ -46,6 +48,7 @@ const NOTIFICATION_EMAIL_QUEUE_NAME = QUEUES.NOTIFICATION_EMAIL;
 const AI_AGENT_EXECUTION_QUEUE_NAME = QUEUES.AI_AGENT_EXECUTION;
 const AUTOMATION_EVENT_DISPATCH_QUEUE_NAME = QUEUES.AUTOMATION_EVENT_DISPATCH;
 const AUTOMATION_EXECUTION_QUEUE_NAME = QUEUES.AUTOMATION_EXECUTION;
+const MEMORY_CANDIDATE_EXTRACTION_QUEUE_NAME = QUEUES.MEMORY_CANDIDATE_EXTRACTION;
 const RABBITMQ_URL = process.env.RABBITMQ_URL || 'amqp://guest:guest@localhost:5672';
 const MAX_RETRIES = 3;
 const TIMEOUT_MINUTES = process.env.DOCUMENT_PROCESSING_TIMEOUT_MINUTES
@@ -66,6 +69,7 @@ let notificationEmailConsumerTag: string | null = null;
 let aiAgentExecutionConsumerTag: string | null = null;
 let automationEventDispatchConsumerTag: string | null = null;
 let automationExecutionConsumerTag: string | null = null;
+let memoryCandidateExtractionConsumerTag: string | null = null;
 let isShuttingDown = false;
 let activeInFlightJobs = 0;
 
@@ -531,6 +535,49 @@ export async function startWorker() {
     );
     automationExecutionConsumerTag = automationExecutionConsumeResult.consumerTag;
 
+    // 11. Consume memory-candidate-extraction (channel2). Phase 90 — purely event-driven off the
+    // Assistant orchestrator's own fire-and-forget dispatch after a completed chat turn; no
+    // periodic tick needed. Mirrors the automation-execution consumer's ack/nack-with-retry
+    // pattern exactly.
+    await channel2.assertQueue(MEMORY_CANDIDATE_EXTRACTION_QUEUE_NAME, { durable: true });
+    const memoryCandidateExtractionConsumeResult = await channel2.consume(
+      MEMORY_CANDIDATE_EXTRACTION_QUEUE_NAME,
+      async (msg: ConsumeMessage | null) => {
+        if (!msg || isShuttingDown) return;
+
+        activeInFlightJobs++;
+        let payload: MemoryCandidateExtractionJobPayload | null = null;
+
+        try {
+          payload = JSON.parse(msg.content.toString()) as MemoryCandidateExtractionJobPayload;
+          console.log(`[Worker-MemoryExtraction] Job received for user: ${payload.userId} (Job ID: ${payload.jobId})`);
+
+          const result = await memoryExtractionProcessor.process(payload);
+
+          if (result.status === 'SUCCESS' || result.status === 'STALE_DISCARD' || result.action === 'PERMANENT_ERROR') {
+            channel2?.ack(msg);
+          } else if (result.action === 'TRANSIENT_ERROR') {
+            const attemptCount = payload.attempt || 1;
+            if (attemptCount >= MAX_RETRIES) {
+              console.error(`[Worker-MemoryExtraction] Max retries (${MAX_RETRIES}) reached for job: ${payload.jobId}`);
+              channel2?.ack(msg);
+            } else {
+              channel2?.nack(msg, false, true);
+            }
+          }
+        } catch (error) {
+          console.error('[Worker-MemoryExtraction] Unexpected job execution error:', error instanceof Error ? error.message : error);
+          if (msg && channel2) {
+            channel2.ack(msg);
+          }
+        } finally {
+          activeInFlightJobs--;
+        }
+      },
+      { noAck: false }
+    );
+    memoryCandidateExtractionConsumerTag = memoryCandidateExtractionConsumeResult.consumerTag;
+
     // Start periodic Google Calendar Sync Retry loop
     const syncInterval = setInterval(async () => {
       if (isShuttingDown) return;
@@ -807,6 +854,10 @@ export async function shutdownWorker(signal?: string) {
     if (automationExecutionConsumerTag && channel2) {
       await channel2.cancel(automationExecutionConsumerTag).catch(() => {});
       automationExecutionConsumerTag = null;
+    }
+    if (memoryCandidateExtractionConsumerTag && channel2) {
+      await channel2.cancel(memoryCandidateExtractionConsumerTag).catch(() => {});
+      memoryCandidateExtractionConsumerTag = null;
     }
     console.log('[Worker] RabbitMQ consumers stopped.');
 

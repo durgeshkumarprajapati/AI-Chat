@@ -189,6 +189,23 @@ export class DocumentProcessor {
         console.warn(`[Worker] Non-fatal Knowledge Graph trigger warning for doc ${job.documentId}:`, kgErr);
       }
 
+      // 12. Asynchronously dispatch DOCUMENT_PROCESSING_COMPLETED automation trigger (non-blocking)
+      try {
+        const { publishAutomationEvent } = await import('@/features/automation/domain-events/automation-domain-event.publisher.js');
+        const { prisma } = await import('../lib/prisma.js');
+        const projectLink = await prisma.projectDocument.findFirst({ where: { documentId: job.documentId } });
+        await publishAutomationEvent({
+          eventType: 'DOCUMENT_PROCESSING_COMPLETED',
+          sourceUserId: job.userId,
+          sourceProjectId: projectLink?.projectId ?? null,
+          sourceEntityId: job.documentId,
+          occurredAt: new Date().toISOString(),
+          payload: { filename: document.filename, chunkCount: chunks.length }
+        });
+      } catch (autoErr) {
+        console.warn(`[Worker] Non-fatal Automation trigger dispatch warning for doc ${job.documentId}:`, autoErr);
+      }
+
       const durationMs = Date.now() - startTime;
 
       console.log(`[Worker] Document processing completed successfully:`);

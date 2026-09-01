@@ -20,6 +20,32 @@ interface PerformanceData {
   cache: { answerCacheTtlSeconds: number; singleFlightEnabled: boolean };
   worker: { available: boolean; reason: string };
   config: { slowQueryThresholdMs: number; multimodalImageProcessingConcurrency: number };
+  // Phase 88 — additive, optional cross-cutting telemetry aggregation.
+  apiLatency?:
+    | {
+        available: true;
+        p50: number;
+        p95: number;
+        p99: number;
+        count: number;
+        targetLatencyMs: number;
+        meetsTarget: boolean;
+        routeBreakdown: { route: string; p50: number; p95: number; count: number }[];
+      }
+    | { available: false; reason: string };
+  slowestOperations?:
+    | {
+        available: true;
+        slowRequestThresholdMs: number;
+        data: { operation: string; category: string; avgMs: number; count: number; isSlow: boolean }[];
+      }
+    | { available: false; reason: string };
+  cacheHitRatios?:
+    | { available: true; data: { source: string; hitRatio: number; hits: number; misses: number }[] }
+    | { available: false; reason: string };
+  workflowMetrics?:
+    | { available: true; sampleWindowHours: number; totalExecutions: number; byStatus: Record<string, number> }
+    | { available: false; reason: string };
 }
 
 function HealthBadge({ healthy }: { healthy: boolean }) {
@@ -206,6 +232,159 @@ export default function AdminPerformancePage() {
             Worker Throughput
           </h3>
           <p className="text-xs text-slate-500 dark:text-slate-500">{data.worker.reason}</p>
+        </div>
+
+        {/* API Latency (Phase 88) */}
+        <div className="bg-white dark:bg-slate-900/80 border border-slate-200 dark:border-slate-800 rounded-2xl p-6 shadow-sm space-y-4">
+          <div className="flex items-center justify-between border-b border-slate-200 dark:border-slate-800 pb-3">
+            <h3 className="text-sm font-semibold text-slate-900 dark:text-white">
+              API Latency — this process{data.apiLatency?.available ? ` (${data.apiLatency.count} requests)` : ''}
+            </h3>
+            {data.apiLatency?.available && (
+              <span
+                className={`px-2 py-0.5 rounded text-[10px] font-mono font-bold ${
+                  data.apiLatency.meetsTarget
+                    ? 'bg-emerald-100 dark:bg-emerald-950 text-emerald-800 dark:text-emerald-300'
+                    : 'bg-rose-100 dark:bg-rose-950 text-rose-800 dark:text-rose-300'
+                }`}
+              >
+                {data.apiLatency.meetsTarget ? '● WITHIN TARGET' : '● ABOVE TARGET'} ({data.apiLatency.targetLatencyMs}ms)
+              </span>
+            )}
+          </div>
+          {!data.apiLatency || !data.apiLatency.available ? (
+            <p className="text-xs text-slate-500 dark:text-slate-500">
+              Unavailable — {data.apiLatency ? data.apiLatency.reason : 'apiLatency not returned by this build.'}
+            </p>
+          ) : (
+            <>
+              <div className="grid grid-cols-3 gap-4">
+                <div>
+                  <div className="text-xs text-slate-500 dark:text-slate-400">p50</div>
+                  <div className="text-xl font-bold text-indigo-600 dark:text-indigo-400 mt-1">{data.apiLatency.p50} ms</div>
+                </div>
+                <div>
+                  <div className="text-xs text-slate-500 dark:text-slate-400">p95</div>
+                  <div className="text-xl font-bold text-sky-600 dark:text-sky-400 mt-1">{data.apiLatency.p95} ms</div>
+                </div>
+                <div>
+                  <div className="text-xs text-slate-500 dark:text-slate-400">p99</div>
+                  <div className="text-xl font-bold text-purple-600 dark:text-purple-400 mt-1">{data.apiLatency.p99} ms</div>
+                </div>
+              </div>
+              {data.apiLatency.routeBreakdown.length > 0 && (
+                <div className="overflow-x-auto pt-2">
+                  <table className="w-full text-xs">
+                    <thead>
+                      <tr className="text-left text-slate-500 dark:text-slate-400">
+                        <th className="pb-2 font-semibold">Route</th>
+                        <th className="pb-2 font-semibold text-right">p50</th>
+                        <th className="pb-2 font-semibold text-right">p95</th>
+                        <th className="pb-2 font-semibold text-right">Count</th>
+                      </tr>
+                    </thead>
+                    <tbody className="font-mono">
+                      {data.apiLatency.routeBreakdown.map((r) => (
+                        <tr key={r.route} className="border-t border-slate-100 dark:border-slate-800">
+                          <td className="py-1.5 text-slate-700 dark:text-slate-300">{r.route}</td>
+                          <td className="py-1.5 text-right text-slate-900 dark:text-white">{r.p50} ms</td>
+                          <td className="py-1.5 text-right text-slate-900 dark:text-white">{r.p95} ms</td>
+                          <td className="py-1.5 text-right text-slate-500 dark:text-slate-400">{r.count}</td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </div>
+              )}
+            </>
+          )}
+        </div>
+
+        {/* Slowest Operations & Cache Hit Ratios (Phase 88) */}
+        <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
+          <div className="bg-white dark:bg-slate-900/80 border border-slate-200 dark:border-slate-800 rounded-2xl p-6 shadow-sm space-y-3">
+            <h3 className="text-sm font-semibold text-slate-900 dark:text-white border-b border-slate-200 dark:border-slate-800 pb-3">
+              Slowest Operations
+            </h3>
+            {!data.slowestOperations || !data.slowestOperations.available ? (
+              <p className="text-xs text-slate-500 dark:text-slate-500">
+                Unavailable — {data.slowestOperations ? data.slowestOperations.reason : 'slowestOperations not returned by this build.'}
+              </p>
+            ) : (
+              <div className="overflow-x-auto">
+                <table className="w-full text-xs">
+                  <thead>
+                    <tr className="text-left text-slate-500 dark:text-slate-400">
+                      <th className="pb-2 font-semibold">Operation</th>
+                      <th className="pb-2 font-semibold">Category</th>
+                      <th className="pb-2 font-semibold text-right">Avg</th>
+                      <th className="pb-2 font-semibold text-right">Count</th>
+                    </tr>
+                  </thead>
+                  <tbody className="font-mono">
+                    {data.slowestOperations.data.map((op) => (
+                      <tr key={op.operation} className="border-t border-slate-100 dark:border-slate-800">
+                        <td className="py-1.5 text-slate-700 dark:text-slate-300">{op.operation}</td>
+                        <td className="py-1.5 text-slate-500 dark:text-slate-400">{op.category}</td>
+                        <td className={`py-1.5 text-right font-bold ${op.isSlow ? 'text-rose-600 dark:text-rose-400' : 'text-slate-900 dark:text-white'}`}>
+                          {op.avgMs} ms
+                        </td>
+                        <td className="py-1.5 text-right text-slate-500 dark:text-slate-400">{op.count}</td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+            )}
+          </div>
+
+          <div className="bg-white dark:bg-slate-900/80 border border-slate-200 dark:border-slate-800 rounded-2xl p-6 shadow-sm space-y-3">
+            <h3 className="text-sm font-semibold text-slate-900 dark:text-white border-b border-slate-200 dark:border-slate-800 pb-3">
+              Cache Hit Ratios
+            </h3>
+            {!data.cacheHitRatios || !data.cacheHitRatios.available ? (
+              <p className="text-xs text-slate-500 dark:text-slate-500">
+                Unavailable — {data.cacheHitRatios ? data.cacheHitRatios.reason : 'cacheHitRatios not returned by this build.'}
+              </p>
+            ) : (
+              <div className="space-y-3">
+                {data.cacheHitRatios.data.map((c) => (
+                  <div key={c.source} className="flex items-center justify-between text-sm">
+                    <span className="text-slate-600 dark:text-slate-400">{c.source}</span>
+                    <span className="font-mono font-bold text-slate-900 dark:text-white">
+                      {c.hitRatio}% <span className="text-slate-400 dark:text-slate-500 font-normal">({c.hits}/{c.hits + c.misses})</span>
+                    </span>
+                  </div>
+                ))}
+              </div>
+            )}
+          </div>
+        </div>
+
+        {/* Automation Workflow Executions (Phase 88) */}
+        <div className="bg-white dark:bg-slate-900/80 border border-slate-200 dark:border-slate-800 rounded-2xl p-6 shadow-sm space-y-3">
+          <h3 className="text-sm font-semibold text-slate-900 dark:text-white border-b border-slate-200 dark:border-slate-800 pb-3">
+            Automation Workflow Executions {data.workflowMetrics?.available ? `— last ${data.workflowMetrics.sampleWindowHours}h` : ''}
+          </h3>
+          {!data.workflowMetrics || !data.workflowMetrics.available ? (
+            <p className="text-xs text-slate-500 dark:text-slate-500">
+              Unavailable — {data.workflowMetrics ? data.workflowMetrics.reason : 'workflowMetrics not returned by this build.'}
+            </p>
+          ) : (
+            <div className="space-y-2">
+              <div className="text-xl font-bold text-indigo-600 dark:text-indigo-400">{data.workflowMetrics.totalExecutions} executions</div>
+              <div className="flex flex-wrap gap-2">
+                {Object.entries(data.workflowMetrics.byStatus).map(([status, count]) => (
+                  <span
+                    key={status}
+                    className="px-2 py-0.5 rounded bg-slate-100 dark:bg-slate-800 text-slate-700 dark:text-slate-300 text-[10px] font-mono font-bold"
+                  >
+                    {status}: {count}
+                  </span>
+                ))}
+              </div>
+            </div>
+          )}
         </div>
       </div>
     </div>

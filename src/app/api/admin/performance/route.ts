@@ -5,6 +5,7 @@ import { prisma } from '@/lib/prisma';
 import { redis } from '@/lib/redis';
 import { configService } from '@/features/config';
 import { AppError } from '@/errors';
+import { telemetryAggregationService } from '@/features/performance/telemetry-aggregation.service';
 
 export const dynamic = 'force-dynamic';
 
@@ -56,12 +57,76 @@ async function handleGet(req: NextRequest) {
       prisma.ragEvaluation.count({ where: { createdAt: { gte: since } } })
     ]);
 
-    const [answerCacheTtl, singleFlightEnabled, slowQueryThresholdMs, multimodalConcurrency] = await Promise.all([
-      configService.getNumber('RAG_CACHE_TTL_SECONDS', 300),
-      configService.getBoolean('RAG_CACHE_SINGLE_FLIGHT_ENABLED', true),
-      configService.getNumber('PERF_SLOW_QUERY_THRESHOLD_MS', 1000),
-      configService.getNumber('MULTIMODAL_IMAGE_PROCESSING_CONCURRENCY', 3)
-    ]);
+    const [answerCacheTtl, singleFlightEnabled, slowQueryThresholdMs, multimodalConcurrency, apiTargetLatencyMs, slowRequestThresholdMs] =
+      await Promise.all([
+        configService.getNumber('RAG_CACHE_TTL_SECONDS', 300),
+        configService.getBoolean('RAG_CACHE_SINGLE_FLIGHT_ENABLED', true),
+        configService.getNumber('PERF_SLOW_QUERY_THRESHOLD_MS', 1000),
+        configService.getNumber('MULTIMODAL_IMAGE_PROCESSING_CONCURRENCY', 3),
+        configService.getNumber('PERF_API_TARGET_LATENCY_MS', 3000),
+        configService.getNumber('PERF_SLOW_REQUEST_THRESHOLD_MS', 1000)
+      ]);
+
+    // Phase 88 — cross-cutting telemetry aggregation. Purely additive fields, all optional and
+    // each independently best-effort: a failure in any one of them never breaks the rest of this
+    // response. Every field follows the same "never fabricate, report unavailable with a reason"
+    // principle as the fields above.
+    const apiLatencyResult = telemetryAggregationService.getApiLatencyPercentiles();
+    const apiLatency = apiLatencyResult.available
+      ? {
+          available: true as const,
+          ...apiLatencyResult.data!,
+          targetLatencyMs: apiTargetLatencyMs,
+          meetsTarget: apiLatencyResult.data!.p95 <= apiTargetLatencyMs
+        }
+      : { available: false as const, reason: apiLatencyResult.reason! };
+
+    const slowestOperationsResult = telemetryAggregationService.getSlowestOperations(10);
+    const slowestOperations = slowestOperationsResult.available
+      ? {
+          available: true as const,
+          slowRequestThresholdMs,
+          data: slowestOperationsResult.data!.map((op) => ({ ...op, isSlow: op.avgMs > slowRequestThresholdMs }))
+        }
+      : { available: false as const, reason: slowestOperationsResult.reason! };
+
+    const cacheHitRatiosResult = telemetryAggregationService.getCacheHitRatios();
+    const cacheHitRatios = cacheHitRatiosResult.available
+      ? { available: true as const, data: cacheHitRatiosResult.data! }
+      : { available: false as const, reason: cacheHitRatiosResult.reason! };
+
+    // Automation feature (Phase 88 sibling work, landing in parallel on this same branch) —
+    // best-effort only. Never assume the table/model exists or has rows yet; on any failure
+    // (table not migrated, model not yet in the generated client, etc.) report available:false
+    // rather than throwing, since this route must keep working regardless of that feature's
+    // in-flight state.
+    let workflowMetrics: {
+      available: boolean;
+      sampleWindowHours?: number;
+      totalExecutions?: number;
+      byStatus?: Record<string, number>;
+      reason?: string;
+    };
+    try {
+      const workflowSince = new Date(Date.now() - 24 * 60 * 60 * 1000);
+      const statusGroups = await prisma.automationExecution.groupBy({
+        by: ['status'],
+        where: { createdAt: { gte: workflowSince } },
+        _count: { _all: true }
+      });
+      const totalExecutions = statusGroups.reduce((sum, g) => sum + g._count._all, 0);
+      const byStatus: Record<string, number> = {};
+      for (const g of statusGroups) byStatus[g.status] = g._count._all;
+      workflowMetrics =
+        totalExecutions > 0
+          ? { available: true, sampleWindowHours: 24, totalExecutions, byStatus }
+          : { available: false, reason: 'No AutomationExecution rows in the last 24h — nothing to aggregate yet.' };
+    } catch (err) {
+      workflowMetrics = {
+        available: false,
+        reason: `Automation workflow metrics not available: ${err instanceof Error ? err.message : String(err)}`
+      };
+    }
 
     return NextResponse.json({
       success: true,
@@ -96,7 +161,13 @@ async function handleGet(req: NextRequest) {
         config: {
           slowQueryThresholdMs,
           multimodalImageProcessingConcurrency: multimodalConcurrency
-        }
+        },
+        // Phase 88 — additive, optional cross-cutting telemetry aggregation. Absent/failed sources
+        // report `available: false` with a real reason; never a fabricated number.
+        apiLatency,
+        slowestOperations,
+        cacheHitRatios,
+        workflowMetrics
       }
     });
   } catch (error) {

@@ -5,8 +5,18 @@ import { googleCalendarService } from '@/features/calendar/google-calendar.servi
 import { OPEN_INSIGHT_STATUSES, PROJECT_INTELLIGENCE_DETECTION_VERSION } from './project-intelligence.types';
 import { withSoftTimeout } from './project-intelligence.util';
 
+export interface CreatedDeadlineRiskSummary {
+  id: string;
+  title: string;
+  severity: string;
+}
+
 export interface DeadlineIntelligenceResult {
   deadlineRisksCreated: number;
+  // Phase 88 — additive; see risk-blocker-detection.service.ts's identical CreatedInsightSummary
+  // pattern doc. Consumed by project-intelligence.orchestrator.ts to dispatch one
+  // AI_INTELLIGENCE_DEADLINE_RISK_DETECTED automation trigger per item.
+  createdDeadlineRisks: CreatedDeadlineRiskSummary[];
 }
 
 // Convergence window: due dates within this many days of each other are considered "converging".
@@ -30,13 +40,16 @@ export class DeadlineIntelligenceService {
 
     const globalEnabled = await configService.getBoolean('INTELLIGENCE_ENABLED', true);
     if (!globalEnabled) {
-      return { deadlineRisksCreated: 0 };
+      return { deadlineRisksCreated: 0, createdDeadlineRisks: [] };
     }
 
     const maxCandidates = await configService.getNumber('INTELLIGENCE_MAX_CANDIDATES', 50);
     const timeoutMs = await configService.getNumber('INTELLIGENCE_ANALYSIS_TIMEOUT_MS', 30000);
 
-    return withSoftTimeout(() => this.run(userId, projectId, maxCandidates), timeoutMs, { deadlineRisksCreated: 0 });
+    return withSoftTimeout(() => this.run(userId, projectId, maxCandidates), timeoutMs, {
+      deadlineRisksCreated: 0,
+      createdDeadlineRisks: []
+    });
   }
 
   private async run(userId: string, projectId: string, maxCandidates: number): Promise<DeadlineIntelligenceResult> {
@@ -65,6 +78,7 @@ export class DeadlineIntelligenceService {
     );
 
     let deadlineRisksCreated = 0;
+    const createdDeadlineRisks: CreatedDeadlineRiskSummary[] = [];
 
     // ---------------------------------------------------------------------------------------
     // Trigger 1: convergence — multiple due dates clustering together while the project already
@@ -89,7 +103,7 @@ export class DeadlineIntelligenceService {
           const dedupeKey = `CONVERGENCE::${cluster.map((s) => s.id).sort().join(',')}`;
           if (dedupeKeys.has(dedupeKey)) continue;
           try {
-            await prisma.intelligenceInsight.create({
+            const created = await prisma.intelligenceInsight.create({
               data: {
                 userId,
                 projectId,
@@ -114,6 +128,7 @@ export class DeadlineIntelligenceService {
               }
             });
             deadlineRisksCreated += 1;
+            createdDeadlineRisks.push({ id: created.id, title: created.title, severity: created.severity });
           } catch {
             // continue
           }
@@ -145,7 +160,7 @@ export class DeadlineIntelligenceService {
         const dedupeKey = `NO_FOLLOWUP::${suggestion.id}`;
         if (dedupeKeys.has(dedupeKey)) continue;
         try {
-          await prisma.intelligenceInsight.create({
+          const created = await prisma.intelligenceInsight.create({
             data: {
               userId,
               projectId,
@@ -165,13 +180,14 @@ export class DeadlineIntelligenceService {
             }
           });
           deadlineRisksCreated += 1;
+          createdDeadlineRisks.push({ id: created.id, title: created.title, severity: created.severity });
         } catch {
           // continue
         }
       }
     }
 
-    return { deadlineRisksCreated };
+    return { deadlineRisksCreated, createdDeadlineRisks };
   }
 }
 

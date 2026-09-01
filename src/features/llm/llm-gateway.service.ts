@@ -23,6 +23,18 @@ export class LLMGateway {
   private registry: LLMModelRegistry;
   private rateLimiter: LLMRateLimiterService;
 
+  // Phase 88 — single-flight dedup for the cache-miss provider-call path. Keyed by the same
+  // SHA-256 request hash the response cache already uses (userId+provider+model+prompt+context+
+  // system+feature scoped), so it only collapses genuinely identical concurrent requests — never
+  // cross-user or cross-prompt. Mirrors the existing `SingleFlightService` pattern used by RAG's
+  // answer-orchestrator (src/features/rag/cache/single-flight.service.ts), scoped locally here
+  // since it dedupes a different (LLM provider) code path than RAG's. Purely additive: rate-limit
+  // consumption, telemetry, and cache writes still happen once per caller exactly as before —
+  // only the expensive `fallback.executeWithFallback` call itself is shared across concurrent
+  // identical in-flight requests. Each caller still computes its own `totalMs`/`requestId` from
+  // its own start time after the shared promise resolves, so returned values are unaffected.
+  private inFlightGenerateRequests = new Map<string, Promise<LLMResponse>>();
+
   constructor(
     router?: LLMRouterService,
     cache?: LLMCacheService,
@@ -39,6 +51,23 @@ export class LLMGateway {
     this.telemetry = telemetry || llmTelemetryService;
     this.registry = registry || llmModelRegistry;
     this.rateLimiter = rateLimiter || llmRateLimiterService;
+  }
+
+  /**
+   * Single-flight dedup: if another `generate()` call with the identical dedupe key (same
+   * user/provider/model/prompt/context/system/feature) is already executing the provider call,
+   * piggyback on its Promise instead of firing a second redundant provider request. Falls back to
+   * calling `fn()` directly on any error scheduling the map itself (never blocks a request).
+   */
+  private executeDeduped(key: string, fn: () => Promise<LLMResponse>): Promise<LLMResponse> {
+    const existing = this.inFlightGenerateRequests.get(key);
+    if (existing) return existing;
+
+    const promise = fn().finally(() => {
+      this.inFlightGenerateRequests.delete(key);
+    });
+    this.inFlightGenerateRequests.set(key, promise);
+    return promise;
   }
 
   /**
@@ -97,9 +126,12 @@ export class LLMGateway {
       throw new Error(`Provider "${decision.providerName}" rate limit exceeded. Please retry in ${Math.ceil(rl.resetMs / 1000)}s.`);
     }
 
-    // 5. Execution with Fallback
+    // 5. Execution with Fallback (single-flight deduped across identical concurrent cache misses)
     try {
-      const { response } = await this.fallback.executeWithFallback(provider, req, decision.modelName);
+      const dedupeKey = this.cache.getCacheKey(req, decision.providerName, decision.modelName);
+      const response = await this.executeDeduped(dedupeKey, () =>
+        this.fallback.executeWithFallback(provider, req, decision.modelName).then((r) => r.response)
+      );
 
       const finalRes: LLMResponse = {
         ...response,

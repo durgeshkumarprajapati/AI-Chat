@@ -105,20 +105,39 @@ export class KnowledgeBaseRepository {
       prisma.knowledgeBase.count({ where })
     ]);
 
-    const items: KnowledgeBaseItem[] = await Promise.all(
-      kbs.map(async (kb) => {
-        const stats = await this.getKnowledgeBaseStats(kb.id, userId);
-        return {
-          id: kb.id,
-          userId: kb.userId,
-          name: kb.name,
-          description: kb.description,
-          createdAt: kb.createdAt.toISOString(),
-          updatedAt: kb.updatedAt.toISOString(),
-          ...stats
-        };
-      })
+    // Phase 88 — was previously `kbs.map(async kb => this.getKnowledgeBaseStats(kb.id, userId))`,
+    // which fired 3 queries (member findMany + chunk count + raw embedded-count) PER knowledge
+    // base on every page load (up to 3 * 50 = 150 queries for a full page). Replaced with one
+    // batched lookup across the whole page (3 queries total regardless of page size) via
+    // `getStatsForKnowledgeBases`. Per-KB numeric output is unchanged — verified by computing the
+    // exact same fields (documentCount/completedDocuments/processingDocuments/failedDocuments/
+    // totalChunks/embeddedChunks) from the same underlying rows, just fetched in batch instead of
+    // per-row. `getKnowledgeBaseStats` itself is untouched (still used by the single-KB detail
+    // path in knowledge-base.service.ts).
+    const statsByKb = await this.getStatsForKnowledgeBases(
+      kbs.map((kb) => kb.id),
+      userId
     );
+
+    const items: KnowledgeBaseItem[] = kbs.map((kb) => {
+      const stats = statsByKb.get(kb.id) || {
+        documentCount: 0,
+        completedDocuments: 0,
+        processingDocuments: 0,
+        failedDocuments: 0,
+        totalChunks: 0,
+        embeddedChunks: 0
+      };
+      return {
+        id: kb.id,
+        userId: kb.userId,
+        name: kb.name,
+        description: kb.description,
+        createdAt: kb.createdAt.toISOString(),
+        updatedAt: kb.updatedAt.toISOString(),
+        ...stats
+      };
+    });
 
     const totalPages = Math.ceil(total / pageSize) || 1;
 
@@ -287,6 +306,94 @@ export class KnowledgeBaseRepository {
       totalChunks,
       embeddedChunks
     };
+  }
+
+  /**
+   * Batched equivalent of calling `getKnowledgeBaseStats` once per knowledge base id. Computes
+   * the exact same per-KB fields, but in 3 total queries (member findMany + chunk groupBy + raw
+   * embedded-count groupBy) instead of 3 queries PER knowledge base — used by `findPaginatedByUser`
+   * to avoid an N+1 across a page of results. Returns an empty map for `kbIds.length === 0`.
+   */
+  private async getStatsForKnowledgeBases(
+    kbIds: string[],
+    userId: string
+  ): Promise<Map<string, KnowledgeBaseStats>> {
+    const statsByKb = new Map<string, KnowledgeBaseStats>();
+    if (kbIds.length === 0) return statsByKb;
+
+    const members = await prisma.knowledgeBaseDocument.findMany({
+      where: {
+        knowledgeBaseId: { in: kbIds },
+        document: { userId }
+      },
+      select: {
+        knowledgeBaseId: true,
+        document: { select: { id: true, status: true } }
+      }
+    });
+
+    const docIdsByKb = new Map<string, string[]>();
+    const countsByKb = new Map<string, { completed: number; processing: number; failed: number }>();
+    for (const kbId of kbIds) {
+      docIdsByKb.set(kbId, []);
+      countsByKb.set(kbId, { completed: 0, processing: 0, failed: 0 });
+    }
+
+    const allDocIds: string[] = [];
+    for (const m of members) {
+      docIdsByKb.get(m.knowledgeBaseId)?.push(m.document.id);
+      allDocIds.push(m.document.id);
+      const counts = countsByKb.get(m.knowledgeBaseId);
+      if (!counts) continue;
+      if (m.document.status === 'COMPLETED') counts.completed++;
+      else if (m.document.status === 'PROCESSING' || m.document.status === 'UPLOADING') counts.processing++;
+      else if (m.document.status === 'FAILED') counts.failed++;
+    }
+
+    const chunkCountByDoc = new Map<string, number>();
+    const embeddedCountByDoc = new Map<string, number>();
+
+    if (allDocIds.length > 0) {
+      const [chunkGroups, embeddedRows] = await Promise.all([
+        prisma.documentChunk.groupBy({
+          by: ['documentId'],
+          where: { documentId: { in: allDocIds } },
+          _count: { _all: true }
+        }),
+        prisma.$queryRaw<Array<{ document_id: string; count: bigint }>>`
+          SELECT document_id, COUNT(*)::bigint as count
+          FROM document_chunks
+          WHERE document_id IN (${Prisma.join(allDocIds)}) AND embedding IS NOT NULL
+          GROUP BY document_id
+        `
+      ]);
+
+      for (const g of chunkGroups) chunkCountByDoc.set(g.documentId, g._count._all);
+      for (const r of embeddedRows) embeddedCountByDoc.set(r.document_id, Number(r.count));
+    }
+
+    for (const kbId of kbIds) {
+      const docIds = docIdsByKb.get(kbId) || [];
+      const counts = countsByKb.get(kbId) || { completed: 0, processing: 0, failed: 0 };
+
+      let totalChunks = 0;
+      let embeddedChunks = 0;
+      for (const docId of docIds) {
+        totalChunks += chunkCountByDoc.get(docId) || 0;
+        embeddedChunks += embeddedCountByDoc.get(docId) || 0;
+      }
+
+      statsByKb.set(kbId, {
+        documentCount: docIds.length,
+        completedDocuments: counts.completed,
+        processingDocuments: counts.processing,
+        failedDocuments: counts.failed,
+        totalChunks,
+        embeddedChunks
+      });
+    }
+
+    return statsByKb;
   }
 
   public async getKnowledgeBaseDocumentIds(

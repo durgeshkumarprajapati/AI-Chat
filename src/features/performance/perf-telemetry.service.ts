@@ -11,6 +11,17 @@ export interface PerfTelemetryEvent {
 }
 
 /**
+ * One completed API request timing, as recorded by `withApiTiming`. Phase 88 — additive: this is
+ * new bounded in-memory storage, not a replacement for the existing console-log telemetry.
+ */
+export interface ApiRequestRecord {
+  route: string;
+  durationMs: number;
+  success: boolean;
+  timestamp: string;
+}
+
+/**
  * Purely observational — never influences request handling, never throws, never blocks. Matches
  * the existing console.log-JSON telemetry pattern used by billing.telemetry.service.ts,
  * config-telemetry.service.ts, and rag-telemetry.service.ts, so this is additive infrastructure
@@ -18,6 +29,34 @@ export interface PerfTelemetryEvent {
  * true) purely to allow disabling the log volume in production, not as a correctness control.
  */
 export class PerfTelemetryService {
+  // Phase 88 — bounded in-memory ring buffer of API request timings, same 1000-entry-cap pattern
+  // as LLMTelemetryService (src/features/llm/llm-telemetry.service.ts). Purely additive: existing
+  // `logEvent`/`warnIfSlow`/`withApiTiming` callers are unaffected — this buffer is populated
+  // alongside their existing console-log behavior, never in place of it, and is read only by
+  // telemetry-aggregation.service.ts for the new /admin/performance p50/p95/p99 cards.
+  private requestBuffer: ApiRequestRecord[] = [];
+  private readonly maxBufferSize = 1000;
+
+  /**
+   * Records one completed API request into the bounded ring buffer. Never throws — a recording
+   * failure must never affect the request it's measuring.
+   */
+  public recordApiRequest(record: ApiRequestRecord): void {
+    try {
+      this.requestBuffer.push(record);
+      if (this.requestBuffer.length > this.maxBufferSize) {
+        this.requestBuffer.shift();
+      }
+    } catch {
+      // never let telemetry failures affect the request
+    }
+  }
+
+  /** Read-only snapshot of the current ring buffer, for aggregation. */
+  public getApiRequestBuffer(): ApiRequestRecord[] {
+    return [...this.requestBuffer];
+  }
+
   public async logEvent(payload: PerfTelemetryEvent): Promise<void> {
     try {
       const enabled = await configService.getBoolean('PERF_TELEMETRY_ENABLED', true);
@@ -61,10 +100,22 @@ export function withApiTiming<Args extends unknown[], R>(
       const durationMs = Date.now() - start;
       void perfTelemetryService.logEvent({ event: 'api.request.completed', route: routeName, durationMs });
       void perfTelemetryService.warnIfSlow(`api:${routeName}`, durationMs);
+      perfTelemetryService.recordApiRequest({
+        route: routeName,
+        durationMs,
+        success: true,
+        timestamp: new Date().toISOString()
+      });
       return result;
     } catch (err) {
       const durationMs = Date.now() - start;
       void perfTelemetryService.logEvent({ event: 'api.request.failed', route: routeName, durationMs });
+      perfTelemetryService.recordApiRequest({
+        route: routeName,
+        durationMs,
+        success: false,
+        timestamp: new Date().toISOString()
+      });
       throw err;
     }
   };

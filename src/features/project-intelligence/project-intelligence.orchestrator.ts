@@ -1,6 +1,7 @@
 import { ProjectHealthSnapshot } from '@prisma/client';
 import { entitlementService } from '@/features/billing/entitlement.service';
 import { auditService } from '@/features/audit/audit.service';
+import { publishAutomationEvent } from '@/features/automation/domain-events/automation-domain-event.publisher';
 import { projectHealthService } from './project-health.service';
 import { riskBlockerDetectionService } from './risk-blocker-detection.service';
 import { deadlineIntelligenceService } from './deadline-intelligence.service';
@@ -54,6 +55,45 @@ export class ProjectIntelligenceOrchestrator {
       logFailure('deadlineIntelligence', deadlineResult),
       logFailure('taskMeetingCorrelation', correlationResult)
     ]);
+
+    // Phase 88 — fire-and-forget automation triggers, one per insight actually created THIS run
+    // (naturally bounded by each detection service's own per-run caps; never awaited-and-blocking,
+    // publishAutomationEvent never throws). Dispatched only after both detectors' own results are
+    // known so partial-failure cases (one detector rejected) never fire a trigger for the other.
+    if (riskBlockerResult.status === 'fulfilled') {
+      for (const risk of riskBlockerResult.value.createdRisks) {
+        void publishAutomationEvent({
+          eventType: 'AI_INTELLIGENCE_RISK_DETECTED',
+          sourceUserId: userId,
+          sourceProjectId: projectId,
+          sourceEntityId: risk.id,
+          occurredAt: new Date().toISOString(),
+          payload: { title: risk.title, severity: risk.severity }
+        });
+      }
+      for (const blocker of riskBlockerResult.value.createdBlockers) {
+        void publishAutomationEvent({
+          eventType: 'AI_INTELLIGENCE_BLOCKER_DETECTED',
+          sourceUserId: userId,
+          sourceProjectId: projectId,
+          sourceEntityId: blocker.id,
+          occurredAt: new Date().toISOString(),
+          payload: { title: blocker.title, severity: blocker.severity }
+        });
+      }
+    }
+    if (deadlineResult.status === 'fulfilled') {
+      for (const deadlineRisk of deadlineResult.value.createdDeadlineRisks) {
+        void publishAutomationEvent({
+          eventType: 'AI_INTELLIGENCE_DEADLINE_RISK_DETECTED',
+          sourceUserId: userId,
+          sourceProjectId: projectId,
+          sourceEntityId: deadlineRisk.id,
+          occurredAt: new Date().toISOString(),
+          payload: { title: deadlineRisk.title, severity: deadlineRisk.severity }
+        });
+      }
+    }
 
     return {
       health: healthResult.value,

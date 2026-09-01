@@ -25,6 +25,7 @@
     "../src/errors/**/*",
     "../src/features/rag/**/*",
     "../src/features/ai-agent/**/*",
-    "../src/features/notifications/**/*"
+    "../src/features/notifications/**/*",
+    "../src/features/automation/**/*"
   ]
 }

@@ -158,6 +158,7 @@ model User {
   documentTranslations          DocumentTranslation[]
   aiIntelligenceSnapshots       AIIntelligenceSnapshot[]
   aiIntelligencePreference      AIIntelligencePreference?
+  automations                   Automation[]
 
   @@index([email])
   @@map("users")
@@ -2024,6 +2025,7 @@ model Project {
   agentRuns              AgentRun[]
   aiIntelligenceSnapshots AIIntelligenceSnapshot[]
   notifications          Notification[]
+  automations            Automation[]
 
   @@index([ownerId])
   @@index([status])
@@ -2732,6 +2734,9 @@ enum NotificationType {
   AGENT_EXECUTION_STARTED
   AGENT_EXECUTION_COMPLETED
   AGENT_EXECUTION_FAILED
+  // Phase 88 — AI Workflow Automation
+  AUTOMATION_EXECUTION_NOTIFICATION
+  AUTOMATION_APPROVAL_REQUIRED
 }
 
 // Phase 86 — additive enums for the new proactive AI-intelligence delivery layer.
@@ -4035,6 +4040,10 @@ model AgentRun {
   user  User            @relation(fields: [userId], references: [id], onDelete: Cascade)
   project Project?      @relation(fields: [projectId], references: [id], onDelete: Cascade)
   steps AgentPlanStep[]
+  // Phase 88 — additive back-relation only; AgentRun itself is untouched otherwise (see
+  // AutomationExecution.agentRunId above). An AgentRun created on an Automation's behalf is a
+  // completely ordinary AgentRun in every other respect.
+  automationExecutions AutomationExecution[]
 
   @@index([userId, status])
   @@index([projectId])
@@ -4095,9 +4104,191 @@ model AgentToolExecution {
   @@map("agent_tool_executions")
 }
 
+// ============================================================================
+// Phase 88 Part A — AI Workflow Automation (trigger -> AI-agent-execution ->
+// approval -> action automation). ADDITIVE layer built entirely on top of the
+// Phase 87 AI Agent platform above (AgentRun/AgentPlanStep/AgentToolExecution
+// are reused as-is; nothing in this section modifies them except the single
+// additive `automationExecutions` back-relation on AgentRun below).
+//
+// NAMING: deliberately prefixed `Automation*` (never `Workflow*`) — `Workflow`,
+// `WorkflowVersion`, `WorkflowRun`, `WorkflowRunNode`, `WorkflowTrigger` are
+// already owned by the unrelated Phase 35 "AI Workflow Builder" feature in
+// src/features/workflow/. Reusing those names would both collide in this
+// Prisma schema and conflate two unrelated features conceptually.
+// ============================================================================
 
+enum AutomationStatus {
+  DRAFT
+  ACTIVE
+  PAUSED
+  ARCHIVED
+}
 
+enum AutomationExecutionStatus {
+  QUEUED
+  RUNNING
+  WAITING_APPROVAL
+  COMPLETED
+  PARTIALLY_COMPLETED
+  FAILED
+  CANCELLED
+}
 
+enum AutomationStepStatus {
+  PENDING
+  RUNNING
+  WAITING_APPROVAL
+  SUCCEEDED
+  FAILED
+  SKIPPED
+  CANCELLED
+}
+
+enum AutomationTriggerType {
+  MEETING_ANALYSIS_COMPLETED
+  AI_INTELLIGENCE_RISK_DETECTED
+  AI_INTELLIGENCE_BLOCKER_DETECTED
+  AI_INTELLIGENCE_DEADLINE_RISK_DETECTED
+  DOCUMENT_PROCESSING_COMPLETED
+  KNOWLEDGE_CONTRADICTION_DETECTED
+  MANUAL
+}
+
+enum AutomationNodeType {
+  TRIGGER
+  CONDITION
+  AI_ANALYSIS
+  AI_AGENT
+  APPROVAL
+  CLICKUP_ACTION
+  CALENDAR_ACTION
+  NOTIFICATION
+  DELAY
+  END
+}
+
+// A user-owned automation "document" — the mutable container. Its actual node-graph definition
+// lives on an immutable AutomationVersion; `currentVersionId` points at the version new
+// executions are created against. Renaming/re-describing an automation never requires a new
+// version; changing its node graph always does (see AutomationVersion below).
+model Automation {
+  id                String            @id @default(uuid())
+  userId            String            @map("user_id")
+  projectId         String?           @map("project_id")
+  name              String
+  description       String?           @db.Text
+  status            AutomationStatus  @default(DRAFT)
+  isActive          Boolean           @default(false) @map("is_active")
+  currentVersionId  String?           @unique @map("current_version_id")
+  createdAt         DateTime          @default(now()) @map("created_at")
+  updatedAt         DateTime          @updatedAt @map("updated_at")
+
+  user            User                       @relation(fields: [userId], references: [id], onDelete: Cascade)
+  project         Project?                   @relation(fields: [projectId], references: [id], onDelete: Cascade)
+  versions        AutomationVersion[]        @relation("AutomationVersions")
+  currentVersion  AutomationVersion?         @relation("AutomationCurrentVersion", fields: [currentVersionId], references: [id], onDelete: SetNull)
+  executions      AutomationExecution[]
+  triggerBindings AutomationTriggerBinding[]
+
+  @@index([userId, status])
+  @@index([projectId])
+  @@map("automations")
+}
+
+// Immutable once created — publishing a new version never mutates an existing row, and an
+// already-created AutomationExecution keeps pointing at the exact version it started from
+// (AutomationExecution.automationVersionId), even after the automation's currentVersionId moves
+// on to a newer version.
+model AutomationVersion {
+  id               String   @id @default(uuid())
+  automationId     String   @map("automation_id")
+  versionNumber    Int      @map("version_number")
+  definition       Json
+  checksum         String
+  createdByUserId  String   @map("created_by_user_id")
+  createdAt        DateTime @default(now()) @map("created_at")
+
+  automation Automation            @relation("AutomationVersions", fields: [automationId], references: [id], onDelete: Cascade)
+  currentFor Automation?           @relation("AutomationCurrentVersion")
+  executions AutomationExecution[]
+
+  @@unique([automationId, versionNumber])
+  @@index([automationId])
+  @@map("automation_versions")
+}
+
+// Which domain-event trigger types are wired to fire this automation. `filterJson` is a small,
+// bounded key/value equality filter evaluated against the trigger event's own sanitized payload
+// (never a general expression language) — see automation-trigger-matcher.processor.ts.
+model AutomationTriggerBinding {
+  id            String                 @id @default(uuid())
+  automationId  String                 @map("automation_id")
+  triggerType   AutomationTriggerType  @map("trigger_type")
+  enabled       Boolean                @default(true)
+  filterJson    Json?                  @map("filter_json")
+  lastMatchedAt DateTime?              @map("last_matched_at")
+  createdAt     DateTime               @default(now()) @map("created_at")
+
+  automation Automation @relation(fields: [automationId], references: [id], onDelete: Cascade)
+
+  @@index([triggerType, enabled])
+  @@index([automationId])
+  @@map("automation_trigger_bindings")
+}
+
+// One row per triggered run of an automation's graph. `idempotencyKey` is the authoritative,
+// DB-unique idempotency gate for "this exact trigger event already started exactly one
+// execution" (automation:v1:{automationId}:{triggerType}:{sourceEntityId} — see
+// automation-trigger-matcher.processor.ts / AutomationExecutionDedupService).
+model AutomationExecution {
+  id                    String                     @id @default(uuid())
+  automationId          String                     @map("automation_id")
+  automationVersionId   String                     @map("automation_version_id")
+  triggerType           AutomationTriggerType      @map("trigger_type")
+  triggerPayload        Json?                      @map("trigger_payload")
+  idempotencyKey        String                     @unique @map("idempotency_key")
+  status                AutomationExecutionStatus  @default(QUEUED)
+  agentRunId            String?                    @map("agent_run_id")
+  startedAt             DateTime?                  @map("started_at")
+  completedAt           DateTime?                  @map("completed_at")
+  errorMessage          String?                    @db.Text @map("error_message")
+  createdAt             DateTime                   @default(now()) @map("created_at")
+  updatedAt             DateTime                   @updatedAt @map("updated_at")
+
+  automation Automation              @relation(fields: [automationId], references: [id], onDelete: Cascade)
+  version    AutomationVersion       @relation(fields: [automationVersionId], references: [id], onDelete: Restrict)
+  agentRun   AgentRun?               @relation(fields: [agentRunId], references: [id], onDelete: SetNull)
+  steps      AutomationExecutionStep[]
+
+  @@index([automationId, createdAt])
+  @@index([status])
+  @@map("automation_executions")
+}
+
+// One row per node visited while walking an AutomationExecution's graph. `sanitizedInput`/
+// `sanitizedOutput` are ALWAYS passed through sanitizeForStorage() (see
+// automation-engine.service.ts) before being persisted here — never raw tool input/output, which
+// may transiently contain resolved template values from upstream node outputs.
+model AutomationExecutionStep {
+  id              String                 @id @default(uuid())
+  executionId     String                 @map("execution_id")
+  nodeKey         String                 @map("node_key")
+  nodeType        AutomationNodeType     @map("node_type")
+  status          AutomationStepStatus   @default(PENDING)
+  sanitizedInput  Json?                  @map("sanitized_input")
+  sanitizedOutput Json?                  @map("sanitized_output")
+  errorMessage    String?                @db.Text @map("error_message")
+  retryCount      Int                    @default(0) @map("retry_count")
+  startedAt       DateTime?              @map("started_at")
+  completedAt     DateTime?              @map("completed_at")
+  createdAt       DateTime               @default(now()) @map("created_at")
+
+  execution AutomationExecution @relation(fields: [executionId], references: [id], onDelete: Cascade)
+
+  @@index([executionId])
+  @@map("automation_execution_steps")
+}
 
 
 

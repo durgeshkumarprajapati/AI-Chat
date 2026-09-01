@@ -1,5 +1,6 @@
 import { prisma } from '@/lib/prisma';
 import { KnowledgeConflict, ConflictStatus } from '@prisma/client';
+import { publishAutomationEvent } from '@/features/automation/domain-events/automation-domain-event.publisher';
 
 export class ContradictionService {
   public async detectClaimContradictions(
@@ -51,6 +52,20 @@ export class ContradictionService {
           }
         }
       }
+    }
+
+    // Phase 88 — fire-and-forget automation trigger, one per conflict actually created this run
+    // (already naturally bounded by the `claims.take(200)` cap above; never awaited-and-blocking,
+    // never allowed to affect this method's own return value).
+    for (const conflict of conflicts) {
+      void publishAutomationEvent({
+        eventType: 'KNOWLEDGE_CONTRADICTION_DETECTED',
+        sourceUserId: userId,
+        sourceProjectId: projectId ?? null,
+        sourceEntityId: conflict.id,
+        occurredAt: new Date().toISOString(),
+        payload: { conflictType: conflict.conflictType, confidence: conflict.confidence }
+      });
     }
 
     return conflicts;

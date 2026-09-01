@@ -14,9 +14,22 @@ import {
   withSoftTimeout
 } from './project-intelligence.util';
 
+export interface CreatedInsightSummary {
+  id: string;
+  title: string;
+  severity: IntelligenceSeverity;
+}
+
 export interface RiskBlockerDetectionResult {
   risksCreated: number;
   blockersCreated: number;
+  // Phase 88 — additive. Mirrors the exact accumulation pattern already used by
+  // knowledge-intelligence/contradiction-detection.service.ts's `insightIds` array. Populated
+  // ONLY with insights actually created this run (naturally bounded by this service's own
+  // per-detector loops/caps) — consumed by project-intelligence.orchestrator.ts to dispatch one
+  // AI_INTELLIGENCE_RISK_DETECTED / AI_INTELLIGENCE_BLOCKER_DETECTED automation trigger per item.
+  createdRisks: CreatedInsightSummary[];
+  createdBlockers: CreatedInsightSummary[];
 }
 
 const MIN_TITLE_LENGTH_FOR_DEPENDENCY_MATCH = 6; // avoid trivial substring matches on short titles
@@ -35,7 +48,7 @@ export class RiskBlockerDetectionService {
       // Detection (unlike health computation) simply produces nothing when disabled — a
       // no-op is indistinguishable in effect from "nothing detected this run", which is a safe
       // default for a run-on-demand/periodic-job style method.
-      return { risksCreated: 0, blockersCreated: 0 };
+      return { risksCreated: 0, blockersCreated: 0, createdRisks: [], createdBlockers: [] };
     }
 
     const maxCandidates = await configService.getNumber('INTELLIGENCE_MAX_CANDIDATES', 50);
@@ -44,7 +57,7 @@ export class RiskBlockerDetectionService {
     return withSoftTimeout(
       () => this.run(userId, projectId, maxCandidates),
       timeoutMs,
-      { risksCreated: 0, blockersCreated: 0 }
+      { risksCreated: 0, blockersCreated: 0, createdRisks: [], createdBlockers: [] }
     );
   }
 
@@ -89,6 +102,8 @@ export class RiskBlockerDetectionService {
 
     let risksCreated = 0;
     let blockersCreated = 0;
+    const createdRisks: CreatedInsightSummary[] = [];
+    const createdBlockers: CreatedInsightSummary[] = [];
 
     // ---------------------------------------------------------------------------------------
     // Risk detection: existing structured MeetingAnalysis.risks output, one insight per item.
@@ -100,7 +115,7 @@ export class RiskBlockerDetectionService {
         if (riskDedupeKeys.has(key)) continue;
         try {
           const severity = deriveRiskSeverity(riskText);
-          await prisma.intelligenceInsight.create({
+          const created = await prisma.intelligenceInsight.create({
             data: {
               userId,
               projectId,
@@ -128,6 +143,7 @@ export class RiskBlockerDetectionService {
           });
           riskDedupeKeys.add(key);
           risksCreated += 1;
+          createdRisks.push({ id: created.id, title: created.title, severity: created.severity });
         } catch {
           // per-item continue on error
         }
@@ -144,7 +160,7 @@ export class RiskBlockerDetectionService {
       const key = `EXPLICIT::${suggestion.id}`;
       if (blockerDedupeKeys.has(key)) continue;
       try {
-        await prisma.intelligenceInsight.create({
+        const created = await prisma.intelligenceInsight.create({
           data: {
             userId,
             projectId,
@@ -170,6 +186,7 @@ export class RiskBlockerDetectionService {
         });
         blockerDedupeKeys.add(key);
         blockersCreated += 1;
+        createdBlockers.push({ id: created.id, title: created.title, severity: created.severity });
       } catch {
         // continue
       }
@@ -191,7 +208,7 @@ export class RiskBlockerDetectionService {
               const key = `EXPLICIT::${task.id}`;
               if (blockerDedupeKeys.has(key)) continue;
               try {
-                await prisma.intelligenceInsight.create({
+                const created = await prisma.intelligenceInsight.create({
                   data: {
                     userId,
                     projectId,
@@ -217,6 +234,7 @@ export class RiskBlockerDetectionService {
                 });
                 blockerDedupeKeys.add(key);
                 blockersCreated += 1;
+                createdBlockers.push({ id: created.id, title: created.title, severity: created.severity });
               } catch {
                 // continue
               }
@@ -243,7 +261,7 @@ export class RiskBlockerDetectionService {
         const key = `PROBABLE::${sourceId}`;
         if (blockerDedupeKeys.has(key)) continue;
         try {
-          await prisma.intelligenceInsight.create({
+          const created = await prisma.intelligenceInsight.create({
             data: {
               userId,
               projectId,
@@ -270,6 +288,7 @@ export class RiskBlockerDetectionService {
           });
           blockerDedupeKeys.add(key);
           blockersCreated += 1;
+          createdBlockers.push({ id: created.id, title: created.title, severity: created.severity });
         } catch {
           // continue
         }
@@ -289,7 +308,7 @@ export class RiskBlockerDetectionService {
         const key = `DEPENDENCY_RISK::${a.id}`;
         if (blockerDedupeKeys.has(key)) continue;
         try {
-          await prisma.intelligenceInsight.create({
+          const created = await prisma.intelligenceInsight.create({
             data: {
               userId,
               projectId,
@@ -311,6 +330,7 @@ export class RiskBlockerDetectionService {
           });
           blockerDedupeKeys.add(key);
           blockersCreated += 1;
+          createdBlockers.push({ id: created.id, title: created.title, severity: created.severity });
         } catch {
           // continue
         }
@@ -318,7 +338,7 @@ export class RiskBlockerDetectionService {
       }
     }
 
-    return { risksCreated, blockersCreated };
+    return { risksCreated, blockersCreated, createdRisks, createdBlockers };
   }
 }
 

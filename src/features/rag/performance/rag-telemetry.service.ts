@@ -27,10 +27,22 @@ export interface RagTelemetryEvent {
 }
 
 export class RagPerformanceTelemetryService {
+  // Phase 88 — the `rag.cache.answer.hit` / `rag.cache.answer.miss` event names already existed
+  // in the RagTelemetryEvent union above but were never fired anywhere; these counters make that
+  // pre-declared-but-unused instrumentation queryable, mirroring the existing cacheHits/
+  // cacheMisses pattern in knowledge-graph-telemetry.service.ts. Counting happens unconditionally
+  // (including under NODE_ENV=test) so it can be asserted in tests; only the console.log line
+  // below stays suppressed in tests, exactly as before this change.
+  private cacheHits = 0;
+  private cacheMisses = 0;
+
   /**
    * Logs structured RAG performance telemetry without logging raw document content or secrets.
    */
   public logEvent(payload: RagTelemetryEvent): void {
+    if (payload.event === 'rag.cache.answer.hit') this.cacheHits++;
+    else if (payload.event === 'rag.cache.answer.miss') this.cacheMisses++;
+
     if (process.env.NODE_ENV === 'test') return;
 
     try {
@@ -45,6 +57,19 @@ export class RagPerformanceTelemetryService {
     } catch (err) {
       console.warn('[RAGTelemetry] Failed to log telemetry:', err);
     }
+  }
+
+  /**
+   * Queryable RAG answer-cache hit ratio, sourced from the `rag.cache.answer.hit`/`.miss` counters
+   * above. Used by telemetry-aggregation.service.ts's getCacheHitRatios(). Never throws.
+   */
+  public getCacheDiagnostics(): { hits: number; misses: number; hitRatio: number } {
+    const total = this.cacheHits + this.cacheMisses;
+    return {
+      hits: this.cacheHits,
+      misses: this.cacheMisses,
+      hitRatio: total > 0 ? Number(((this.cacheHits / total) * 100).toFixed(1)) : 0
+    };
   }
 
   private sanitizeMetadata(data: Record<string, unknown>): Record<string, unknown> {

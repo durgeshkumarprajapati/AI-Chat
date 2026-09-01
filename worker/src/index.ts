@@ -12,12 +12,16 @@ import { aiIntelligenceProcessor } from './processors/ai-intelligence.processor.
 import { notificationDispatchProcessor } from './processors/notification-dispatch.processor.js';
 import { notificationEmailProcessor } from './processors/notification-email.processor.js';
 import { aiAgentExecutionProcessor } from './processors/ai-agent-execution.processor.js';
+import { automationTriggerMatcherProcessor } from './processors/automation-trigger-matcher.processor.js';
+import { automationExecutionProcessor } from './processors/automation-execution.processor.js';
 import {
   MultimodalJobPayload,
   AIIntelligenceJobPayload,
   NotificationDispatchJobPayload,
   NotificationEmailJobPayload,
   AIAgentExecutionJobPayload,
+  AutomationDomainEventPayload,
+  AutomationExecutionJobPayload,
   QUEUES,
   rabbitmq
 } from '@/lib/rabbitmq';
@@ -40,6 +44,8 @@ const AI_INTELLIGENCE_WEEKLY_QUEUE_NAME = QUEUES.AI_INTELLIGENCE_WEEKLY;
 const NOTIFICATION_DISPATCH_QUEUE_NAME = QUEUES.NOTIFICATION_DISPATCH;
 const NOTIFICATION_EMAIL_QUEUE_NAME = QUEUES.NOTIFICATION_EMAIL;
 const AI_AGENT_EXECUTION_QUEUE_NAME = QUEUES.AI_AGENT_EXECUTION;
+const AUTOMATION_EVENT_DISPATCH_QUEUE_NAME = QUEUES.AUTOMATION_EVENT_DISPATCH;
+const AUTOMATION_EXECUTION_QUEUE_NAME = QUEUES.AUTOMATION_EXECUTION;
 const RABBITMQ_URL = process.env.RABBITMQ_URL || 'amqp://guest:guest@localhost:5672';
 const MAX_RETRIES = 3;
 const TIMEOUT_MINUTES = process.env.DOCUMENT_PROCESSING_TIMEOUT_MINUTES
@@ -58,6 +64,8 @@ let aiIntelligenceWeeklyConsumerTag: string | null = null;
 let notificationDispatchConsumerTag: string | null = null;
 let notificationEmailConsumerTag: string | null = null;
 let aiAgentExecutionConsumerTag: string | null = null;
+let automationEventDispatchConsumerTag: string | null = null;
+let automationExecutionConsumerTag: string | null = null;
 let isShuttingDown = false;
 let activeInFlightJobs = 0;
 
@@ -441,6 +449,88 @@ export async function startWorker() {
     );
     aiAgentExecutionConsumerTag = aiAgentExecutionConsumeResult.consumerTag;
 
+    // 9. Consume automation-event-dispatch (channel2). Phase 88 — matches domain-event triggers
+    // against AutomationTriggerBinding rows and creates/enqueues AutomationExecution jobs.
+    await channel2.assertQueue(AUTOMATION_EVENT_DISPATCH_QUEUE_NAME, { durable: true });
+    const automationEventDispatchConsumeResult = await channel2.consume(
+      AUTOMATION_EVENT_DISPATCH_QUEUE_NAME,
+      async (msg: ConsumeMessage | null) => {
+        if (!msg || isShuttingDown) return;
+
+        activeInFlightJobs++;
+        let payload: AutomationDomainEventPayload | null = null;
+
+        try {
+          payload = JSON.parse(msg.content.toString()) as AutomationDomainEventPayload;
+          console.log(`[Worker-AutomationTriggerMatcher] Job received: ${payload.eventType}/${payload.sourceEntityId} (Job ID: ${payload.jobId})`);
+
+          const result = await automationTriggerMatcherProcessor.process(payload);
+
+          if (result.status === 'SUCCESS' || result.status === 'STALE_DISCARD' || result.action === 'PERMANENT_ERROR') {
+            channel2?.ack(msg);
+          } else if (result.action === 'TRANSIENT_ERROR') {
+            const attemptCount = payload.attempt || 1;
+            if (attemptCount >= MAX_RETRIES) {
+              console.error(`[Worker-AutomationTriggerMatcher] Max retries (${MAX_RETRIES}) reached for job: ${payload.jobId}`);
+              channel2?.ack(msg);
+            } else {
+              channel2?.nack(msg, false, true);
+            }
+          }
+        } catch (error) {
+          console.error('[Worker-AutomationTriggerMatcher] Unexpected job execution error:', error instanceof Error ? error.message : error);
+          if (msg && channel2) {
+            channel2.ack(msg);
+          }
+        } finally {
+          activeInFlightJobs--;
+        }
+      },
+      { noAck: false }
+    );
+    automationEventDispatchConsumerTag = automationEventDispatchConsumeResult.consumerTag;
+
+    // 10. Consume automation-execution (channel2). Phase 88 — walks one AutomationExecution's
+    // node graph via automationEngineService.runExecution.
+    await channel2.assertQueue(AUTOMATION_EXECUTION_QUEUE_NAME, { durable: true });
+    const automationExecutionConsumeResult = await channel2.consume(
+      AUTOMATION_EXECUTION_QUEUE_NAME,
+      async (msg: ConsumeMessage | null) => {
+        if (!msg || isShuttingDown) return;
+
+        activeInFlightJobs++;
+        let payload: AutomationExecutionJobPayload | null = null;
+
+        try {
+          payload = JSON.parse(msg.content.toString()) as AutomationExecutionJobPayload;
+          console.log(`[Worker-AutomationExecution] Job received for execution: ${payload.executionId} (Job ID: ${payload.jobId})`);
+
+          const result = await automationExecutionProcessor.process(payload);
+
+          if (result.status === 'SUCCESS' || result.status === 'STALE_DISCARD' || result.action === 'PERMANENT_ERROR') {
+            channel2?.ack(msg);
+          } else if (result.action === 'TRANSIENT_ERROR') {
+            const attemptCount = payload.attempt || 1;
+            if (attemptCount >= MAX_RETRIES) {
+              console.error(`[Worker-AutomationExecution] Max retries (${MAX_RETRIES}) reached for job: ${payload.jobId}`);
+              channel2?.ack(msg);
+            } else {
+              channel2?.nack(msg, false, true);
+            }
+          }
+        } catch (error) {
+          console.error('[Worker-AutomationExecution] Unexpected job execution error:', error instanceof Error ? error.message : error);
+          if (msg && channel2) {
+            channel2.ack(msg);
+          }
+        } finally {
+          activeInFlightJobs--;
+        }
+      },
+      { noAck: false }
+    );
+    automationExecutionConsumerTag = automationExecutionConsumeResult.consumerTag;
+
     // Start periodic Google Calendar Sync Retry loop
     const syncInterval = setInterval(async () => {
       if (isShuttingDown) return;
@@ -616,6 +706,51 @@ export async function startWorker() {
       }
     }, notificationRetentionSweepIntervalMs);
     notificationRetentionSweepInterval.unref();
+
+    // Phase 88 — periodic DELAY-node re-check tick. RabbitMQ has no native delay; a DELAY node's
+    // handler (automation-engine.service.ts) records `nextRunAt` on its AutomationExecutionStep
+    // and stops walking rather than blocking the worker with an in-process sleep. This tick finds
+    // RUNNING DELAY steps whose recorded nextRunAt has come due and re-enqueues their owning
+    // execution — the engine re-enters runExecution(), sees the delay has elapsed, and continues
+    // the walk. A failure here never affects any other worker job.
+    const automationTriggerSchedulerIntervalMs = await configService.getNumber(
+      'WORKFLOW_TRIGGER_SCHEDULER_INTERVAL_MS',
+      60000
+    );
+    const automationDelayReenqueueInterval = setInterval(async () => {
+      if (isShuttingDown) return;
+      try {
+        const workflowAutomationEnabled = await configService.getBoolean('WORKFLOW_AUTOMATION_ENABLED', true);
+        if (!workflowAutomationEnabled) return;
+
+        const dueDelaySteps = await prisma.automationExecutionStep.findMany({
+          where: { nodeType: 'DELAY', status: 'RUNNING' },
+          select: { id: true, executionId: true, sanitizedOutput: true }
+        });
+
+        const now = Date.now();
+        for (const step of dueDelaySteps) {
+          const nextRunAtRaw = (step.sanitizedOutput as { nextRunAt?: string } | null)?.nextRunAt;
+          if (!nextRunAtRaw || new Date(nextRunAtRaw).getTime() > now) continue;
+
+          try {
+            await rabbitmq.publishToQueue<AutomationExecutionJobPayload>(QUEUES.AUTOMATION_EXECUTION, {
+              jobType: 'AUTOMATION_EXECUTION',
+              version: 1,
+              jobId: randomUUID(),
+              executionId: step.executionId,
+              attempt: 1,
+              createdAt: new Date().toISOString()
+            });
+          } catch (err) {
+            console.error(`[Worker] Failed to re-enqueue delayed automation execution ${step.executionId}:`, err);
+          }
+        }
+      } catch (err) {
+        console.error('[Worker] Periodic automation DELAY re-check error:', err);
+      }
+    }, automationTriggerSchedulerIntervalMs);
+    automationDelayReenqueueInterval.unref();
   } catch (error) {
     console.error('[Worker] Failed to start worker:', error);
     process.exit(1);
@@ -664,6 +799,14 @@ export async function shutdownWorker(signal?: string) {
     if (aiAgentExecutionConsumerTag && channel2) {
       await channel2.cancel(aiAgentExecutionConsumerTag).catch(() => {});
       aiAgentExecutionConsumerTag = null;
+    }
+    if (automationEventDispatchConsumerTag && channel2) {
+      await channel2.cancel(automationEventDispatchConsumerTag).catch(() => {});
+      automationEventDispatchConsumerTag = null;
+    }
+    if (automationExecutionConsumerTag && channel2) {
+      await channel2.cancel(automationExecutionConsumerTag).catch(() => {});
+      automationExecutionConsumerTag = null;
     }
     console.log('[Worker] RabbitMQ consumers stopped.');
 

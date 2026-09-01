@@ -314,6 +314,12 @@ export class AnswerOrchestratorService {
     latencyTrace.cacheLookupMs = cacheLookupMs;
 
     if (cachedExact) {
+      ragPerformanceTelemetryService.logEvent({
+        event: 'rag.cache.answer.hit',
+        requestId: execCtx.requestId,
+        cacheHit: true,
+        metadata: { cacheType: 'exact' }
+      });
       latencyTrace.totalMs = Date.now() - startTime;
       return {
         conversationId: input.conversationId || '',
@@ -352,6 +358,12 @@ export class AnswerOrchestratorService {
     if (semanticLookup.similarity !== null) latencyTrace.semanticSimilarity = semanticLookup.similarity;
     latencyTrace.semanticThreshold = env.server?.RAG_SEMANTIC_CACHE_THRESHOLD ?? 0.90;
     if (cachedSemantic) {
+      ragPerformanceTelemetryService.logEvent({
+        event: 'rag.cache.answer.hit',
+        requestId: execCtx.requestId,
+        cacheHit: true,
+        metadata: { cacheType: 'semantic' }
+      });
       latencyTrace.totalMs = Date.now() - startTime;
       return {
         conversationId: input.conversationId || '', answerMode: cachedSemantic.answerMode as AnswerMode,
@@ -362,6 +374,19 @@ export class AnswerOrchestratorService {
         vectorSearchCalled: false, keywordSearchCalled: false, rerankCalled: false,
         recoveryAttempted: false, recoveryAttempts: 0, latencyTrace
       };
+    }
+
+    // Neither exact nor semantic cache produced a usable answer for this request — one miss per
+    // request, recorded here (after both lookups, before falling through to full retrieval).
+    // Deliberately excludes `shouldBypassCache` requests (documentTypeFilter/documentIdFilter/
+    // skipCache) since those never actually queried the cache — counting them would understate
+    // the real hit ratio for a metric that isn't a miss at all, just an intentional bypass.
+    if (!this.shouldBypassCache(input)) {
+      ragPerformanceTelemetryService.logEvent({
+        event: 'rag.cache.answer.miss',
+        requestId: execCtx.requestId,
+        cacheHit: false
+      });
     }
 
     const sourceMode = input.sourceMode || 'documents_only';

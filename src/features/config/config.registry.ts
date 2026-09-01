@@ -1250,6 +1250,32 @@ export const CONFIG_REGISTRY: Record<string, RegistryConfigItem> = {
     isHighImpact: false,
     requiresRestart: false
   },
+  PERF_API_TARGET_LATENCY_MS: {
+    key: 'PERF_API_TARGET_LATENCY_MS',
+    valueType: ConfigValueType.NUMBER,
+    category: ConfigCategory.PERFORMANCE,
+    defaultValue: '3000',
+    purpose: 'Phase 88 — target p95 API response latency in milliseconds ("Sub-3-Second Response Architecture"). Purely observational: /admin/performance compares the live p95 against this to render a met/missed badge. Never affects request handling.',
+    description: 'Target API response latency (Sub-3s goal).',
+    isEditable: true,
+    isHighImpact: false,
+    requiresRestart: false,
+    minValue: 100,
+    maxValue: 30000
+  },
+  PERF_SLOW_REQUEST_THRESHOLD_MS: {
+    key: 'PERF_SLOW_REQUEST_THRESHOLD_MS',
+    valueType: ConfigValueType.NUMBER,
+    category: ConfigCategory.PERFORMANCE,
+    defaultValue: '1000',
+    purpose: 'Phase 88 — duration threshold in milliseconds above which an entry in the /admin/performance "slowest operations" table is flagged as slow. Distinct from PERF_SLOW_QUERY_THRESHOLD_MS (which gates the existing console.warn slow-operation log); this one only affects display, never logging or request handling.',
+    description: 'Slowest-operations table highlight threshold.',
+    isEditable: true,
+    isHighImpact: false,
+    requiresRestart: false,
+    minValue: 100,
+    maxValue: 30000
+  },
   BILLING_RECONCILIATION_INTERVAL_MS: {
     key: 'BILLING_RECONCILIATION_INTERVAL_MS',
     valueType: ConfigValueType.NUMBER,
@@ -2122,6 +2148,176 @@ export const CONFIG_REGISTRY: Record<string, RegistryConfigItem> = {
     isEditable: true,
     isHighImpact: true,
     requiresRestart: false
+  },
+  // ==========================================
+  // PHASE 88 PART A — AI WORKFLOW AUTOMATION (trigger -> AI-agent-execution -> approval -> action
+  // automation, built additively on top of the Phase 87 AI Agent platform). Config KEY NAMES use
+  // the `WORKFLOW_*` prefix per the original spec's exact naming even though the feature itself is
+  // internally named "Automation" (to avoid a Prisma-schema collision with the unrelated Phase 35
+  // "AI Workflow Builder" — see automation.types.ts's naming doc) — this is a key-naming choice
+  // only, not a model collision.
+  //
+  // WORKFLOW_AUTOMATION_ENABLED defaults to TRUE (unlike most other new-feature flags in this
+  // codebase, which default OFF): per explicit product-owner instruction, new flags default
+  // ENABLED unless they would cause an external side effect/billing/security risk without human
+  // approval. This flag only gates the automation ENGINE being reachable at all — every individual
+  // external-action node (AI_AGENT/CLICKUP_ACTION/CALENDAR_ACTION/APPROVAL) still requires human
+  // approval via the reused, unmodified Phase 87 approval gate regardless of this flag's value, so
+  // enabling it alone causes zero unapproved side effects.
+  // ==========================================
+  WORKFLOW_AUTOMATION_ENABLED: {
+    key: 'WORKFLOW_AUTOMATION_ENABLED',
+    valueType: ConfigValueType.BOOLEAN,
+    category: ConfigCategory.FEATURE_FLAG,
+    defaultValue: 'true',
+    purpose: 'Master flag gating whether the AI Workflow Automation engine (trigger matching + graph execution) is reachable at all. Every external-action node still requires human approval via the existing Phase 87 gate regardless.',
+    description: 'AI Workflow Automation master enable flag.',
+    isEditable: true,
+    isHighImpact: true,
+    requiresRestart: false
+  },
+  WORKFLOW_MAX_NODES: {
+    key: 'WORKFLOW_MAX_NODES',
+    valueType: ConfigValueType.NUMBER,
+    category: ConfigCategory.PERFORMANCE,
+    defaultValue: '25',
+    purpose: 'Maximum number of nodes allowed in a single AutomationVersion.definition graph.',
+    description: 'Automation graph node count cap.',
+    isEditable: true,
+    isHighImpact: false,
+    requiresRestart: false,
+    minValue: 1,
+    maxValue: 100
+  },
+  WORKFLOW_MAX_EXECUTIONS_PER_HOUR: {
+    key: 'WORKFLOW_MAX_EXECUTIONS_PER_HOUR',
+    valueType: ConfigValueType.NUMBER,
+    category: ConfigCategory.SECURITY,
+    defaultValue: '20',
+    purpose: 'Maximum AutomationExecutions a single automation may start within a rolling hour, protecting against a trigger-storm/runaway-loop scenario.',
+    description: 'Per-automation hourly execution rate limit.',
+    isEditable: true,
+    isHighImpact: true,
+    requiresRestart: false,
+    minValue: 1,
+    maxValue: 200
+  },
+  WORKFLOW_EXECUTION_TIMEOUT_MS: {
+    key: 'WORKFLOW_EXECUTION_TIMEOUT_MS',
+    valueType: ConfigValueType.NUMBER,
+    category: ConfigCategory.PERFORMANCE,
+    defaultValue: '300000',
+    purpose: 'Maximum wall-clock time (from AutomationExecution.createdAt) an execution may spend walking its graph before being marked FAILED.',
+    description: 'Automation execution total time budget.',
+    isEditable: true,
+    isHighImpact: true,
+    requiresRestart: false,
+    minValue: 10000,
+    maxValue: 1800000
+  },
+  WORKFLOW_NODE_TIMEOUT_MS: {
+    key: 'WORKFLOW_NODE_TIMEOUT_MS',
+    valueType: ConfigValueType.NUMBER,
+    category: ConfigCategory.PERFORMANCE,
+    defaultValue: '30000',
+    purpose: 'Default per-node timeout budget (e.g. AI_ANALYSIS) when a node\'s own config does not override it.',
+    description: 'Automation per-node default timeout.',
+    isEditable: true,
+    isHighImpact: false,
+    requiresRestart: false,
+    minValue: 1000,
+    maxValue: 300000
+  },
+  WORKFLOW_MAX_RETRIES: {
+    key: 'WORKFLOW_MAX_RETRIES',
+    valueType: ConfigValueType.NUMBER,
+    category: ConfigCategory.PERFORMANCE,
+    defaultValue: '3',
+    purpose: 'Maximum retry attempts recorded on a retryable AutomationExecutionStep before it is treated as a terminal failure.',
+    description: 'Automation node retry cap.',
+    isEditable: true,
+    isHighImpact: false,
+    requiresRestart: false,
+    minValue: 0,
+    maxValue: 10
+  },
+  WORKFLOW_RETRY_BASE_DELAY_MS: {
+    key: 'WORKFLOW_RETRY_BASE_DELAY_MS',
+    valueType: ConfigValueType.NUMBER,
+    category: ConfigCategory.PERFORMANCE,
+    defaultValue: '2000',
+    purpose: 'Base backoff delay in milliseconds used when computing a retryable AutomationExecutionStep\'s next retry time.',
+    description: 'Automation node retry backoff base.',
+    isEditable: true,
+    isHighImpact: false,
+    requiresRestart: false,
+    minValue: 500,
+    maxValue: 60000
+  },
+  WORKFLOW_MAX_CONCURRENT_EXECUTIONS: {
+    key: 'WORKFLOW_MAX_CONCURRENT_EXECUTIONS',
+    valueType: ConfigValueType.NUMBER,
+    category: ConfigCategory.PERFORMANCE,
+    defaultValue: '5',
+    purpose: 'Advisory cap on concurrently RUNNING AutomationExecutions for a single automation.',
+    description: 'Automation concurrent execution cap.',
+    isEditable: true,
+    isHighImpact: false,
+    requiresRestart: false,
+    minValue: 1,
+    maxValue: 50
+  },
+  WORKFLOW_RATE_LIMIT_PER_HOUR: {
+    key: 'WORKFLOW_RATE_LIMIT_PER_HOUR',
+    valueType: ConfigValueType.NUMBER,
+    category: ConfigCategory.SECURITY,
+    defaultValue: '20',
+    purpose: 'Maximum AutomationExecutions a single user\'s automations may start in total within a rolling hour, across all of that user\'s automations.',
+    description: 'Per-user hourly automation execution rate limit.',
+    isEditable: true,
+    isHighImpact: true,
+    requiresRestart: false,
+    minValue: 1,
+    maxValue: 200
+  },
+  WORKFLOW_EXECUTION_RETENTION_DAYS: {
+    key: 'WORKFLOW_EXECUTION_RETENTION_DAYS',
+    valueType: ConfigValueType.NUMBER,
+    category: ConfigCategory.PERFORMANCE,
+    defaultValue: '90',
+    purpose: 'Number of days an AutomationExecution (and its steps) is retained before it becomes eligible for retention cleanup.',
+    description: 'Automation execution retention window.',
+    isEditable: true,
+    isHighImpact: false,
+    requiresRestart: false,
+    minValue: 7,
+    maxValue: 730
+  },
+  WORKFLOW_APPROVAL_TIMEOUT_MS: {
+    key: 'WORKFLOW_APPROVAL_TIMEOUT_MS',
+    valueType: ConfigValueType.NUMBER,
+    category: ConfigCategory.PERFORMANCE,
+    defaultValue: '86400000',
+    purpose: 'Advisory window an AutomationExecution may sit WAITING_APPROVAL before it is considered stale for reporting/alerting purposes (the underlying Phase 87 AgentRun itself has no forced expiry).',
+    description: 'Automation approval-wait advisory window.',
+    isEditable: true,
+    isHighImpact: false,
+    requiresRestart: false,
+    minValue: 3600000,
+    maxValue: 604800000
+  },
+  WORKFLOW_TRIGGER_SCHEDULER_INTERVAL_MS: {
+    key: 'WORKFLOW_TRIGGER_SCHEDULER_INTERVAL_MS',
+    valueType: ConfigValueType.NUMBER,
+    category: ConfigCategory.WORKER,
+    defaultValue: '60000',
+    purpose: 'Interval in milliseconds between worker ticks that re-check DELAY-node AutomationExecutionSteps whose recorded nextRunAt has come due and re-enqueue their owning execution.',
+    description: 'Automation DELAY-node re-check tick cadence.',
+    isEditable: true,
+    isHighImpact: false,
+    requiresRestart: true,
+    minValue: 10000,
+    maxValue: 600000
   }
 };
 

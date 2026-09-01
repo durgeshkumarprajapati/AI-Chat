@@ -11,7 +11,12 @@ export const QUEUES = {
   AI_INTELLIGENCE_WEEKLY: 'ai-intelligence-weekly',
   NOTIFICATION_DISPATCH: 'notification-dispatch',
   NOTIFICATION_EMAIL: 'notification-email',
-  AI_AGENT_EXECUTION: 'ai-agent-execution'
+  AI_AGENT_EXECUTION: 'ai-agent-execution',
+  // Phase 88 — AI Workflow Automation. Two queues: domain events (trigger candidates fired by
+  // other features) get matched against AutomationTriggerBinding rows by the trigger-matcher
+  // processor, which then enqueues one AUTOMATION_EXECUTION job per created AutomationExecution.
+  AUTOMATION_EVENT_DISPATCH: 'automation-event-dispatch',
+  AUTOMATION_EXECUTION: 'automation-execution'
 } as const;
 
 export type QueueName = typeof QUEUES[keyof typeof QUEUES];
@@ -114,6 +119,65 @@ export interface NotificationEmailJobPayload {
   version: number;
   jobId: string;
   notificationId: string;
+  attempt: number;
+  createdAt: string;
+}
+
+/**
+ * Phase 88 — AI Workflow Automation domain-event trigger types. Fired by other, already-existing
+ * features (meeting intelligence, project intelligence, document processing, knowledge graph
+ * contradiction detection) at the end of their own success paths, purely additively — see
+ * src/features/automation/domain-events/automation-domain-event.publisher.ts and each insertion
+ * point's own inline comment for why that specific touch is safe/minimal.
+ *
+ * NOTE: `AI_INTELLIGENCE_DEADLINE_RISK_DETECTED` is deliberately named after the real Phase 78B
+ * insight type `DEADLINE_RISK` (see IntelligenceInsight.type), not "DEADLINE_APPROACHING" — using
+ * the accurate name avoids fabricating a signal that doesn't actually exist in this codebase.
+ */
+export type AutomationTriggerEventType =
+  | 'MEETING_ANALYSIS_COMPLETED'
+  | 'AI_INTELLIGENCE_RISK_DETECTED'
+  | 'AI_INTELLIGENCE_BLOCKER_DETECTED'
+  | 'AI_INTELLIGENCE_DEADLINE_RISK_DETECTED'
+  | 'DOCUMENT_PROCESSING_COMPLETED'
+  | 'KNOWLEDGE_CONTRADICTION_DETECTED';
+
+/**
+ * Published by publishAutomationEvent() (see the publisher above) whenever a real domain event
+ * that could trigger an automation occurs elsewhere in the codebase. Consumed by
+ * worker/src/processors/automation-trigger-matcher.processor.ts, which re-verifies everything
+ * against Postgres before ever creating an AutomationExecution — this payload is a best-effort
+ * hint, never trusted as authoritative for security-relevant decisions.
+ */
+export interface AutomationDomainEventPayload {
+  jobType: 'AUTOMATION_DOMAIN_EVENT';
+  version: number;
+  jobId: string;
+  eventType: AutomationTriggerEventType;
+  occurredAt: string;
+  sourceUserId: string;
+  sourceProjectId?: string | null;
+  /** The real, already-persisted id of the originating entity (meetingId / insightId /
+   * documentId / conflictId) — never fabricated, never a synthetic/derived id. */
+  sourceEntityId: string;
+  /** Bounded, sanitized summary fields only (title, severity, counts, etc.) — NEVER raw
+   * document/transcript/meeting content. See each insertion point for exactly what's included. */
+  payload: Record<string, unknown>;
+  attempt: number;
+  createdAt: string;
+}
+
+/**
+ * Published by automation-trigger-matcher.processor.ts once per AutomationExecution it creates.
+ * `executionId` is the ONLY thing this payload's consumer (automation-execution.processor.ts)
+ * trusts — the worker always reloads the AutomationExecution + its AutomationVersion.definition +
+ * the owning Automation fresh from Postgres, never from this payload.
+ */
+export interface AutomationExecutionJobPayload {
+  jobType: 'AUTOMATION_EXECUTION';
+  version: number;
+  jobId: string;
+  executionId: string;
   attempt: number;
   createdAt: string;
 }

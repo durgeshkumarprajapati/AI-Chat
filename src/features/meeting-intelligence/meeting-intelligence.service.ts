@@ -7,6 +7,7 @@ import { meetingAnalyzerService } from './analysis/meeting-analyzer.service';
 import { projectContextService } from './project/project-context.service';
 import { meetingIntelligenceTelemetryService } from './meeting-intelligence.telemetry';
 import { auditService } from '@/features/audit/audit.service';
+import { publishAutomationEvent } from '@/features/automation/domain-events/automation-domain-event.publisher';
 
 export class MeetingIntelligenceService {
   public async createMeeting(input: CreateMeetingInput) {
@@ -130,6 +131,21 @@ export class MeetingIntelligenceService {
         userId,
         durationMs,
         taskCount: analysisResult.actionItems.length
+      });
+
+      // Phase 88 — fire-and-forget automation trigger. Never awaited-and-blocking, never allowed
+      // to affect this method's own success (publishAutomationEvent never throws) — a bounded,
+      // sanitized summary only (no raw transcript/analysis content).
+      void publishAutomationEvent({
+        eventType: 'MEETING_ANALYSIS_COMPLETED',
+        sourceUserId: userId,
+        sourceProjectId: meeting.projectId ?? null,
+        sourceEntityId: meetingId,
+        occurredAt: new Date().toISOString(),
+        payload: {
+          summary: typeof savedAnalysis.summary === 'string' ? savedAnalysis.summary.slice(0, 200) : null,
+          actionItemCount: analysisResult.actionItems.length
+        }
       });
 
       return savedAnalysis;

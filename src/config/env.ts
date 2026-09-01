@@ -308,6 +308,8 @@ const serverEnvSchema = z
     GROQ_REASONING_MODEL: z.string().default('openai/gpt-oss-120b'),
     GROQ_TIMEOUT_MS: z.coerce.number().int().positive().default(60000),
     GROQ_MAX_OUTPUT_TOKENS: z.coerce.number().int().positive().default(4096),
+    OLLAMA_ENABLED: z.coerce.boolean().default(true),
+    OLLAMA_TIMEOUT_MS: z.coerce.number().int().positive().default(15000),
     RAG_HYBRID_ENABLED: z.coerce.boolean().default(true),
     RAG_QUERY_REWRITE_ENABLED: z.coerce.boolean().default(true),
     RAG_MULTI_QUERY_ENABLED: z.coerce.boolean().default(true),
@@ -810,9 +812,11 @@ export const envConfig = {
       maxOutputTokens: env.server?.GROQ_MAX_OUTPUT_TOKENS ?? 4096
     },
     ollama: {
+      enabled: env.server?.OLLAMA_ENABLED ?? true,
       baseUrl: env.server?.OLLAMA_BASE_URL ?? 'http://localhost:11434',
       chatModel: env.server?.OLLAMA_CHAT_MODEL ?? 'llama3.2',
-      embeddingModel: env.server?.OLLAMA_EMBEDDING_MODEL ?? 'nomic-embed-text'
+      embeddingModel: env.server?.OLLAMA_EMBEDDING_MODEL ?? 'nomic-embed-text',
+      timeoutMs: env.server?.OLLAMA_TIMEOUT_MS ?? 15000
     }
   },
   google: {

@@ -35,12 +35,14 @@ export class LLMPolicyService {
     const isKimiEnabled =
       (env.server?.LLM_KIMI_ENABLED ?? (process.env.LLM_KIMI_ENABLED === 'true')) &&
       !!(env.server?.LLM_KIMI_API_KEY || process.env.LLM_KIMI_API_KEY);
+    const isOllamaEnabled =
+      (env.server?.OLLAMA_ENABLED ?? (process.env.OLLAMA_ENABLED !== 'false'));
 
     const isGeminiAvailable = isGeminiEnabled && llmCircuitBreakerService.isAvailable('gemini');
     const isDeepSeekAvailable = isDeepSeekEnabled && llmCircuitBreakerService.isAvailable('deepseek');
     const isGroqAvailable = isGroqEnabled && llmCircuitBreakerService.isAvailable('groq');
     const isKimiAvailable = isKimiEnabled && llmCircuitBreakerService.isAvailable('kimi');
-    const isOllamaAvailable = llmCircuitBreakerService.isAvailable('ollama');
+    const isOllamaAvailable = isOllamaEnabled && llmCircuitBreakerService.isAvailable('ollama');
 
     const geminiFastModel = env.server?.GEMINI_FAST_MODEL || process.env.GEMINI_FAST_MODEL || 'gemini-3.6-flash';
     const geminiReasoningModel = env.server?.GEMINI_REASONING_MODEL || process.env.GEMINI_REASONING_MODEL || 'gemini-3.6-flash';

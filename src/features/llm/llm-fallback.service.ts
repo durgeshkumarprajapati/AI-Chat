@@ -63,6 +63,9 @@ export class LLMFallbackService {
       {
         name: 'ollama',
         isConfigured: () => {
+          const enabledEnv = process.env.OLLAMA_ENABLED;
+          const isEnabled = enabledEnv !== undefined ? enabledEnv !== 'false' : (env.server?.OLLAMA_ENABLED ?? true);
+          if (!isEnabled) return false;
           if (request.feature === 'CITY_EXPLORER') {
             const allowOllamaEnv = process.env.CITY_EXPLORER_ALLOW_OLLAMA_FALLBACK;
             return allowOllamaEnv !== undefined ? allowOllamaEnv === 'true' : (env.server?.CITY_EXPLORER_ALLOW_OLLAMA_FALLBACK ?? false);

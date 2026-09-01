@@ -16,13 +16,15 @@ export class OllamaProvider implements LLMProvider {
   private defaultModel: string;
   private fastModel: string;
   private timeoutMs: number;
+  public readonly isEnabled: boolean;
 
-  constructor(options?: { baseUrl?: string; defaultModel?: string; fastModel?: string; timeoutMs?: number }) {
+  constructor(options?: { baseUrl?: string; defaultModel?: string; fastModel?: string; timeoutMs?: number; enabled?: boolean }) {
     const rawUrl = options?.baseUrl || env.server?.OLLAMA_BASE_URL || process.env.OLLAMA_BASE_URL || 'http://localhost:11434';
     this.baseUrl = rawUrl.replace(/\/+$/, '');
     this.defaultModel = options?.defaultModel || env.server?.OLLAMA_CHAT_MODEL || process.env.OLLAMA_CHAT_MODEL || 'llama3.2';
     this.fastModel = options?.fastModel || env.server?.LLM_OLLAMA_FAST_MODEL || this.defaultModel;
-    this.timeoutMs = options?.timeoutMs || env.server?.LLM_REQUEST_TIMEOUT_MS || 30000;
+    this.timeoutMs = options?.timeoutMs || env.server?.OLLAMA_TIMEOUT_MS || (process.env.OLLAMA_TIMEOUT_MS ? parseInt(process.env.OLLAMA_TIMEOUT_MS, 10) : 15000);
+    this.isEnabled = options?.enabled ?? (env.server?.OLLAMA_ENABLED ?? (process.env.OLLAMA_ENABLED !== 'false'));
   }
 
   public supports(capability: LLMCapability): boolean {
@@ -145,7 +147,7 @@ export class OllamaProvider implements LLMProvider {
     } catch (err: any) {
       clearTimeout(timeoutId);
       if (err.name === 'AbortError') {
-        throw new Error(`Ollama request timed out or cancelled after ${request.timeoutMs || this.timeoutMs}ms.`);
+        throw new Error(`Ollama request timed out after ${request.timeoutMs || this.timeoutMs}ms.`);
       }
       throw err;
     }

@@ -108,10 +108,15 @@ export class LLMCircuitBreakerService {
   public isIgnorableError(err?: any): boolean {
     if (!err) return false;
     const name = err.name || err.constructor?.name || '';
-    const message = err.message || String(err);
+    const message = (err.message || String(err)).toLowerCase();
+
+    // Provider timeouts (e.g. "request timed out after 15000ms") are infrastructure failures, not user cancellations
+    if (message.includes('timed out') || message.includes('timeout')) {
+      return false;
+    }
 
     if (name === 'AbortError' || name === 'CanceledError') return true;
-    if (message.includes('aborted') || message.includes('cancelled') || message.includes('client disconnected')) return true;
+    if (message.includes('aborted') || message.includes('client disconnected')) return true;
     return false;
   }
 

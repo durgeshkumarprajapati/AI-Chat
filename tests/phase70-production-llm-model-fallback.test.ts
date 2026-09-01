@@ -28,11 +28,11 @@ describe('Phase 70 — Production LLM Model Configuration & Safe Multi-Provider 
     process.env.DEEPSEEK_ENABLED = 'true';
     process.env.DEEPSEEK_API_KEY = 'test-deepseek-key';
     process.env.DEEPSEEK_DEFAULT_MODEL = 'deepseek-v4-flash';
-    process.env.DEEPSEEK_REASONING_MODEL = 'deepseek-reasoner';
+    process.env.DEEPSEEK_REASONING_MODEL = 'deepseek-v4-pro';
     process.env.GROQ_ENABLED = 'true';
     process.env.GROQ_API_KEY = 'test-groq-key';
-    process.env.GROQ_DEFAULT_MODEL = 'llama-3.3-70b-versatile';
-    process.env.GROQ_REASONING_MODEL = 'deepseek-r1-distill-llama-70b';
+    process.env.GROQ_DEFAULT_MODEL = 'groq/compound';
+    process.env.GROQ_REASONING_MODEL = 'openai/gpt-oss-120b';
     process.env.LLM_KIMI_ENABLED = 'false';
     process.env.CITY_EXPLORER_ALLOW_OLLAMA_FALLBACK = 'false';
   });
@@ -92,14 +92,14 @@ describe('Phase 70 — Production LLM Model Configuration & Safe Multi-Provider 
     expect(groqSpy).not.toHaveBeenCalled();
   });
 
-  it('Test 3 — DeepSeek Failure: Gemini fails -> DeepSeek fails -> Groq called with llama-3.3-70b-versatile', async () => {
+  it('Test 3 — DeepSeek Failure: Gemini fails -> DeepSeek fails -> Groq called with groq/compound', async () => {
     jest.spyOn(geminiProvider, 'generate').mockRejectedValueOnce(new Error('Gemini API 500 Error'));
     jest.spyOn(deepseekProvider, 'generate').mockRejectedValueOnce(new Error('DeepSeek API 500 Error'));
 
     const groqSpy = jest.spyOn(groqProvider, 'generate').mockResolvedValueOnce({
       text: 'Groq fallback response',
       provider: 'groq',
-      model: 'llama-3.3-70b-versatile',
+      model: 'groq/compound',
       complexity: 'MEDIUM',
       cached: false,
       totalMs: 70
@@ -111,7 +111,7 @@ describe('Phase 70 — Production LLM Model Configuration & Safe Multi-Provider 
     });
 
     expect(result.response.text).toBe('Groq fallback response');
-    expect(result.response.model).toBe('llama-3.3-70b-versatile');
+    expect(result.response.model).toBe('groq/compound');
     expect(result.usedFallback).toBe(true);
     expect(groqSpy).toHaveBeenCalledTimes(1);
   });
@@ -122,17 +122,16 @@ describe('Phase 70 — Production LLM Model Configuration & Safe Multi-Provider 
     const groqSpy = jest.spyOn(groqProvider, 'generate').mockResolvedValueOnce({
       text: 'Isolated Groq response',
       provider: 'groq',
-      model: 'llama-3.3-70b-versatile',
+      model: 'groq/compound',
       complexity: 'MEDIUM',
       cached: false,
       totalMs: 80
     });
 
-    await llmFallbackService.executeWithFallback(
-      geminiProvider,
-      { prompt: 'Testing isolation', feature: 'RAG_CHAT' },
-      'gemini-3.6-flash'
-    );
+    await llmFallbackService.executeWithFallback(geminiProvider, {
+      prompt: 'Cross provider test',
+      feature: 'RAG_CHAT'
+    });
 
     const deepseekCallArg = deepseekSpy.mock.calls[0]![0];
     const groqCallArg = groqSpy.mock.calls[0]![0];
@@ -145,7 +144,7 @@ describe('Phase 70 — Production LLM Model Configuration & Safe Multi-Provider 
     expect(isModelValidForProvider('deepseek', 'gemini-3.6-flash')).toBe(false);
     expect(isModelValidForProvider('groq', 'deepseek-v4-flash')).toBe(false);
 
-    expect(resolveModelForProvider('groq', 'gemini-3.6-flash', 'llama-3.3-70b-versatile')).toBe('llama-3.3-70b-versatile');
+    expect(resolveModelForProvider('groq', 'gemini-3.6-flash', 'groq/compound')).toBe('groq/compound');
     expect(resolveModelForProvider('deepseek', 'gemini-3.6-flash', 'deepseek-v4-flash')).toBe('deepseek-v4-flash');
   });
 
@@ -190,7 +189,7 @@ describe('Phase 70 — Production LLM Model Configuration & Safe Multi-Provider 
     const groqSpy = jest.spyOn(groqProvider, 'generate').mockResolvedValueOnce({
       text: 'Groq response after DeepSeek key missing',
       provider: 'groq',
-      model: 'llama-3.3-70b-versatile',
+      model: 'groq/compound',
       complexity: 'MEDIUM',
       cached: false,
       totalMs: 100
@@ -214,7 +213,7 @@ describe('Phase 70 — Production LLM Model Configuration & Safe Multi-Provider 
     const groqSpy = jest.spyOn(groqProvider, 'generate').mockResolvedValueOnce({
       text: 'Groq response after DeepSeek disabled',
       provider: 'groq',
-      model: 'llama-3.3-70b-versatile',
+      model: 'groq/compound',
       complexity: 'MEDIUM',
       cached: false,
       totalMs: 110

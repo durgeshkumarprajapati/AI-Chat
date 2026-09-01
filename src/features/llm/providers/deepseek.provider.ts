@@ -45,12 +45,12 @@ export class DeepSeekProvider implements LLMProvider {
       options?.defaultModel ||
       env.server?.DEEPSEEK_DEFAULT_MODEL ||
       process.env.DEEPSEEK_DEFAULT_MODEL ||
-      'deepseek-chat';
+      'deepseek-v4-flash';
     this.reasoningModel =
       options?.reasoningModel ||
       env.server?.DEEPSEEK_REASONING_MODEL ||
       process.env.DEEPSEEK_REASONING_MODEL ||
-      'deepseek-reasoner';
+      'deepseek-v4-pro';
     this.isEnabled =
       options?.enabled ??
       (env.server?.DEEPSEEK_ENABLED ?? (process.env.DEEPSEEK_ENABLED !== 'false'));

@@ -45,12 +45,12 @@ export class GroqProvider implements LLMProvider {
       options?.defaultModel ||
       env.server?.GROQ_DEFAULT_MODEL ||
       process.env.GROQ_DEFAULT_MODEL ||
-      'llama-3.3-70b-versatile';
+      'groq/compound';
     this.reasoningModel =
       options?.reasoningModel ||
       env.server?.GROQ_REASONING_MODEL ||
       process.env.GROQ_REASONING_MODEL ||
-      'deepseek-r1-distill-llama-70b';
+      'openai/gpt-oss-120b';
     this.isEnabled =
       options?.enabled ??
       (env.server?.GROQ_ENABLED ?? (process.env.GROQ_ENABLED !== 'false'));

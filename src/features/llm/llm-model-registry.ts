@@ -30,15 +30,15 @@ export class LLMModelRegistry {
       provider: deepseekProvider,
       defaultModel: process.env.DEEPSEEK_DEFAULT_MODEL || 'deepseek-v4-flash',
       fastModel: process.env.DEEPSEEK_DEFAULT_MODEL || 'deepseek-v4-flash',
-      reasoningModel: process.env.DEEPSEEK_REASONING_MODEL || 'deepseek-reasoner',
+      reasoningModel: process.env.DEEPSEEK_REASONING_MODEL || 'deepseek-v4-pro',
       priority: 2
     });
 
     this.registerProvider({
       provider: groqProvider,
-      defaultModel: process.env.GROQ_DEFAULT_MODEL || 'llama-3.3-70b-versatile',
-      fastModel: process.env.GROQ_DEFAULT_MODEL || 'llama-3.3-70b-versatile',
-      reasoningModel: process.env.GROQ_REASONING_MODEL || 'deepseek-r1-distill-llama-70b',
+      defaultModel: process.env.GROQ_DEFAULT_MODEL || 'groq/compound',
+      fastModel: process.env.GROQ_DEFAULT_MODEL || 'groq/compound',
+      reasoningModel: process.env.GROQ_REASONING_MODEL || 'openai/gpt-oss-120b',
       priority: 3
     });
 

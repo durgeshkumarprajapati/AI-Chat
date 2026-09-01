@@ -87,7 +87,7 @@ describe('Three-Level Dynamic LLM Fallback Architecture Integration Tests', () =
     const groqSpy = jest.spyOn(groqProvider, 'generate').mockResolvedValueOnce({
       text: 'Groq tertiary fallback response',
       provider: 'groq',
-      model: 'llama-3.3-70b-versatile',
+      model: 'groq/compound',
       complexity: 'HIGH',
       cached: false,
       totalMs: 150
@@ -111,7 +111,7 @@ describe('Three-Level Dynamic LLM Fallback Architecture Integration Tests', () =
     const groqSpy = jest.spyOn(groqProvider, 'generate').mockResolvedValueOnce({
       text: 'Groq fallback response when DeepSeek is unconfigured',
       provider: 'groq',
-      model: 'llama-3.3-70b-versatile',
+      model: 'groq/compound',
       complexity: 'MEDIUM',
       cached: false,
       totalMs: 140

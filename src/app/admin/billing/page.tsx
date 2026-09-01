@@ -6,6 +6,7 @@ import React, { useEffect, useState } from 'react';
 import Link from 'next/link';
 import { Modal } from '@/components/ui/Modal';
 import { Button } from '@/components/ui/Button';
+import { FEATURE_REGISTRY, ALL_FEATURE_CODES, DEFAULT_PLAN_FEATURES } from '@/features/billing/billing.constants';
 
 const ALL_PLAN_CODES = ['FREE', 'PRO', 'PREMIUM'] as const;
 type PlanCode = (typeof ALL_PLAN_CODES)[number];
@@ -13,6 +14,14 @@ type PlanCode = (typeof ALL_PLAN_CODES)[number];
 const INPUT_CLASS =
   'w-full h-9 px-3 rounded-lg text-xs bg-white dark:bg-slate-950 border border-slate-300 dark:border-slate-800 text-slate-900 dark:text-slate-100 placeholder:text-slate-400 dark:placeholder:text-slate-600 focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500';
 const LABEL_CLASS = 'block text-[10px] font-mono font-bold uppercase tracking-wider text-slate-500 dark:text-slate-400 mb-1';
+
+const CATEGORY_COLORS: Record<string, string> = {
+  RAG: 'bg-indigo-100 text-indigo-700 dark:bg-indigo-950/80 dark:text-indigo-300 border-indigo-200 dark:border-indigo-800',
+  DOCUMENT_INTELLIGENCE: 'bg-purple-100 text-purple-700 dark:bg-purple-950/80 dark:text-purple-300 border-purple-200 dark:border-purple-800',
+  COLLABORATION: 'bg-sky-100 text-sky-700 dark:bg-sky-950/80 dark:text-sky-300 border-sky-200 dark:border-sky-800',
+  INTEGRATIONS: 'bg-emerald-100 text-emerald-700 dark:bg-emerald-950/80 dark:text-emerald-300 border-emerald-200 dark:border-emerald-800',
+  PLATFORM: 'bg-amber-100 text-amber-700 dark:bg-amber-950/80 dark:text-amber-300 border-amber-200 dark:border-amber-800'
+};
 
 interface Metrics {
   billingIntegration: { billingEnabled: boolean; razorpayEnabled: boolean; razorpayConfigured: boolean };
@@ -76,6 +85,7 @@ export default function AdminBillingPage() {
   const [error, setError] = useState<string | null>(null);
   const [savingPlanId, setSavingPlanId] = useState<string | null>(null);
 
+  // Add Plan Modal state
   const [showCreateModal, setShowCreateModal] = useState(false);
   const [creating, setCreating] = useState(false);
   const [createError, setCreateError] = useState<string | null>(null);
@@ -88,6 +98,14 @@ export default function AdminBillingPage() {
     yearlyPrice: '',
     trialDays: '0'
   });
+
+  // Feature Management Modal state
+  const [selectedPlanForFeatures, setSelectedPlanForFeatures] = useState<Plan | null>(null);
+  const [editingFeatures, setEditingFeatures] = useState<Record<string, boolean>>({});
+  const [savingFeatures, setSavingFeatures] = useState(false);
+  const [featureError, setFeatureError] = useState<string | null>(null);
+  const [featureSearch, setFeatureSearch] = useState('');
+  const [categoryFilter, setCategoryFilter] = useState<string>('ALL');
 
   const availablePlanCodes = ALL_PLAN_CODES.filter((code) => !plans.some((p) => p.code === code));
 
@@ -108,9 +126,6 @@ export default function AdminBillingPage() {
   useEffect(() => {
     async function load() {
       try {
-        // Phase 77: the initial subscriptions page never depended on metrics/plans resolving
-        // first — folded into the same Promise.all instead of a separate request issued only
-        // after those two settled.
         const [metricsRes, plansRes, subsRes] = await Promise.all([
           fetch('/api/admin/billing/metrics').then((r) => r.json()),
           fetch('/api/admin/billing/plans').then((r) => r.json()),
@@ -148,6 +163,97 @@ export default function AdminBillingPage() {
       alert(err instanceof Error ? err.message : 'Failed to update plan');
     } finally {
       setSavingPlanId(null);
+    }
+  };
+
+  const openFeatureModal = (plan: Plan) => {
+    setSelectedPlanForFeatures(plan);
+    setFeatureError(null);
+    setFeatureSearch('');
+    setCategoryFilter('ALL');
+
+    // Populate initial editing state from plan's existing feature records
+    const initialMap: Record<string, boolean> = {};
+    for (const code of ALL_FEATURE_CODES) {
+      const existing = plan.features.find((f) => f.featureCode === code);
+      initialMap[code] = existing ? existing.isEnabled : false;
+    }
+    setEditingFeatures(initialMap);
+  };
+
+  const handleToggleFeature = (featureCode: string) => {
+    setEditingFeatures((prev) => ({
+      ...prev,
+      [featureCode]: !prev[featureCode]
+    }));
+  };
+
+  const handleEnableAllFeatures = () => {
+    const nextMap: Record<string, boolean> = {};
+    for (const code of ALL_FEATURE_CODES) {
+      nextMap[code] = true;
+    }
+    setEditingFeatures(nextMap);
+  };
+
+  const handleDisableAllFeatures = () => {
+    const nextMap: Record<string, boolean> = {};
+    for (const code of ALL_FEATURE_CODES) {
+      nextMap[code] = false;
+    }
+    setEditingFeatures(nextMap);
+  };
+
+  const handleResetPlanDefaults = () => {
+    if (!selectedPlanForFeatures) return;
+    const planCode = selectedPlanForFeatures.code as PlanCode;
+    const defaults = DEFAULT_PLAN_FEATURES[planCode] || [];
+    const nextMap: Record<string, boolean> = {};
+
+    for (const code of ALL_FEATURE_CODES) {
+      const entry = defaults.find((d) => d.featureCode === code);
+      nextMap[code] = entry ? entry.isEnabled : false;
+    }
+    setEditingFeatures(nextMap);
+  };
+
+  const handleSaveFeatures = async () => {
+    if (!selectedPlanForFeatures) return;
+    setSavingFeatures(true);
+    setFeatureError(null);
+
+    const featureList = Object.entries(editingFeatures).map(([featureCode, isEnabled]) => ({
+      featureCode,
+      isEnabled
+    }));
+
+    try {
+      const res = await fetch(`/api/admin/billing/plans/${selectedPlanForFeatures.id}`, {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ features: featureList })
+      });
+      const data = await res.json();
+      if (!data.success) throw new Error(data.error?.message || 'Failed to update plan features');
+
+      // Update local plans state dynamically
+      setPlans((prev) =>
+        prev.map((p) => {
+          if (p.id === selectedPlanForFeatures.id) {
+            return {
+              ...p,
+              features: featureList
+            };
+          }
+          return p;
+        })
+      );
+
+      setSelectedPlanForFeatures(null);
+    } catch (err) {
+      setFeatureError(err instanceof Error ? err.message : 'Failed to save feature updates.');
+    } finally {
+      setSavingFeatures(false);
     }
   };
 
@@ -222,6 +328,22 @@ export default function AdminBillingPage() {
 
   const integrationOk = metrics.billingIntegration.razorpayEnabled && metrics.billingIntegration.razorpayConfigured;
 
+  // Filtering for feature modal
+  const filteredFeatureCodes = ALL_FEATURE_CODES.filter((code) => {
+    const reg = FEATURE_REGISTRY[code];
+    if (categoryFilter !== 'ALL' && reg?.category !== categoryFilter) return false;
+    if (featureSearch.trim()) {
+      const q = featureSearch.toLowerCase();
+      const matchName = reg?.name.toLowerCase().includes(q);
+      const matchCode = code.toLowerCase().includes(q);
+      const matchDesc = reg?.description.toLowerCase().includes(q);
+      return matchName || matchCode || matchDesc;
+    }
+    return true;
+  });
+
+  const categories = ['ALL', 'RAG', 'DOCUMENT_INTELLIGENCE', 'COLLABORATION', 'INTEGRATIONS', 'PLATFORM'];
+
   return (
     <div className="min-h-screen p-6 sm:p-10 font-sans text-slate-900 dark:text-slate-100">
       <div className="w-full max-w-[1600px] mx-auto space-y-8">
@@ -236,7 +358,7 @@ export default function AdminBillingPage() {
               </span>
             </div>
             <p className="text-xs text-slate-600 dark:text-slate-400 mt-1">
-              Subscription plans, entitlements, and Razorpay integration status.
+              Subscription plans, entitlements, feature flags, and Razorpay integration status.
             </p>
           </div>
           <div
@@ -277,7 +399,12 @@ export default function AdminBillingPage() {
         {/* Plan Management */}
         <div className="bg-white dark:bg-slate-900/80 border border-slate-200 dark:border-slate-800 rounded-2xl p-6 shadow-sm space-y-4">
           <div className="flex items-center justify-between border-b border-slate-200 dark:border-slate-800 pb-3">
-            <h3 className="text-sm font-semibold text-slate-900 dark:text-white">Plan Management</h3>
+            <div>
+              <h3 className="text-sm font-semibold text-slate-900 dark:text-white">Plan Management</h3>
+              <p className="text-[11px] text-slate-500 dark:text-slate-400">
+                Manage subscription pricing and dynamic feature entitlements per plan.
+              </p>
+            </div>
             <button
               onClick={() => {
                 resetCreateForm();
@@ -303,34 +430,61 @@ export default function AdminBillingPage() {
                 </tr>
               </thead>
               <tbody className="divide-y divide-slate-200 dark:divide-slate-800">
-                {plans.map((p) => (
-                  <tr key={p.id} className="hover:bg-slate-50 dark:hover:bg-slate-950/40">
-                    <td className="py-3 px-4 font-mono font-semibold">{p.name}</td>
-                    <td className="py-3 px-4">{formatMoney(p.monthlyPriceCents, p.currency)}</td>
-                    <td className="py-3 px-4">{formatMoney(p.yearlyPriceCents, p.currency)}</td>
-                    <td className="py-3 px-4">{p.features.filter((f) => f.isEnabled).length} / {p.features.length}</td>
-                    <td className="py-3 px-4">
-                      <span
-                        className={`px-2 py-0.5 rounded text-[10px] font-mono font-bold ${
-                          p.isActive
-                            ? 'bg-emerald-100 dark:bg-emerald-950 text-emerald-800 dark:text-emerald-300'
-                            : 'bg-slate-100 dark:bg-slate-800 text-slate-500'
-                        }`}
-                      >
-                        {p.isActive ? 'ACTIVE' : 'INACTIVE'}
-                      </span>
-                    </td>
-                    <td className="py-3 px-4 text-right">
-                      <button
-                        onClick={() => togglePlanActive(p)}
-                        disabled={savingPlanId === p.id}
-                        className="px-3 py-1 bg-slate-100 dark:bg-slate-800 hover:bg-slate-200 dark:hover:bg-slate-700 text-slate-700 dark:text-slate-300 text-[10px] font-bold rounded-lg disabled:opacity-60"
-                      >
-                        {p.isActive ? 'Deactivate' : 'Activate'}
-                      </button>
-                    </td>
-                  </tr>
-                ))}
+                {plans.map((p) => {
+                  const enabledCount = p.features.filter((f) => f.isEnabled).length;
+                  const totalCount = ALL_FEATURE_CODES.length;
+                  return (
+                    <tr key={p.id} className="hover:bg-slate-50 dark:hover:bg-slate-950/40">
+                      <td className="py-3 px-4 font-mono font-semibold">
+                        {p.name}
+                        <span className="block text-[10px] text-slate-400 font-normal">{p.code}</span>
+                      </td>
+                      <td className="py-3 px-4">{formatMoney(p.monthlyPriceCents, p.currency)}</td>
+                      <td className="py-3 px-4">{formatMoney(p.yearlyPriceCents, p.currency)}</td>
+                      <td className="py-3 px-4">
+                        <div className="flex items-center space-x-2">
+                          <span className="px-2 py-0.5 rounded-full text-[11px] font-mono font-bold bg-indigo-50 dark:bg-indigo-950/80 text-indigo-700 dark:text-indigo-300 border border-indigo-200 dark:border-indigo-800">
+                            {enabledCount} / {totalCount}
+                          </span>
+                          <button
+                            onClick={() => openFeatureModal(p)}
+                            className="text-[11px] font-semibold text-indigo-600 dark:text-indigo-400 hover:underline flex items-center gap-1"
+                          >
+                            ⚙️ Configure Features
+                          </button>
+                        </div>
+                      </td>
+                      <td className="py-3 px-4">
+                        <span
+                          className={`px-2 py-0.5 rounded text-[10px] font-mono font-bold ${
+                            p.isActive
+                              ? 'bg-emerald-100 dark:bg-emerald-950 text-emerald-800 dark:text-emerald-300'
+                              : 'bg-slate-100 dark:bg-slate-800 text-slate-500'
+                          }`}
+                        >
+                          {p.isActive ? 'ACTIVE' : 'INACTIVE'}
+                        </span>
+                      </td>
+                      <td className="py-3 px-4 text-right">
+                        <div className="flex items-center justify-end space-x-2">
+                          <button
+                            onClick={() => openFeatureModal(p)}
+                            className="px-2.5 py-1 bg-indigo-50 dark:bg-indigo-950/60 hover:bg-indigo-100 dark:hover:bg-indigo-900 text-indigo-700 dark:text-indigo-300 text-[10px] font-bold rounded-lg border border-indigo-200 dark:border-indigo-800 transition"
+                          >
+                            Manage Features
+                          </button>
+                          <button
+                            onClick={() => togglePlanActive(p)}
+                            disabled={savingPlanId === p.id}
+                            className="px-2.5 py-1 bg-slate-100 dark:bg-slate-800 hover:bg-slate-200 dark:hover:bg-slate-700 text-slate-700 dark:text-slate-300 text-[10px] font-bold rounded-lg disabled:opacity-60 transition"
+                          >
+                            {p.isActive ? 'Deactivate' : 'Activate'}
+                          </button>
+                        </div>
+                      </td>
+                    </tr>
+                  );
+                })}
               </tbody>
             </table>
           </div>
@@ -396,6 +550,144 @@ export default function AdminBillingPage() {
         </div>
       </div>
 
+      {/* Dynamic Feature Entitlements Modal */}
+      {selectedPlanForFeatures && (
+        <Modal
+          isOpen={!!selectedPlanForFeatures}
+          onClose={() => setSelectedPlanForFeatures(null)}
+          title={`Configure Features — ${selectedPlanForFeatures.name} (${selectedPlanForFeatures.code})`}
+        >
+          <div className="space-y-4 max-h-[80vh] flex flex-col">
+            <p className="text-xs text-slate-600 dark:text-slate-400">
+              Dynamically add or remove features for the <strong className="text-indigo-600 dark:text-indigo-400">{selectedPlanForFeatures.name}</strong> plan. Users on this plan will immediately be granted or restricted access.
+            </p>
+
+            {featureError && (
+              <div className="rounded-lg border border-rose-200 dark:border-rose-800 bg-rose-50 dark:bg-rose-950/40 text-rose-700 dark:text-rose-300 text-xs px-3 py-2">
+                {featureError}
+              </div>
+            )}
+
+            {/* Quick Bulk Actions & Search Toolbar */}
+            <div className="flex flex-col sm:flex-row gap-2 justify-between items-stretch sm:items-center bg-slate-50 dark:bg-slate-950 p-3 rounded-xl border border-slate-200 dark:border-slate-800">
+              <div className="flex items-center space-x-2">
+                <button
+                  type="button"
+                  onClick={handleEnableAllFeatures}
+                  className="px-2.5 py-1 bg-emerald-600 hover:bg-emerald-500 text-white text-[11px] font-bold rounded-lg transition"
+                >
+                  ✓ Enable All
+                </button>
+                <button
+                  type="button"
+                  onClick={handleDisableAllFeatures}
+                  className="px-2.5 py-1 bg-rose-600 hover:bg-rose-500 text-white text-[11px] font-bold rounded-lg transition"
+                >
+                  ✕ Disable All
+                </button>
+                <button
+                  type="button"
+                  onClick={handleResetPlanDefaults}
+                  className="px-2.5 py-1 bg-slate-200 dark:bg-slate-800 hover:bg-slate-300 dark:hover:bg-slate-700 text-slate-800 dark:text-slate-200 text-[11px] font-bold rounded-lg transition"
+                >
+                  ↺ Reset Defaults
+                </button>
+              </div>
+
+              <div className="relative">
+                <input
+                  type="text"
+                  value={featureSearch}
+                  onChange={(e) => setFeatureSearch(e.target.value)}
+                  placeholder="Filter features..."
+                  className="h-8 w-48 px-3 text-xs bg-white dark:bg-slate-900 border border-slate-300 dark:border-slate-800 rounded-lg focus:outline-none focus:ring-1 focus:ring-indigo-500"
+                />
+              </div>
+            </div>
+
+            {/* Category Filter Tabs */}
+            <div className="flex items-center space-x-1.5 overflow-x-auto pb-1">
+              {categories.map((cat) => (
+                <button
+                  key={cat}
+                  type="button"
+                  onClick={() => setCategoryFilter(cat)}
+                  className={`px-2.5 py-1 rounded-lg text-[10px] font-mono font-bold whitespace-nowrap transition ${
+                    categoryFilter === cat
+                      ? 'bg-indigo-600 text-white'
+                      : 'bg-slate-100 dark:bg-slate-800 text-slate-600 dark:text-slate-400 hover:bg-slate-200 dark:hover:bg-slate-700'
+                  }`}
+                >
+                  {cat.replace(/_/g, ' ')}
+                </button>
+              ))}
+            </div>
+
+            {/* Feature List Grid */}
+            <div className="overflow-y-auto space-y-2.5 pr-1 max-h-[50vh]">
+              {filteredFeatureCodes.map((code) => {
+                const reg = FEATURE_REGISTRY[code];
+                const isEnabled = !!editingFeatures[code];
+                const categoryClass = CATEGORY_COLORS[reg?.category || 'PLATFORM'] || 'bg-slate-100 text-slate-700';
+
+                return (
+                  <div
+                    key={code}
+                    onClick={() => handleToggleFeature(code)}
+                    className={`p-3 rounded-xl border transition-all cursor-pointer flex items-center justify-between gap-3 ${
+                      isEnabled
+                        ? 'bg-white dark:bg-slate-900 border-indigo-200 dark:border-indigo-800/80 shadow-sm'
+                        : 'bg-slate-50/50 dark:bg-slate-950/40 border-slate-200 dark:border-slate-800/60 opacity-75 hover:opacity-100'
+                    }`}
+                  >
+                    <div className="space-y-1 flex-1">
+                      <div className="flex items-center space-x-2">
+                        <span className="font-bold text-xs text-slate-900 dark:text-white">{reg?.name || code}</span>
+                        <span className={`px-2 py-0.5 rounded text-[9px] font-mono font-bold uppercase border ${categoryClass}`}>
+                          {reg?.category.replace(/_/g, ' ') || 'GENERAL'}
+                        </span>
+                        <span className="font-mono text-[10px] text-slate-400">{code}</span>
+                      </div>
+                      <p className="text-[11px] text-slate-500 dark:text-slate-400 leading-snug">{reg?.description}</p>
+                    </div>
+
+                    {/* Toggle Switch */}
+                    <div className="flex items-center shrink-0">
+                      <div
+                        className={`w-12 h-6 flex items-center rounded-full p-1 cursor-pointer transition-colors ${
+                          isEnabled ? 'bg-emerald-500' : 'bg-slate-300 dark:bg-slate-700'
+                        }`}
+                      >
+                        <div
+                          className={`bg-white w-4 h-4 rounded-full shadow-md transform transition-transform ${
+                            isEnabled ? 'translate-x-6' : 'translate-x-0'
+                          }`}
+                        />
+                      </div>
+                    </div>
+                  </div>
+                );
+              })}
+
+              {filteredFeatureCodes.length === 0 && (
+                <div className="py-8 text-center text-xs text-slate-400 font-mono">No features match search filter.</div>
+              )}
+            </div>
+
+            {/* Footer Buttons */}
+            <div className="flex space-x-3 pt-3 border-t border-slate-200 dark:border-slate-800">
+              <Button variant="secondary" className="flex-1" onClick={() => setSelectedPlanForFeatures(null)}>
+                Cancel
+              </Button>
+              <Button variant="primary" className="flex-1" onClick={handleSaveFeatures} loading={savingFeatures}>
+                Save Entitlements
+              </Button>
+            </div>
+          </div>
+        </Modal>
+      )}
+
+      {/* Add Subscription Plan Modal */}
       <Modal
         isOpen={showCreateModal}
         onClose={() => {
@@ -499,7 +791,7 @@ export default function AdminBillingPage() {
           </div>
 
           <p className="text-[10px] text-slate-400 dark:text-slate-500 font-mono">
-            New plans start with every feature/usage limit disabled — configure entitlements after creating.
+            New plans start with default features — configure entitlements after creating.
           </p>
 
           <div className="flex space-x-3 pt-2">

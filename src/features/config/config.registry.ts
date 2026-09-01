@@ -2318,6 +2318,121 @@ export const CONFIG_REGISTRY: Record<string, RegistryConfigItem> = {
     requiresRestart: true,
     minValue: 10000,
     maxValue: 600000
+  },
+
+  // ==========================================
+  // PHASE 89 — UNIFIED AI ASSISTANT (global, floating, conversational chat orchestrator unifying
+  // RAG/Knowledge Graph/Intelligence/Agents/Automations/ClickUp/Calendar/Sarvam). Config KEY NAMES
+  // use the `AI_ASSISTANT_*` prefix (never `AI_COPILOT_*`) — since the internal feature is named
+  // "Assistant" (to avoid a naming collision with the pre-existing, unrelated Phase-earlier
+  // `/copilot` single-shot orchestrator and its Copilot* Prisma models), config keys stay
+  // consistent with that naming rather than reintroducing "Copilot" terminology that could be
+  // confused with that existing, conceptually different surface.
+  //
+  // AI_ASSISTANT_ENABLED defaults to TRUE per explicit product-owner instruction: the Assistant
+  // itself is read-mostly/advisory, and any actual external side effect (ClickUp/Calendar) still
+  // requires the reused Phase 87 human-approval gate regardless of this flag, so enabling it alone
+  // causes zero unapproved side effects.
+  // ==========================================
+  AI_ASSISTANT_ENABLED: {
+    key: 'AI_ASSISTANT_ENABLED',
+    valueType: ConfigValueType.BOOLEAN,
+    category: ConfigCategory.FEATURE_FLAG,
+    defaultValue: 'true',
+    purpose: 'Master kill-switch for the global AI Assistant. When false, /api/assistant/chat refuses before any DB/LLM work.',
+    description: 'Global AI Assistant master flag.',
+    isEditable: true,
+    isHighImpact: true,
+    requiresRestart: false
+  },
+  AI_ASSISTANT_STREAMING_ENABLED: {
+    key: 'AI_ASSISTANT_STREAMING_ENABLED',
+    valueType: ConfigValueType.BOOLEAN,
+    category: ConfigCategory.FEATURE_FLAG,
+    defaultValue: 'true',
+    purpose: 'Whether the Assistant streams incremental delta events from the LLM gateway as they arrive, versus emitting the full answer as a single delta.',
+    description: 'Assistant response streaming toggle.',
+    isEditable: true,
+    isHighImpact: false,
+    requiresRestart: false
+  },
+  AI_ASSISTANT_MAX_CONTEXT_TOKENS: {
+    key: 'AI_ASSISTANT_MAX_CONTEXT_TOKENS',
+    valueType: ConfigValueType.NUMBER,
+    category: ConfigCategory.PERFORMANCE,
+    defaultValue: '4000',
+    purpose: 'Advisory cap on the estimated token size of retrieved/context evidence assembled into a single Assistant LLM prompt.',
+    description: 'Assistant prompt context token budget.',
+    isEditable: true,
+    isHighImpact: false,
+    requiresRestart: false,
+    minValue: 500,
+    maxValue: 16000
+  },
+  AI_ASSISTANT_MAX_CONVERSATION_MESSAGES: {
+    key: 'AI_ASSISTANT_MAX_CONVERSATION_MESSAGES',
+    valueType: ConfigValueType.NUMBER,
+    category: ConfigCategory.PERFORMANCE,
+    defaultValue: '50',
+    purpose: 'Maximum number of most-recent AssistantMessage rows loaded into the conversation window for a single chat turn.',
+    description: 'Assistant conversation window size.',
+    isEditable: true,
+    isHighImpact: false,
+    requiresRestart: false,
+    minValue: 5,
+    maxValue: 200
+  },
+  AI_ASSISTANT_MAX_MESSAGE_LENGTH: {
+    key: 'AI_ASSISTANT_MAX_MESSAGE_LENGTH',
+    valueType: ConfigValueType.NUMBER,
+    category: ConfigCategory.SECURITY,
+    defaultValue: '4000',
+    purpose: 'Maximum character length of a single incoming user message to /api/assistant/chat. Longer messages are rejected with a 400 before any DB/LLM work.',
+    description: 'Assistant max inbound message length.',
+    isEditable: true,
+    isHighImpact: false,
+    requiresRestart: false,
+    minValue: 100,
+    maxValue: 20000
+  },
+  AI_ASSISTANT_RATE_LIMIT_PER_HOUR: {
+    key: 'AI_ASSISTANT_RATE_LIMIT_PER_HOUR',
+    valueType: ConfigValueType.NUMBER,
+    category: ConfigCategory.SECURITY,
+    defaultValue: '60',
+    purpose: 'Maximum Assistant chat turns a single user may send within a rolling hour, across all of that user\'s conversations.',
+    description: 'Per-user hourly Assistant chat rate limit.',
+    isEditable: true,
+    isHighImpact: true,
+    requiresRestart: false,
+    minValue: 1,
+    maxValue: 1000
+  },
+  AI_ASSISTANT_RESPONSE_TIMEOUT_MS: {
+    key: 'AI_ASSISTANT_RESPONSE_TIMEOUT_MS',
+    valueType: ConfigValueType.NUMBER,
+    category: ConfigCategory.PERFORMANCE,
+    defaultValue: '30000',
+    purpose: 'Overall timeout budget in milliseconds for one Assistant chat turn\'s LLM-facing work (intent classification + final generation combined).',
+    description: 'Assistant per-turn LLM timeout budget.',
+    isEditable: true,
+    isHighImpact: false,
+    requiresRestart: false,
+    minValue: 5000,
+    maxValue: 120000
+  },
+  AI_ASSISTANT_CONTEXT_CACHE_TTL_SECONDS: {
+    key: 'AI_ASSISTANT_CONTEXT_CACHE_TTL_SECONDS',
+    valueType: ConfigValueType.NUMBER,
+    category: ConfigCategory.CACHE,
+    defaultValue: '120',
+    purpose: 'TTL in seconds for any cached cross-turn context lookups (e.g. re-authorized project/document context hints) the Assistant orchestrator may cache to avoid redundant re-authorization calls within a short burst of turns.',
+    description: 'Assistant context re-authorization cache TTL.',
+    isEditable: true,
+    isHighImpact: false,
+    requiresRestart: false,
+    minValue: 0,
+    maxValue: 3600
   }
 };
 

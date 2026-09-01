@@ -140,6 +140,12 @@ export const FEATURE_REGISTRY: Record<FeatureCode, FeatureRegistryEntry> = {
     name: 'AI Workspace Intelligence',
     description: 'Proactive daily/weekly AI briefings synthesizing tasks, meetings, documents, and existing intelligence insights.',
     category: 'PLATFORM'
+  },
+  AI_ASSISTANT: {
+    code: 'AI_ASSISTANT',
+    name: 'Global AI Assistant',
+    description: 'Unified, floating conversational chat orchestrator spanning RAG, Knowledge Graph, Intelligence, Agents, Automations, ClickUp, Calendar, and Sarvam.',
+    category: 'PLATFORM'
   }
 };
 
@@ -220,7 +226,8 @@ const PRO_ENABLED: FeatureCode[] = [
   'KNOWLEDGE_INTELLIGENCE',
   'PROJECT_INTELLIGENCE',
   'AI_AGENT',
-  'AI_WORKSPACE_INTELLIGENCE'
+  'AI_WORKSPACE_INTELLIGENCE',
+  'AI_ASSISTANT'
 ];
 
 /**

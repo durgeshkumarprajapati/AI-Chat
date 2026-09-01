@@ -159,6 +159,7 @@ model User {
   aiIntelligenceSnapshots       AIIntelligenceSnapshot[]
   aiIntelligencePreference      AIIntelligencePreference?
   automations                   Automation[]
+  assistantConversations        AssistantConversation[]
 
   @@index([email])
   @@map("users")
@@ -2026,6 +2027,7 @@ model Project {
   aiIntelligenceSnapshots AIIntelligenceSnapshot[]
   notifications          Notification[]
   automations            Automation[]
+  assistantConversations AssistantConversation[]
 
   @@index([ownerId])
   @@index([status])
@@ -3569,6 +3571,7 @@ enum FeatureCode {
   PROJECT_INTELLIGENCE
   AI_AGENT
   AI_WORKSPACE_INTELLIGENCE
+  AI_ASSISTANT
 }
 
 enum UsageMetric {
@@ -4288,6 +4291,69 @@ model AutomationExecutionStep {
 
   @@index([executionId])
   @@map("automation_execution_steps")
+}
+
+// ==========================================
+// PHASE 89 — UNIFIED AI ASSISTANT (global, floating, conversational chat orchestrator unifying
+// RAG/Knowledge Graph/Intelligence/Agents/Automations/ClickUp/Calendar/Sarvam).
+//
+// NAMING: `Assistant*` (never `Copilot*`) — the pre-existing `/copilot` feature
+// (`src/features/copilot/**`) already owns CopilotSession/CopilotGoal/CopilotMemory/
+// CopilotAction/CopilotEvent as a single-shot "type one big request -> get a plan + synthesis"
+// orchestrator with zero turn-based chat persistence. This is a genuinely different, turn-based,
+// streaming, multi-turn chat surface, so it gets its own models entirely rather than overloading
+// the existing Copilot ones — see this migration's own header comment for the full rationale.
+// ==========================================
+
+enum AssistantConversationScope {
+  GLOBAL
+  WORKSPACE
+  PROJECT
+  DOCUMENT
+  KNOWLEDGE_BASE
+}
+
+enum AssistantMessageRole {
+  USER
+  ASSISTANT
+  SYSTEM
+  TOOL
+}
+
+model AssistantConversation {
+  id            String                     @id @default(uuid())
+  userId        String                     @map("user_id")
+  scope         AssistantConversationScope @default(GLOBAL)
+  projectId     String?                    @map("project_id")
+  title         String                     @default("New conversation")
+  contextJson   Json?                      @default("{}") @map("context_json")
+  lastMessageAt DateTime?                  @map("last_message_at")
+  isDeleted     Boolean                    @default(false) @map("is_deleted")
+  createdAt     DateTime                   @default(now()) @map("created_at")
+  updatedAt     DateTime                   @updatedAt @map("updated_at")
+
+  user     User               @relation(fields: [userId], references: [id], onDelete: Cascade)
+  project  Project?           @relation(fields: [projectId], references: [id], onDelete: SetNull)
+  messages AssistantMessage[]
+
+  @@index([userId, updatedAt])
+  @@index([userId, isDeleted])
+  @@index([projectId])
+  @@map("assistant_conversations")
+}
+
+model AssistantMessage {
+  id             String               @id @default(uuid())
+  conversationId String               @map("conversation_id")
+  role           AssistantMessageRole
+  content        String               @db.Text
+  metadataJson   Json?                @default("{}") @map("metadata_json")
+  createdAt      DateTime             @default(now()) @map("created_at")
+
+  conversation AssistantConversation @relation(fields: [conversationId], references: [id], onDelete: Cascade)
+
+  @@index([conversationId, createdAt])
+  @@map("assistant_messages")
 }
 
 

@@ -12,6 +12,7 @@ import { TourHelpButton } from '@/features/tours/components/TourHelpButton';
 import { useContextualTour } from '@/features/tours/hooks/useContextualTour';
 import { UserProfileMenu } from '../auth/UserProfileMenu';
 import { AppFooter } from './AppFooter';
+import { GlobalAssistantProvider } from '@/components/assistant/GlobalAssistantProvider';
 
 function HeaderTourControls() {
   const { startTour } = useTour();
@@ -237,6 +238,7 @@ function InnerAppLayout({ children }: { children: React.ReactNode }) {
   }
 
   return (
+    <GlobalAssistantProvider>
     <div className="min-h-screen bg-slate-50 dark:bg-[#0f131d] text-slate-900 dark:text-[#dfe2f1] flex flex-col font-sans selection:bg-[#4d8eff] selection:text-white transition-colors">
       {/* Premium Enterprise Header */}
       <header className="sticky top-0 z-40 bg-white/90 dark:bg-[#0a0e18]/90 backdrop-blur-md border-b border-slate-200 dark:border-[#424754]/60 px-4 lg:px-8 py-3 flex items-center justify-between shadow-sm dark:shadow-lg">
@@ -459,6 +461,7 @@ function InnerAppLayout({ children }: { children: React.ReactNode }) {
       {/* Universal Product Tour Overlay */}
       <ProductTour />
     </div>
+    </GlobalAssistantProvider>
   );
 }
 

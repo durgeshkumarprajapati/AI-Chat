@@ -1,5 +1,7 @@
+import { randomUUID } from 'crypto';
 import { UserRole } from '@prisma/client';
 import { prisma } from '@/lib/prisma';
+import { QUEUES, rabbitmq, MemoryCandidateExtractionJobPayload } from '@/lib/rabbitmq';
 import { entitlementService } from '@/features/billing/entitlement.service';
 import { configService } from '@/features/config/config.service';
 import { ValidationError, NotFoundError } from '@/errors';
@@ -122,6 +124,25 @@ export class AssistantOrchestratorService {
 
       const authorizedContext = await assistantContextAuthorizationService.authorize(userId, userRole, request.contextHint);
 
+      // 5b. PHASE 90 — Memory Retrieval moved here per the required pipeline order (Context
+      // Authorization -> Memory Retrieval -> Intent Classification -> Capability Routing), and
+      // upgraded from the old unranked `getMemories()` + hardcoded `.slice(0,20)` to the real
+      // ranked/budgeted/cached engine (`retrieveRankedMemories`). Fetched exactly ONCE per turn —
+      // this precomputed block is reused verbatim at final-generation time below, replacing the
+      // old late `buildMemoryContextBlock` call. `retrieveRankedMemories` never throws (its own
+      // contract resolves to `[]` on any error/timeout), so a memory-layer problem can never fail
+      // a chat turn.
+      const rankedMemories = await copilotMemoryService.retrieveRankedMemories(userId, {
+        projectId: authorizedContext.projectId ?? undefined,
+        queryText: message,
+        conversationScoped: true
+      });
+      const memoryContextBlock = rankedMemories.length
+        ? wrapUntrustedContextBlocks([
+            { content: rankedMemories.map((m) => `${m.key}: ${m.value}`).join('\n'), sourceRef: 'user-memory' }
+          ])
+        : '';
+
       // 6. Load or create the conversation.
       const conversation = await assistantConversationService.loadOrCreate(userId, {
         conversationId: request.conversationId,
@@ -215,11 +236,9 @@ export class AssistantOrchestratorService {
         }
       } else {
         const systemPrompt = this.buildSystemPrompt(intent, execResult.skipContext);
-        // Read-only reuse of the existing, already user+project-scoped Copilot memory layer
-        // (src/features/copilot/memory/copilot-memory.service.ts) as shared, cross-surface
-        // personalization — never written to from here, and never a new memory-management UI.
-        const memoryBlock = await this.buildMemoryContextBlock(userId, authorizedContext.projectId);
-        const context = [memoryBlock, ...execResult.contextBlocks].filter(Boolean).join('\n\n');
+        // PHASE 90 — reuses the `memoryContextBlock` already computed once, early, in step 5b
+        // above (never a second memory DB/cache round-trip per turn).
+        const context = [memoryContextBlock, ...execResult.contextBlocks].filter(Boolean).join('\n\n');
 
         if (streamingEnabled) {
           for await (const streamChunk of llmGateway.stream({
@@ -271,6 +290,11 @@ export class AssistantOrchestratorService {
         latencyMs: Date.now() - startedAt
       });
 
+      // PHASE 90 — fire-and-forget async candidate extraction, only for a genuinely completed,
+      // successful turn (this line is only reached after a full, error-free generation). Not
+      // awaited — never delays the `done` yield below.
+      void this.dispatchMemoryExtraction(userId, authorizedContext.projectId, message, finalAnswer, conversationId).catch(() => {});
+
       // 15. done
       yield { event: 'done', data: { messageId: assistantMessage.id, usedIntent: intent } };
     } catch (error) {
@@ -299,18 +323,42 @@ export class AssistantOrchestratorService {
     }
   }
 
-  /** Best-effort; never blocks or fails the chat turn if memory lookup errors. */
-  private async buildMemoryContextBlock(userId: string, projectId?: string): Promise<string> {
+  /**
+   * PHASE 90 — fire-and-forget async candidate-extraction dispatch, called only after a
+   * genuinely completed, successful turn (approval-required/error turns already `return` before
+   * reaching this call site). NEVER throws into the generator, and NEVER awaited in a way that
+   * delays a yield — the SSE stream has already emitted `done` by the time this settles.
+   */
+  private async dispatchMemoryExtraction(
+    userId: string,
+    projectId: string | null | undefined,
+    userMessage: string,
+    assistantMessage: string,
+    conversationId: string | undefined
+  ): Promise<void> {
     try {
-      const memories = await copilotMemoryService.getMemories(userId, projectId);
-      if (!memories.length) return '';
-      const text = memories
-        .slice(0, 20)
-        .map((m) => `${m.key}: ${m.value}`)
-        .join('\n');
-      return wrapUntrustedContextBlocks([{ content: text, sourceRef: 'user-memory' }]);
+      const [candidateProcessingEnabled, autoLearnEnabled] = await Promise.all([
+        configService.getBoolean('AI_MEMORY_CANDIDATE_PROCESSING_ENABLED', true),
+        configService.getBoolean('AI_MEMORY_AUTO_LEARN_ENABLED', true)
+      ]);
+      if (!candidateProcessingEnabled || !autoLearnEnabled) return;
+
+      await rabbitmq.publishToQueue<MemoryCandidateExtractionJobPayload>(QUEUES.MEMORY_CANDIDATE_EXTRACTION, {
+        jobType: 'MEMORY_CANDIDATE_EXTRACTION',
+        version: 1,
+        jobId: randomUUID(),
+        userId,
+        projectId: projectId ?? null,
+        conversationId: conversationId ?? null,
+        // Bounded, single-turn content only — never the full conversation history.
+        userMessage: userMessage.slice(0, 2000),
+        assistantMessage: assistantMessage.slice(0, 2000),
+        attempt: 1,
+        createdAt: new Date().toISOString()
+      });
     } catch {
-      return '';
+      // Best-effort only — a dispatch failure must never surface to a chat turn that has already
+      // completed and streamed its response to the client.
     }
   }
 

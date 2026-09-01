@@ -2433,6 +2433,148 @@ export const CONFIG_REGISTRY: Record<string, RegistryConfigItem> = {
     requiresRestart: false,
     minValue: 0,
     maxValue: 3600
+  },
+
+  // ==========================================
+  // PHASE 90 — AI MEMORY, PERSONALIZATION & ADAPTIVE INTELLIGENCE. Extends the existing
+  // CopilotMemory model/copilotMemoryService (never a parallel memory model/service) with real
+  // ranking/budget/cache/candidate-extraction. `AI_MEMORY_ENABLED` defaults to TRUE per explicit
+  // product-owner instruction: memory storage/retrieval has no external side effect of its own —
+  // any actual external action (ClickUp/Calendar/etc.) still goes through the pre-existing,
+  // already-approval-gated Assistant/Agent flows regardless of this flag.
+  // ==========================================
+  AI_MEMORY_ENABLED: {
+    key: 'AI_MEMORY_ENABLED',
+    valueType: ConfigValueType.BOOLEAN,
+    category: ConfigCategory.FEATURE_FLAG,
+    defaultValue: 'true',
+    purpose: 'Master kill-switch for AI memory retrieval/storage. When false, retrieveRankedMemories short-circuits to an empty result before any DB/cache work.',
+    description: 'Global AI Memory master flag.',
+    isEditable: true,
+    isHighImpact: true,
+    requiresRestart: false
+  },
+  AI_MEMORY_AUTO_LEARN_ENABLED: {
+    key: 'AI_MEMORY_AUTO_LEARN_ENABLED',
+    valueType: ConfigValueType.BOOLEAN,
+    category: ConfigCategory.FEATURE_FLAG,
+    defaultValue: 'true',
+    purpose: 'Global default for whether the async candidate-extraction worker may create new memories from conversation turns. Overridden per-user by MemorySettings.autoLearnEnabled.',
+    description: 'Global AI Memory auto-learn default.',
+    isEditable: true,
+    isHighImpact: false,
+    requiresRestart: false
+  },
+  AI_MEMORY_PROJECT_ENABLED: {
+    key: 'AI_MEMORY_PROJECT_ENABLED',
+    valueType: ConfigValueType.BOOLEAN,
+    category: ConfigCategory.FEATURE_FLAG,
+    defaultValue: 'true',
+    purpose: 'Global default for whether project-scoped memories are considered. Overridden per-user by MemorySettings.projectMemoryEnabled.',
+    description: 'Global AI Memory project-scope default.',
+    isEditable: true,
+    isHighImpact: false,
+    requiresRestart: false
+  },
+  AI_MEMORY_CONVERSATION_ENABLED: {
+    key: 'AI_MEMORY_CONVERSATION_ENABLED',
+    valueType: ConfigValueType.BOOLEAN,
+    category: ConfigCategory.FEATURE_FLAG,
+    defaultValue: 'true',
+    purpose: 'Global default for whether conversation-scoped memories are considered. Overridden per-user by MemorySettings.conversationMemoryEnabled.',
+    description: 'Global AI Memory conversation-scope default.',
+    isEditable: true,
+    isHighImpact: false,
+    requiresRestart: false
+  },
+  AI_MEMORY_MAX_RETRIEVAL_RESULTS: {
+    key: 'AI_MEMORY_MAX_RETRIEVAL_RESULTS',
+    valueType: ConfigValueType.NUMBER,
+    category: ConfigCategory.PERFORMANCE,
+    defaultValue: '10',
+    purpose: 'Maximum number of ranked memories returned by a single retrieveRankedMemories call.',
+    description: 'AI Memory max retrieval results.',
+    isEditable: true,
+    isHighImpact: false,
+    requiresRestart: false,
+    minValue: 1,
+    maxValue: 50
+  },
+  AI_MEMORY_MAX_CONTEXT_TOKENS: {
+    key: 'AI_MEMORY_MAX_CONTEXT_TOKENS',
+    valueType: ConfigValueType.NUMBER,
+    category: ConfigCategory.PERFORMANCE,
+    defaultValue: '800',
+    purpose: 'Advisory cap on the estimated token size of the memory context block assembled into a single Assistant LLM prompt.',
+    description: 'AI Memory prompt context token budget.',
+    isEditable: true,
+    isHighImpact: false,
+    requiresRestart: false,
+    minValue: 100,
+    maxValue: 4000
+  },
+  AI_MEMORY_RELEVANCE_THRESHOLD: {
+    key: 'AI_MEMORY_RELEVANCE_THRESHOLD',
+    valueType: ConfigValueType.NUMBER,
+    category: ConfigCategory.PERFORMANCE,
+    defaultValue: '0.3',
+    purpose: 'Minimum combined ranking score (0-1) a candidate memory must reach to be included in a retrieveRankedMemories result.',
+    description: 'AI Memory relevance threshold.',
+    isEditable: true,
+    isHighImpact: false,
+    requiresRestart: false,
+    minValue: 0,
+    maxValue: 1
+  },
+  AI_MEMORY_CACHE_TTL_SECONDS: {
+    key: 'AI_MEMORY_CACHE_TTL_SECONDS',
+    valueType: ConfigValueType.NUMBER,
+    category: ConfigCategory.CACHE,
+    defaultValue: '300',
+    purpose: 'TTL in seconds for cached memory-retrieval result lists (memory-retrieval-cache.service.ts).',
+    description: 'AI Memory retrieval cache TTL.',
+    isEditable: true,
+    isHighImpact: false,
+    requiresRestart: false,
+    minValue: 0,
+    maxValue: 3600
+  },
+  AI_MEMORY_MAX_CONTENT_LENGTH: {
+    key: 'AI_MEMORY_MAX_CONTENT_LENGTH',
+    valueType: ConfigValueType.NUMBER,
+    category: ConfigCategory.SECURITY,
+    defaultValue: '1000',
+    purpose: 'Maximum character length of a single memory value. Longer candidate content is truncated before storage/return, never allowed to blow the prompt context budget.',
+    description: 'AI Memory max content length.',
+    isEditable: true,
+    isHighImpact: false,
+    requiresRestart: false,
+    minValue: 50,
+    maxValue: 5000
+  },
+  AI_MEMORY_CANDIDATE_PROCESSING_ENABLED: {
+    key: 'AI_MEMORY_CANDIDATE_PROCESSING_ENABLED',
+    valueType: ConfigValueType.BOOLEAN,
+    category: ConfigCategory.FEATURE_FLAG,
+    defaultValue: 'true',
+    purpose: 'Master kill-switch for the async memory-candidate-extraction worker pipeline. When false, the Assistant orchestrator never enqueues an extraction job.',
+    description: 'AI Memory candidate extraction master flag.',
+    isEditable: true,
+    isHighImpact: false,
+    requiresRestart: false
+  },
+  AI_MEMORY_RETRIEVAL_TIMEOUT_MS: {
+    key: 'AI_MEMORY_RETRIEVAL_TIMEOUT_MS',
+    valueType: ConfigValueType.NUMBER,
+    category: ConfigCategory.PERFORMANCE,
+    defaultValue: '1500',
+    purpose: 'Timeout budget in milliseconds for a single retrieveRankedMemories call. On timeout, an empty result is returned rather than blocking the chat turn.',
+    description: 'AI Memory retrieval timeout budget.',
+    isEditable: true,
+    isHighImpact: false,
+    requiresRestart: false,
+    minValue: 200,
+    maxValue: 10000
   }
 };
 

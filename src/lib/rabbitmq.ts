@@ -16,7 +16,11 @@ export const QUEUES = {
   // other features) get matched against AutomationTriggerBinding rows by the trigger-matcher
   // processor, which then enqueues one AUTOMATION_EXECUTION job per created AutomationExecution.
   AUTOMATION_EVENT_DISPATCH: 'automation-event-dispatch',
-  AUTOMATION_EXECUTION: 'automation-execution'
+  AUTOMATION_EXECUTION: 'automation-execution',
+  // Phase 90 — AI Memory, Personalization & Adaptive Intelligence. Published fire-and-forget by
+  // the Assistant orchestrator once a chat turn completes successfully; consumed by
+  // worker/src/processors/memory-extraction.processor.ts.
+  MEMORY_CANDIDATE_EXTRACTION: 'memory-candidate-extraction'
 } as const;
 
 export type QueueName = typeof QUEUES[keyof typeof QUEUES];
@@ -178,6 +182,26 @@ export interface AutomationExecutionJobPayload {
   version: number;
   jobId: string;
   executionId: string;
+  attempt: number;
+  createdAt: string;
+}
+
+/**
+ * Phase 90 — published fire-and-forget by the Assistant orchestrator immediately after a
+ * genuinely completed, successful chat turn (never on error/approval-required turns). Bounded,
+ * single-turn content only — no full conversation history — so a job payload can never grow
+ * unbounded. The worker reloads MemorySettings fresh from Postgres before doing anything with
+ * this payload; it is never trusted as an authoritative snapshot of current settings.
+ */
+export interface MemoryCandidateExtractionJobPayload {
+  jobType: 'MEMORY_CANDIDATE_EXTRACTION';
+  version: number;
+  jobId: string;
+  userId: string;
+  projectId?: string | null;
+  conversationId?: string | null;
+  userMessage: string;
+  assistantMessage: string;
   attempt: number;
   createdAt: string;
 }

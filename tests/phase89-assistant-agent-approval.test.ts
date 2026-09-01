@@ -45,7 +45,11 @@ jest.mock('@/features/sarvam/translation/sarvam-document-translation.service', (
   sarvamDocumentTranslationService: { requestDocumentTranslation: jest.fn() }
 }));
 jest.mock('@/features/copilot/memory/copilot-memory.service', () => ({
-  copilotMemoryService: { getMemories: jest.fn().mockResolvedValue([]) }
+  // Phase 90 — the orchestrator now calls `retrieveRankedMemories` once, early in the pipeline.
+  copilotMemoryService: {
+    getMemories: jest.fn().mockResolvedValue([]),
+    retrieveRankedMemories: jest.fn().mockResolvedValue([])
+  }
 }));
 jest.mock('@/features/assistant/rate-limit/assistant-rate-limit.service', () => ({
   assistantRateLimitService: { checkUserHourlyLimit: jest.fn().mockResolvedValue(true) }

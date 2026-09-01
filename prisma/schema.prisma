@@ -160,6 +160,7 @@ model User {
   aiIntelligencePreference      AIIntelligencePreference?
   automations                   Automation[]
   assistantConversations        AssistantConversation[]
+  memorySettings                MemorySettings?
 
   @@index([email])
   @@map("users")
@@ -1945,6 +1946,13 @@ enum CopilotMemoryCategory {
   GOAL
   TECHNICAL_CONTEXT
   WORKFLOW_PREFERENCE
+  // PHASE 90 — AI Memory, Personalization & Adaptive Intelligence. Additive only, appended after
+  // the existing values (never reordered/removed) so every existing row/enum-ordinal stays valid.
+  USER_PROFILE
+  TECHNICAL_DECISION
+  IMPORTANT_FACT
+  CONVERSATION_MEMORY
+  WORKING_PATTERN
 }
 
 enum CopilotCapability {
@@ -2220,6 +2228,14 @@ model CopilotMemory {
   createdAt  DateTime              @default(now()) @map("created_at")
   updatedAt  DateTime              @updatedAt @map("updated_at")
 
+  // PHASE 90 — additive ranking/lifecycle metadata. All nullable/defaulted so every existing row
+  // stays valid with zero backfill required; existing queries/call sites are unaffected.
+  importance  Float?    @default(0.5) @map("importance")
+  sourceType  String?   @map("source_type")
+  sourceId    String?   @map("source_id")
+  lastUsedAt  DateTime? @map("last_used_at")
+  accessCount Int       @default(0) @map("access_count")
+
   user    User     @relation(fields: [userId], references: [id], onDelete: Cascade)
   project Project? @relation(fields: [projectId], references: [id], onDelete: SetNull)
 
@@ -2227,7 +2243,27 @@ model CopilotMemory {
   @@index([userId])
   @@index([projectId])
   @@index([category])
+  @@index([userId, category])
+  @@index([userId, lastUsedAt])
   @@map("copilot_memories")
+}
+
+// PHASE 90 — per-user Memory settings. Genuinely new: the existing /settings/copilot-memory
+// page's `memoryEnabled` toggle is local component state only (confirmed unpersisted); this is
+// the real, durable home for it plus the related auto-learn/project/conversation memory toggles.
+model MemorySettings {
+  id                        String   @id @default(uuid())
+  userId                    String   @unique @map("user_id")
+  memoryEnabled             Boolean  @default(true) @map("memory_enabled")
+  autoLearnEnabled          Boolean  @default(true) @map("auto_learn_enabled")
+  projectMemoryEnabled      Boolean  @default(true) @map("project_memory_enabled")
+  conversationMemoryEnabled Boolean  @default(true) @map("conversation_memory_enabled")
+  createdAt                 DateTime @default(now()) @map("created_at")
+  updatedAt                 DateTime @updatedAt @map("updated_at")
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@map("memory_settings")
 }
 
 model CopilotAction {

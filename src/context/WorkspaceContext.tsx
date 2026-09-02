@@ -44,6 +44,7 @@ const WorkspaceContext = createContext<WorkspaceContextType | undefined>(undefin
 
 export const DEFAULT_CITY = 'Vadodara';
 export const DEFAULT_REGION = 'Gujarat';
+export const AUTH_BOOTSTRAP_TIMEOUT_MS = 5000;
 
 export function WorkspaceProvider({ children }: { children: React.ReactNode }) {
   const router = useRouter();
@@ -130,11 +131,39 @@ export function WorkspaceProvider({ children }: { children: React.ReactNode }) {
   // Refresh current user from server session
   const refreshUser = useCallback(async () => {
     setAuthStatus('LOADING');
-    try {
-      const res = await fetch('/api/auth/me');
-      const data = await res.json();
+    const controller = new AbortController();
+    const timeoutId = setTimeout(() => {
+      if (process.env.NODE_ENV === 'development') {
+        console.warn('[AUTH] /api/auth/me request timed out after 5000ms. Aborting.');
+      }
+      controller.abort();
+    }, AUTH_BOOTSTRAP_TIMEOUT_MS);
 
-      if (data.authenticated && data.user) {
+    try {
+      if (process.env.NODE_ENV === 'development') {
+        console.log('[AUTH] Fetching /api/auth/me...');
+      }
+      const res = await fetch('/api/auth/me', {
+        signal: controller.signal,
+        credentials: 'include',
+        cache: 'no-store'
+      });
+
+      if (!res.ok) {
+        if (process.env.NODE_ENV === 'development') {
+          console.log('[AUTH] /api/auth/me response not OK:', res.status);
+        }
+        setCurrentUser(null);
+        setAuthStatus('UNAUTHENTICATED');
+        return;
+      }
+
+      const data = await res.json().catch(() => null);
+
+      if (data && data.authenticated && data.user) {
+        if (process.env.NODE_ENV === 'development') {
+          console.log('[AUTH] Authenticated user resolved:', data.user.email);
+        }
         setCurrentUser(data.user);
         setAuthStatus('AUTHENTICATED');
 
@@ -147,12 +176,20 @@ export function WorkspaceProvider({ children }: { children: React.ReactNode }) {
           fetchWeatherForCity(initialCity);
         }
       } else {
+        if (process.env.NODE_ENV === 'development') {
+          console.log('[AUTH] Unauthenticated user session');
+        }
         setCurrentUser(null);
         setAuthStatus('UNAUTHENTICATED');
       }
-    } catch {
+    } catch (err) {
+      if (process.env.NODE_ENV === 'development') {
+        console.error('[AUTH] refreshUser failed:', err);
+      }
       setCurrentUser(null);
       setAuthStatus('UNAUTHENTICATED');
+    } finally {
+      clearTimeout(timeoutId);
     }
   }, [fetchWeatherForCity]);
 

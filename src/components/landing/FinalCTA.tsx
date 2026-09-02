@@ -2,8 +2,13 @@
 
 import React from 'react';
 import Link from 'next/link';
+import { useWorkspace } from '@/context/WorkspaceContext';
 
 export const FinalCTA: React.FC = () => {
+  const { authStatus } = useWorkspace();
+  const primaryTarget = authStatus === 'AUTHENTICATED' ? '/dashboard' : '/register';
+  const secondaryTarget = authStatus === 'AUTHENTICATED' ? '/dashboard' : '/login';
+
   return (
     <section className="py-24 bg-gradient-to-b from-[#0f131d] via-[#0a0e18] to-[#0a0e18] relative overflow-hidden">
       <div className="max-w-5xl mx-auto px-4 sm:px-6 lg:px-8 text-center relative z-10">
@@ -23,17 +28,17 @@ export const FinalCTA: React.FC = () => {
 
           <div className="flex flex-wrap items-center justify-center gap-4 pt-4">
             <Link
-              href="/register"
+              href={primaryTarget}
               className="px-8 py-4 rounded-xl bg-gradient-to-r from-[#4d8eff] to-[#adc6ff] text-[#0a0e18] font-bold text-sm shadow-xl shadow-[#4d8eff]/30 hover:scale-[1.02] active:scale-[0.98] transition-all"
             >
-              Start Free Trial
+              {authStatus === 'AUTHENTICATED' ? 'Enter Application' : 'Start Free Trial'}
             </Link>
 
             <Link
-              href="/dashboard"
+              href={secondaryTarget}
               className="px-8 py-4 rounded-xl bg-[#0a0e18] hover:bg-[#0a0e18]/80 border border-[#424754] text-[#dfe2f1] hover:border-[#8c909f] font-bold text-sm shadow-lg transition-all"
             >
-              Explore Workspace
+              {authStatus === 'AUTHENTICATED' ? 'Go to Dashboard' : 'Account Sign In'}
             </Link>
           </div>
         </div>

@@ -10,7 +10,7 @@ import { AuthCard } from '@/components/auth/AuthCard';
 
 export default function RegisterPage() {
   const router = useRouter();
-  const { authStatus } = useWorkspace();
+  const { authStatus, refreshUser } = useWorkspace();
   const [name, setName] = useState('');
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
@@ -47,6 +47,7 @@ export default function RegisterPage() {
         throw new Error(data.error?.message || 'Registration failed.');
       }
 
+      await refreshUser();
       router.push('/dashboard');
       router.refresh();
     } catch (err) {
@@ -56,14 +57,14 @@ export default function RegisterPage() {
     }
   };
 
-  if (authStatus === 'LOADING' || authStatus === 'AUTHENTICATED') {
+  if (authStatus === 'AUTHENTICATED') {
     return (
       <AuthLayoutShell>
         <AuthCard>
           <div className="flex flex-col items-center justify-center py-12 space-y-3 font-sans">
             <div className="w-8 h-8 rounded-full border-2 border-primary border-t-transparent animate-spin" />
             <p className="text-xs text-primary font-mono animate-pulse">
-              {authStatus === 'AUTHENTICATED' ? 'Redirecting to Dashboard...' : 'Verifying Session...'}
+              Redirecting to Dashboard...
             </p>
           </div>
         </AuthCard>

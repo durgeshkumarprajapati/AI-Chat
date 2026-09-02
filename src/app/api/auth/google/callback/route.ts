@@ -18,12 +18,12 @@ export async function GET(req: NextRequest) {
     const clientSecret = envConfig.google.clientSecret;
     const redirectUri = envConfig.google.auth.redirectUri;
 
-    let googleId = `mock_g_id_${Date.now()}`;
-    let email = 'user@gmail.com';
-    let name = 'Google User';
+    let googleId = `g_id_${Date.now()}`;
+    let email = 'dev.google.user@example.com';
+    let name = 'Google Dev User';
     let picture: string | undefined = undefined;
 
-    if (clientId && clientSecret && !code.startsWith('mock_')) {
+    if (clientId && clientSecret && clientId !== 'mock-google-client-id' && !code.startsWith('mock_')) {
       // Exchange auth code for ID token & access token
       const tokenRes = await fetch('https://oauth2.googleapis.com/token', {
         method: 'POST',
@@ -65,7 +65,10 @@ export async function GET(req: NextRequest) {
     sessionService.setSessionCookie(sessionToken);
 
     const baseUrl = process.env.NEXTAUTH_URL || `${url.protocol}//${url.host}`;
-    return NextResponse.redirect(`${baseUrl}/dashboard`);
+    const res = NextResponse.redirect(`${baseUrl}/dashboard`);
+    sessionService.attachSessionCookie(res, sessionToken);
+
+    return res;
   } catch (err: any) {
     return NextResponse.json(
       { success: false, error: err?.message || 'Google Auth callback failed' },

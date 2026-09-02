@@ -1,11 +1,22 @@
 import { NextRequest, NextResponse } from 'next/server';
+import { envConfig } from '@/config/env';
 import { googleAuthService } from '@/features/auth/google-auth.service';
 import { sessionService } from '@/features/auth/session.service';
 
 export const dynamic = 'force-dynamic';
 
-export async function GET() {
+export async function GET(req: NextRequest) {
   try {
+    const clientId = envConfig.google.clientId;
+    const clientSecret = envConfig.google.clientSecret;
+
+    // In local development without real Google OAuth credentials, redirect to local dev callback
+    if (!clientId || clientId === 'mock-google-client-id' || !clientSecret) {
+      const url = new URL(req.url);
+      const baseUrl = process.env.NEXTAUTH_URL || `${url.protocol}//${url.host}`;
+      return NextResponse.redirect(`${baseUrl}/api/auth/google/callback?code=mock_dev_google_code`);
+    }
+
     const authUrl = googleAuthService.getSignInAuthUrl();
     return NextResponse.redirect(authUrl);
   } catch (error: any) {
@@ -38,13 +49,16 @@ export async function POST(req: NextRequest) {
 
     sessionService.setSessionCookie(sessionToken);
 
-    return NextResponse.json({
+    const res = NextResponse.json({
       success: true,
       data: {
         user,
         sessionToken
       }
     });
+
+    sessionService.attachSessionCookie(res, sessionToken);
+    return res;
   } catch (error) {
     console.error('POST /api/auth/google error:', error);
     return NextResponse.json(

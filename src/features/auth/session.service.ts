@@ -2,6 +2,7 @@ import { prisma } from '@/lib/prisma';
 import { env } from '@/config/env';
 import { randomBytes } from 'crypto';
 import { cookies } from 'next/headers';
+import { NextResponse } from 'next/server';
 import { UserRole, AuthProvider, UserStatus } from '@prisma/client';
 
 export interface SessionUser {
@@ -68,6 +69,21 @@ export class SessionService {
     } catch {
       // Ignore if called outside Server Action / Route Handler context
     }
+  }
+
+  /**
+   * Directly attaches the HttpOnly session cookie to an outgoing NextResponse object.
+   */
+  public attachSessionCookie<T extends NextResponse>(res: T, sessionToken: string): T {
+    const expiryDays = env.server?.SESSION_EXPIRY_DAYS ?? 7;
+    res.cookies.set(this.COOKIE_NAME, sessionToken, {
+      httpOnly: true,
+      secure: process.env.NODE_ENV === 'production',
+      sameSite: 'lax',
+      path: '/',
+      maxAge: expiryDays * 24 * 60 * 60
+    });
+    return res;
   }
 
   /**

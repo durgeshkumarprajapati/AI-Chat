@@ -78,7 +78,9 @@ export async function GET(req: NextRequest) {
       });
 
       sessionService.setSessionCookie(sessionToken);
-      return NextResponse.redirect(`${baseUrl}/dashboard`);
+      const res = NextResponse.redirect(`${baseUrl}/dashboard`);
+      sessionService.attachSessionCookie(res, sessionToken);
+      return res;
     }
 
     // 2. Otherwise process as Google Calendar integration flow for the logged-in user

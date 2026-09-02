@@ -34,8 +34,8 @@ export const DEFAULT_DEV_USER: AuthenticatedUser = {
  * Automatically ensures the User record exists in PostgreSQL to preserve FK constraints.
  */
 export async function getAuthUser(req?: NextRequest): Promise<AuthenticatedUser> {
-  let userId = DEFAULT_DEV_USER.id;
-  let email = DEFAULT_DEV_USER.email;
+  let userId: string | null = null;
+  let email: string | null = null;
 
   if (req) {
     // 1. Check HttpOnly session cookie
@@ -82,6 +82,10 @@ export async function getAuthUser(req?: NextRequest): Promise<AuthenticatedUser>
         email = `user-${token}@example.com`;
       }
     }
+  } else {
+    // Server-side scripts/background tasks called without NextRequest
+    userId = DEFAULT_DEV_USER.id;
+    email = DEFAULT_DEV_USER.email;
   }
 
   if (!userId) {
@@ -94,7 +98,7 @@ export async function getAuthUser(req?: NextRequest): Promise<AuthenticatedUser>
     update: {},
     create: {
       id: userId,
-      email,
+      email: email || `user-${userId}@example.com`,
       name: `User ${userId.slice(0, 8)}`,
       role: UserRole.USER,
       authProvider: AuthProvider.EMAIL,

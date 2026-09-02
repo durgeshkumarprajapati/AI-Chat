@@ -47,7 +47,7 @@ export async function POST(req: NextRequest) {
     const sessionToken = await sessionService.createSession(user.id);
     sessionService.setSessionCookie(sessionToken);
 
-    return NextResponse.json({
+    const res = NextResponse.json({
       success: true,
       data: {
         user: {
@@ -59,6 +59,9 @@ export async function POST(req: NextRequest) {
         sessionToken
       }
     });
+
+    sessionService.attachSessionCookie(res, sessionToken);
+    return res;
   } catch (error) {
     console.error('POST /api/auth/register error:', error);
     return NextResponse.json(

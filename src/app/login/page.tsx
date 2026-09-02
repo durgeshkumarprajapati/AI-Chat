@@ -52,14 +52,14 @@ export default function LoginPage() {
     window.location.href = '/api/auth/google';
   };
 
-  if (authStatus === 'LOADING' || authStatus === 'AUTHENTICATED') {
+  if (authStatus === 'AUTHENTICATED') {
     return (
       <AuthLayoutShell>
         <AuthCard>
           <div className="flex flex-col items-center justify-center py-12 space-y-3 font-sans">
             <div className="w-8 h-8 rounded-full border-2 border-primary border-t-transparent animate-spin" />
             <p className="text-xs text-primary font-mono animate-pulse">
-              {authStatus === 'AUTHENTICATED' ? 'Redirecting to Dashboard...' : 'Verifying Session...'}
+              Redirecting to Dashboard...
             </p>
           </div>
         </AuthCard>

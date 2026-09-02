@@ -2599,6 +2599,32 @@ export const CONFIG_REGISTRY: Record<string, RegistryConfigItem> = {
     requiresRestart: false,
     minValue: 200,
     maxValue: 10000
+  },
+
+  // PHASE 91 — PRODUCTION INFRASTRUCTURE, DEPLOYMENT & DEVOPS
+  WORKER_SHUTDOWN_DRAIN_TIMEOUT_MS: {
+    key: 'WORKER_SHUTDOWN_DRAIN_TIMEOUT_MS',
+    valueType: ConfigValueType.NUMBER,
+    category: ConfigCategory.WORKER,
+    defaultValue: '5000',
+    purpose: 'Max time in milliseconds the worker waits for in-flight jobs to finish during graceful shutdown before force-closing RabbitMQ/Prisma/Redis connections. Read once at worker startup (not re-read at shutdown time, since ConfigService itself may depend on infra that is already degraded by then).',
+    description: 'Worker graceful-shutdown in-flight job drain timeout.',
+    isEditable: true,
+    isHighImpact: false,
+    requiresRestart: true,
+    minValue: 1000,
+    maxValue: 30000
+  },
+  WORKER_SCHEDULER_LOCK_ENABLED: {
+    key: 'WORKER_SCHEDULER_LOCK_ENABLED',
+    valueType: ConfigValueType.BOOLEAN,
+    category: ConfigCategory.FEATURE_FLAG,
+    defaultValue: 'true',
+    purpose: 'Master switch for the distributed Redis lock guarding every worker periodic (setInterval) task, so only one worker replica executes a given tick when deployed as worker×N. Defaults enabled — this is a pure safety/correctness improvement (prevents duplicate scheduled work across replicas) with no external side effect of its own. Disabling it is an emergency escape hatch only, for if the lock mechanism itself ever misbehaves; disabling it re-exposes the multi-replica duplicate-execution risk it exists to close.',
+    description: 'Worker scheduler distributed-lock master flag.',
+    isEditable: true,
+    isHighImpact: true,
+    requiresRestart: false
   }
 };
 

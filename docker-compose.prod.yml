@@ -1,0 +1,153 @@
+# ============================================================
+# Document AI / RAG Platform — PRODUCTION / self-hosted compose
+#
+# This is a SIBLING to the existing docker-compose.yml, not a replacement
+# for it. docker-compose.yml stays as the local-dev infra-only compose
+# (bare postgres/rabbitmq/redis/ollama, ports published to localhost, no
+# app/worker containers, no reverse proxy). This file is the
+# production-shaped stack: app + worker (built from the Dockerfiles added
+# in this phase) behind an nginx reverse proxy, with postgres/redis/
+# rabbitmq as OPTIONAL self-hosted services.
+#
+# USING MANAGED SERVICES INSTEAD OF THE OPTIONAL postgres/redis/rabbitmq
+# SERVICES BELOW:
+#   Point DATABASE_URL / REDIS_URL / RABBITMQ_URL (in your .env file — see
+#   .env.production.example / .env.staging.example) at your managed
+#   Postgres/Redis/RabbitMQ provider, and simply don't start the
+#   corresponding service — e.g.:
+#     docker compose -f docker-compose.prod.yml up -d app worker nginx
+#   (omitting `postgres`, `redis`, `rabbitmq` from that list). The `app`
+#   and `worker` services don't `depends_on` these by name, precisely so
+#   omitting them doesn't break anything.
+#
+# SCALING app/worker — do NOT assume a fixed replica count. Scale via:
+#     docker compose -f docker-compose.prod.yml up -d --scale app=3 --scale worker=2
+#   nginx's upstream block (deploy/nginx.conf) resolves the `app` service
+#   name via Docker's embedded DNS and round-robins across however many
+#   replicas are running — no compose-file edit needed to change the
+#   count. `worker` replicas each independently consume from the same
+#   RabbitMQ queues (competing consumers), so they also scale
+#   horizontally with no coordination needed beyond that.
+#
+# PORTS — only `nginx` publishes ports to the host (80/443). `app` and
+# `worker` are reachable only on the internal compose network; there is
+# no reason for either to be directly reachable from outside the
+# reverse proxy. `postgres`/`redis`/`rabbitmq`, if you run them here
+# rather than using managed services, publish ports ONLY on
+# 127.0.0.1 (loopback) so you can still reach them from the host for
+# admin tooling (e.g. `psql`, RabbitMQ's management UI) via an SSH
+# tunnel, without exposing them on the public network interface.
+# ============================================================
+
+services:
+  app:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    image: ${IMAGE_NAME:-document-ai}:${IMAGE_TAG:-latest}
+    restart: unless-stopped
+    env_file:
+      - .env
+    environment:
+      NODE_ENV: production
+    # No `ports:` — reached only via the nginx service below.
+    healthcheck:
+      test: ["CMD", "node", "-e", "fetch('http://localhost:3000/api/health').then(r=>{if(!r.ok)process.exit(1)}).catch(()=>process.exit(1))"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 20s
+
+  worker:
+    build:
+      context: .
+      dockerfile: Dockerfile.worker
+    image: ${IMAGE_NAME_WORKER:-document-ai-worker}:${IMAGE_TAG:-latest}
+    restart: unless-stopped
+    env_file:
+      - .env
+    environment:
+      NODE_ENV: production
+    # No HTTP server, no `ports:`, no healthcheck endpoint to poll —
+    # liveness is inferred from the container staying up / process logs.
+
+  nginx:
+    image: nginx:1.27-alpine
+    restart: unless-stopped
+    ports:
+      - "80:80"
+      - "443:443"
+    volumes:
+      - ./deploy/nginx.conf:/etc/nginx/nginx.conf:ro
+      # Cloudflare origin certificate + key — see DEPLOYMENT.md for how to
+      # generate these in the Cloudflare dashboard. Never commit real
+      # certificate/key material to the repo; this directory is expected
+      # to be created on the deploy host, outside version control.
+      - ./deploy/certs:/etc/nginx/certs:ro
+    depends_on:
+      - app
+
+  # ------------------------------------------------------------
+  # OPTIONAL — self-hosted Postgres. Omit this service (see note above)
+  # if you use a managed Postgres provider instead.
+  # ------------------------------------------------------------
+  postgres:
+    image: pgvector/pgvector:pg16
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: ${POSTGRES_USER:-postgres}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?set POSTGRES_PASSWORD in .env}
+      POSTGRES_DB: ${POSTGRES_DB:-document_ai}
+    ports:
+      - "127.0.0.1:5433:5432"
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-postgres} -d ${POSTGRES_DB:-document_ai}"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  # ------------------------------------------------------------
+  # OPTIONAL — self-hosted RabbitMQ. Omit this service if you use a
+  # managed RabbitMQ / other AMQP provider instead.
+  # ------------------------------------------------------------
+  rabbitmq:
+    image: rabbitmq:3-management
+    restart: unless-stopped
+    environment:
+      RABBITMQ_DEFAULT_USER: ${RABBITMQ_USER:?set RABBITMQ_USER in .env}
+      RABBITMQ_DEFAULT_PASS: ${RABBITMQ_PASSWORD:?set RABBITMQ_PASSWORD in .env}
+    ports:
+      - "127.0.0.1:5672:5672"
+      - "127.0.0.1:15672:15672"
+    volumes:
+      - rabbitmq_data:/var/lib/rabbitmq
+    healthcheck:
+      test: ["CMD", "rabbitmq-diagnostics", "-q", "ping"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  # ------------------------------------------------------------
+  # OPTIONAL — self-hosted Redis. Omit this service if you use a managed
+  # Redis provider instead.
+  # ------------------------------------------------------------
+  redis:
+    image: redis:7-alpine
+    restart: unless-stopped
+    command: ["redis-server", "--requirepass", "${REDIS_PASSWORD:?set REDIS_PASSWORD in .env}"]
+    ports:
+      - "127.0.0.1:6379:6379"
+    volumes:
+      - redis_data:/data
+    healthcheck:
+      test: ["CMD", "redis-cli", "-a", "${REDIS_PASSWORD:?set REDIS_PASSWORD in .env}", "ping"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+volumes:
+  postgres_data:
+  rabbitmq_data:
+  redis_data:

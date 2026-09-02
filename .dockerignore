@@ -1,0 +1,60 @@
+# ============================================================
+# Docker build context exclusions
+#
+# Keep the build context small and make sure nothing that could contain
+# secrets or purely-local state ever reaches the Docker daemon / image
+# layers, even transiently.
+# ============================================================
+
+# VCS / editor
+.git
+.gitignore
+.gitlab-ci.yml
+.vscode
+.idea
+*.swp
+
+# Dependencies (reinstalled inside the image)
+node_modules
+worker/node_modules
+
+# Build output (rebuilt inside the image)
+.next
+out
+worker/dist
+build
+dist
+*.tsbuildinfo
+next-env.d.ts
+
+# Test artifacts
+coverage
+test-results
+tests
+worker/tests
+jest.config.ts
+jest.setup.ts
+jest.presetup.js
+
+# Local dev data — never bake local documents into an image layer
+storage
+
+# Environment files — secrets must be injected at runtime (--env-file /
+# compose `environment:` / orchestrator secrets), never baked into a layer
+.env
+.env.*
+!.env.example
+!.env.test.example
+!.env.staging.example
+!.env.production.example
+
+# Docs (not needed at build/runtime; keep root README out of the image too)
+docs
+DEPLOYMENT.md
+deploy/README.md
+*.md
+!README.md
+
+# Misc
+.DS_Store
+npm-debug.log*

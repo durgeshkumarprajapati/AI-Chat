@@ -1,0 +1,123 @@
+# ============================================================
+# Document AI / RAG Platform — background worker image
+#
+# IMPORTANT — build context MUST be the repository ROOT, not `worker/`:
+#
+#     docker build -f Dockerfile.worker -t document-ai-worker:latest .
+#
+# worker/tsconfig.json sets "rootDir": "../" and its "include" array pulls
+# in specific files/directories from the root `src/` tree (a hand-
+# maintained allowlist — see worker/tsconfig.json), so `tsc` needs the
+# root src/ directory available during the worker build, not just
+# worker/'s own sources.
+#
+# DEVIATION FROM THE OBVIOUS APPROACH — verified, not assumed:
+#   worker/tsconfig.json's include list pulls in whole directories such as
+#   "../src/features/rag/**/*", which transitively import packages that
+#   are declared in the ROOT package.json (@prisma/client, openai, redis,
+#   pdfjs-dist, amqplib, @aws-sdk/client-s3, ...) but are NOT all declared
+#   in worker/package.json's own (much smaller) dependency list. On a
+#   developer machine this "just works" because Node's module resolution
+#   walks up from src/features/rag/**/*.ts through the ROOT node_modules
+#   one level above worker/. Verified directly: temporarily moving aside
+#   worker/node_modules entirely and running `npm --prefix worker run
+#   build` with only the ROOT node_modules present still typechecks and
+#   compiles cleanly; running `npm --prefix worker ci` in an isolated
+#   Docker stage that only ever had worker/node_modules (no root
+#   node_modules) FAILS with dozens of `Cannot find module '@prisma/client'
+#   / 'openai' / 'redis' / 'pdfjs-dist' / '@aws-sdk/client-s3'` errors. So
+#   this Dockerfile installs the ROOT dependency tree (which is a proven
+#   superset covering every worker dependency too) rather than
+#   worker/package.json's own lockfile, both for building and at runtime.
+#   This also means the pre-existing `worker_build` job in .gitlab-ci.yml
+#   (which deliberately skips installing root deps, per its own comment)
+#   is almost certainly broken today on a genuinely fresh runner checkout
+#   for the same reason — flagged separately, left unmodified since fixing
+#   it isn't required to add the Docker/staging jobs this phase needs.
+#
+# Also discovered and fixed as part of this verification: worker/
+# package-lock.json was out of sync with worker/package.json (missing the
+# entire @aws-sdk/client-s3 dependency tree, still listing the no-longer-
+# used @prisma/client instead) — regenerated via `npm --prefix worker
+# install`. That drift is orthogonal to the root-vs-worker deps issue
+# above but was blocking `npm --prefix worker ci` outright.
+#
+# Multi-stage build:
+#   deps    -> install ROOT dependencies (full, for building)
+#   builder -> generate Prisma client + compile worker TypeScript
+#              (worker/src/** + allow-listed root src/**) -> worker/dist/
+#   runner  -> ROOT production-only dependencies + compiled dist/,
+#              non-root, `node dist/index.js` (per worker's own "start"
+#              script), no HTTP server / no exposed port.
+# ============================================================
+
+# ---------------- deps ----------------
+FROM node:22-bookworm AS deps
+WORKDIR /app
+
+COPY package.json package-lock.json ./
+RUN npm ci --prefer-offline --no-audit
+
+# ---------------- builder ----------------
+FROM node:22-bookworm AS builder
+WORKDIR /app
+
+ENV NODE_ENV=production
+
+COPY --from=deps /app/node_modules ./node_modules
+COPY prisma ./prisma
+RUN npx prisma generate
+
+# Root src/ tree: required because worker/tsconfig.json compiles files
+# from ../src/** (see comment above).
+COPY src ./src
+COPY worker/package.json worker/tsconfig.json ./worker/
+COPY worker/src ./worker/src
+
+RUN npm --prefix worker run build
+
+# ---------------- runner ----------------
+FROM node:22-bookworm-slim AS runner
+WORKDIR /app
+
+ENV NODE_ENV=production
+
+RUN apt-get update \
+  && apt-get install -y --no-install-recommends openssl ca-certificates tini \
+  && rm -rf /var/lib/apt/lists/* \
+  && useradd --system --create-home --shell /usr/sbin/nologin worker
+
+COPY package.json package-lock.json ./
+RUN npm ci --omit=dev --prefer-offline --no-audit \
+  && npm cache clean --force
+
+# Generated Prisma client (JS + native query-engine binary) from the
+# builder stage — both stages are Debian "bookworm" based so the
+# prebuilt engine binary (debian-openssl-3.0.x) is binary-compatible.
+COPY --from=builder /app/node_modules/.prisma ./node_modules/.prisma
+COPY --from=builder /app/node_modules/@prisma/client ./node_modules/@prisma/client
+
+COPY --from=builder /app/worker/dist ./worker/dist
+COPY worker/package.json ./worker/package.json
+
+# NOTE — real bug found & fixed while verifying this image via an actual
+# `docker run`: worker/tsconfig.json's "rootDir": "../" (needed so tsc can
+# compile the allow-listed root src/** files alongside worker/src/**)
+# means tsc preserves each input file's path *relative to that rootDir*
+# under outDir. So worker/src/index.ts compiles to
+# worker/dist/worker/src/index.js — NOT worker/dist/index.js. worker/
+# package.json's own "start" script previously pointed at the wrong
+# (stale, pre-rootDir-change) path; it has been corrected to
+# "node dist/worker/src/index.js" and this CMD matches that.
+
+# Runtime data directory used by LocalStorageProvider (worker/src/lib/storage.ts
+# resolves to the parent of `worker/` when STORAGE_PROVIDER=local) — created
+# defensively; not used when STORAGE_PROVIDER=s3.
+RUN mkdir -p /app/storage && chown -R worker:worker /app
+
+USER worker
+
+WORKDIR /app/worker
+
+ENTRYPOINT ["tini", "--"]
+CMD ["node", "dist/worker/src/index.js"]

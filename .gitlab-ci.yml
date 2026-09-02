@@ -4,9 +4,12 @@
 #
 # Flow:
 #
-# feature/* → main → master → CI/CD → Production
+# feature/* → main → CI/CD → staging (automatic) → production (manual)
 #
-# Production deployment is intentionally MANUAL.
+# Every push to `main` automatically builds both images, runs a Prisma
+# migration, and deploys to STAGING. Promotion to PRODUCTION is
+# intentionally MANUAL (production_migration / deploy_production /
+# deploy_production_worker below).
 # ============================================================
 
 stages:
@@ -16,6 +19,9 @@ stages:
   - test
   - build
   - docker
+  - staging_migrate
+  - staging_deploy
+  - staging_verify
   - deploy
   - verify
 
@@ -38,6 +44,9 @@ variables:
 
   # Application image
   IMAGE_NAME: "$DOCKER_USERNAME/document-ai"
+
+  # Worker image
+  IMAGE_NAME_WORKER: "$DOCKER_USERNAME/document-ai-worker"
 
 
 # ============================================================
@@ -78,7 +87,7 @@ typecheck:
     - npm run typecheck
 
   rules:
-    - if: '$CI_COMMIT_BRANCH == "master"'
+    - if: '$CI_COMMIT_BRANCH == "main"'
 
 
 # ============================================================
@@ -93,7 +102,7 @@ lint:
     - npm run lint
 
   rules:
-    - if: '$CI_COMMIT_BRANCH == "master"'
+    - if: '$CI_COMMIT_BRANCH == "main"'
 
 
 # ============================================================
@@ -111,7 +120,7 @@ prisma_validate:
     - npx prisma format --check
 
   rules:
-    - if: '$CI_COMMIT_BRANCH == "master"'
+    - if: '$CI_COMMIT_BRANCH == "main"'
 
 
 # ============================================================
@@ -133,7 +142,7 @@ prisma_migration_check:
     - npx prisma migrate status
 
   rules:
-    - if: '$CI_COMMIT_BRANCH == "master"'
+    - if: '$CI_COMMIT_BRANCH == "main"'
 
 
 # ============================================================
@@ -150,7 +159,7 @@ dependency_security:
   allow_failure: false
 
   rules:
-    - if: '$CI_COMMIT_BRANCH == "master"'
+    - if: '$CI_COMMIT_BRANCH == "main"'
 
 
 # ============================================================
@@ -179,7 +188,7 @@ secret_scan:
   allow_failure: false
 
   rules:
-    - if: '$CI_COMMIT_BRANCH == "master"'
+    - if: '$CI_COMMIT_BRANCH == "main"'
 
 
 # ============================================================
@@ -214,26 +223,68 @@ all_phase_tests:
     expire_in: 7 days
 
   rules:
-    - if: '$CI_COMMIT_BRANCH == "master"'
+    - if: '$CI_COMMIT_BRANCH == "main"'
+
+
+# ============================================================
+# 7B. MODERN JEST SUITE (Phase 40+)
+#
+# `all_phase_tests` above only runs the legacy Phase 7-32 regression
+# script (tsx-based, predates Jest in this codebase). It does not touch
+# anything from Phase 40 onward. This job runs the actual Jest suite
+# (tests/unit, tests/integration, tests/api, tests/security,
+# tests/components, plus tests/phase40+ — see jest.config.ts's own
+# testMatch, which deliberately excludes the legacy tsx-based
+# tests/phase7..39 files already covered by `all_phase_tests`) via the
+# existing `test:ci` script (jest --ci --coverage --maxWorkers=2
+# --forceExit), which is the same script already defined in package.json
+# for CI use.
+# ============================================================
+
+modern_test_suite:
+  stage: test
+
+  script:
+    - echo "Running modern Jest suite (tests/unit, integration, api, security, components, phase40+)..."
+    - npm run test:ci
+
+  artifacts:
+    when: always
+
+    paths:
+      - coverage/
+
+    expire_in: 7 days
+
+  rules:
+    - if: '$CI_COMMIT_BRANCH == "main"'
 
 
 # ============================================================
 # 8. WORKER BUILD
 #
-# Root npm dependencies are not installed here because the
-# worker has its own package.json/package-lock.json.
+# UPDATED (Phase 91): this job previously skipped installing root
+# dependencies, on the assumption that the worker is self-sufficient via
+# its own package.json/package-lock.json. Verified (via an isolated
+# `npm --prefix worker ci` with no root node_modules present) that this is
+# NOT true: worker/tsconfig.json's "include" pulls in whole root src/
+# directories (src/features/rag/**, src/lib/*.ts, etc.) that import
+# packages declared only in the ROOT package.json (@prisma/client, openai,
+# redis, pdfjs-dist, @aws-sdk/client-s3, ...). The worker's own
+# node_modules never contained these, so a from-scratch `npm --prefix
+# worker ci` failed with dozens of "Cannot find module" errors. The ROOT
+# dependency tree is a proven superset of everything the worker needs, so
+# this job now uses the default `before_script` (root `npm ci`, inherited
+# below) plus an explicit `prisma generate` instead.
 # ============================================================
 
 worker_build:
   stage: build
 
-  before_script:
-    - node --version
-    - npm --version
-
   script:
-    - echo "Installing worker dependencies..."
-    - npm --prefix worker ci --prefer-offline --no-audit
+    - echo "Generating Prisma client (root src/features/rag/** etc., which"
+    - echo "the worker also compiles, import @prisma/client)..."
+    - npx prisma generate
 
     - echo "Building worker..."
     - npm --prefix worker run build
@@ -245,7 +296,7 @@ worker_build:
     expire_in: 1 day
 
   rules:
-    - if: '$CI_COMMIT_BRANCH == "master"'
+    - if: '$CI_COMMIT_BRANCH == "main"'
 
 
 # ============================================================
@@ -270,7 +321,7 @@ production_build:
     expire_in: 1 day
 
   rules:
-    - if: '$CI_COMMIT_BRANCH == "master"'
+    - if: '$CI_COMMIT_BRANCH == "main"'
 
 
 # ============================================================
@@ -332,7 +383,73 @@ docker_build:
     - docker push "$IMAGE:latest"
 
   rules:
-    - if: '$CI_COMMIT_BRANCH == "master"'
+    - if: '$CI_COMMIT_BRANCH == "main"'
+
+
+# ============================================================
+# 10B. WORKER DOCKER BUILD + PUSH
+#
+# Same pattern as docker_build above, using Dockerfile.worker. Build
+# context is the repository root (not worker/) — see the comment at the
+# top of Dockerfile.worker for why (worker/tsconfig.json compiles files
+# from the root src/ tree too).
+#
+# Produces:
+#
+# document-ai-worker:<commit-sha>
+#
+# and optionally:
+#
+# document-ai-worker:latest
+# ============================================================
+
+docker_build_worker:
+  stage: docker
+
+  image: docker:27
+
+  services:
+    - name: docker:27-dind
+      command:
+        - "--tls=false"
+
+  variables:
+    DOCKER_HOST: "tcp://docker:2375"
+    DOCKER_TLS_CERTDIR: ""
+
+  before_script:
+    - docker info
+
+    - echo "$DOCKER_PASSWORD" |
+        docker login
+        --username "$DOCKER_USERNAME"
+        --password-stdin
+
+  script:
+    - export IMAGE="$IMAGE_NAME_WORKER"
+
+    - echo "Building image:"
+    - echo "$IMAGE:$CI_COMMIT_SHA"
+
+    - docker build
+        --pull
+        --platform linux/amd64
+        --label "org.opencontainers.image.revision=$CI_COMMIT_SHA"
+        --label "org.opencontainers.image.source=$CI_PROJECT_URL"
+        --label "org.opencontainers.image.version=$CI_COMMIT_SHA"
+        -f Dockerfile.worker
+        -t "$IMAGE:$CI_COMMIT_SHA"
+        -t "$IMAGE:latest"
+        .
+
+    - echo "Pushing immutable image..."
+    - docker push "$IMAGE:$CI_COMMIT_SHA"
+
+    - echo "Updating latest tag..."
+    - docker push "$IMAGE:latest"
+
+  rules:
+    - if: '$CI_COMMIT_BRANCH == "main"'
 
 
 # ============================================================
@@ -372,7 +489,461 @@ docker_security_scan:
   allow_failure: false
 
   rules:
-    - if: '$CI_COMMIT_BRANCH == "master"'
+    - if: '$CI_COMMIT_BRANCH == "main"'
+
+
+# ============================================================
+# 11B. WORKER DOCKER IMAGE SECURITY SCAN
+#
+# Same pattern as docker_security_scan above, for the worker image.
+# ============================================================
+
+docker_security_scan_worker:
+  stage: security
+
+  image:
+    name: aquasec/trivy:latest
+    entrypoint: [""]
+
+  services:
+    - name: docker:27-dind
+      command:
+        - "--tls=false"
+
+  variables:
+    DOCKER_HOST: "tcp://docker:2375"
+    DOCKER_TLS_CERTDIR: ""
+
+  before_script:
+    - trivy --version
+
+  script:
+    - echo "Scanning worker Docker image for HIGH/CRITICAL vulnerabilities..."
+
+    - trivy image
+        --exit-code 1
+        --severity HIGH,CRITICAL
+        --ignore-unfixed
+        "$IMAGE_NAME_WORKER:$CI_COMMIT_SHA"
+
+  allow_failure: false
+
+  rules:
+    - if: '$CI_COMMIT_BRANCH == "main"'
+
+
+# ============================================================
+# 11C. STAGING DATABASE MIGRATION
+#
+# Runs automatically (NOT manual) on every push to `main`, unlike its
+# production counterpart below. Delegates to scripts/deploy-migrate.sh,
+# which backs up the target database, verifies connectivity, then runs
+# `npx prisma migrate deploy` (never `prisma db push`) and verifies
+# success — see that script for full detail.
+#
+# DATABASE_URL here is expected to be a GitLab CI/CD variable scoped to
+# the "staging" environment (same variable NAME as production's, just
+# scoped differently in GitLab's UI — see DEPLOYMENT.md), pointing at the
+# staging database, never production.
+# ============================================================
+
+staging_migration:
+  stage: staging_migrate
+
+  script:
+    - echo "Starting staging Prisma migration..."
+    - chmod +x scripts/deploy-migrate.sh
+    - ./scripts/deploy-migrate.sh
+    - echo "Staging database migration completed."
+
+  environment:
+    name: staging
+
+  rules:
+    - if: '$CI_COMMIT_BRANCH == "main"'
+
+
+# ============================================================
+# 11D. STAGING DEPLOYMENT — APPLICATION
+#
+# Automatic (NOT manual). Same SSH/pull/stop/rm/run/rollback pattern as
+# deploy_production below, targeting a separate staging host so a broken
+# build never reaches production traffic before someone chooses to
+# promote it.
+#
+# Requires protected GitLab CI/CD variables (documented in
+# DEPLOYMENT.md): STAGING_HOST, STAGING_USER, STAGING_SSH_PRIVATE_KEY.
+# Reuses DOCKER_USERNAME/DOCKER_PASSWORD (same registry as production).
+# ============================================================
+
+deploy_staging:
+  stage: staging_deploy
+
+  image: alpine:3.20
+
+  before_script:
+    - apk add --no-cache openssh-client
+
+    - mkdir -p ~/.ssh
+
+    - echo "$STAGING_SSH_PRIVATE_KEY" |
+        tr -d '\r' >
+        ~/.ssh/id_rsa
+
+    - chmod 600 ~/.ssh/id_rsa
+
+    - ssh-keyscan -H "$STAGING_HOST" >>
+        ~/.ssh/known_hosts
+
+  script:
+    - |
+      set -e
+
+      echo "Starting staging application deployment..."
+
+      IMAGE="$IMAGE_NAME:$CI_COMMIT_SHA"
+
+      echo "Deploying image:"
+      echo "$IMAGE"
+
+      ssh "$STAGING_USER@$STAGING_HOST" <<EOF
+
+      set -e
+
+      echo "Logging into Docker registry..."
+
+      echo "$DOCKER_PASSWORD" |
+        docker login \
+          --username "$DOCKER_USERNAME" \
+          --password-stdin
+
+      echo "Pulling immutable application image..."
+
+      docker pull "$IMAGE"
+
+      echo "Creating deployment directory..."
+
+      mkdir -p /opt/document-ai
+
+      echo "Saving current container image for rollback..."
+
+      if docker inspect document-ai >/dev/null 2>&1; then
+        docker inspect document-ai \
+          --format='{{.Config.Image}}' \
+          > /opt/document-ai/previous-image.txt
+      fi
+
+      echo "Stopping old application..."
+
+      docker stop document-ai || true
+
+      docker rm document-ai || true
+
+      echo "Starting new application..."
+
+      docker run -d \
+        --name document-ai \
+        --restart unless-stopped \
+        --env-file /opt/document-ai/.env \
+        -p 3000:3000 \
+        "$IMAGE"
+
+      echo "Waiting for application startup..."
+
+      sleep 10
+
+      echo "Checking container status..."
+
+      if ! docker ps \
+        --filter "name=document-ai" \
+        --filter "status=running" |
+        grep document-ai >/dev/null; then
+
+        echo "New container failed to start."
+
+        echo "Attempting rollback..."
+
+        if [ -f /opt/document-ai/previous-image.txt ]; then
+
+          PREVIOUS_IMAGE=\$(cat /opt/document-ai/previous-image.txt)
+
+          echo "Rolling back to:"
+          echo "\$PREVIOUS_IMAGE"
+
+          docker rm -f document-ai || true
+
+          docker pull "\$PREVIOUS_IMAGE"
+
+          docker run -d \
+            --name document-ai \
+            --restart unless-stopped \
+            --env-file /opt/document-ai/.env \
+            -p 3000:3000 \
+            "\$PREVIOUS_IMAGE"
+
+        fi
+
+        exit 1
+
+      fi
+
+      echo "New application container started successfully."
+
+      EOF
+
+      echo "Staging application deployment completed."
+
+  environment:
+    name: staging
+    url: "$STAGING_URL"
+
+  rules:
+    - if: '$CI_COMMIT_BRANCH == "main"'
+
+
+# ============================================================
+# 11E. STAGING DEPLOYMENT — WORKER
+#
+# Same pattern as deploy_staging above, for the background worker
+# container. No exposed port — the worker has no HTTP server.
+# ============================================================
+
+deploy_staging_worker:
+  stage: staging_deploy
+
+  image: alpine:3.20
+
+  before_script:
+    - apk add --no-cache openssh-client
+
+    - mkdir -p ~/.ssh
+
+    - echo "$STAGING_SSH_PRIVATE_KEY" |
+        tr -d '\r' >
+        ~/.ssh/id_rsa
+
+    - chmod 600 ~/.ssh/id_rsa
+
+    - ssh-keyscan -H "$STAGING_HOST" >>
+        ~/.ssh/known_hosts
+
+  script:
+    - |
+      set -e
+
+      echo "Starting staging worker deployment..."
+
+      IMAGE="$IMAGE_NAME_WORKER:$CI_COMMIT_SHA"
+
+      echo "Deploying image:"
+      echo "$IMAGE"
+
+      ssh "$STAGING_USER@$STAGING_HOST" <<EOF
+
+      set -e
+
+      echo "Logging into Docker registry..."
+
+      echo "$DOCKER_PASSWORD" |
+        docker login \
+          --username "$DOCKER_USERNAME" \
+          --password-stdin
+
+      echo "Pulling immutable worker image..."
+
+      docker pull "$IMAGE"
+
+      echo "Creating deployment directory..."
+
+      mkdir -p /opt/document-ai-worker
+
+      echo "Saving current container image for rollback..."
+
+      if docker inspect document-ai-worker >/dev/null 2>&1; then
+        docker inspect document-ai-worker \
+          --format='{{.Config.Image}}' \
+          > /opt/document-ai-worker/previous-image.txt
+      fi
+
+      echo "Stopping old worker..."
+
+      docker stop document-ai-worker || true
+
+      docker rm document-ai-worker || true
+
+      echo "Starting new worker..."
+
+      docker run -d \
+        --name document-ai-worker \
+        --restart unless-stopped \
+        --env-file /opt/document-ai-worker/.env \
+        "$IMAGE"
+
+      echo "Waiting for worker startup..."
+
+      sleep 10
+
+      echo "Checking container status..."
+
+      if ! docker ps \
+        --filter "name=document-ai-worker" \
+        --filter "status=running" |
+        grep document-ai-worker >/dev/null; then
+
+        echo "New worker container failed to start."
+
+        echo "Attempting rollback..."
+
+        if [ -f /opt/document-ai-worker/previous-image.txt ]; then
+
+          PREVIOUS_IMAGE=\$(cat /opt/document-ai-worker/previous-image.txt)
+
+          echo "Rolling back to:"
+          echo "\$PREVIOUS_IMAGE"
+
+          docker rm -f document-ai-worker || true
+
+          docker pull "\$PREVIOUS_IMAGE"
+
+          docker run -d \
+            --name document-ai-worker \
+            --restart unless-stopped \
+            --env-file /opt/document-ai-worker/.env \
+            "\$PREVIOUS_IMAGE"
+
+        fi
+
+        exit 1
+
+      fi
+
+      echo "New worker container started successfully."
+
+      EOF
+
+      echo "Staging worker deployment completed."
+
+  environment:
+    name: staging
+
+  rules:
+    - if: '$CI_COMMIT_BRANCH == "main"'
+
+
+# ============================================================
+# 11F. STAGING HEALTH CHECK
+#
+# Same pattern as production_health_check below.
+# ============================================================
+
+staging_health_check:
+  stage: staging_verify
+
+  image:
+    name: curlimages/curl:8.10.1
+    entrypoint: [""]
+
+  script:
+    - |
+      set -e
+
+      echo "Starting staging health check..."
+
+      MAX_ATTEMPTS=30
+      ATTEMPT=1
+
+      while [ "$ATTEMPT" -le "$MAX_ATTEMPTS" ]; do
+
+        echo "Health check attempt $ATTEMPT/$MAX_ATTEMPTS"
+
+        if curl \
+          --fail \
+          --silent \
+          --show-error \
+          --max-time 10 \
+          "$STAGING_URL/api/health"; then
+
+          echo ""
+          echo "=========================================="
+          echo "Staging health check PASSED"
+          echo "=========================================="
+
+          exit 0
+
+        fi
+
+        echo "Application is not healthy yet."
+
+        ATTEMPT=$((ATTEMPT + 1))
+
+        sleep 10
+
+      done
+
+      echo ""
+      echo "=========================================="
+      echo "Staging health check FAILED"
+      echo "=========================================="
+
+      exit 1
+
+  environment:
+    name: staging
+
+  rules:
+    - if: '$CI_COMMIT_BRANCH == "main"'
+
+
+# ============================================================
+# 11G. STAGING SMOKE TEST
+#
+# A handful of fast, unauthenticated checks against key staging
+# endpoints — not a full E2E suite. Covers the streaming-capable routes
+# and the readiness probe. `/api/health/ready` is expected to land
+# alongside this phase's health/graceful-shutdown work; until it does,
+# its check is allowed to fail without failing the whole job so this
+# job doesn't become a hard dependency on another workstream landing
+# first.
+# ============================================================
+
+smoke_test:
+  stage: staging_verify
+
+  image:
+    name: curlimages/curl:8.10.1
+    entrypoint: [""]
+
+  script:
+    - |
+      set -e
+
+      echo "Running staging smoke tests against $STAGING_URL..."
+
+      echo "[1/4] GET /api/health"
+      curl --fail --silent --show-error --max-time 10 "$STAGING_URL/api/health" > /dev/null
+      echo "OK"
+
+      echo "[2/4] GET /api/health/ready (non-fatal until this route lands)"
+      curl --silent --show-error --max-time 10 -o /dev/null -w "HTTP %{http_code}\n" "$STAGING_URL/api/health/ready" || true
+
+      echo "[3/4] GET / (landing page renders)"
+      curl --fail --silent --show-error --max-time 10 -o /dev/null "$STAGING_URL/"
+      echo "OK"
+
+      echo "[4/4] GET /login (auth-adjacent page renders, no session required)"
+      curl --fail --silent --show-error --max-time 10 -o /dev/null "$STAGING_URL/login"
+      echo "OK"
+
+      echo ""
+      echo "=========================================="
+      echo "Staging smoke tests PASSED"
+      echo "=========================================="
+
+  environment:
+    name: staging
+
+  rules:
+    - if: '$CI_COMMIT_BRANCH == "main"'
 
 
 # ============================================================
@@ -382,14 +953,12 @@ docker_security_scan:
 #
 # This is manual.
 #
-# It runs:
-#
-#     npx prisma migrate deploy
-#
-# against the production DATABASE_URL.
+# Delegates to scripts/deploy-migrate.sh (backup -> connectivity check ->
+# `npx prisma migrate deploy` -> verify), the same script staging_migration
+# above uses, against the production DATABASE_URL.
 #
 # DATABASE_URL must be configured as a protected GitLab
-# environment variable.
+# environment variable (scoped to the "production" environment).
 # ============================================================
 
 production_migration:
@@ -398,7 +967,8 @@ production_migration:
   script:
     - echo "Starting production Prisma migration..."
 
-    - npx prisma migrate deploy
+    - chmod +x scripts/deploy-migrate.sh
+    - ./scripts/deploy-migrate.sh
 
     - echo "Production database migration completed."
 
@@ -406,7 +976,7 @@ production_migration:
     name: production
 
   rules:
-    - if: '$CI_COMMIT_BRANCH == "master"'
+    - if: '$CI_COMMIT_BRANCH == "main"'
 
   when: manual
 
@@ -544,7 +1114,143 @@ deploy_production:
     name: production
 
   rules:
-    - if: '$CI_COMMIT_BRANCH == "master"'
+    - if: '$CI_COMMIT_BRANCH == "main"'
+
+  when: manual
+
+
+# ============================================================
+# 13B. PRODUCTION DEPLOYMENT — WORKER
+#
+# Manual approval required (separate from deploy_production above, so the
+# app and worker can be promoted independently if needed). Same
+# SSH/pull/stop/rm/run/rollback pattern, targeting a document-ai-worker
+# container. No exposed port — the worker has no HTTP server.
+#
+# Uses immutable document-ai-worker:<CI_COMMIT_SHA>. Never deploys
+# "latest".
+# ============================================================
+
+deploy_production_worker:
+  stage: deploy
+
+  image: alpine:3.20
+
+  before_script:
+    - apk add --no-cache openssh-client
+
+    - mkdir -p ~/.ssh
+
+    - echo "$PROD_SSH_PRIVATE_KEY" |
+        tr -d '\r' >
+        ~/.ssh/id_rsa
+
+    - chmod 600 ~/.ssh/id_rsa
+
+    - ssh-keyscan -H "$PROD_HOST" >>
+        ~/.ssh/known_hosts
+
+  script:
+    - |
+      set -e
+
+      echo "Starting production worker deployment..."
+
+      IMAGE="$IMAGE_NAME_WORKER:$CI_COMMIT_SHA"
+
+      echo "Deploying image:"
+      echo "$IMAGE"
+
+      ssh "$PROD_USER@$PROD_HOST" <<EOF
+
+      set -e
+
+      echo "Logging into Docker registry..."
+
+      echo "$DOCKER_PASSWORD" |
+        docker login \
+          --username "$DOCKER_USERNAME" \
+          --password-stdin
+
+      echo "Pulling immutable worker image..."
+
+      docker pull "$IMAGE"
+
+      echo "Creating deployment directory..."
+
+      mkdir -p /opt/document-ai-worker
+
+      echo "Saving current container image for rollback..."
+
+      if docker inspect document-ai-worker >/dev/null 2>&1; then
+        docker inspect document-ai-worker \
+          --format='{{.Config.Image}}' \
+          > /opt/document-ai-worker/previous-image.txt
+      fi
+
+      echo "Stopping old worker..."
+
+      docker stop document-ai-worker || true
+
+      docker rm document-ai-worker || true
+
+      echo "Starting new worker..."
+
+      docker run -d \
+        --name document-ai-worker \
+        --restart unless-stopped \
+        --env-file /opt/document-ai-worker/.env \
+        "$IMAGE"
+
+      echo "Waiting for worker startup..."
+
+      sleep 10
+
+      echo "Checking container status..."
+
+      if ! docker ps \
+        --filter "name=document-ai-worker" \
+        --filter "status=running" |
+        grep document-ai-worker >/dev/null; then
+
+        echo "New worker container failed to start."
+
+        echo "Attempting rollback..."
+
+        if [ -f /opt/document-ai-worker/previous-image.txt ]; then
+
+          PREVIOUS_IMAGE=\$(cat /opt/document-ai-worker/previous-image.txt)
+
+          echo "Rolling back to:"
+          echo "\$PREVIOUS_IMAGE"
+
+          docker rm -f document-ai-worker || true
+
+          docker pull "\$PREVIOUS_IMAGE"
+
+          docker run -d \
+            --name document-ai-worker \
+            --restart unless-stopped \
+            --env-file /opt/document-ai-worker/.env \
+            "\$PREVIOUS_IMAGE"
+
+        fi
+
+        exit 1
+
+      fi
+
+      echo "New worker container started successfully."
+
+      EOF
+
+      echo "Production worker deployment completed."
+
+  environment:
+    name: production
+
+  rules:
+    - if: '$CI_COMMIT_BRANCH == "main"'
 
   when: manual
 
@@ -610,4 +1316,4 @@ production_health_check:
     name: production
 
   rules:
-    - if: '$CI_COMMIT_BRANCH == "master"'
+    - if: '$CI_COMMIT_BRANCH == "main"'

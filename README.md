@@ -33,7 +33,14 @@ aspirational functionality; where something is not implemented, that is stated e
 18. [Local Development](#18-local-development)
 19. [Database and Migrations](#19-database-and-migrations)
 20. [Testing](#20-testing)
-21. [Deployment Architecture](#21-deployment-architecture)
+21. [Docker Architecture](#21-docker-architecture)
+22. [CI/CD Pipeline](#22-cicd-pipeline)
+23. [Staging and Production Deployment](#23-staging-and-production-deployment)
+24. [Backup and Recovery](#24-backup-and-recovery)
+25. [Monitoring and Logging](#25-monitoring-and-logging)
+26. [Scaling Strategy](#26-scaling-strategy)
+27. [Rollback Strategy](#27-rollback-strategy)
+28. [Operational Troubleshooting](#28-operational-troubleshooting)
 
 ---
 
@@ -527,17 +534,207 @@ onward — earlier phases used standalone `tsx`-executed scripts, still runnable
 `test:phase90`-style script wired into `package.json` for every phase — target a specific
 phase's suite directly, e.g. `npx jest tests/phase90 --no-coverage`.
 
-## 21. Deployment Architecture
+## 21. Docker Architecture
 
-This repository provides `docker-compose.yml` for **local infrastructure only**
-(PostgreSQL+pgvector, RabbitMQ, Redis, Ollama) — it is a development convenience, not a
-production deployment manifest. No production orchestration (Kubernetes manifests, a
-production Dockerfile for the app/worker images, CI/CD pipeline definitions, or an
-infrastructure-as-code setup) is implemented in this repository as of this phase.
+**Implemented in repository.** `docker-compose.yml` remains the local-development-only compose
+file (PostgreSQL+pgvector, RabbitMQ, Redis, Ollama) — unchanged. Production images and a
+production-style compose file are new as of this phase:
 
-For a production deployment, you would need to independently provision: a managed PostgreSQL
-instance with the `pgvector` extension, a managed Redis instance, a managed or self-hosted
-RabbitMQ cluster, container images (or another deployment target) for the Next.js app and the
-`worker/` process running as two independently-scaled services, object storage (S3 or
-compatible), and secrets management for everything currently read from `.env`. This is deployment
-guidance, not a description of implemented functionality.
+```mermaid
+flowchart TD
+    Dockerfile[Dockerfile — Next.js app] -->|multi-stage: deps → builder → runner| AppImage[document-ai app image]
+    DockerfileWorker[Dockerfile.worker] -->|multi-stage, repo-root build context| WorkerImage[document-ai worker image]
+    AppImage --> Compose[docker-compose.prod.yml]
+    WorkerImage --> Compose
+    Compose --> Nginx[nginx reverse proxy]
+    Compose --> OptionalInfra["postgres / redis / rabbitmq<br/>(optional — omit to use managed services)"]
+```
+
+- **`Dockerfile`** (app): multi-stage (`deps` → `builder` → `runner`), `node:22-bookworm` for
+  build stages, `node:22-bookworm-slim` for the runtime stage, runs as a non-root `node` user,
+  uses `tini` as PID 1 for correct signal forwarding, installs only production dependencies in
+  the final stage, and does not bake any secret or `.env` file into the image — all runtime
+  configuration is injected via environment variables at container start.
+- **`Dockerfile.worker`**: same multi-stage shape, but its build context is the **repository
+  root**, not `worker/` alone — the worker's `tsconfig.json` compiles a hand-maintained set of
+  files from the root `src/**` tree (an established convention predating this phase), so the
+  image genuinely needs the root source tree available at build time. Runs as a non-root
+  `worker` user, `tini` as PID 1, `npm --prefix worker run build` now runs `tsc && tsc-alias`
+  (a real pre-existing gap this phase fixed — the compiled worker output used bare `@/*` path
+  aliases that only ever resolved correctly under `tsx`'s dev-mode resolution, never in a plain
+  `node dist/...` production execution; `tsc-alias` rewrites them to relative paths at build
+  time) and starts via `node dist/worker/src/index.js` (also corrected — the previous
+  `dist/index.js` path did not match the actual compiled output location given the worker's
+  `rootDir: "../"` setting, so `npm --prefix worker start` was very likely non-functional before
+  this phase).
+- **`output: 'standalone'`** was evaluated (a real, successful trial build) but **not adopted** —
+  it works, but adopting it means a `next.config.mjs` change that was out of scope for the
+  Dockerfile work in this phase (owned by a parallel, unrelated task this same phase). The
+  current runtime stage installs production `node_modules` directly instead. Revisiting
+  standalone output for a smaller image is a reasonable, low-risk follow-up.
+- **`.dockerignore`**: excludes `node_modules`, `.next`, `worker/node_modules`, `worker/dist`,
+  `.git`, test files, and local `.env*`/`storage/` — nothing secret or unnecessary reaches the
+  build context.
+- Both images were built and run against this repository's real local infrastructure containers
+  during this phase's verification — the app image's `/api/health` reported all services
+  healthy, and the worker image connected to RabbitMQ and began consuming its queues.
+
+## 22. CI/CD Pipeline
+
+**Implemented in repository** (`.gitlab-ci.yml`) — this project already used **GitLab CI**, not
+GitHub Actions; the existing pipeline was extended, not replaced. A real, pre-existing bug was
+found and fixed: every job's `rules` gated on `$CI_COMMIT_BRANCH == "master"`, but this
+repository's actual branch is `main` — the pipeline as it existed could never have triggered.
+
+```mermaid
+flowchart TD
+    MR[Merge Request] --> Validate[validate: typecheck, lint, prisma validate/format, migration status]
+    Validate --> Security[security: npm audit, Gitleaks secret scan]
+    Security --> Test[test: legacy Phase 7-32 suite + modern Jest suite]
+    Test --> Build[build: worker build, Next.js production build]
+    Build --> Docker[docker: build + push app and worker images, tag = commit SHA, Trivy scan]
+    Docker --> Main[merge to main]
+    Main --> Staging[staging: migrate, deploy app+worker, readiness check, smoke tests — AUTOMATIC]
+    Staging --> Approval[manual promotion gate]
+    Approval --> Prod[production: migrate, deploy app+worker, health check — MANUAL]
+```
+
+Stages present: `validate → quality → security → test → build → docker → deploy → verify`
+(unchanged stage list; jobs were added within it). Existing jobs kept exactly as before
+(typecheck, lint, Prisma validate/format-check, Prisma migration status, `npm audit`, Gitleaks,
+the legacy Phase 7-32 suite, worker build, Next.js build, image build+push, Trivy scan, the
+manual production migration and deployment jobs, the production health check). New jobs added
+this phase: a worker image build + Trivy scan, a modern Jest test job (covering the post-Phase-40
+suite, alongside — not replacing — the legacy one), and a full **staging** flow (auto-triggered
+on `main`: migration, app+worker deployment, readiness polling, smoke tests) plus a **worker**
+image deployment job for production (previously only the app container was ever deployed).
+**Production deployment remains an explicit manual approval step** — no commit is ever
+auto-deployed to production.
+
+## 23. Staging and Production Deployment
+
+**Implemented in repository**: Dockerfiles, `docker-compose.prod.yml`, deployment CI jobs,
+`scripts/deploy-migrate.sh`, `.env.staging.example`, `.env.production.example`, `DEPLOYMENT.md`
+(step-by-step operational detail — DNS/SSL/WAF guidance for a Cloudflare-fronted deployment,
+the expand→migrate→deploy→contract migration strategy explained with an example, and blue/green
+documented as a future alternative to the rolling deployment this phase actually implements).
+**Requires manual cloud configuration**: the actual staging/production hosts, DNS records,
+Cloudflare account/zone, container registry credentials, and CI/CD protected variables
+(`$STAGING_HOST`, `$PROD_HOST`, `$STAGING_SSH_PRIVATE_KEY`, `$PROD_SSH_PRIVATE_KEY`,
+`$DOCKER_USERNAME`/`$DOCKER_PASSWORD`, staging/production `DATABASE_URL`, etc.) must be
+provisioned and configured by you — none of that is something a repository can create for
+itself.
+
+`docker-compose.prod.yml` runs `app` and `worker` with **no directly published ports** — only
+the `nginx` reverse-proxy service is externally reachable, configured (`deploy/nginx.conf`) with
+SSE-safe settings (`proxy_buffering off`, disabled caching, an extended `proxy_read_timeout`) for
+every streaming route (`/api/chat/stream`, `/api/assistant/chat`, `/api/collaboration/events`,
+and any other route serving `text/event-stream`). PostgreSQL/Redis/RabbitMQ are included as
+**optional** services in the same file — omit them and point `DATABASE_URL`/`REDIS_URL`/
+`RABBITMQ_URL` at managed equivalents instead for a fully managed-infrastructure deployment.
+Scaling is via `docker compose -f docker-compose.prod.yml up --scale app=N --scale worker=M` —
+the compose file does not hardcode a replica count for either service.
+
+Deployment order (matches the required sequence): backup database → verify connectivity → run
+`prisma migrate deploy` (never `prisma db push` in production) → verify migration success →
+deploy application/worker containers → readiness checks. Migrations that would be destructive
+(dropping a column, changing a type incompatibly) are explicitly called out in `DEPLOYMENT.md`
+as requiring manual operational review before ever reaching the automated migration step — this
+repository does not attempt to auto-detect "safe" vs. "destructive" migrations.
+
+## 24. Backup and Recovery
+
+**Implemented in repository** (self-hosted path only): `scripts/backup-postgres.sh` (a `pg_dump`
+wrapper producing a timestamped, compressed backup with configurable retention pruning) and
+`scripts/restore-postgres.sh` (the inverse, with an explicit confirmation step before touching a
+target database — it will not silently overwrite anything). **Requires manual cloud
+configuration** if you use a managed PostgreSQL provider instead of the self-hosted
+`docker-compose.prod.yml` `postgres` service: use the provider's own automated backup/restore
+feature — `DEPLOYMENT.md` states this distinction explicitly rather than implying the repository
+scripts apply to a managed database. Restore verification (confirming a restored backup is
+actually queryable and complete) is a documented manual procedure, not an automated test in this
+repository.
+
+## 25. Monitoring and Logging
+
+**Implemented in repository**, extending existing infrastructure rather than duplicating it:
+
+- `/admin/performance` (Phase 88, extended this phase) now additionally surfaces RabbitMQ
+  queue depth/consumer counts per declared queue (via `amqplib`'s `channel.checkQueue`), on top
+  of its existing p50/p95/p99 API latency, slowest-operation, and cache-hit-ratio figures — every
+  field reports `available:false` with a real reason rather than a fabricated number when its
+  underlying data source can't be reached.
+- `GET /api/health/ready` (new) exposes structured per-dependency status (PostgreSQL, Redis,
+  RabbitMQ) suitable for a container orchestrator's readiness probe or an external uptime check.
+- `src/lib/structured-logger.ts` (new): a small, dependency-free JSON-line logger
+  (`timestamp`/`level`/`service`/`environment`/`correlationId`/message/metadata), reusing the
+  same `SECRET_KEY_PATTERNS` list already used elsewhere in the codebase to redact anything
+  secret-shaped from logged metadata. This is additive infrastructure for new call sites — no
+  existing `console.log` call site was changed, to avoid an unrelated, out-of-scope refactor.
+- Correlation IDs: a chat request's existing `requestId` is now threaded onto the memory
+  extraction job it triggers (one concrete, working example of API→RabbitMQ→worker correlation)
+  — a pattern documented for incremental adoption elsewhere, not retrofitted onto every existing
+  queue payload in this pass.
+
+**Requires manual cloud configuration**: shipping these logs/metrics to an external
+observability platform (Datadog, Grafana Cloud, CloudWatch, etc.) is not implemented — this
+phase deliberately keeps the observability surface at "structured, scrapeable-by-something"
+rather than integrating a specific paid/hosted vendor, per the explicit instruction not to
+introduce unnecessary observability-stack complexity. Recommended alert thresholds (critical:
+app/database/RabbitMQ unavailable, repeated worker crash, migration failure; warning: high error
+rate, high P95 latency, queue backlog, Redis unavailable, AI provider failure spike) are
+documented in `DEPLOYMENT.md` as integration-ready guidance, not as active alerts — no alerting
+service integration exists in this repository.
+
+## 26. Scaling Strategy
+
+**Implemented in repository** — this is the most safety-critical change in this phase. The
+application (Next.js) is already stateless (session state lives in a signed cookie + the
+database, never in-process memory), so scaling `app × N` behind the reverse proxy needs no
+further change. The worker was **not** already safe to scale, and this phase fixes that:
+
+```mermaid
+flowchart LR
+    Tick["setInterval tick<br/>(fires on every replica)"] --> Lock{"redis.acquireLock<br/>(worker:scheduler:&lt;task&gt;)"}
+    Lock -->|acquired| Run[Run the scheduled task once]
+    Lock -->|already held by another replica| Skip[Skip silently — expected in normal operation]
+    Lock -->|Redis unavailable| SkipFail["Skip — fail closed,<br/>never crash, never run unguarded"]
+```
+
+Every one of the worker's 7 periodic `setInterval` tasks (calendar-sync retry, billing
+reconciliation, project-intelligence analysis, AI Intelligence daily/weekly scheduling,
+notification delivery scheduling, notification retention sweep, automation delayed-step
+re-check) now acquires a Redis-backed distributed lock (`worker:scheduler:<taskName>`, TTL ≈85%
+of that task's own interval) before running its body — confirmed via a dedicated audit that none
+of the underlying scheduling services have their own independent timers, so guarding the 7
+`setInterval` call sites in `worker/src/index.ts` was sufficient. If Redis is unavailable, a
+replica fails closed on that tick (skips, never crashes, never runs unguarded) — gated by
+`WORKER_SCHEDULER_LOCK_ENABLED` (default `true`) as an emergency escape hatch. RabbitMQ
+consumers already safely support multiple concurrent worker replicas without any change (durable
+queues, manual ack, competing-consumers is RabbitMQ's native model), and every job payload this
+platform enqueues carries or derives an idempotency key, so a job picked up by more than one
+replica in a race can never produce a duplicate side effect.
+
+## 27. Rollback Strategy
+
+**Implemented in repository** (documentation + CI structure): application rollback uses the
+previous immutable, commit-SHA-tagged Docker image — `deploy_production` already automatically
+attempts this if a newly deployed container fails its status check, and a manual rollback to any
+earlier retained SHA tag is always possible via the same deployment job. **Database rollback is
+never automatic** — `DEPLOYMENT.md` documents the two safe options (forward-fix with a new
+additive migration, or restore from a pre-migration backup) and explicitly states that Prisma
+migrations are not assumed to be safely reversible. CI/CD retains enough image history (every
+commit to `main` that reaches the `docker` stage produces a permanently-tagged image) to support
+rollback to any prior release.
+
+## 28. Operational Troubleshooting
+
+Quick reference (see `DEPLOYMENT.md` for the full guide):
+
+| Symptom | Where to look |
+|---|---|
+| App container won't become ready | `GET /api/health/ready` for per-dependency status; confirm `DATABASE_URL`/`REDIS_URL`/`RABBITMQ_URL` are reachable from inside the container network |
+| Worker not processing jobs | Check worker container logs for RabbitMQ connection errors; confirm queues are durable and the worker's consumer tags registered at startup |
+| A scheduled task (e.g. daily intelligence) isn't running on any replica | Check `WORKER_SCHEDULER_LOCK_ENABLED` and Redis reachability — a stuck lock self-expires within its TTL, no manual intervention needed |
+| Deployment succeeded but users see stale behavior | Confirm the deployed image tag matches the intended commit SHA; `CONFIG_REGISTRY`-driven behavior updates via Redis pub/sub without a redeploy, but a genuinely new code path requires the new image |
+| Migration failed mid-deploy | Do not proceed to the application deploy step; `scripts/deploy-migrate.sh` exits non-zero and the CI job fails closed by design — restore from the pre-migration backup if the migration left the schema partially applied |

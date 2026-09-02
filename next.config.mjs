@@ -20,6 +20,8 @@
 // (c) blocking plugin content entirely (`object-src 'none'`). Revisit nonce-based CSP if a
 // future phase adds a real external script/style dependency that would otherwise force loosening
 // this further.
+const isDev = process.env.NODE_ENV === 'development';
+
 const securityHeaders = [
   { key: 'X-Content-Type-Options', value: 'nosniff' },
   { key: 'X-Frame-Options', value: 'DENY' },
@@ -31,7 +33,9 @@ const securityHeaders = [
     key: 'Content-Security-Policy',
     value: [
       "default-src 'self'",
-      "script-src 'self' 'unsafe-inline'",
+      isDev
+        ? "script-src 'self' 'unsafe-inline' 'unsafe-eval'"
+        : "script-src 'self' 'unsafe-inline'",
       "style-src 'self' 'unsafe-inline'",
       "img-src 'self' data: blob:",
       "font-src 'self' data:",
@@ -48,6 +52,16 @@ const nextConfig = {
   experimental: {
     serverComponentsExternalPackages: ['amqplib', 'pg', 'redis', 'pdfjs-dist']
   },
+     // Add this Webpack configuration block
+  webpack: (config, { dev }) => {
+    if (dev) {
+      // Replaces absolute absolute paths (e.g., /home/ppsd-021/...)
+      // with a clean relative fallback inside generated source maps
+      config.output.devtoolModuleFilenameTemplate = (info) =>
+        `webpack:///${info.resourcePath.replace(/\\/g, '/')}`;
+    }
+    return config;
+  },
   async headers() {
     return [
       {
@@ -63,3 +77,4 @@ const nextConfig = {
 };
 
 export default nextConfig;
+  

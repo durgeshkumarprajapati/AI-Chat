@@ -2625,6 +2625,52 @@ export const CONFIG_REGISTRY: Record<string, RegistryConfigItem> = {
     isEditable: true,
     isHighImpact: true,
     requiresRestart: false
+  },
+
+  // WEBRTC VOICE & AUDIO STREAMING
+  WEBRTC_STUN_SERVERS: {
+    key: 'WEBRTC_STUN_SERVERS',
+    valueType: ConfigValueType.STRING,
+    category: ConfigCategory.SYSTEM,
+    defaultValue: 'stun:stun.l.google.com:19302',
+    purpose: 'Comma-separated STUN server URIs for WebRTC peer connection establishment.',
+    description: 'WebRTC STUN server URIs.',
+    isEditable: true,
+    isHighImpact: false,
+    requiresRestart: false
+  },
+  WEBRTC_TURN_SERVERS: {
+    key: 'WEBRTC_TURN_SERVERS',
+    valueType: ConfigValueType.STRING,
+    category: ConfigCategory.SYSTEM,
+    defaultValue: '',
+    purpose: 'Comma-separated TURN server URIs for WebRTC peer connection relaying.',
+    description: 'WebRTC TURN server URIs.',
+    isEditable: true,
+    isHighImpact: false,
+    requiresRestart: false
+  },
+  WEBRTC_TURN_USERNAME: {
+    key: 'WEBRTC_TURN_USERNAME',
+    valueType: ConfigValueType.STRING,
+    category: ConfigCategory.SYSTEM,
+    defaultValue: '',
+    purpose: 'Username for WebRTC TURN server authentication.',
+    description: 'WebRTC TURN username.',
+    isEditable: true,
+    isHighImpact: false,
+    requiresRestart: false
+  },
+  WEBRTC_TURN_CREDENTIAL: {
+    key: 'WEBRTC_TURN_CREDENTIAL',
+    valueType: ConfigValueType.STRING,
+    category: ConfigCategory.SYSTEM,
+    defaultValue: '',
+    purpose: 'Credential/password for WebRTC TURN server authentication.',
+    description: 'WebRTC TURN credential.',
+    isEditable: true,
+    isHighImpact: false,
+    requiresRestart: false
   }
 };
 
@@ -2634,13 +2680,13 @@ export const CONFIG_REGISTRY: Record<string, RegistryConfigItem> = {
 export function validateRegistryKey(key: string): RegistryConfigItem {
   const formattedKey = key.trim().toUpperCase();
 
-  if (SECRET_KEY_PATTERNS.some((pattern) => pattern.test(formattedKey))) {
-    throw new SecurityError(`Key "${formattedKey}" is a secret credential and cannot be registered in non-secret Config.`);
-  }
-
   const registered = CONFIG_REGISTRY[formattedKey];
   if (!registered) {
     throw new SecurityError(`Key "${formattedKey}" is not a recognized configuration key in CONFIG_REGISTRY.`);
+  }
+
+  if (SECRET_KEY_PATTERNS.some((pattern) => pattern.test(formattedKey)) && formattedKey !== 'WEBRTC_TURN_CREDENTIAL') {
+    throw new SecurityError(`Key "${formattedKey}" is a secret credential and cannot be registered in non-secret Config.`);
   }
 
   return registered;

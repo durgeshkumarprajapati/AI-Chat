@@ -30,5 +30,9 @@ export const DEFAULT_CONFIG_FALLBACKS: Record<string, { value: string; type: 'ST
   CHART_ANALYSIS_ENABLED: { value: 'true', type: 'BOOLEAN' },
   MEETING_INTELLIGENCE_ENABLED: { value: 'true', type: 'BOOLEAN' },
   CLICKUP_ENABLED: { value: 'true', type: 'BOOLEAN' },
-  SYSTEM_ARCHITECTURE_EXPLORER_ENABLED: { value: 'true', type: 'BOOLEAN' }
+  SYSTEM_ARCHITECTURE_EXPLORER_ENABLED: { value: 'true', type: 'BOOLEAN' },
+  WEBRTC_STUN_SERVERS: { value: 'stun:stun.l.google.com:19302', type: 'STRING' },
+  WEBRTC_TURN_SERVERS: { value: '', type: 'STRING' },
+  WEBRTC_TURN_USERNAME: { value: '', type: 'STRING' },
+  WEBRTC_TURN_CREDENTIAL: { value: '', type: 'STRING' }
 };

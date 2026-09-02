@@ -13,6 +13,7 @@ import { useContextualTour } from '@/features/tours/hooks/useContextualTour';
 import { UserProfileMenu } from '../auth/UserProfileMenu';
 import { AppFooter } from './AppFooter';
 import { GlobalAssistantProvider } from '@/components/assistant/GlobalAssistantProvider';
+import { GlobalCallProvider } from '@/components/calls/GlobalCallProvider';
 
 function HeaderTourControls() {
   const { startTour } = useTour();
@@ -238,6 +239,7 @@ function InnerAppLayout({ children }: { children: React.ReactNode }) {
   }
 
   return (
+    <GlobalCallProvider>
     <GlobalAssistantProvider>
     <div className="min-h-screen bg-slate-50 dark:bg-[#0f131d] text-slate-900 dark:text-[#dfe2f1] flex flex-col font-sans selection:bg-[#4d8eff] selection:text-white transition-colors">
       {/* Premium Enterprise Header */}
@@ -462,6 +464,7 @@ function InnerAppLayout({ children }: { children: React.ReactNode }) {
       <ProductTour />
     </div>
     </GlobalAssistantProvider>
+    </GlobalCallProvider>
   );
 }
 

@@ -6,6 +6,7 @@ import { useWorkspace } from '@/context/WorkspaceContext';
 import { mergeMessages, CollabMessageItem } from '@/features/collaboration/message-deduplication';
 import { formatMessageTimestamp, groupMessagesByDate } from '@/features/collaboration/message-time';
 import { ScheduleCallModal } from '@/components/collaboration/ScheduleCallModal';
+import { useGlobalCall } from '@/components/calls/GlobalCallProvider';
 import { ScheduledCallCard, ScheduledCallData } from '@/components/collaboration/ScheduledCallCard';
 
 interface UserSummary {
@@ -88,26 +89,6 @@ interface ChannelItem {
   latestMessage?: MessageItem | null;
   unreadCount: number;
   role: 'OWNER' | 'ADMIN' | 'MEMBER';
-}
-
-interface ActiveCallState {
-  id: string;
-  channelId: string;
-  type: 'VOICE' | 'VIDEO';
-  status: 'RINGING' | 'IN_CALL' | 'ENDED';
-  hostName: string;
-  isMuted: boolean;
-  isVideoOff: boolean;
-  isScreenSharing: boolean;
-  startedAt?: string;
-}
-
-interface IncomingCallInvite {
-  callId: string;
-  channelId: string;
-  hostId: string;
-  hostName: string;
-  callType: 'VOICE' | 'VIDEO';
 }
 
 function VoiceMessagePlayer({ msg }: { msg: MessageItem }) {
@@ -388,6 +369,7 @@ const ScheduledCallMessageWrapper: React.FC<{
 
 export default function CollabChatPage() {
   const { currentUser } = useWorkspace();
+  const { startCall } = useGlobalCall();
   const [channels, setChannels] = useState<ChannelItem[]>([]);
   const [activeChannelId, setActiveChannelId] = useState<string | null>(null);
   const [messages, setMessages] = useState<MessageItem[]>([]);
@@ -414,12 +396,6 @@ export default function CollabChatPage() {
   const mediaRecorderRef = useRef<MediaRecorder | null>(null);
   const recordingTimerRef = useRef<NodeJS.Timeout | null>(null);
   const audioChunksRef = useRef<Blob[]>([]);
-
-  // Voice & Video Call State
-  const [activeCall, setActiveCall] = useState<ActiveCallState | null>(null);
-  const [incomingInvite, setIncomingInvite] = useState<IncomingCallInvite | null>(null);
-  const [callTimerSec, setCallTimerSec] = useState<number>(0);
-  const callIntervalRef = useRef<NodeJS.Timeout | null>(null);
 
   // Modals State
   const [showUserSearchModal, setShowUserSearchModal] = useState(false);
@@ -609,28 +585,6 @@ export default function CollabChatPage() {
                 )
               );
             }
-          } else if (event.type === 'call:invite') {
-            if (event.senderId !== currentUser.id) {
-              setIncomingInvite({
-                callId: event.data.callId,
-                channelId: event.channelId,
-                hostId: event.senderId || '',
-                hostName: event.data.hostName || 'Member',
-                callType: event.data.callType || 'VOICE'
-              });
-            }
-          } else if (event.type === 'call:accept') {
-            if (activeCall && activeCall.id === event.data.callId) {
-              setActiveCall((prev) => (prev ? { ...prev, status: 'IN_CALL' } : null));
-            }
-          } else if (event.type === 'call:decline' || event.type === 'call:end') {
-            if (activeCall && activeCall.id === event.data.callId) {
-              setActiveCall(null);
-              if (callIntervalRef.current) clearInterval(callIntervalRef.current);
-            }
-            if (incomingInvite && incomingInvite.callId === event.data.callId) {
-              setIncomingInvite(null);
-            }
           } else if (event.type === 'ai:generating') {
             if (event.channelId === activeChId) {
               setIsAiGenerating(Boolean(event.data?.isGenerating));
@@ -668,91 +622,7 @@ export default function CollabChatPage() {
       if (reconnectTimeoutRef.current) clearTimeout(reconnectTimeoutRef.current);
       if (eventSource) eventSource.close();
     };
-  }, [currentUser?.id, activeCall, incomingInvite, scrollToLatestMessage]);
-
-  // Initiate Voice / Video Call
-  const handleInitiateCall = async (type: 'VOICE' | 'VIDEO') => {
-    if (!activeChannelId) return;
-    try {
-      const res = await fetch('/api/collaboration/calls/initiate', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ channelId: activeChannelId, type })
-      });
-      const data = await res.json();
-      if (data.success && data.data) {
-        setActiveCall({
-          id: data.data.id,
-          channelId: activeChannelId,
-          type,
-          status: 'RINGING',
-          hostName: currentUser?.name || 'You',
-          isMuted: false,
-          isVideoOff: type === 'VOICE',
-          isScreenSharing: false,
-          startedAt: new Date().toISOString()
-        });
-        setCallTimerSec(0);
-        if (callIntervalRef.current) clearInterval(callIntervalRef.current);
-        callIntervalRef.current = setInterval(() => {
-          setCallTimerSec((prev) => prev + 1);
-        }, 1000);
-      }
-    } catch (err) {
-      console.error('Failed to initiate call:', err);
-    }
-  };
-
-  const handleCallAction = async (action: 'accept' | 'decline' | 'mute' | 'unmute' | 'video_off' | 'video_on' | 'end') => {
-    const targetCallId = activeCall?.id || incomingInvite?.callId;
-    if (!targetCallId) return;
-
-    try {
-      await fetch(`/api/collaboration/calls/${targetCallId}/action`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ action })
-      });
-
-      if (action === 'accept') {
-        if (incomingInvite) {
-          setActiveCall({
-            id: incomingInvite.callId,
-            channelId: incomingInvite.channelId,
-            type: incomingInvite.callType,
-            status: 'IN_CALL',
-            hostName: incomingInvite.hostName,
-            isMuted: false,
-            isVideoOff: incomingInvite.callType === 'VOICE',
-            isScreenSharing: false,
-            startedAt: new Date().toISOString()
-          });
-          setActiveChannelId(incomingInvite.channelId);
-          setIncomingInvite(null);
-          setCallTimerSec(0);
-          if (callIntervalRef.current) clearInterval(callIntervalRef.current);
-          callIntervalRef.current = setInterval(() => {
-            setCallTimerSec((prev) => prev + 1);
-          }, 1000);
-        }
-      } else if (action === 'decline') {
-        setIncomingInvite(null);
-      } else if (action === 'end') {
-        setActiveCall(null);
-        if (callIntervalRef.current) clearInterval(callIntervalRef.current);
-      } else if (action === 'mute') {
-        setActiveCall((prev) => (prev ? { ...prev, isMuted: true } : null));
-      } else if (action === 'unmute') {
-        setActiveCall((prev) => (prev ? { ...prev, isMuted: false } : null));
-      } else if (action === 'video_off') {
-        setActiveCall((prev) => (prev ? { ...prev, isVideoOff: true } : null));
-      } else if (action === 'video_on') {
-        setActiveCall((prev) => (prev ? { ...prev, isVideoOff: false } : null));
-      }
-    } catch (err) {
-      console.error('Call action error:', err);
-    }
-  };
+  }, [currentUser?.id, scrollToLatestMessage]);
 
   // Voice Recording Handlers
   const startVoiceRecording = async () => {
@@ -1300,7 +1170,7 @@ export default function CollabChatPage() {
                 <div className="flex items-center space-x-2">
                   <button
                     type="button"
-                    onClick={() => handleInitiateCall('VOICE')}
+                    onClick={() => activeChannelId && startCall(activeChannelId, 'VOICE')}
                     className="px-3 py-1.5 bg-emerald-600 hover:bg-emerald-500 text-white text-xs font-semibold rounded-xl transition flex items-center space-x-1"
                     title="Initiate Voice Call"
                     data-tour="collab-voice-call-btn"
@@ -1311,7 +1181,7 @@ export default function CollabChatPage() {
 
                   <button
                     type="button"
-                    onClick={() => handleInitiateCall('VIDEO')}
+                    onClick={() => activeChannelId && startCall(activeChannelId, 'VIDEO')}
                     className="px-3 py-1.5 bg-indigo-600 hover:bg-indigo-500 text-white text-xs font-semibold rounded-xl transition flex items-center space-x-1"
                     title="Initiate Video Call"
                     data-tour="collab-video-call-btn"
@@ -1368,50 +1238,6 @@ export default function CollabChatPage() {
                   </button>
                 </div>
               </div>
-
-              {/* Floating Active Call Banner */}
-              {activeCall && activeCall.channelId === activeChannelId && (
-                <div className="p-3 bg-gradient-to-r from-emerald-950 to-slate-900 border border-emerald-500/40 rounded-xl flex items-center justify-between text-xs text-white my-2 shrink-0 shadow-lg">
-                  <div className="flex items-center space-x-3 font-mono">
-                    <span className="w-3 h-3 rounded-full bg-emerald-500 animate-ping" />
-                    <span className="font-bold text-emerald-400">
-                      {activeCall.type === 'VIDEO' ? '📹 Active Video Call' : '📞 Active Voice Call'}
-                    </span>
-                    <span className="text-slate-300">
-                      [{Math.floor(callTimerSec / 60)}:{Math.floor(callTimerSec % 60).toString().padStart(2, '0')}]
-                    </span>
-                  </div>
-
-                  <div className="flex items-center space-x-2">
-                    <button
-                      onClick={() => handleCallAction(activeCall.isMuted ? 'unmute' : 'mute')}
-                      className={`px-3 py-1 rounded-lg text-xs font-semibold transition ${
-                        activeCall.isMuted ? 'bg-amber-600 text-white' : 'bg-slate-800 text-slate-200'
-                      }`}
-                    >
-                      {activeCall.isMuted ? '🎙 Unmute' : '🎤 Mute'}
-                    </button>
-
-                    {activeCall.type === 'VIDEO' && (
-                      <button
-                        onClick={() => handleCallAction(activeCall.isVideoOff ? 'video_on' : 'video_off')}
-                        className={`px-3 py-1 rounded-lg text-xs font-semibold transition ${
-                          activeCall.isVideoOff ? 'bg-amber-600 text-white' : 'bg-slate-800 text-slate-200'
-                        }`}
-                      >
-                        {activeCall.isVideoOff ? '📹 Video On' : '📷 Video Off'}
-                      </button>
-                    )}
-
-                    <button
-                      onClick={() => handleCallAction('end')}
-                      className="px-3.5 py-1 bg-rose-600 hover:bg-rose-500 text-white font-bold rounded-lg text-xs shadow transition"
-                    >
-                      End Call 🔴
-                    </button>
-                  </div>
-                </div>
-              )}
 
               {/* Message History Feed with Date Separators, Relative Timestamps & Auto-Scroll Fix */}
               <div className="flex-1 overflow-y-auto space-y-4 pr-2 my-3 min-h-0" data-tour="collab-message-feed">
@@ -1699,35 +1525,6 @@ export default function CollabChatPage() {
           )}
         </div>
       </div>
-
-      {/* Incoming Ringing Call Modal Overlay */}
-      {incomingInvite && (
-        <div className="fixed inset-0 z-50 bg-black/80 backdrop-blur-sm flex items-center justify-center p-4">
-          <div className="bg-slate-900 border border-slate-800 rounded-2xl w-full max-w-sm p-6 text-center text-white space-y-4 shadow-2xl animate-bounce">
-            <div className="w-16 h-16 rounded-full bg-indigo-600 text-white text-2xl font-bold flex items-center justify-center mx-auto shadow-lg">
-              {incomingInvite.callType === 'VIDEO' ? '📹' : '📞'}
-            </div>
-            <div>
-              <h3 className="text-base font-bold">Incoming {incomingInvite.callType} Call</h3>
-              <p className="text-xs text-slate-400 mt-1">{incomingInvite.hostName} is calling you...</p>
-            </div>
-            <div className="flex justify-center space-x-4 pt-2">
-              <button
-                onClick={() => handleCallAction('decline')}
-                className="px-5 py-2.5 bg-rose-600 hover:bg-rose-500 text-white font-bold text-xs rounded-xl shadow transition"
-              >
-                Decline 🚫
-              </button>
-              <button
-                onClick={() => handleCallAction('accept')}
-                className="px-5 py-2.5 bg-emerald-600 hover:bg-emerald-500 text-white font-bold text-xs rounded-xl shadow transition"
-              >
-                Accept 📞
-              </button>
-            </div>
-          </div>
-        </div>
-      )}
 
       {/* User Search / New DM Modal */}
       {showUserSearchModal && (

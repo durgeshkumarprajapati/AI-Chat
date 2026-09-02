@@ -210,6 +210,7 @@ const serverEnvSchema = z
     WEBRTC_TURN_SERVERS: z.string().optional(),
     WEBRTC_TURN_USERNAME: z.string().optional(),
     WEBRTC_TURN_CREDENTIAL: z.string().optional(),
+    CALL_RING_TIMEOUT_MS: z.coerce.number().int().positive().default(30000),
     CHAT_UPLOAD_ENABLED: z.coerce.boolean().default(true),
     CHAT_UPLOAD_MAX_BYTES: z.coerce.number().int().positive().default(10485760),
     CHAT_UPLOAD_MAX_FILES: z.coerce.number().int().positive().default(5),
@@ -847,7 +848,8 @@ export const envConfig = {
     stunServers: (env.server?.WEBRTC_STUN_SERVERS ?? 'stun:stun.l.google.com:19302').split(','),
     turnServers: env.server?.WEBRTC_TURN_SERVERS ? env.server.WEBRTC_TURN_SERVERS.split(',') : [],
     turnUsername: env.server?.WEBRTC_TURN_USERNAME,
-    turnCredential: env.server?.WEBRTC_TURN_CREDENTIAL
+    turnCredential: env.server?.WEBRTC_TURN_CREDENTIAL,
+    ringTimeoutMs: env.server?.CALL_RING_TIMEOUT_MS ?? 30000
   },
   mockTests: {
     defaultQuestionCount: env.server?.MOCK_TEST_DEFAULT_QUESTION_COUNT ?? 10,

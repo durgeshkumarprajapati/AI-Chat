@@ -6,8 +6,36 @@ import { redis } from '@/lib/redis';
 import { configService } from '@/features/config';
 import { AppError } from '@/errors';
 import { telemetryAggregationService } from '@/features/performance/telemetry-aggregation.service';
+import { rabbitmq, QUEUES } from '@/lib/rabbitmq';
+import type * as amqp from 'amqplib';
 
 export const dynamic = 'force-dynamic';
+
+/**
+ * Phase 91 — cheap, best-effort per-queue depth/consumer-count check via amqplib's
+ * `channel.checkQueue(name)` (a real, existing AMQP passive-declare API — returns
+ * `{queue, messageCount, consumerCount}` without side effects). Deliberately uses its OWN
+ * dedicated channel rather than `rabbitmq`'s shared one: `checkQueue` closes its channel on
+ * failure (e.g. queue not yet asserted by anything), and a shared channel being closed out from
+ * under this diagnostic check would break every other caller of `rabbitmq.publishToQueue`. Never
+ * throws — a failure for one queue reports `available:false` with the real reason, matching this
+ * route's existing "never fabricate" convention, and never affects any other queue's check.
+ */
+async function checkQueueDepth(
+  queueName: string
+): Promise<{ available: true; messageCount: number; consumerCount: number } | { available: false; reason: string }> {
+  let channel: amqp.Channel | null = null;
+  try {
+    const conn = await rabbitmq.getConnection();
+    channel = await conn.createChannel();
+    const info = await channel.checkQueue(queueName);
+    return { available: true, messageCount: info.messageCount, consumerCount: info.consumerCount };
+  } catch (err) {
+    return { available: false, reason: err instanceof Error ? err.message : String(err) };
+  } finally {
+    await channel?.close().catch(() => {});
+  }
+}
 
 /**
  * Observability only. Every figure here is either a live round-trip measurement taken during
@@ -128,6 +156,18 @@ async function handleGet(req: NextRequest) {
       };
     }
 
+    // Phase 91 — additive, best-effort RabbitMQ queue-depth/consumer-count check for every
+    // declared queue in QUEUES (document-processing/knowledge-graph/multimodal/sarvam,
+    // AI Intelligence, Notification, AI Agent, Automation, Memory). Each queue is checked
+    // independently; one queue's failure never affects another's, or the rest of this route.
+    const queueDepths: Record<string, { queue: string } & Awaited<ReturnType<typeof checkQueueDepth>>> = {};
+    await Promise.all(
+      Object.entries(QUEUES).map(async ([key, queueName]) => {
+        const result = await checkQueueDepth(queueName);
+        queueDepths[key] = { queue: queueName, ...result };
+      })
+    );
+
     return NextResponse.json({
       success: true,
       data: {
@@ -167,7 +207,10 @@ async function handleGet(req: NextRequest) {
         apiLatency,
         slowestOperations,
         cacheHitRatios,
-        workflowMetrics
+        workflowMetrics,
+        // Phase 91 — additive. Per-queue message/consumer counts, keyed by the QUEUES const's
+        // own key names (e.g. "AI_INTELLIGENCE_DAILY"). available:false + reason on failure.
+        queueDepths
       }
     });
   } catch (error) {

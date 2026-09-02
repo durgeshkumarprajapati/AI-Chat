@@ -33,6 +33,8 @@ import { notificationSchedulerService } from '@/features/notifications/notificat
 import { sweepExpiredNotifications } from '@/features/notifications/notification-retention.service';
 import { randomUUID } from 'crypto';
 import { prisma } from './lib/prisma.js';
+import { redis } from '@/lib/redis';
+import { runWithSchedulerLock } from './lib/scheduler-lock.js';
 
 dotenv.config({ path: '../.env' });
 dotenv.config();
@@ -72,11 +74,36 @@ let automationExecutionConsumerTag: string | null = null;
 let memoryCandidateExtractionConsumerTag: string | null = null;
 let isShuttingDown = false;
 let activeInFlightJobs = 0;
+// Phase 91 — the in-flight-job drain wait used to be hardcoded to 5000ms. Read once at worker
+// startup (see startWorker()) rather than at the exact moment of shutdown: ConfigService itself
+// depends on Redis/DB, both of which may already be degraded/unreachable by the time a shutdown
+// signal arrives, so re-reading config mid-shutdown would be both awkward and risky. A
+// process-lifetime-stable local constant, read while everything is still known-healthy at
+// startup, is the simpler and safer choice here.
+let shutdownDrainTimeoutMs = 5000;
+
+/**
+ * Phase 91 — derives a scheduler-lock TTL (seconds) that is slightly under a periodic task's own
+ * tick interval, so a crashed/hung lock-holder's lock naturally expires in time for the NEXT
+ * legitimate tick rather than the task going dark forever. 85% of the interval, floored, with a
+ * 5s minimum floor for very short intervals.
+ */
+function deriveLockTtlSeconds(intervalMs: number): number {
+  return Math.max(5, Math.floor((intervalMs * 0.85) / 1000));
+}
 
 export async function startWorker() {
   console.log('[Worker] Starting Document, Knowledge Graph & Multimodal Worker...');
 
   try {
+    // Phase 91 — read once, up front, while config infra is known-healthy; used later at
+    // shutdown time (see the module-level comment on `shutdownDrainTimeoutMs`).
+    try {
+      shutdownDrainTimeoutMs = await configService.getNumber('WORKER_SHUTDOWN_DRAIN_TIMEOUT_MS', 5000);
+    } catch (err) {
+      console.error('[Worker] Failed to read WORKER_SHUTDOWN_DRAIN_TIMEOUT_MS (defaulting to 5000ms):', err);
+    }
+
     connection = await amqp.connect(RABBITMQ_URL);
     channel = await connection.createChannel();
     channel2 = await connection.createChannel();
@@ -579,26 +606,36 @@ export async function startWorker() {
     memoryCandidateExtractionConsumerTag = memoryCandidateExtractionConsumeResult.consumerTag;
 
     // Start periodic Google Calendar Sync Retry loop
+    // Phase 91 — guarded by a distributed Redis lock so only one worker replica runs this tick;
+    // see runWithSchedulerLock's own doc comment for the fail-mode (Redis down => skip, not
+    // unguarded run, not crash). TTL (25s) is slightly under this task's own 30s interval so a
+    // crashed/hung holder's lock naturally expires in time for the next legitimate tick.
     const syncInterval = setInterval(async () => {
       if (isShuttingDown) return;
-      try {
-        await workerCalendarSyncProcessor.processPendingAndRetryJobs();
-      } catch (err) {
-        console.error('[Worker] Periodic calendar sync retry error:', err);
-      }
+      await runWithSchedulerLock('calendar-sync', 25, async () => {
+        try {
+          await workerCalendarSyncProcessor.processPendingAndRetryJobs();
+        } catch (err) {
+          console.error('[Worker] Periodic calendar sync retry error:', err);
+        }
+      });
     }, 30000);
     syncInterval.unref();
 
     // Phase 76 — periodic billing reconciliation (trial expiry, grace-period entry/exit).
     // A no-op query round-trip while BILLING_ENABLED=false; see billing-reconciliation.processor.ts.
     const billingReconciliationIntervalMs = await configService.getNumber('BILLING_RECONCILIATION_INTERVAL_MS', 3600000);
+    // Phase 91 — distributed-lock guarded (see runWithSchedulerLock). TTL is derived as ~85% of
+    // this task's own interval so a crashed holder's lock expires before the next legitimate tick.
     const billingInterval = setInterval(async () => {
       if (isShuttingDown) return;
-      try {
-        await billingReconciliationProcessor.run();
-      } catch (err) {
-        console.error('[Worker] Periodic billing reconciliation error:', err);
-      }
+      await runWithSchedulerLock('billing-reconciliation', deriveLockTtlSeconds(billingReconciliationIntervalMs), async () => {
+        try {
+          await billingReconciliationProcessor.run();
+        } catch (err) {
+          console.error('[Worker] Periodic billing reconciliation error:', err);
+        }
+      });
     }, billingReconciliationIntervalMs);
     billingInterval.unref();
 
@@ -606,13 +643,16 @@ export async function startWorker() {
     // deadline detection). Disabled/no-op via INTELLIGENCE_ENABLED / INTELLIGENCE_PROJECT_HEALTH_ENABLED
     // (both default true); a failure here never affects any other worker job or request-path traffic.
     const intelligenceAnalysisIntervalMs = await configService.getNumber('INTELLIGENCE_ANALYSIS_INTERVAL_MS', 1800000);
+    // Phase 91 — distributed-lock guarded (see runWithSchedulerLock).
     const intelligenceInterval = setInterval(async () => {
       if (isShuttingDown) return;
-      try {
-        await projectIntelligenceAnalysisProcessor.run();
-      } catch (err) {
-        console.error('[Worker] Periodic project intelligence analysis error:', err);
-      }
+      await runWithSchedulerLock('project-intelligence-analysis', deriveLockTtlSeconds(intelligenceAnalysisIntervalMs), async () => {
+        try {
+          await projectIntelligenceAnalysisProcessor.run();
+        } catch (err) {
+          console.error('[Worker] Periodic project intelligence analysis error:', err);
+        }
+      });
     }, intelligenceAnalysisIntervalMs);
     intelligenceInterval.unref();
 
@@ -622,52 +662,59 @@ export async function startWorker() {
     // worker job; the scheduling-layer "due" check is a best-effort filter — generateSnapshot's
     // own DB-unique-key check is the authoritative idempotency gate (see scheduler service docs).
     const aiIntelligenceSchedulerIntervalMs = await configService.getNumber('AI_INTELLIGENCE_SCHEDULER_INTERVAL_MS', 900000);
+    // Phase 91 — distributed-lock guarded (see runWithSchedulerLock).
     const aiIntelligenceSchedulerInterval = setInterval(async () => {
       if (isShuttingDown) return;
-      try {
-        const aiIntelligenceEnabled = await configService.getBoolean('AI_INTELLIGENCE_ENABLED', false);
-        if (!aiIntelligenceEnabled) return;
-
-        const now = new Date();
-        const [dueDaily, dueWeekly] = await Promise.all([
-          aiIntelligenceSchedulerService.findUsersDueForDaily(now),
-          aiIntelligenceSchedulerService.findUsersDueForWeekly(now)
-        ]);
-
-        for (const userId of dueDaily) {
+      await runWithSchedulerLock(
+        'ai-intelligence-scheduler',
+        deriveLockTtlSeconds(aiIntelligenceSchedulerIntervalMs),
+        async () => {
           try {
-            await rabbitmq.publishToQueue<AIIntelligenceJobPayload>(QUEUES.AI_INTELLIGENCE_DAILY, {
-              jobType: 'AI_INTELLIGENCE_DAILY',
-              version: 1,
-              jobId: randomUUID(),
-              userId,
-              projectId: null,
-              attempt: 1,
-              createdAt: new Date().toISOString()
-            });
+            const aiIntelligenceEnabled = await configService.getBoolean('AI_INTELLIGENCE_ENABLED', false);
+            if (!aiIntelligenceEnabled) return;
+
+            const now = new Date();
+            const [dueDaily, dueWeekly] = await Promise.all([
+              aiIntelligenceSchedulerService.findUsersDueForDaily(now),
+              aiIntelligenceSchedulerService.findUsersDueForWeekly(now)
+            ]);
+
+            for (const userId of dueDaily) {
+              try {
+                await rabbitmq.publishToQueue<AIIntelligenceJobPayload>(QUEUES.AI_INTELLIGENCE_DAILY, {
+                  jobType: 'AI_INTELLIGENCE_DAILY',
+                  version: 1,
+                  jobId: randomUUID(),
+                  userId,
+                  projectId: null,
+                  attempt: 1,
+                  createdAt: new Date().toISOString()
+                });
+              } catch (err) {
+                console.error(`[Worker] Failed to enqueue daily AI Intelligence job for user ${userId}:`, err);
+              }
+            }
+
+            for (const userId of dueWeekly) {
+              try {
+                await rabbitmq.publishToQueue<AIIntelligenceJobPayload>(QUEUES.AI_INTELLIGENCE_WEEKLY, {
+                  jobType: 'AI_INTELLIGENCE_WEEKLY',
+                  version: 1,
+                  jobId: randomUUID(),
+                  userId,
+                  projectId: null,
+                  attempt: 1,
+                  createdAt: new Date().toISOString()
+                });
+              } catch (err) {
+                console.error(`[Worker] Failed to enqueue weekly AI Intelligence job for user ${userId}:`, err);
+              }
+            }
           } catch (err) {
-            console.error(`[Worker] Failed to enqueue daily AI Intelligence job for user ${userId}:`, err);
+            console.error('[Worker] Periodic AI Workspace Intelligence scheduler error:', err);
           }
         }
-
-        for (const userId of dueWeekly) {
-          try {
-            await rabbitmq.publishToQueue<AIIntelligenceJobPayload>(QUEUES.AI_INTELLIGENCE_WEEKLY, {
-              jobType: 'AI_INTELLIGENCE_WEEKLY',
-              version: 1,
-              jobId: randomUUID(),
-              userId,
-              projectId: null,
-              attempt: 1,
-              createdAt: new Date().toISOString()
-            });
-          } catch (err) {
-            console.error(`[Worker] Failed to enqueue weekly AI Intelligence job for user ${userId}:`, err);
-          }
-        }
-      } catch (err) {
-        console.error('[Worker] Periodic AI Workspace Intelligence scheduler error:', err);
-      }
+      );
     }, aiIntelligenceSchedulerIntervalMs);
     aiIntelligenceSchedulerInterval.unref();
 
@@ -685,50 +732,57 @@ export async function startWorker() {
       'NOTIFICATION_DELIVERY_SCHEDULER_INTERVAL_MS',
       900000
     );
+    // Phase 91 — distributed-lock guarded (see runWithSchedulerLock).
     const notificationDeliverySchedulerInterval = setInterval(async () => {
       if (isShuttingDown) return;
-      try {
-        const notificationsEnabled = await configService.getBoolean('NOTIFICATIONS_ENABLED', false);
-        if (!notificationsEnabled) return;
-
-        const now = new Date();
-        const [dueDaily, dueWeekly] = await Promise.all([
-          notificationSchedulerService.findUsersDueForDailyDelivery(now),
-          notificationSchedulerService.findUsersDueForWeeklyDelivery(now)
-        ]);
-
-        for (const userId of dueDaily) {
+      await runWithSchedulerLock(
+        'notification-delivery-scheduler',
+        deriveLockTtlSeconds(notificationDeliverySchedulerIntervalMs),
+        async () => {
           try {
-            await rabbitmq.publishToQueue<NotificationDispatchJobPayload>(QUEUES.NOTIFICATION_DISPATCH, {
-              jobType: 'NOTIFICATION_DISPATCH_DAILY',
-              version: 1,
-              jobId: randomUUID(),
-              userId,
-              attempt: 1,
-              createdAt: new Date().toISOString()
-            });
+            const notificationsEnabled = await configService.getBoolean('NOTIFICATIONS_ENABLED', false);
+            if (!notificationsEnabled) return;
+
+            const now = new Date();
+            const [dueDaily, dueWeekly] = await Promise.all([
+              notificationSchedulerService.findUsersDueForDailyDelivery(now),
+              notificationSchedulerService.findUsersDueForWeeklyDelivery(now)
+            ]);
+
+            for (const userId of dueDaily) {
+              try {
+                await rabbitmq.publishToQueue<NotificationDispatchJobPayload>(QUEUES.NOTIFICATION_DISPATCH, {
+                  jobType: 'NOTIFICATION_DISPATCH_DAILY',
+                  version: 1,
+                  jobId: randomUUID(),
+                  userId,
+                  attempt: 1,
+                  createdAt: new Date().toISOString()
+                });
+              } catch (err) {
+                console.error(`[Worker] Failed to enqueue daily notification dispatch job for user ${userId}:`, err);
+              }
+            }
+
+            for (const userId of dueWeekly) {
+              try {
+                await rabbitmq.publishToQueue<NotificationDispatchJobPayload>(QUEUES.NOTIFICATION_DISPATCH, {
+                  jobType: 'NOTIFICATION_DISPATCH_WEEKLY',
+                  version: 1,
+                  jobId: randomUUID(),
+                  userId,
+                  attempt: 1,
+                  createdAt: new Date().toISOString()
+                });
+              } catch (err) {
+                console.error(`[Worker] Failed to enqueue weekly notification dispatch job for user ${userId}:`, err);
+              }
+            }
           } catch (err) {
-            console.error(`[Worker] Failed to enqueue daily notification dispatch job for user ${userId}:`, err);
+            console.error('[Worker] Periodic notification delivery scheduler error:', err);
           }
         }
-
-        for (const userId of dueWeekly) {
-          try {
-            await rabbitmq.publishToQueue<NotificationDispatchJobPayload>(QUEUES.NOTIFICATION_DISPATCH, {
-              jobType: 'NOTIFICATION_DISPATCH_WEEKLY',
-              version: 1,
-              jobId: randomUUID(),
-              userId,
-              attempt: 1,
-              createdAt: new Date().toISOString()
-            });
-          } catch (err) {
-            console.error(`[Worker] Failed to enqueue weekly notification dispatch job for user ${userId}:`, err);
-          }
-        }
-      } catch (err) {
-        console.error('[Worker] Periodic notification delivery scheduler error:', err);
-      }
+      );
     }, notificationDeliverySchedulerIntervalMs);
     notificationDeliverySchedulerInterval.unref();
 
@@ -740,17 +794,24 @@ export async function startWorker() {
       'NOTIFICATION_RETENTION_SWEEP_INTERVAL_MS',
       86400000
     );
+    // Phase 91 — distributed-lock guarded (see runWithSchedulerLock).
     const notificationRetentionSweepInterval = setInterval(async () => {
       if (isShuttingDown) return;
-      try {
-        const retentionDays = await configService.getNumber('NOTIFICATION_RETENTION_DAYS', 90);
-        const { deleted } = await sweepExpiredNotifications(retentionDays, 500);
-        if (deleted > 0) {
-          console.log(`[Worker] Notification retention sweep deleted ${deleted} expired notification(s).`);
+      await runWithSchedulerLock(
+        'notification-retention-sweep',
+        deriveLockTtlSeconds(notificationRetentionSweepIntervalMs),
+        async () => {
+          try {
+            const retentionDays = await configService.getNumber('NOTIFICATION_RETENTION_DAYS', 90);
+            const { deleted } = await sweepExpiredNotifications(retentionDays, 500);
+            if (deleted > 0) {
+              console.log(`[Worker] Notification retention sweep deleted ${deleted} expired notification(s).`);
+            }
+          } catch (err) {
+            console.error('[Worker] Periodic notification retention sweep error:', err);
+          }
         }
-      } catch (err) {
-        console.error('[Worker] Periodic notification retention sweep error:', err);
-      }
+      );
     }, notificationRetentionSweepIntervalMs);
     notificationRetentionSweepInterval.unref();
 
@@ -764,38 +825,45 @@ export async function startWorker() {
       'WORKFLOW_TRIGGER_SCHEDULER_INTERVAL_MS',
       60000
     );
+    // Phase 91 — distributed-lock guarded (see runWithSchedulerLock).
     const automationDelayReenqueueInterval = setInterval(async () => {
       if (isShuttingDown) return;
-      try {
-        const workflowAutomationEnabled = await configService.getBoolean('WORKFLOW_AUTOMATION_ENABLED', true);
-        if (!workflowAutomationEnabled) return;
-
-        const dueDelaySteps = await prisma.automationExecutionStep.findMany({
-          where: { nodeType: 'DELAY', status: 'RUNNING' },
-          select: { id: true, executionId: true, sanitizedOutput: true }
-        });
-
-        const now = Date.now();
-        for (const step of dueDelaySteps) {
-          const nextRunAtRaw = (step.sanitizedOutput as { nextRunAt?: string } | null)?.nextRunAt;
-          if (!nextRunAtRaw || new Date(nextRunAtRaw).getTime() > now) continue;
-
+      await runWithSchedulerLock(
+        'automation-delay-reenqueue',
+        deriveLockTtlSeconds(automationTriggerSchedulerIntervalMs),
+        async () => {
           try {
-            await rabbitmq.publishToQueue<AutomationExecutionJobPayload>(QUEUES.AUTOMATION_EXECUTION, {
-              jobType: 'AUTOMATION_EXECUTION',
-              version: 1,
-              jobId: randomUUID(),
-              executionId: step.executionId,
-              attempt: 1,
-              createdAt: new Date().toISOString()
+            const workflowAutomationEnabled = await configService.getBoolean('WORKFLOW_AUTOMATION_ENABLED', true);
+            if (!workflowAutomationEnabled) return;
+
+            const dueDelaySteps = await prisma.automationExecutionStep.findMany({
+              where: { nodeType: 'DELAY', status: 'RUNNING' },
+              select: { id: true, executionId: true, sanitizedOutput: true }
             });
+
+            const now = Date.now();
+            for (const step of dueDelaySteps) {
+              const nextRunAtRaw = (step.sanitizedOutput as { nextRunAt?: string } | null)?.nextRunAt;
+              if (!nextRunAtRaw || new Date(nextRunAtRaw).getTime() > now) continue;
+
+              try {
+                await rabbitmq.publishToQueue<AutomationExecutionJobPayload>(QUEUES.AUTOMATION_EXECUTION, {
+                  jobType: 'AUTOMATION_EXECUTION',
+                  version: 1,
+                  jobId: randomUUID(),
+                  executionId: step.executionId,
+                  attempt: 1,
+                  createdAt: new Date().toISOString()
+                });
+              } catch (err) {
+                console.error(`[Worker] Failed to re-enqueue delayed automation execution ${step.executionId}:`, err);
+              }
+            }
           } catch (err) {
-            console.error(`[Worker] Failed to re-enqueue delayed automation execution ${step.executionId}:`, err);
+            console.error('[Worker] Periodic automation DELAY re-check error:', err);
           }
         }
-      } catch (err) {
-        console.error('[Worker] Periodic automation DELAY re-check error:', err);
-      }
+      );
     }, automationTriggerSchedulerIntervalMs);
     automationDelayReenqueueInterval.unref();
   } catch (error) {
@@ -861,9 +929,10 @@ export async function shutdownWorker(signal?: string) {
     }
     console.log('[Worker] RabbitMQ consumers stopped.');
 
-    // Wait for active in-flight jobs to complete (max 5 seconds)
+    // Wait for active in-flight jobs to complete (max WORKER_SHUTDOWN_DRAIN_TIMEOUT_MS,
+    // read once at startup into `shutdownDrainTimeoutMs` — see its declaration above).
     const waitStart = Date.now();
-    while (activeInFlightJobs > 0 && Date.now() - waitStart < 5000) {
+    while (activeInFlightJobs > 0 && Date.now() - waitStart < shutdownDrainTimeoutMs) {
       await new Promise((resolve) => setTimeout(resolve, 200));
     }
 
@@ -890,6 +959,15 @@ export async function shutdownWorker(signal?: string) {
 
     await prisma.$disconnect().catch(() => {});
     console.log('[Worker] Prisma disconnected.');
+
+    // Phase 91 — Redis was previously left connected on shutdown. Never let a failure here
+    // block the rest of shutdown from completing (matches the `.catch(() => {})` idiom already
+    // used for every other resource above).
+    await redis.disconnect().catch((err) => {
+      console.error('[Worker] Error disconnecting Redis (continuing shutdown):', err instanceof Error ? err.message : err);
+    });
+    console.log('[Worker] Redis disconnected.');
+
     console.log('[Worker] Shutdown complete.');
 
     if (process.env.NODE_ENV !== 'test') {

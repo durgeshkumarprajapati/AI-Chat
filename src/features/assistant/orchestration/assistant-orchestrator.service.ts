@@ -1,4 +1,3 @@
-import { randomUUID } from 'crypto';
 import { UserRole } from '@prisma/client';
 import { prisma } from '@/lib/prisma';
 import { QUEUES, rabbitmq, MemoryCandidateExtractionJobPayload } from '@/lib/rabbitmq';
@@ -293,7 +292,7 @@ export class AssistantOrchestratorService {
       // PHASE 90 — fire-and-forget async candidate extraction, only for a genuinely completed,
       // successful turn (this line is only reached after a full, error-free generation). Not
       // awaited — never delays the `done` yield below.
-      void this.dispatchMemoryExtraction(userId, authorizedContext.projectId, message, finalAnswer, conversationId).catch(() => {});
+      void this.dispatchMemoryExtraction(userId, authorizedContext.projectId, message, finalAnswer, conversationId, requestId).catch(() => {});
 
       // 15. done
       yield { event: 'done', data: { messageId: assistantMessage.id, usedIntent: intent } };
@@ -334,7 +333,8 @@ export class AssistantOrchestratorService {
     projectId: string | null | undefined,
     userMessage: string,
     assistantMessage: string,
-    conversationId: string | undefined
+    conversationId: string | undefined,
+    correlationId: string
   ): Promise<void> {
     try {
       const [candidateProcessingEnabled, autoLearnEnabled] = await Promise.all([
@@ -343,10 +343,18 @@ export class AssistantOrchestratorService {
       ]);
       if (!candidateProcessingEnabled || !autoLearnEnabled) return;
 
+      // Phase 91 — correlation-ID propagation example: reuses this payload's own existing
+      // `jobId` field (rather than adding a new field to a protected/shared payload type) to
+      // carry the originating request's `requestId` through to the worker. Since exactly one
+      // memory-extraction job is ever dispatched per completed turn, reusing `requestId` as
+      // `jobId` loses no uniqueness — and it means `[Worker-MemoryExtraction] Job received ...
+      // (Job ID: ...)` in the worker's logs now shares the SAME id as this request's own
+      // `copilot.*` telemetry events, so the two can be correlated directly. This is a minimal,
+      // documented example of the pattern, not a retrofit of every existing queue payload.
       await rabbitmq.publishToQueue<MemoryCandidateExtractionJobPayload>(QUEUES.MEMORY_CANDIDATE_EXTRACTION, {
         jobType: 'MEMORY_CANDIDATE_EXTRACTION',
         version: 1,
-        jobId: randomUUID(),
+        jobId: correlationId,
         userId,
         projectId: projectId ?? null,
         conversationId: conversationId ?? null,

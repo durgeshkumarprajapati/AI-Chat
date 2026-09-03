@@ -236,6 +236,40 @@ export class NotificationService {
 
     return { count: res.count };
   }
+
+  /**
+   * Delete a single notification. Hard delete — this table has no soft-delete column
+   * (no `deletedAt`/`isDeleted` field on the Notification model, unlike e.g. CollabMessage's
+   * `isDeleted` flag), so permanent deletion matches the project's own established convention
+   * for this specific table. Ownership is enforced the same way as markAsRead: a `findFirst`
+   * scoped to `{ id, userId }` — a non-owner (or non-existent id) gets an identical "not found"
+   * result, never a distinguishable 403, so this endpoint cannot be used to probe which
+   * notification IDs exist for another user.
+   */
+  public async deleteNotification(notificationId: string, userId: string): Promise<boolean> {
+    const existing = await prisma.notification.findFirst({
+      where: { id: notificationId, userId }
+    });
+    if (!existing) return false;
+
+    await prisma.notification.delete({ where: { id: notificationId } });
+
+    const unreadCount = await this.getUnreadCount(userId);
+    notificationPubSubService.publishNotificationDeleted(userId, notificationId, unreadCount);
+
+    return true;
+  }
+
+  /**
+   * Delete every notification belonging to the authenticated user.
+   */
+  public async deleteAllNotifications(userId: string): Promise<{ count: number }> {
+    const res = await prisma.notification.deleteMany({ where: { userId } });
+
+    notificationPubSubService.publishNotificationDeleted(userId, '*', 0);
+
+    return { count: res.count };
+  }
 }
 
 export const notificationService = new NotificationService();

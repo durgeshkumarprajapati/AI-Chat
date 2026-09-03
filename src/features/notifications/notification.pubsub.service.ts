@@ -39,6 +39,25 @@ export class NotificationPubSubService {
   }
 
   /**
+   * Publish notification deletion event to target user via SSE, so any other open tab/session for
+   * this user removes it from its own list too, without needing a refresh.
+   */
+  public publishNotificationDeleted(userId: string, notificationId: string, unreadCount: number): void {
+    const eventId = `evt_notif_del_${Date.now()}_${Math.random().toString(36).substring(2, 8)}`;
+    collabPubSubService.publish('global', {
+      eventId,
+      type: 'notification:deleted',
+      channelId: 'global',
+      targetUserId: userId,
+      data: {
+        notificationId,
+        unreadCount
+      },
+      timestamp: new Date().toISOString()
+    });
+  }
+
+  /**
    * Publish unread count update to target user via SSE
    */
   public publishUnreadCount(userId: string, unreadCount: number): void {

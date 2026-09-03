@@ -56,6 +56,7 @@ export function useGlobalCall(): CallContextValue {
 }
 
 const RESET_DISPLAY_MS = 2500;
+const CONNECTING_TIMEOUT_MS = 20000;
 
 function peerFromParticipants(participants: RawCallParticipant[], excludeUserId: string): CallPeerInfo {
   const other = participants.find((p) => p.userId !== excludeUserId);
@@ -88,6 +89,7 @@ export function GlobalCallProvider({ children }: { children: React.ReactNode }) 
   const eventSourceRef = useRef<EventSource | null>(null);
   const reconnectTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const ringTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const connectingTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const resetTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const peerManagerRef = useRef<WebRTCPeerConnectionManager | null>(null);
   const iceServersRef = useRef<IceServerConfig[]>([]);
@@ -116,6 +118,10 @@ export function GlobalCallProvider({ children }: { children: React.ReactNode }) 
 
   const scheduleReset = useCallback((finalStatus: CallStatus) => {
     setCallStatus(finalStatus);
+    if (connectingTimeoutRef.current) {
+      clearTimeout(connectingTimeoutRef.current);
+      connectingTimeoutRef.current = null;
+    }
     if (resetTimeoutRef.current) clearTimeout(resetTimeoutRef.current);
     resetTimeoutRef.current = setTimeout(() => {
       setCallStatus('IDLE');
@@ -180,6 +186,33 @@ export function GlobalCallProvider({ children }: { children: React.ReactNode }) 
     []
   );
 
+  const clearConnectingTimeout = useCallback(() => {
+    if (connectingTimeoutRef.current) {
+      clearTimeout(connectingTimeoutRef.current);
+      connectingTimeoutRef.current = null;
+    }
+  }, []);
+
+  // Safety net for Part 18-G ("no permanent CONNECTING state"): if ICE negotiation never
+  // resolves to 'connected' or 'failed' within this window (e.g. a network path that neither
+  // completes nor is definitively torn down), force the call to FAILED rather than leaving the
+  // UI stuck showing "Connecting..." forever.
+  const scheduleConnectingTimeout = useCallback(
+    (callId: string) => {
+      clearConnectingTimeout();
+      connectingTimeoutRef.current = setTimeout(() => {
+        if (callStatusRef.current === 'CONNECTING' && activeCallRef.current?.callId === callId) {
+          callLog.warn('WEBRTC_CONNECTION_FAILED', { callId, reason: 'connecting_timeout' });
+          cleanupPeer();
+          callAction(callId, 'end');
+          setErrorMessage('Connection timed out.');
+          scheduleReset('FAILED');
+        }
+      }, CONNECTING_TIMEOUT_MS);
+    },
+    [clearConnectingTimeout, cleanupPeer, callAction, scheduleReset]
+  );
+
   // ---- Outgoing (caller) flow ----
 
   const startCall = useCallback(
@@ -242,6 +275,7 @@ export function GlobalCallProvider({ children }: { children: React.ReactNode }) 
 
     clearRingTimeout();
     setCallStatus('CONNECTING');
+    scheduleConnectingTimeout(invite.callId);
     setActiveCall({
       callId: invite.callId,
       channelId: invite.channelId,
@@ -267,6 +301,7 @@ export function GlobalCallProvider({ children }: { children: React.ReactNode }) 
         onRemoteStream: (remote) => setRemoteStream(remote),
         onConnectionStateChange: (state) => {
           if (state === 'connected') {
+            clearConnectingTimeout();
             setCallStatus('ACTIVE');
             callLog.info('WEBRTC_CONNECTED', { callId: invite.callId });
           } else if (state === 'failed' || state === 'closed') {
@@ -275,7 +310,7 @@ export function GlobalCallProvider({ children }: { children: React.ReactNode }) 
             scheduleReset('FAILED');
           }
         }
-      });
+      }, invite.callId);
       setLocalStream(stream);
       // The offer will arrive from the caller now that this side has answered; the peer
       // connection above is primed to receive it and reply with an answer.
@@ -290,7 +325,7 @@ export function GlobalCallProvider({ children }: { children: React.ReactNode }) 
       cleanupPeer();
       scheduleReset('FAILED');
     }
-  }, [clearRingTimeout, callAction, ensureIceServers, sendSignal, cleanupPeer, scheduleReset]);
+  }, [clearRingTimeout, callAction, ensureIceServers, sendSignal, cleanupPeer, scheduleReset, scheduleConnectingTimeout, clearConnectingTimeout]);
 
   const rejectCall = useCallback(async () => {
     const invite = incomingCallRef.current;
@@ -408,6 +443,7 @@ export function GlobalCallProvider({ children }: { children: React.ReactNode }) 
         const peer = peerFromParticipants(lastParticipantsRef.current, currentUserIdRef.current || '');
         setActiveCall((prev) => (prev ? { ...prev, peer: peer.id ? peer : { ...prev.peer, id: acceptingUserId } } : prev));
         setCallStatus('CONNECTING');
+        scheduleConnectingTimeout(callId);
 
         (async () => {
           try {
@@ -419,6 +455,7 @@ export function GlobalCallProvider({ children }: { children: React.ReactNode }) 
               onRemoteStream: (remote) => setRemoteStream(remote),
               onConnectionStateChange: (state) => {
                 if (state === 'connected') {
+                  clearConnectingTimeout();
                   setCallStatus('ACTIVE');
                   callLog.info('WEBRTC_CONNECTED', { callId });
                 } else if (state === 'failed' || state === 'closed') {
@@ -427,7 +464,7 @@ export function GlobalCallProvider({ children }: { children: React.ReactNode }) 
                   scheduleReset('FAILED');
                 }
               }
-            });
+            }, callId);
             setLocalStream(stream);
             const offer = await manager.createOffer();
             await sendSignal(callId, 'offer', offer, acceptingUserId);
@@ -456,7 +493,7 @@ export function GlobalCallProvider({ children }: { children: React.ReactNode }) 
         setCallStatus('IDLE');
       }
     },
-    [clearRingTimeout, ensureIceServers, sendSignal, cleanupPeer, scheduleReset, callAction]
+    [clearRingTimeout, ensureIceServers, sendSignal, cleanupPeer, scheduleReset, callAction, scheduleConnectingTimeout, clearConnectingTimeout]
   );
 
   const handleCallDeclineOrEnd = useCallback(
@@ -558,9 +595,32 @@ export function GlobalCallProvider({ children }: { children: React.ReactNode }) 
     return () => {
       clearRingTimeout();
       if (resetTimeoutRef.current) clearTimeout(resetTimeoutRef.current);
+      if (connectingTimeoutRef.current) clearTimeout(connectingTimeoutRef.current);
       peerManagerRef.current?.cleanup();
     };
   }, [clearRingTimeout]);
+
+  // Part 18-E ("browser closes — best-effort cleanup"): a regular fetch() made from an unload
+  // handler is routinely cancelled by the browser before it reaches the network. sendBeacon is
+  // specifically designed to reliably deliver a small POST during page teardown, so the peer and
+  // server both learn the call ended instead of the peer waiting out a full ICE-timeout before
+  // discovering the same thing.
+  useEffect(() => {
+    const handleUnload = () => {
+      const call = activeCallRef.current;
+      if (!call) return;
+      try {
+        navigator.sendBeacon(
+          `/api/collaboration/calls/${call.callId}/action`,
+          new Blob([JSON.stringify({ action: 'end' })], { type: 'application/json' })
+        );
+      } catch {
+        // Nothing more to do — the page is unloading regardless.
+      }
+    };
+    window.addEventListener('pagehide', handleUnload);
+    return () => window.removeEventListener('pagehide', handleUnload);
+  }, []);
 
   return (
     <CallContext.Provider

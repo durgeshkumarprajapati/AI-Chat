@@ -28,7 +28,12 @@ export const NOTIFICATION_TYPE_ICONS: Record<string, string> = {
   DOCUMENT_CHANGE: '📄',
   DAILY_INTELLIGENCE: '🧠',
   WEEKLY_INTELLIGENCE: '🧠',
-  PROJECT_HEALTH_CHANGE: '🧠'
+  PROJECT_HEALTH_CHANGE: '🧠',
+  CALL_INCOMING: '📞',
+  CALL_MISSED: '📵',
+  // Phase 91.8
+  DOCUMENT: '📄',
+  SYSTEM: '⚙️'
 };
 
 export const DEFAULT_NOTIFICATION_ICON = '🔔';
@@ -50,11 +55,18 @@ export function getNotificationDeepLink(n: NotificationPayload): string {
   if (n.metadata && typeof n.metadata.deepLink === 'string') {
     return n.metadata.deepLink;
   }
+  // Phase 91.8 — DOCUMENT notifications carry a structured documentId (metadata, not a
+  // dedicated column, matching how ROADMAP_SHARED already uses metadata.roadmapId below).
+  if ((n.type as string) === 'DOCUMENT' && n.metadata?.documentId) {
+    return `/documents/${n.metadata.documentId}`;
+  }
   if (n.channelId) {
     return `/collab-chat?channel=${n.channelId}${n.messageId ? `&message=${n.messageId}` : ''}`;
   }
   if ((n.type as string) === 'ROADMAP_SHARED' && n.metadata?.roadmapId) {
     return `/roadmaps/${n.metadata.roadmapId}`;
   }
-  return '/collab-chat';
+  // SYSTEM (and anything else with neither a deepLink nor a channel/roadmap/document target)
+  // lands on the dashboard rather than a chat-specific fallback.
+  return '/dashboard';
 }

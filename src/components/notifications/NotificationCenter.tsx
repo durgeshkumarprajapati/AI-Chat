@@ -1,5 +1,6 @@
 import React, { useState, useEffect, useCallback, useRef } from 'react';
 import Link from 'next/link';
+import { IoIosNotificationsOutline } from 'react-icons/io';
 import { NotificationPayload, UserNotificationPreferences } from '@/features/notifications/notification.types';
 import { isPushSupported, getPushPermission, isPushSubscribedLocally, enablePushNotifications, disablePushNotifications } from '@/lib/push-notifications';
 import { getNotificationIcon, getNotificationDeepLink } from '@/components/notifications/notification-display';
@@ -15,6 +16,9 @@ export default function NotificationCenter() {
   const [pushBusy, setPushBusy] = useState(false);
 
   const containerRef = useRef<HTMLDivElement>(null);
+  // Prevents a rapid double-click on the same notification from firing markAsRead/navigation
+  // twice (Part 12 — "prevent duplicate navigation caused by double clicks").
+  const navigatingIdsRef = useRef<Set<string>>(new Set());
 
   // Fetch unread count
   const fetchUnreadCount = useCallback(async () => {
@@ -95,6 +99,18 @@ export default function NotificationCenter() {
           if (typeof event.data?.unreadCount === 'number') {
             setUnreadCount(event.data.unreadCount);
           }
+        } else if (event.type === 'notification:deleted') {
+          // A notification was deleted from another tab/session for this same user — mirror it
+          // here too, without requiring a refresh. '*' is the deleteAllNotifications sentinel.
+          const deletedId = event.data?.notificationId;
+          if (deletedId === '*') {
+            setNotifications([]);
+          } else if (deletedId) {
+            setNotifications((prev) => prev.filter((n) => n.id !== deletedId));
+          }
+          if (typeof event.data?.unreadCount === 'number') {
+            setUnreadCount(event.data.unreadCount);
+          }
         }
       } catch {}
     };
@@ -136,6 +152,65 @@ export default function NotificationCenter() {
     } catch (err) {
       console.error('Failed to mark read:', err);
     }
+  };
+
+  const handleDelete = async (id: string, e: React.MouseEvent) => {
+    e.preventDefault();
+    e.stopPropagation();
+
+    const target = notifications.find((n) => n.id === id);
+    const wasUnread = target ? !target.isRead : false;
+
+    // Optimistic removal — reconciled below if the request fails.
+    setNotifications((prev) => prev.filter((n) => n.id !== id));
+    if (wasUnread) setUnreadCount((prev) => Math.max(0, prev - 1));
+
+    try {
+      const res = await fetch(`/api/notifications/${id}`, { method: 'DELETE' });
+      const data = await res.json();
+      if (!data.success && target) {
+        // Reconcile: the delete didn't actually happen server-side — put it back rather than
+        // leaving the UI permanently out of sync with the database.
+        setNotifications((prev) => [target, ...prev].sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime()));
+        if (wasUnread) setUnreadCount((prev) => prev + 1);
+      }
+    } catch {
+      if (target) {
+        setNotifications((prev) => [target, ...prev].sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime()));
+        if (wasUnread) setUnreadCount((prev) => prev + 1);
+      }
+    }
+  };
+
+  const handleDeleteAll = async () => {
+    const previous = notifications;
+    const previousUnread = unreadCount;
+
+    setNotifications([]);
+    setUnreadCount(0);
+
+    try {
+      const res = await fetch('/api/notifications', { method: 'DELETE' });
+      const data = await res.json();
+      if (!data.success) {
+        setNotifications(previous);
+        setUnreadCount(previousUnread);
+      }
+    } catch {
+      setNotifications(previous);
+      setUnreadCount(previousUnread);
+    }
+  };
+
+  const handleNotificationClick = (n: NotificationPayload) => {
+    if (navigatingIdsRef.current.has(n.id)) return;
+    navigatingIdsRef.current.add(n.id);
+    if (!n.isRead) handleMarkAsRead(n.id, { stopPropagation: () => {} } as any);
+    setIsOpen(false);
+    // The guard only needs to survive the current click/navigation burst, not the component's
+    // whole lifetime — otherwise re-opening the drawer later and clicking the same item again
+    // (a completely legitimate, separate action) would be silently swallowed forever.
+    setTimeout(() => navigatingIdsRef.current.delete(n.id), 1000);
   };
 
   const handleMarkAllAsRead = async () => {
@@ -193,10 +268,12 @@ export default function NotificationCenter() {
       {/* Bell Button */}
       <button
         onClick={handleToggle}
-        className="relative p-2 rounded-xl text-slate-600 dark:text-slate-300 hover:bg-slate-100 dark:hover:bg-slate-800 transition focus:outline-none"
-        aria-label={`Notifications ${unreadCount > 0 ? `(${unreadCount} unread)` : ''}`}
+        className="relative p-2 rounded-xl text-slate-600 dark:text-slate-300 hover:bg-slate-100 dark:hover:bg-slate-800 transition focus:outline-none focus-visible:ring-2 focus-visible:ring-indigo-500"
+        aria-label={`Notifications${unreadCount > 0 ? `, ${unreadCount} unread` : ', no unread notifications'}`}
+        aria-haspopup="true"
+        aria-expanded={isOpen}
       >
-        <span className="text-xl">🔔</span>
+        <IoIosNotificationsOutline className="text-xl" aria-hidden="true" />
         {unreadCount > 0 && (
           <span className="absolute -top-1 -right-1 px-1.5 py-0.5 min-w-[18px] h-[18px] text-[10px] font-bold text-white bg-rose-600 rounded-full flex items-center justify-center border-2 border-white dark:border-slate-900 animate-pulse">
             {unreadCount > 99 ? '99+' : unreadCount}
@@ -225,6 +302,15 @@ export default function NotificationCenter() {
                   className="text-[11px] font-semibold text-indigo-600 dark:text-indigo-400 hover:underline"
                 >
                   Mark all read
+                </button>
+              )}
+              {notifications.length > 0 && (
+                <button
+                  onClick={handleDeleteAll}
+                  className="text-[11px] font-semibold text-slate-400 hover:text-rose-500 hover:underline"
+                  aria-label="Delete all notifications"
+                >
+                  Delete all
                 </button>
               )}
               <button
@@ -256,11 +342,9 @@ export default function NotificationCenter() {
                 <Link
                   key={n.id}
                   href={getDeepLink(n)}
-                  onClick={() => {
-                    if (!n.isRead) handleMarkAsRead(n.id, { stopPropagation: () => {} } as any);
-                    setIsOpen(false);
-                  }}
-                  className={`p-3.5 flex items-start space-x-3 transition cursor-pointer hover:bg-slate-50 dark:hover:bg-slate-850 ${
+                  onClick={() => handleNotificationClick(n)}
+                  aria-label={`${n.title}. ${n.isRead ? 'Read' : 'Unread'}. Activate to open.`}
+                  className={`group p-3.5 flex items-start space-x-3 transition cursor-pointer hover:bg-slate-50 dark:hover:bg-slate-850 ${
                     !n.isRead ? 'bg-indigo-50/40 dark:bg-indigo-950/20 font-semibold' : ''
                   }`}
                 >
@@ -278,13 +362,24 @@ export default function NotificationCenter() {
                     <p className="text-xs text-slate-600 dark:text-slate-300 line-clamp-2 mt-0.5">{n.body}</p>
                   </div>
 
-                  {!n.isRead && (
+                  <div className="flex items-center space-x-2 flex-shrink-0 self-center">
+                    {!n.isRead && (
+                      <button
+                        onClick={(e) => handleMarkAsRead(n.id, e)}
+                        className="w-2 h-2 rounded-full bg-indigo-600 hover:scale-125 transition"
+                        title="Mark as read"
+                        aria-label="Mark as read"
+                      />
+                    )}
                     <button
-                      onClick={(e) => handleMarkAsRead(n.id, e)}
-                      className="w-2 h-2 rounded-full bg-indigo-600 hover:scale-125 transition flex-shrink-0 self-center"
-                      title="Mark as read"
-                    />
-                  )}
+                      onClick={(e) => handleDelete(n.id, e)}
+                      className="opacity-0 group-hover:opacity-100 focus:opacity-100 text-slate-400 hover:text-rose-500 text-xs p-1 rounded-lg transition"
+                      title="Delete notification"
+                      aria-label={`Delete notification: ${n.title}`}
+                    >
+                      ✕
+                    </button>
+                  </div>
                 </Link>
               ))
             )}

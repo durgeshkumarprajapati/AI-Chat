@@ -118,6 +118,7 @@
     "razorpay": "^2.9.8",
     "react": "^18.3.1",
     "react-dom": "^18.3.1",
+    "react-icons": "^5.7.0",
     "redis": "^4.7.0",
     "web-push": "^3.6.7",
     "zod": "^3.23.8"

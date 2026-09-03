@@ -58,3 +58,16 @@ export async function GET(req: NextRequest) {
     return NextResponse.json({ success: false, error: msg }, { status });
   }
 }
+
+/** Deletes every notification belonging to the authenticated user. */
+export async function DELETE(req: NextRequest) {
+  try {
+    const user = await getAuthUser(req);
+    const result = await notificationService.deleteAllNotifications(user.id);
+    return NextResponse.json({ success: true, data: result });
+  } catch (err) {
+    const msg = err instanceof Error ? err.message : String(err);
+    const status = msg.includes('Unauthorized') ? 401 : 400;
+    return NextResponse.json({ success: false, error: msg }, { status });
+  }
+}

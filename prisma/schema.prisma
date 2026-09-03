@@ -2775,6 +2775,11 @@ enum NotificationType {
   // Phase 88 — AI Workflow Automation
   AUTOMATION_EXECUTION_NOTIFICATION
   AUTOMATION_APPROVAL_REQUIRED
+  // Phase 91.8 — production-grade notification system hardening. Additive: generalized
+  // categories for document-related and system-level notifications, alongside the existing
+  // specific types above (e.g. MESSAGE_RECEIVED, CALL_INCOMING) which are preserved as-is.
+  DOCUMENT
+  SYSTEM
 }
 
 // Phase 86 — additive enums for the new proactive AI-intelligence delivery layer.

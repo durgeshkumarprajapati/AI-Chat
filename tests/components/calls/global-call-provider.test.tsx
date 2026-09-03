@@ -433,4 +433,44 @@ describe('GlobalCallProvider — global incoming call listener', () => {
     // component (e.g. collab-chat's own listener) owns that event type.
     expect(screen.getByTestId('status').textContent).toBe('IDLE');
   });
+
+  it('never remains permanently CONNECTING — a stuck negotiation is forced to FAILED then IDLE after the connecting-timeout window', async () => {
+    jest.useFakeTimers({ doNotFake: ['queueMicrotask'] });
+    try {
+      renderProvider();
+      await waitFor(() => expect(latestEventSource()).toBeDefined());
+
+      act(() => {
+        latestEventSource().emit({
+          type: 'call:invite',
+          channelId: 'ch-1',
+          senderId: 'user-a',
+          data: { callId: 'call-stuck', channelId: 'ch-1', hostName: 'User A', callType: 'VOICE' }
+        });
+      });
+      await waitFor(() => expect(screen.getByTestId('status').textContent).toBe('INCOMING'));
+
+      await act(async () => {
+        fireEvent.click(screen.getByTestId('accept-call-button'));
+        // Let the accept-flow's own promise chain (media + peer connection setup) settle before
+        // the fake-timer clock advances — the mock RTCPeerConnection never fires
+        // onconnectionstatechange on its own, so this call is now realistically "stuck".
+        await Promise.resolve();
+        await Promise.resolve();
+      });
+      expect(screen.getByTestId('status').textContent).toBe('CONNECTING');
+
+      await act(async () => {
+        await jest.advanceTimersByTimeAsync(20000);
+      });
+      expect(screen.getByTestId('status').textContent).toBe('FAILED');
+
+      await act(async () => {
+        await jest.advanceTimersByTimeAsync(2500);
+      });
+      expect(screen.getByTestId('status').textContent).toBe('IDLE');
+    } finally {
+      jest.useRealTimers();
+    }
+  });
 });

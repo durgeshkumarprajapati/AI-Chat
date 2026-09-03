@@ -21,6 +21,7 @@ export interface CollabEventPayload {
     | 'notification:new'
     | 'notification:read'
     | 'notification:count'
+    | 'notification:deleted'
     | 'mention:new'
     | 'quiz:participant_joined'
     | 'quiz:submitted'

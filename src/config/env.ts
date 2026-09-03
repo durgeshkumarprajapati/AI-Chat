@@ -32,7 +32,7 @@ const serverEnvSchema = z
     AWS_S3_BUCKET: z.string().optional(),
     AWS_S3_BUCKET_NAME: z.string().optional(),
     EMBEDDING_PROVIDER: z
-      .enum(['ollama', 'openai'])
+      .enum(['ollama', 'openai', 'tei'])
       .default('ollama'),
     OLLAMA_BASE_URL: z
       .string()
@@ -61,6 +61,49 @@ const serverEnvSchema = z
       .int()
       .positive({ message: 'EMBEDDING_BATCH_SIZE must be greater than 0' })
       .default(100),
+    // Phase 91.9 — ingestion pipeline optimization. All optional/defaulted so an existing .env
+    // with none of these set behaves exactly as before (sequential embedding, pdfjs extraction).
+    EMBEDDING_MAX_CONCURRENT_BATCHES: z
+      .coerce.number()
+      .int()
+      .positive({ message: 'EMBEDDING_MAX_CONCURRENT_BATCHES must be greater than 0' })
+      .default(2),
+    EMBEDDING_REQUEST_TIMEOUT_MS: z
+      .coerce.number()
+      .int()
+      .positive()
+      .default(30000),
+    TEI_BASE_URL: z
+      .string()
+      .url({ message: 'TEI_BASE_URL must be a valid URL' })
+      .optional(),
+    TEI_TIMEOUT_MS: z
+      .coerce.number()
+      .int()
+      .positive()
+      .default(30000),
+    TEI_EMBEDDING_DIMENSIONS: z
+      .coerce.number()
+      .int()
+      .positive({ message: 'TEI_EMBEDDING_DIMENSIONS must be greater than 0' })
+      .default(768),
+    PDF_EXTRACTION_PROVIDER: z
+      .enum(['pdfjs', 'pymupdf'])
+      .default('pdfjs'),
+    PDF_SERVICE_URL: z
+      .string()
+      .url({ message: 'PDF_SERVICE_URL must be a valid URL' })
+      .optional(),
+    PDF_SERVICE_TIMEOUT_MS: z
+      .coerce.number()
+      .int()
+      .positive()
+      .default(30000),
+    PDF_SERVICE_RETRY_ATTEMPTS: z
+      .coerce.number()
+      .int()
+      .min(0)
+      .default(2),
     LLM_PROVIDER: z
       .enum(['ollama', 'openai', 'kimi'])
       .default('ollama'),

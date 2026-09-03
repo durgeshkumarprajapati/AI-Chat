@@ -5,7 +5,14 @@ const commonConfig = {
   moduleNameMapper: {
     '^@/(.*)$': '<rootDir>/src/$1',
     '\\.(css|less|sass|scss)$': 'identity-obj-proxy',
-    '\\.(jpg|jpeg|png|gif|webp|svg)$': '<rootDir>/tests/mocks/file.mock.js'
+    '\\.(jpg|jpeg|png|gif|webp|svg)$': '<rootDir>/tests/mocks/file.mock.js',
+    // Phase 91.9 — the worker package compiles under NodeNext (worker/tsconfig.json), which
+    // requires explicit ".js" extensions on relative imports even though the source files are
+    // ".ts". Jest's resolver (unlike ts-node/tsc-alias at runtime) doesn't know to map that back
+    // to the real ".ts" file, so any test importing worker/src/** directly failed to resolve
+    // those relative imports. This strips a trailing ".js" from relative specifiers only —
+    // existing "@/*"-aliased and bare-package imports are untouched.
+    '^(\\.{1,2}/.*)\\.js$': '$1'
   },
   setupFiles: ['<rootDir>/jest.presetup.js'],
   setupFilesAfterEnv: ['<rootDir>/jest.setup.ts'],

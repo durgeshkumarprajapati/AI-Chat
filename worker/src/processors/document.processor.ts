@@ -1,10 +1,14 @@
 import { workerDocumentRepository } from '../repositories/document.repository.js';
 import { workerStorage } from '../lib/storage.js';
-import { workerPdfParser } from '../parsers/pdf.parser.js';
+import { getPdfExtractionProvider } from '../parsers/pdf-extraction-provider.factory.js';
 import { workerDocumentChunker } from '../chunking/document.chunker.js';
 import type { Chunk } from '../chunking/document.chunker.js';
 import { workerEmbeddingService } from '../embeddings/embedding.service.js';
 import type { DocumentIntelligenceRunResult } from '@/features/document-intelligence/document-intelligence.types.js';
+import { createLogger } from '@/lib/structured-logger.js';
+
+const ingestLog = createLogger('document-ingestion');
+const WORKER_ID = process.env.HOSTNAME || `worker-${process.pid}`;
 
 export interface DocumentProcessingJob {
   jobType: string;
@@ -87,18 +91,45 @@ export class DocumentProcessor {
       return { status: 'SUCCESS', action: 'SKIPPED_ALREADY_COMPLETED' };
     }
 
+    // Phase 91.9 — per-job observability context. correlationId reuses the existing jobId
+    // (already unique per publish, already threaded through every RabbitMQ payload) rather than
+    // minting a second identifier for the same purpose.
+    const pdfExtractionProviderName = (process.env.PDF_EXTRACTION_PROVIDER || 'pdfjs').trim().toLowerCase();
+    const embeddingProviderName = (process.env.EMBEDDING_PROVIDER || 'ollama').trim().toLowerCase();
+    const logCtx = {
+      documentId: job.documentId,
+      jobId: job.jobId,
+      correlationId: job.jobId,
+      workerId: WORKER_ID,
+      embeddingProvider: embeddingProviderName,
+      pdfExtractionProvider: pdfExtractionProviderName
+    };
+    const stageMs: Record<string, number> = {};
+    ingestLog.info('document_processing_started', logCtx);
+
     try {
       // 4. Download physical file from storage provider
       console.log(`[Worker] Downloading storage object "${job.storageKey}"...`);
+      const downloadStart = Date.now();
       const fileBuffer = await workerStorage.download(job.storageKey);
+      stageMs.storageDownloadMs = Date.now() - downloadStart;
 
       if (!fileBuffer || fileBuffer.length === 0) {
         throw new Error(`Downloaded storage object "${job.storageKey}" is empty (0 bytes).`);
       }
 
-      // 5. Extract PDF text using page-aware PdfParser
+      // 5. Extract PDF text using the configured extraction provider (defaults to the existing
+      // pdfjs-dist based parser — see pdf-extraction-provider.factory.ts)
       console.log(`[Worker] Parsing PDF text for document ID: ${document.id}...`);
-      const parsedDoc = await workerPdfParser.parse(fileBuffer);
+      const extractionStart = Date.now();
+      const pdfExtractionProvider = getPdfExtractionProvider();
+      const parsedDoc = await pdfExtractionProvider.extract(fileBuffer, document.id);
+      stageMs.pdfExtractionMs = Date.now() - extractionStart;
+      ingestLog.info('document_extraction_completed', {
+        ...logCtx,
+        totalPages: parsedDoc.pageCount,
+        pdfExtractionMs: stageMs.pdfExtractionMs
+      });
 
       // 6. Update Document.pageCount in PostgreSQL (status remains PROCESSING)
       await workerDocumentRepository.updateStatus(job.documentId, 'PROCESSING', {
@@ -107,6 +138,7 @@ export class DocumentProcessor {
 
       // 7. Document Intelligence (layout-aware + semantic chunking, metadata, classification) — feature-flagged, inline
       console.log(`[Worker] Running document intelligence pipeline for document ID: ${document.id}...`);
+      const chunkingStart = Date.now();
       let intelligenceResult: DocumentIntelligenceRunResult = { handled: false };
       try {
         const { documentIntelligenceOrchestratorService } = await import('@/features/document-intelligence/index.js');
@@ -132,6 +164,13 @@ export class DocumentProcessor {
         console.log(`[Worker] Generating legacy chunks for document ID: ${document.id}...`);
         chunks = workerDocumentChunker.chunk(parsedDoc);
       }
+      stageMs.chunkingMs = Date.now() - chunkingStart;
+      ingestLog.info('document_chunking_completed', {
+        ...logCtx,
+        totalChunks: chunks.length,
+        semanticChunkingUsed: intelligenceResult.handled,
+        chunkingMs: stageMs.chunkingMs
+      });
 
       // 7.5 Process Multimodal Visuals (Tables, Figures, OCR, Images)
       try {
@@ -160,11 +199,21 @@ export class DocumentProcessor {
 
       // 8. Persist chunks transactionally in PostgreSQL (idempotent replacement)
       console.log(`[Worker] Persisting ${chunks.length} chunks transactionally...`);
+      const dbInsertStart = Date.now();
       await workerDocumentRepository.saveChunksTx(job.documentId, chunks);
+      stageMs.databaseInsertMs = Date.now() - dbInsertStart;
 
       // 9. Generate & persist vector embeddings in pgvector
       console.log(`[Worker] Processing vector embeddings for document ID: ${document.id}...`);
       const embeddingResult = await workerEmbeddingService.processDocumentEmbeddings(job.documentId, job.userId);
+      stageMs.embeddingTotalMs = embeddingResult.durationMs;
+      ingestLog.info('document_vector_persistence_completed', {
+        ...logCtx,
+        totalChunks: chunks.length,
+        embeddingBatchSize: Number(process.env.EMBEDDING_BATCH_SIZE || '100'),
+        embeddingTotalMs: embeddingResult.durationMs,
+        databaseInsertMs: stageMs.databaseInsertMs
+      });
 
       // 10. Mark Document status as COMPLETED in PostgreSQL after full pipeline succeeds
       await workerDocumentRepository.updateStatus(job.documentId, 'COMPLETED');
@@ -218,12 +267,32 @@ export class DocumentProcessor {
       console.log(`  status         = COMPLETED`);
       console.log(`  durationMs     = ${durationMs}ms`);
 
+      ingestLog.info('document_processing_completed', {
+        ...logCtx,
+        totalPages: parsedDoc.pageCount,
+        totalChunks: chunks.length,
+        embeddedChunks: embeddingResult.embeddedChunks,
+        documentProcessingTotalMs: durationMs,
+        storageDownloadMs: stageMs.storageDownloadMs,
+        pdfExtractionMs: stageMs.pdfExtractionMs,
+        chunkingMs: stageMs.chunkingMs,
+        databaseInsertMs: stageMs.databaseInsertMs,
+        embeddingTotalMs: stageMs.embeddingTotalMs
+      });
+
       return { status: 'SUCCESS', action: 'COMPLETED' };
     } catch (error) {
       const errorMessage = error instanceof Error ? error.message : String(error);
       const isTransient = this.isTransientError(error);
 
       console.error(`[Worker] Failed processing document ${job.documentId}: ${errorMessage}`);
+      ingestLog.error('document_processing_failed', {
+        ...logCtx,
+        failureStage: this.inferFailureStage(stageMs),
+        classification: isTransient ? 'TRANSIENT' : 'PERMANENT',
+        documentProcessingTotalMs: Date.now() - startTime,
+        error: errorMessage
+      });
 
       if (!isTransient) {
         // Safe status update using updateMany (won't throw P2025)
@@ -233,6 +302,18 @@ export class DocumentProcessor {
 
       return { status: 'FAILED', action: 'TRANSIENT_ERROR', errorMessage };
     }
+  }
+
+  /** Best-effort "how far did we get" indicator for document_processing_failed logs — derived
+   * from which stage timings were actually recorded before the exception, never from parsing the
+   * error message itself. */
+  private inferFailureStage(stageMs: Record<string, number>): string {
+    if (stageMs.embeddingTotalMs !== undefined) return 'post_embedding';
+    if (stageMs.databaseInsertMs !== undefined) return 'embedding_or_persistence';
+    if (stageMs.chunkingMs !== undefined) return 'chunk_persistence';
+    if (stageMs.pdfExtractionMs !== undefined) return 'chunking';
+    if (stageMs.storageDownloadMs !== undefined) return 'pdf_extraction';
+    return 'storage_download';
   }
 
   private isTransientError(error: unknown): boolean {

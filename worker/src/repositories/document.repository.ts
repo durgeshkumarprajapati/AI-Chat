@@ -80,20 +80,32 @@ export class WorkerDocumentRepository {
     `;
   }
 
+  /**
+   * Phase 91.9 — was N sequential single-row UPDATE statements inside one transaction (one
+   * network round-trip per chunk). Now issues one bulk UPDATE...FROM(VALUES...) statement per
+   * call, still wrapped in the same transaction, still scoped to whatever batch the caller
+   * passes in (embedding.service.ts already bounds this to EMBEDDING_BATCH_SIZE chunks, so this
+   * never becomes "one massive statement for a whole document" — just one statement per existing
+   * batch instead of one per chunk). Same idempotency guarantee as before: still a plain
+   * UPDATE-by-id, safe to re-run for any subset of chunks.
+   */
   public async saveEmbeddingsBatchTx(
     updates: Array<{ id: string; embedding: number[] }>
   ): Promise<void> {
     if (!updates || updates.length === 0) return;
 
     await prisma.$transaction(async (tx: Prisma.TransactionClient) => {
-      for (const update of updates) {
-        const vectorStr = `[${update.embedding.join(',')}]`;
-        await tx.$executeRawUnsafe(
-          `UPDATE document_chunks SET embedding = $1::vector WHERE id = $2`,
-          vectorStr,
-          update.id
-        );
-      }
+      const values = updates.map(
+        (u) => Prisma.sql`(${u.id}, ${`[${u.embedding.join(',')}]`}::vector)`
+      );
+      await tx.$executeRaw(
+        Prisma.sql`
+          UPDATE document_chunks AS dc
+          SET embedding = v.embedding
+          FROM (VALUES ${Prisma.join(values)}) AS v(id, embedding)
+          WHERE dc.id = v.id
+        `
+      );
     });
   }
 

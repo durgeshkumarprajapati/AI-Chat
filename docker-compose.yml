@@ -66,6 +66,27 @@ services:
       retries: 5
       start_period: 10s
 
+  # Phase 91.9 — optional PyMuPDF extraction service. NOT started by default `docker compose up`
+  # (gated behind the "pdf-service" profile) — the Node worker's default PDF_EXTRACTION_PROVIDER
+  # is "pdfjs" and never talks to this at all unless you explicitly run:
+  #   docker compose --profile pdf-service up -d pdf-service
+  # and set PDF_EXTRACTION_PROVIDER=pymupdf / PDF_SERVICE_URL=http://localhost:8000 in .env.
+  pdf-service:
+    profiles: ['pdf-service']
+    build:
+      context: ./services/pdf-service
+      dockerfile: Dockerfile
+    container_name: document_ai_pdf_service
+    restart: unless-stopped
+    ports:
+      - '8000:8000'
+    healthcheck:
+      test: ['CMD', 'python3', '-c', "import urllib.request; urllib.request.urlopen('http://localhost:8000/health', timeout=3)"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+      start_period: 10s
+
 volumes:
   postgres_data:
   rabbitmq_data:

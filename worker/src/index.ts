@@ -157,8 +157,22 @@ export async function startWorker() {
               });
               channel?.ack(msg);
             } else {
-              console.warn(`[Worker] Transient error; requeueing job (Attempt ${attemptCount}/${MAX_RETRIES})...`);
-              channel?.nack(msg, false, true);
+              // Phase 91.9 fix: every publish site always sends `attempt: 1` (there is no
+              // producer-side retry counter), and a plain nack(msg, false, true) redelivers the
+              // SAME message body unchanged — so attemptCount here was never actually advancing
+              // across redeliveries, meaning the MAX_RETRIES check above could never trigger for
+              // a persistently-transient failure (it would nack-requeue forever instead of
+              // eventually marking FAILED). Republishing an incremented copy and acking the
+              // original fixes the counter while keeping the exact same queue/consumer/ack model
+              // — no new retry system, no DLQ, just a correct attempt count for the existing one.
+              const nextAttempt = attemptCount + 1;
+              console.warn(`[Worker] Transient error; requeueing job with incremented attempt (${nextAttempt}/${MAX_RETRIES}): ${payload.jobId}`);
+              channel?.sendToQueue(
+                QUEUE_NAME,
+                Buffer.from(JSON.stringify({ ...payload, attempt: nextAttempt })),
+                { persistent: true }
+              );
+              channel?.ack(msg);
             }
           }
         } catch (error) {

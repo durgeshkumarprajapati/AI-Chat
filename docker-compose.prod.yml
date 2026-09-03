@@ -147,6 +147,24 @@ services:
       timeout: 5s
       retries: 5
 
+  # Phase 91.9 — optional PyMuPDF extraction service. Not started by a default `docker compose up`
+  # (gated behind the "pdf-service" profile: `docker compose --profile pdf-service up -d`).
+  # No ports published externally — only the app/worker containers on this compose network need
+  # to reach it, via PDF_SERVICE_URL=http://pdf-service:8000.
+  pdf-service:
+    profiles: ["pdf-service"]
+    build:
+      context: ./services/pdf-service
+      dockerfile: Dockerfile
+    image: ${IMAGE_NAME_PDF_SERVICE:-document-ai-pdf-service}:${IMAGE_TAG:-latest}
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "python3", "-c", "import urllib.request; urllib.request.urlopen('http://localhost:8000/health', timeout=3)"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+      start_period: 10s
+
 volumes:
   postgres_data:
   rabbitmq_data:

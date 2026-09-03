@@ -47,7 +47,24 @@ export class CollabCallService {
     });
 
     if (activeCall) {
-      return activeCall;
+      // A call only genuinely blocks a new invite while it's IN_CALL or still ringing for at
+      // least one non-host participant. handleCallAction's 'decline' only ever marks the
+      // declining PARTICIPANT as DECLINED — it never updates the call's own status — so without
+      // this check, a channel where every recipient already declined would keep returning that
+      // same stale, already-declined call forever and never publish a fresh call:invite for any
+      // later call attempt in the same channel.
+      const nonHostParticipants = activeCall.participants.filter((p) => p.userId !== activeCall.hostId);
+      const anyoneStillRinging = nonHostParticipants.some((p) => p.status === CallStatus.RINGING);
+
+      if (activeCall.status === CallStatus.IN_CALL || anyoneStillRinging) {
+        return activeCall;
+      }
+
+      await prisma.collabCall.update({
+        where: { id: activeCall.id },
+        data: { status: CallStatus.ENDED, endedAt: activeCall.endedAt || new Date() }
+      });
+      // Fall through to create a genuinely new call below.
     }
 
     const callTypeEnum = input.type === 'VIDEO' ? CallType.VIDEO : CallType.VOICE;

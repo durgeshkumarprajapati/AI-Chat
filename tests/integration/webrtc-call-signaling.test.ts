@@ -123,6 +123,44 @@ describe('WebRTC call signaling — two-user relay contract', () => {
     await collabCallService.handleCallAction(call.id, userA.id, 'end');
   });
 
+  /**
+   * Phase 91.7 — confirmed live (two real Next.js instances, real Postgres/Redis): after the
+   * only recipient declines, calling initiateCall() again for the same channel silently returned
+   * the SAME stale, already-declined call object and published NO new call:invite at all — a
+   * second real call attempt would never ring the recipient. Root cause: handleCallAction's
+   * 'decline' branch only ever updates the DECLINING PARTICIPANT's row to DECLINED; it never
+   * touches the parent CollabCall's own `status`, so initiateCall's "is there already an active
+   * call in this channel" check (status RINGING/IN_CALL) kept matching the old call forever.
+   */
+  it('initiating a new call after the only recipient declined publishes a genuinely new call:invite (not the stale declined call)', async () => {
+    const first = await collabCallService.initiateCall(userA.id, { channelId, type: 'VOICE' });
+    await collabCallService.handleCallAction(first.id, userB.id, 'decline');
+
+    const events: CollabEventPayload[] = [];
+    const unsubscribe = collabPubSubService.subscribe(channelId, (e) => events.push(e));
+    const second = await collabCallService.initiateCall(userA.id, { channelId, type: 'VIDEO' });
+    unsubscribe();
+
+    expect(second.id).not.toBe(first.id);
+    expect(second.type).toBe('VIDEO');
+
+    const invite = events.find((e) => e.type === 'call:invite');
+    expect(invite).toBeDefined();
+    expect((invite!.data as any).callId).toBe(second.id);
+    expect((invite!.data as any).callType).toBe('VIDEO');
+
+    await collabCallService.handleCallAction(second.id, userA.id, 'end');
+  });
+
+  it('does not create a duplicate call while the previous one in the channel is still genuinely ringing for a participant', async () => {
+    const first = await collabCallService.initiateCall(userA.id, { channelId, type: 'VOICE' });
+    const second = await collabCallService.initiateCall(userA.id, { channelId, type: 'VIDEO' });
+
+    expect(second.id).toBe(first.id);
+
+    await collabCallService.handleCallAction(first.id, userA.id, 'end');
+  });
+
   it('GET /api/collaboration/calls/config returns a non-empty ICE server list and the configured ring timeout, without leaking TURN credentials to logs', async () => {
     const sessionToken = await sessionService.createSession(userA.id);
     const req = new NextRequest('http://localhost:3000/api/collaboration/calls/config', {

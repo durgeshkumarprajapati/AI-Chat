@@ -1,16 +1,21 @@
--- User/Document/RagEvaluation/StudyQuestion schema evolution.
+-- User/Document schema evolution.
 --
--- Same class of gap as core_platform_foundation, but a different SHAPE of it: these four tables
--- (users, documents, rag_evaluations, study_questions) DO have a valid CREATE TABLE migration —
--- but each has since grown real columns in schema.prisma that were never added via any
--- `ALTER TABLE ... ADD COLUMN` migration, only ever synced in via `prisma db push`. Discovered when
--- a production `prisma db seed` run failed with `P2022: The column users.role does not exist`.
+-- Same class of gap as core_platform_foundation, but a different SHAPE of it: these tables DO have
+-- a valid CREATE TABLE migration — but each has since grown real columns in schema.prisma that were
+-- never added via any `ALTER TABLE ... ADD COLUMN` migration, only ever synced in via
+-- `prisma db push`. Discovered when a production `prisma db seed` run failed with
+-- `P2022: The column users.role does not exist`.
 --
 -- Verified exhaustively (not just for `users`): cross-referenced every scalar field of every model
 -- that already has a CREATE TABLE somewhere in migration history against every column ever added to
--- that table (via its CREATE TABLE's own column list, or any later `ALTER TABLE ... ADD COLUMN`,
--- across all 34 migration files). `users`, `documents`, `rag_evaluations`, and `study_questions` were
--- the complete result — every other already-created table's columns are fully accounted for.
+-- that table (via its CREATE TABLE's own column list, or any later `ALTER TABLE ... ADD COLUMN`).
+-- The first pass of this check used a regex that only matched a SINGLE `ADD COLUMN` immediately
+-- following `ALTER TABLE "table"` and incorrectly flagged `rag_evaluations` (already fully covered
+-- by 20260813090000_add_rag_latency_trace's multi-column `ALTER TABLE "rag_evaluations" ADD COLUMN
+-- x, ADD COLUMN y, ...` statement) and `study_questions` (already fully covered by
+-- 20260817160000_phase37_ai_study_mode_2's identical multi-column form) as gaps — both were false
+-- positives, caught and removed before this migration was applied to any real database. Only
+-- `users` and `documents` are genuine gaps.
 --
 -- Placed immediately after `core_platform_foundation` because `documents.family_id`'s foreign key
 -- needs `document_families` (created there) and `documents.source_type`/`users.role`/
@@ -52,16 +57,3 @@ CREATE INDEX "documents_user_id_is_deleted_is_archived_status_idx" ON "documents
 
 -- AddForeignKey
 ALTER TABLE "documents" ADD CONSTRAINT "documents_family_id_fkey" FOREIGN KEY ("family_id") REFERENCES "document_families"("id") ON DELETE SET NULL ON UPDATE CASCADE;
-
--- AlterTable: rag_evaluations
-ALTER TABLE "rag_evaluations" ADD COLUMN "response_latency_ms" INTEGER;
-ALTER TABLE "rag_evaluations" ADD COLUMN "llm_first_token_ms" INTEGER;
-ALTER TABLE "rag_evaluations" ADD COLUMN "evaluation_latency_ms" INTEGER;
-ALTER TABLE "rag_evaluations" ADD COLUMN "latency_trace" JSONB;
-
--- AlterTable: study_questions
-ALTER TABLE "study_questions" ADD COLUMN "semantic_fingerprint" TEXT;
-ALTER TABLE "study_questions" ADD COLUMN "source_document_id" TEXT;
-ALTER TABLE "study_questions" ADD COLUMN "source_chunk_ids" JSONB DEFAULT '[]';
-ALTER TABLE "study_questions" ADD COLUMN "citations" JSONB DEFAULT '[]';
-ALTER TABLE "study_questions" ADD COLUMN "generation_metadata" JSONB;

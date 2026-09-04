@@ -140,7 +140,7 @@ export default function RAGEvaluationPage() {
   };
 
   return (
-    <div className="w-full max-w-[1600px] mx-auto space-y-8">
+    <div className="w-full max-w-[1600px] mx-auto space-y-8 p-4 sm:p-6">
       {/* Header Banner & Filters */}
       <div className="flex flex-col md:flex-row md:items-center justify-between gap-4 border-b border-slate-800 pb-6">
         <div>
@@ -556,7 +556,7 @@ export default function RAGEvaluationPage() {
         })()}
 
         {/* Pagination Footer */}
-        <div className="flex items-center justify-between pt-2 text-xs font-mono text-slate-400">
+        <div className="flex flex-wrap items-center justify-between gap-2 pt-2 text-xs font-mono text-slate-400">
           <span>
             Page {page} of {totalPages} ({totalEvaluations} total)
           </span>

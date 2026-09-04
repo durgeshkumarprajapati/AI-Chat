@@ -162,7 +162,7 @@ export default function KnowledgeGraphDashboard() {
               </div>
             </div>
           </div>
-          <p className="text-xs sm:text-sm text-slate-600 dark:text-[#c2c6d6] max-w-2xl leading-relaxed pl-13">
+          <p className="text-xs sm:text-sm text-slate-600 dark:text-[#c2c6d6] max-w-2xl leading-relaxed pl-[3.25rem]">
             Structured entity-relationship network automatically extracted from document evidence with multi-hop reasoning.
           </p>
         </div>

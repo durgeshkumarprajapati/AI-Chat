@@ -161,7 +161,7 @@ export default function AutomationsListPage() {
                   </div>
                 </div>
 
-                <div className="flex items-center gap-6 flex-shrink-0 text-xs">
+                <div className="flex flex-wrap items-center gap-x-6 gap-y-2 text-xs">
                   <div className="min-w-[110px]">
                     <p className="text-[10px] uppercase tracking-wide text-muted-foreground font-semibold">Last Execution</p>
                     {a.lastExecutionAt ? (

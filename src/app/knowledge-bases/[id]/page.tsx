@@ -244,7 +244,7 @@ export default function KnowledgeBaseDetailPage() {
         </div>
 
         {/* Header Action Buttons */}
-        <div className="flex items-center space-x-2">
+        <div className="flex flex-wrap items-center gap-2">
           <button
             onClick={() => {
               fetchUserDocumentsForPicker();
@@ -440,7 +440,7 @@ export default function KnowledgeBaseDetailPage() {
                         : 'bg-white dark:bg-slate-950 border-slate-200 dark:border-slate-800 hover:border-slate-300 dark:hover:border-slate-700 text-slate-800 dark:text-slate-200'
                     }`}
                   >
-                    <div className="flex items-center space-x-3 max-w-[300px] truncate">
+                    <div className="flex items-center space-x-3 min-w-0 max-w-[300px]">
                       <input
                         type="checkbox"
                         disabled={doc.isMember}
@@ -453,9 +453,9 @@ export default function KnowledgeBaseDetailPage() {
                             setSelectedDocIds((prev) => prev.filter((id) => id !== doc.id));
                           }
                         }}
-                        className="rounded border-slate-300 dark:border-slate-700 bg-slate-50 dark:bg-slate-900 text-indigo-600 focus:ring-0"
+                        className="rounded border-slate-300 dark:border-slate-700 bg-slate-50 dark:bg-slate-900 text-indigo-600 focus:ring-0 flex-shrink-0"
                       />
-                      <span className="truncate font-medium">{doc.filename}</span>
+                      <span className="truncate font-medium min-w-0">{doc.filename}</span>
                     </div>
 
                     <div className="flex items-center space-x-2">

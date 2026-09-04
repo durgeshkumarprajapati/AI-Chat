@@ -24,7 +24,7 @@ export const WeatherCard: React.FC<WeatherCardProps> = ({
   const feels = weather?.feelsLike || 30;
 
   return (
-    <div className="bg-white dark:bg-[#0a0e18]/90 backdrop-blur-md border border-slate-200 dark:border-[#424754] p-4 sm:p-5 rounded-2xl shadow-sm dark:shadow-xl flex items-center justify-between gap-6 font-sans hover:border-indigo-400 dark:hover:border-[#4d8eff]/60 transition-all duration-300">
+    <div className="bg-white dark:bg-[#0a0e18]/90 backdrop-blur-md border border-slate-200 dark:border-[#424754] p-4 sm:p-5 rounded-2xl shadow-sm dark:shadow-xl flex flex-wrap items-center justify-between gap-4 sm:gap-6 font-sans hover:border-indigo-400 dark:hover:border-[#4d8eff]/60 transition-all duration-300">
       <div className="space-y-1">
         <div className="flex items-center space-x-2.5">
           <span className="text-2xl">☀️</span>

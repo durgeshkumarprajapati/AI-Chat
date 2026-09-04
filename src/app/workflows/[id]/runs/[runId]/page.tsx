@@ -48,14 +48,14 @@ export default function WorkflowRunDetailPage({ params }: { params: { id: string
 
   return (
     <div className="container mx-auto p-6 space-y-6">
-      <div className="flex justify-between items-center border-b pb-4">
-        <div>
-          <div className="flex items-center gap-3">
-            <h1 className="text-xl font-bold text-gray-900 dark:text-white">
+      <div className="flex flex-wrap gap-3 justify-between items-center border-b pb-4">
+        <div className="min-w-0">
+          <div className="flex flex-wrap items-center gap-3">
+            <h1 className="text-xl font-bold text-gray-900 dark:text-white break-all">
               Run: <span className="font-mono text-indigo-600">{run.id}</span>
             </h1>
             <span
-              className={`px-3 py-0.5 text-xs font-semibold rounded-full ${
+              className={`px-3 py-0.5 text-xs font-semibold rounded-full flex-shrink-0 ${
                 run.status === 'COMPLETED'
                   ? 'bg-green-100 text-green-800'
                   : run.status === 'RUNNING'

@@ -17,9 +17,9 @@ export function Modal({ isOpen, onClose, title, children, maxWidthClassName = 'm
 
   return (
     <div className={`fixed inset-0 z-50 flex items-center justify-center p-4 ${SURFACE.modalOverlay} animate-fade-in`}>
-      <div className={`${SURFACE.modalPanel} rounded-2xl p-6 w-full ${maxWidthClassName} space-y-5`}>
+      <div className={`${SURFACE.modalPanel} rounded-2xl w-full ${maxWidthClassName} max-h-[85dvh] flex flex-col overflow-hidden`}>
         {title && (
-          <div className="flex items-center justify-between border-b border-border pb-3">
+          <div className="flex items-center justify-between border-b border-border px-6 pt-6 pb-3 shrink-0">
             <h3 className="text-sm font-extrabold text-foreground">{title}</h3>
             <button
               type="button"
@@ -31,7 +31,7 @@ export function Modal({ isOpen, onClose, title, children, maxWidthClassName = 'm
             </button>
           </div>
         )}
-        {children}
+        <div className="overflow-y-auto px-6 py-5 space-y-5">{children}</div>
       </div>
     </div>
   );

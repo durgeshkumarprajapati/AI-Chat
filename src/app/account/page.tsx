@@ -377,13 +377,13 @@ export default function AccountPage() {
                     Manage workspace access, role assignments, and team permissions.
                   </p>
                 </div>
-                <div className="flex items-center space-x-2">
+                <div className="flex flex-wrap items-center gap-2">
                   <input
                     type="text"
                     value={memberSearch}
                     onChange={(e) => setMemberSearch(e.target.value)}
                     placeholder="Search members..."
-                    className="h-10 px-3 bg-surface border border-border rounded-xl text-xs text-foreground placeholder-text-disabled focus:outline-none focus:border-primary transition"
+                    className="h-10 px-3 min-w-0 flex-1 bg-surface border border-border rounded-xl text-xs text-foreground placeholder-text-disabled focus:outline-none focus:border-primary transition"
                   />
                   <button
                     onClick={() => alert('Invite member modal initiated.')}
@@ -501,10 +501,10 @@ export default function AccountPage() {
 
               <div className="space-y-3">
                 {sessions.map((s) => (
-                  <div key={s.id} className="flex items-center justify-between p-3.5 rounded-xl bg-surface border border-border/60 text-xs">
-                    <div className="space-y-1">
-                      <div className="flex items-center space-x-2">
-                        <span className="font-bold text-foreground">{s.deviceInfo}</span>
+                  <div key={s.id} className="flex flex-wrap items-center justify-between gap-2 p-3.5 rounded-xl bg-surface border border-border/60 text-xs">
+                    <div className="space-y-1 min-w-0">
+                      <div className="flex flex-wrap items-center gap-2">
+                        <span className="font-bold text-foreground break-words">{s.deviceInfo}</span>
                         {s.isCurrent && (
                           <span className="px-2 py-0.5 rounded bg-success/15 text-success border border-success/30 text-[10px] font-mono font-bold">
                             Current Device

@@ -92,7 +92,7 @@ export default function MeetingsPage() {
           </p>
         </div>
 
-        <div className="flex items-center gap-3">
+        <div className="flex flex-wrap items-center gap-3">
           <a
             href={clickUpConnected ? '#' : '/api/integrations/clickup/connect'}
             className={`px-4 py-2.5 rounded-xl font-semibold text-xs transition-colors flex items-center gap-2 border ${

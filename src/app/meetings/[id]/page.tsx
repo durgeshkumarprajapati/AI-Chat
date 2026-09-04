@@ -182,7 +182,7 @@ export default function MeetingDetailPage() {
             <p className="text-xs text-muted-foreground mt-1">📅 {new Date(meeting.meetingDate).toLocaleDateString()}</p>
           </div>
 
-          <div className="flex items-center gap-3">
+          <div className="flex flex-wrap items-center gap-3">
             <button
               onClick={handleSaveTranscript}
               disabled={ingesting}
@@ -202,10 +202,10 @@ export default function MeetingDetailPage() {
         </div>
 
         {/* Tab Selection */}
-        <div className="flex border-b border-border gap-4 pt-2 text-xs font-bold text-muted-foreground">
+        <div className="flex overflow-x-auto scrollbar-none border-b border-border gap-4 pt-2 text-xs font-bold text-muted-foreground">
           <button
             onClick={() => setActiveTab('overview')}
-            className={`pb-2 border-b-2 transition-colors ${
+            className={`flex-shrink-0 whitespace-nowrap pb-2 border-b-2 transition-colors ${
               activeTab === 'overview' ? 'border-indigo-500 text-indigo-400' : 'border-transparent hover:text-foreground'
             }`}
           >
@@ -213,7 +213,7 @@ export default function MeetingDetailPage() {
           </button>
           <button
             onClick={() => setActiveTab('tasks')}
-            className={`pb-2 border-b-2 transition-colors flex items-center gap-1.5 ${
+            className={`flex-shrink-0 whitespace-nowrap pb-2 border-b-2 transition-colors flex items-center gap-1.5 ${
               activeTab === 'tasks' ? 'border-indigo-500 text-indigo-400' : 'border-transparent hover:text-foreground'
             }`}
           >
@@ -221,7 +221,7 @@ export default function MeetingDetailPage() {
           </button>
           <button
             onClick={() => setActiveTab('decisions')}
-            className={`pb-2 border-b-2 transition-colors ${
+            className={`flex-shrink-0 whitespace-nowrap pb-2 border-b-2 transition-colors ${
               activeTab === 'decisions' ? 'border-indigo-500 text-indigo-400' : 'border-transparent hover:text-foreground'
             }`}
           >
@@ -229,7 +229,7 @@ export default function MeetingDetailPage() {
           </button>
           <button
             onClick={() => setActiveTab('transcript')}
-            className={`pb-2 border-b-2 transition-colors ${
+            className={`flex-shrink-0 whitespace-nowrap pb-2 border-b-2 transition-colors ${
               activeTab === 'transcript' ? 'border-indigo-500 text-indigo-400' : 'border-transparent hover:text-foreground'
             }`}
           >

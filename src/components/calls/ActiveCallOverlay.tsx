@@ -53,7 +53,7 @@ export function ActiveCallOverlay({
     return (
       <div
         data-testid="call-status-toast"
-        className="fixed bottom-6 right-6 z-50 px-4 py-3 rounded-xl bg-slate-900 text-white text-xs font-semibold shadow-2xl border border-slate-700 animate-fade-in"
+        className="fixed bottom-4 right-4 left-4 sm:left-auto sm:bottom-6 sm:right-6 z-50 px-4 py-3 rounded-xl bg-slate-900 text-white text-xs font-semibold shadow-2xl border border-slate-700 animate-fade-in"
       >
         {callStatus === 'REJECTED' && 'Call declined.'}
         {callStatus === 'ENDED' && 'Call ended.'}
@@ -65,7 +65,7 @@ export function ActiveCallOverlay({
   return (
     <div
       data-testid="active-call-overlay"
-      className="fixed bottom-6 right-6 z-50 w-80 rounded-2xl bg-slate-900 border border-slate-700 shadow-2xl overflow-hidden text-white"
+      className="fixed bottom-4 right-4 left-4 sm:left-auto sm:bottom-6 sm:right-6 z-50 w-auto sm:w-80 max-w-[calc(100vw-2rem)] rounded-2xl bg-slate-900 border border-slate-700 shadow-2xl overflow-hidden text-white"
     >
       {isVideo && (
         <div className="relative bg-black aspect-video">

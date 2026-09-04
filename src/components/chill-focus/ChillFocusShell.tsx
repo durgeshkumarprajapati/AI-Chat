@@ -162,7 +162,7 @@ export const ChillFocusShell: React.FC<ChillFocusShellProps> = ({
   }, [mode, reducedMotion]);
 
   return (
-    <div className="relative min-h-screen w-full bg-slate-950 overflow-x-hidden font-sans text-slate-100 flex flex-col justify-between select-none">
+    <div className="relative min-h-dvh w-full bg-slate-950 overflow-x-hidden font-sans text-slate-100 flex flex-col justify-between select-none">
       {/* WebGL Canvas or CSS Background Fallback */}
       {!isLowPower && !reducedMotion ? (
         <canvas

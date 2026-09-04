@@ -149,7 +149,7 @@ export default function ChillFocusPage() {
   return (
     <ChillFocusShell mode={mode} reducedMotion={reducedMotion}>
       {/* Top Header Bar */}
-      <header className="flex items-center justify-between p-4 sm:p-6 w-full max-w-7xl mx-auto z-20">
+      <header className="flex flex-wrap items-center justify-between gap-3 p-4 sm:p-6 w-full max-w-7xl mx-auto z-20">
         {/* Left: Collapsible Sidebar Menu Icon */}
         <div className="flex items-center space-x-3">
           <button
@@ -172,7 +172,7 @@ export default function ChillFocusPage() {
         </div>
 
         {/* Right: Calm Streak Badge, Sound Controls, Exit Button */}
-        <div className="flex items-center space-x-3">
+        <div className="flex flex-wrap items-center gap-3">
           <CalmStreakBadge
             streakDays={streak?.currentStreakDays || 0}
             earnedToday={streak?.earnedToday || false}

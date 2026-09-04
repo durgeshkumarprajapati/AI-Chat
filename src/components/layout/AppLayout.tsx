@@ -20,14 +20,14 @@ function HeaderTourControls() {
   const { buttonTitle, activeTour } = useContextualTour();
 
   return (
-    <div className="flex items-center space-x-2 font-sans">
+    <div className="hidden sm:flex items-center space-x-2 font-sans">
       <TourHelpButton />
       <button
         onClick={() => startTour(activeTour.id)}
         className="flex items-center space-x-1.5 px-3 py-1.5 rounded-xl bg-white dark:bg-[#0f131d] hover:bg-slate-100 dark:hover:bg-[#141926] text-indigo-700 dark:text-[#adc6ff] border border-slate-300 dark:border-[#424754] text-xs font-semibold transition-all shadow-sm"
         title={`Take ${buttonTitle}`}
       >
-        <span>{buttonTitle}</span>
+        <span className="hidden lg:inline">{buttonTitle}</span>
         <span>✨</span>
       </button>
     </div>
@@ -255,21 +255,21 @@ function InnerAppLayout({ children }: { children: React.ReactNode }) {
           </button>
 
           {/* Application Branding Logo */}
-          <Link href="/" className="flex items-center space-x-3 group">
-            <div className="w-9 h-9 rounded-xl bg-gradient-to-br from-[#4d8eff] to-[#adc6ff] flex items-center justify-center font-extrabold text-[#0a0e18] shadow-lg shadow-[#4d8eff]/20 group-hover:scale-105 transition-transform text-xs">
+          <Link href="/" className="flex items-center space-x-2 sm:space-x-3 group min-w-0">
+            <div className="w-9 h-9 rounded-xl bg-gradient-to-br from-[#4d8eff] to-[#adc6ff] flex items-center justify-center font-extrabold text-[#0a0e18] shadow-lg shadow-[#4d8eff]/20 group-hover:scale-105 transition-transform text-xs shrink-0">
               AI
             </div>
-            <div className="flex flex-col">
-              <span className="font-extrabold text-base tracking-tight text-slate-900 dark:text-[#dfe2f1] group-hover:text-indigo-600 dark:group-hover:text-[#adc6ff] transition-colors font-sans">
+            <div className="flex flex-col min-w-0">
+              <span className="font-extrabold text-base tracking-tight text-slate-900 dark:text-[#dfe2f1] group-hover:text-indigo-600 dark:group-hover:text-[#adc6ff] transition-colors font-sans truncate">
                 Document AI
               </span>
-              <span className="text-[9px] text-slate-500 dark:text-[#8c909f] font-mono tracking-widest font-bold">ENTERPRISE PLATFORM</span>
+              <span className="hidden sm:inline text-[9px] text-slate-500 dark:text-[#8c909f] font-mono tracking-widest font-bold">ENTERPRISE PLATFORM</span>
             </div>
           </Link>
         </div>
 
         {/* Global Header Controls */}
-        <div className="flex items-center space-x-3">
+        <div className="flex items-center gap-2 sm:gap-3">
           {/* Services Health Indicator */}
           <Link
             href="/health"
@@ -304,9 +304,9 @@ function InnerAppLayout({ children }: { children: React.ReactNode }) {
       </header>
 
       {/* Main Body Shell: Left Sidebar + Main Content */}
-      <div className="flex-1 flex min-h-[calc(100vh-61px)]">
+      <div className="flex-1 flex min-h-[calc(100dvh-61px)]">
         {/* Desktop Left Collapsible Sidebar Navigation */}
-        <aside className="hidden lg:flex flex-col w-64 shrink-0 bg-white dark:bg-[#0a0e18] border-r border-slate-200 dark:border-[#424754]/60 sticky top-[61px] h-[calc(100vh-61px)] overflow-y-auto p-4 space-y-3 z-30 select-none transition-colors">
+        <aside className="hidden lg:flex flex-col w-64 shrink-0 bg-white dark:bg-[#0a0e18] border-r border-slate-200 dark:border-[#424754]/60 sticky top-[61px] h-[calc(100dvh-61px)] overflow-y-auto p-4 space-y-3 z-30 select-none transition-colors">
           {navigationGroups.map((group) => {
             const hasActiveChild = groupContainsActiveRoute(group);
             const isExpanded = expandedGroups[group.id] ?? hasActiveChild;

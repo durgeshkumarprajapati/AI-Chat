@@ -151,7 +151,7 @@ export default function ResearchSessionPage({ params }: { params: { id: string }
           <p className="text-xs text-slate-400 mt-1">{session.question}</p>
         </div>
 
-        <div className="flex items-center space-x-2">
+        <div className="flex flex-wrap items-center gap-2">
           {isExecuting && (
             <button
               onClick={handleCancelResearch}
@@ -194,7 +194,7 @@ export default function ResearchSessionPage({ params }: { params: { id: string }
       )}
 
       {/* Navigation Tabs */}
-      <div className="flex space-x-2 border-b border-slate-800 pb-3">
+      <div className="flex space-x-2 overflow-x-auto scrollbar-none border-b border-slate-800 pb-3">
         {[
           { id: 'REPORT', label: 'Research Report' },
           { id: 'TIMELINE', label: `Timeline (${events.length})` },
@@ -205,7 +205,7 @@ export default function ResearchSessionPage({ params }: { params: { id: string }
           <button
             key={tab.id}
             onClick={() => setActiveTab(tab.id as any)}
-            className={`px-3.5 py-1.5 rounded-lg text-xs font-semibold transition ${
+            className={`flex-shrink-0 whitespace-nowrap px-3.5 py-1.5 rounded-lg text-xs font-semibold transition ${
               activeTab === tab.id
                 ? 'bg-indigo-600 text-white shadow-md shadow-indigo-500/20'
                 : 'text-slate-400 hover:text-slate-200'
@@ -245,7 +245,7 @@ export default function ResearchSessionPage({ params }: { params: { id: string }
                     <span className="font-semibold text-white">{ev.eventType.replace('_', ' ')}</span>
                     <span className="text-slate-500 text-[10px] ml-2">{new Date(ev.createdAt).toLocaleTimeString()}</span>
                     {ev.metadata && Object.keys(ev.metadata).length > 0 && (
-                      <p className="text-slate-400 text-[11px] mt-0.5">{JSON.stringify(ev.metadata)}</p>
+                      <p className="text-slate-400 text-[11px] mt-0.5 break-all">{JSON.stringify(ev.metadata)}</p>
                     )}
                   </div>
                 </div>
@@ -296,16 +296,16 @@ export default function ResearchSessionPage({ params }: { params: { id: string }
               <p className="text-xs text-slate-500">No evidence sources collected yet.</p>
             ) : (
               session.sources.map((src: any) => (
-                <div key={src.id} className="p-3 rounded-xl bg-slate-950 border border-slate-800 text-xs flex items-center justify-between">
-                  <div>
-                    <div className="font-semibold text-white">{src.title}</div>
+                <div key={src.id} className="p-3 rounded-xl bg-slate-950 border border-slate-800 text-xs flex flex-wrap items-center justify-between gap-2">
+                  <div className="min-w-0 flex-1">
+                    <div className="font-semibold text-white break-words">{src.title}</div>
                     {src.url && (
-                      <a href={src.url} target="_blank" rel="noreferrer" className="text-[11px] text-indigo-400 hover:underline">
+                      <a href={src.url} target="_blank" rel="noreferrer" className="text-[11px] text-indigo-400 hover:underline break-all">
                         {src.url}
                       </a>
                     )}
                   </div>
-                  <div className="text-right text-[10px] text-slate-400">
+                  <div className="text-right text-[10px] text-slate-400 flex-shrink-0">
                     <div>Quality: {Math.round((src.qualityScore || 0.5) * 100)}%</div>
                     <div>Type: {src.sourceType}</div>
                   </div>
@@ -319,13 +319,13 @@ export default function ResearchSessionPage({ params }: { params: { id: string }
       {/* Follow-up Section */}
       <div className="bg-slate-900/60 border border-slate-800 rounded-2xl p-6 space-y-3">
         <h3 className="text-xs font-bold text-white">Ask Follow-Up Research Question</h3>
-        <div className="flex space-x-2">
+        <div className="flex flex-wrap gap-2">
           <input
             type="text"
             value={followUpQuery}
             onChange={(e) => setFollowUpQuery(e.target.value)}
             placeholder="e.g. Compare pricing models and production operational costs..."
-            className="flex-1 bg-slate-950 border border-slate-800 rounded-xl px-4 py-2.5 text-xs text-white placeholder-slate-500 focus:outline-none focus:border-indigo-500 transition"
+            className="flex-1 min-w-[200px] bg-slate-950 border border-slate-800 rounded-xl px-4 py-2.5 text-xs text-white placeholder-slate-500 focus:outline-none focus:border-indigo-500 transition"
           />
           <button
             onClick={handleFollowUp}

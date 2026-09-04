@@ -146,7 +146,7 @@ export default function RAGDebugPage() {
   ];
 
   return (
-    <div className="w-full max-w-[1600px] mx-auto space-y-8">
+    <div className="w-full max-w-[1600px] mx-auto space-y-8 p-4 sm:p-6">
       {/* Header */}
       <div className="flex flex-col md:flex-row md:items-center justify-between gap-4 border-b border-border pb-5">
         <div>
@@ -203,14 +203,14 @@ export default function RAGDebugPage() {
           </div>
         </div>
 
-        <div className="flex gap-3 pt-1">
+        <div className="flex flex-wrap gap-3 pt-1">
           <input
             type="text"
             value={question}
             onChange={(e) => setQuestion(e.target.value)}
             onKeyDown={(e) => e.key === 'Enter' && handleRunRetrieval()}
             placeholder="Type a question or follow-up to inspect memory rewriting & hybrid search..."
-            className="flex-1 rounded-xl bg-background border border-border px-4 py-3 text-xs text-foreground placeholder-slate-500 focus:outline-none focus:border-indigo-500"
+            className="flex-1 min-w-[200px] rounded-xl bg-background border border-border px-4 py-3 text-xs text-foreground placeholder-slate-500 focus:outline-none focus:border-indigo-500"
           />
           <button
             onClick={handleRunRetrieval}
@@ -255,7 +255,7 @@ export default function RAGDebugPage() {
           <div className="grid grid-cols-2 md:grid-cols-4 gap-3 text-[11px] font-mono">
             <div className="bg-background p-2.5 rounded-lg border border-border"><span className="text-muted-foreground block">Source Mode</span><b className="text-indigo-300">{(orchestration as any).sourceMode || 'documents_only'}</b></div>
             <div className="bg-background p-2.5 rounded-lg border border-border"><span className="text-muted-foreground block">Target Website</span><b className="text-foreground font-mono truncate block">{(orchestration as any).targetWebsite || 'None (Public Discovery)'}</b></div>
-            <div className="bg-background p-2.5 rounded-lg border border-border"><span className="text-muted-foreground block">Allowed Sources</span><b className="text-foreground font-mono">{(orchestration as any).allowedSources?.join(', ') || 'wikipedia, medium'}</b></div>
+            <div className="bg-background p-2.5 rounded-lg border border-border"><span className="text-muted-foreground block">Allowed Sources</span><b className="text-foreground font-mono break-words">{(orchestration as any).allowedSources?.join(', ') || 'wikipedia, medium'}</b></div>
             <div className="bg-background p-2.5 rounded-lg border border-border"><span className="text-muted-foreground block">Cache Status</span><b className="text-emerald-400">{((orchestration as any).cacheType || orchestration.cache || 'miss').toUpperCase()} (Hit: {String((orchestration as any).cacheHit ?? false)})</b></div>
             <div className="bg-background p-2.5 rounded-lg border border-border"><span className="text-muted-foreground block">Web Chunks</span><b className="text-cyan-400">{(orchestration as any).retrievedWebChunks ?? 0} Chunks</b></div>
             <div className="bg-background p-2.5 rounded-lg border border-border"><span className="text-muted-foreground block">Doc Chunks</span><b className="text-emerald-400">{(orchestration as any).retrievedDocumentChunks ?? 0} Chunks</b></div>
@@ -467,7 +467,7 @@ export default function RAGDebugPage() {
 
                     {/* Content Preview & Toggle */}
                     <div className="space-y-2">
-                      <p className={`text-xs text-foreground font-mono leading-relaxed bg-background/60 p-3 rounded-xl border border-border/60 ${!isExpanded ? 'line-clamp-3' : ''}`}>
+                      <p className={`text-xs text-foreground font-mono leading-relaxed break-words bg-background/60 p-3 rounded-xl border border-border/60 ${!isExpanded ? 'line-clamp-3' : ''}`}>
                         {chunk.content}
                       </p>
                       <button

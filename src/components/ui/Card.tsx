@@ -21,7 +21,7 @@ Card.displayName = 'Card';
 
 export function CardHeader({ className = '', children, ...props }: React.HTMLAttributes<HTMLDivElement>) {
   return (
-    <div className={`flex items-center justify-between border-b border-border pb-3 mb-4 ${className}`} {...props}>
+    <div className={`flex flex-wrap items-center justify-between gap-2 border-b border-border pb-3 mb-4 ${className}`} {...props}>
       {children}
     </div>
   );

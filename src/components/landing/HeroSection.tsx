@@ -64,7 +64,7 @@ export const HeroSection: React.FC = () => {
             </div>
 
             {/* Micro Feature Bullet Highlights */}
-            <div className="pt-6 grid grid-cols-3 gap-4 border-t border-[#424754]/40 text-xs text-[#c2c6d6] font-mono">
+            <div className="pt-6 grid grid-cols-1 sm:grid-cols-3 gap-4 border-t border-[#424754]/40 text-xs text-[#c2c6d6] font-mono">
               <div className="flex items-center space-x-2">
                 <span className="text-[#4edea3]">✓</span>
                 <span>Zero Hallucination</span>

@@ -118,7 +118,7 @@ export default function ArchitectureExplorerPage() {
       </div>
 
       {/* Main Canvas & Inspector Layout */}
-      <div className="grid grid-cols-1 lg:grid-cols-4 gap-6 h-[720px]">
+      <div className="grid grid-cols-1 lg:grid-cols-4 gap-6 h-[60dvh] sm:h-[500px] lg:h-[720px]">
         {/* React Flow Graph Canvas */}
         <div className="lg:col-span-3 rounded-2xl border border-border bg-surface/90 overflow-hidden relative shadow-2xl">
           {loading ? (

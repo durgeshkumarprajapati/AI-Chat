@@ -124,7 +124,7 @@ export const LandingNavbar: React.FC = () => {
           role="dialog"
           aria-modal="true"
           aria-label="Mobile Navigation Menu"
-          className="md:hidden fixed inset-x-0 top-[65px] bg-[#0a0e18]/95 backdrop-blur-xl border-b border-[#424754] p-6 space-y-4 shadow-2xl animate-fade-in"
+          className="md:hidden absolute inset-x-0 top-full bg-[#0a0e18]/95 backdrop-blur-xl border-b border-[#424754] p-6 space-y-4 shadow-2xl animate-fade-in"
         >
           <div className="flex flex-col space-y-3 font-medium text-sm text-[#c2c6d6]">
             <a
@@ -161,6 +161,13 @@ export const LandingNavbar: React.FC = () => {
               className="px-3 py-2 rounded-lg hover:bg-[#0f131d] hover:text-[#adc6ff] transition"
             >
               Docs
+            </Link>
+            <Link
+              href="/contact-us"
+              onClick={() => setMobileMenuOpen(false)}
+              className="px-3 py-2 rounded-lg hover:bg-[#0f131d] hover:text-[#adc6ff] transition"
+            >
+              Support
             </Link>
             <Link
               href="/dashboard"

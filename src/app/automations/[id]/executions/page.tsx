@@ -79,7 +79,7 @@ function StepRow({ step }: { step: AutomationExecutionStepDTO }) {
           {step.startedAt ? formatTimestamp(step.startedAt) : 'not started'}
           {step.completedAt && ` → ${durationLabel(step.startedAt, step.completedAt)}`}
         </p>
-        {step.errorMessage && <p className="text-[11px] text-destructive">{step.errorMessage}</p>}
+        {step.errorMessage && <p className="text-[11px] text-destructive break-words">{step.errorMessage}</p>}
         <div className="flex flex-col gap-1">
           <JsonViewer label="Input" value={step.sanitizedInput} />
           <JsonViewer label="Output" value={step.sanitizedOutput} />

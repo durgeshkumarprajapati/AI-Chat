@@ -1061,13 +1061,13 @@ export default function IntelligenceDashboardPage() {
       </div>
 
       {/* Tabs */}
-      <div className="flex items-center gap-1 border-b border-border">
+      <div className="flex items-center gap-1 overflow-x-auto scrollbar-none border-b border-border">
         {TABS.map((t) => (
           <button
             key={t.key}
             type="button"
             onClick={() => setActiveTab(t.key)}
-            className={`px-4 py-2 text-xs font-semibold rounded-t-lg border-b-2 -mb-px transition-colors duration-150 ${
+            className={`flex-shrink-0 whitespace-nowrap px-4 py-2 text-xs font-semibold rounded-t-lg border-b-2 -mb-px transition-colors duration-150 ${
               activeTab === t.key ? 'border-primary text-primary' : 'border-transparent text-muted-foreground hover:text-foreground'
             }`}
           >

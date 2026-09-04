@@ -206,8 +206,8 @@ function CopilotContent() {
         <div className="space-y-6">
           {/* Plan & Timeline View */}
           <div className="p-6 rounded-2xl bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 space-y-4 shadow-sm">
-            <div className="flex items-center justify-between">
-              <h2 className="text-sm font-bold text-slate-900 dark:text-white flex items-center space-x-2">
+            <div className="flex flex-wrap items-center justify-between gap-2">
+              <h2 className="text-sm font-bold text-slate-900 dark:text-white flex flex-wrap items-center gap-2">
                 <span>📋 Copilot Execution Plan</span>
                 <span className="text-xs font-mono font-bold px-2 py-0.5 rounded bg-indigo-50 dark:bg-indigo-950 text-indigo-700 dark:text-indigo-300 border border-indigo-200 dark:border-indigo-800">
                   {result.intent}

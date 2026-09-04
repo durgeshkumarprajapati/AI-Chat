@@ -148,7 +148,7 @@ export default function NewResearchPage() {
         {/* Research Depth Selection */}
         <div>
           <label className="block text-xs font-semibold text-slate-300 mb-2">Research Depth</label>
-          <div className="grid grid-cols-3 gap-3">
+          <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
             {[
               { id: 'QUICK', name: 'Quick', desc: '3 Searches, 5 Sources' },
               { id: 'STANDARD', name: 'Standard', desc: '6 Searches, 10 Sources' },

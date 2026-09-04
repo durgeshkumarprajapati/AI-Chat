@@ -180,7 +180,7 @@ export default function BillingPage() {
               ● {subscription?.status}
             </span>
           </div>
-          <div className="flex items-center justify-between">
+          <div className="flex flex-wrap items-center justify-between gap-3">
             <div>
               <h4 className="text-lg font-extrabold text-foreground font-sans">{subscription?.planCode}</h4>
               {trialDaysLeft !== null && (
@@ -193,7 +193,7 @@ export default function BillingPage() {
                 </p>
               )}
             </div>
-            <div className="flex space-x-3">
+            <div className="flex flex-wrap gap-3">
               <Link
                 href="/pricing"
                 className="h-10 px-4 flex items-center bg-gradient-to-r from-primary to-primary-hover text-primary-foreground text-xs font-extrabold rounded-xl shadow-md hover:opacity-90"

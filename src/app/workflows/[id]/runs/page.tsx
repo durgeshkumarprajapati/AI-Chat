@@ -27,7 +27,7 @@ export default function WorkflowRunsListPage({ params }: { params: { id: string 
 
   return (
     <div className="container mx-auto p-6 space-y-6">
-      <div className="flex justify-between items-center border-b pb-4">
+      <div className="flex flex-col sm:flex-row sm:justify-between sm:items-center gap-3 border-b pb-4">
         <div>
           <h1 className="text-2xl font-bold text-gray-900 dark:text-white">Workflow Execution History</h1>
           <p className="text-sm text-gray-500">View past runs, execution durations, and step outputs.</p>
@@ -47,16 +47,16 @@ export default function WorkflowRunsListPage({ params }: { params: { id: string 
             <Link
               key={r.id}
               href={`/workflows/${params.id}/runs/${r.id}`}
-              className="p-4 flex justify-between items-center hover:bg-gray-50 dark:hover:bg-gray-800 transition block text-sm"
+              className="p-4 flex flex-wrap gap-2 justify-between items-center hover:bg-gray-50 dark:hover:bg-gray-800 transition block text-sm"
             >
-              <div>
-                <span className="font-mono font-bold text-indigo-600">{r.id}</span>
+              <div className="min-w-0">
+                <span className="font-mono font-bold text-indigo-600 truncate block">{r.id}</span>
                 <div className="text-xs text-gray-400 mt-1">
                   Trigger: {r.triggerType} | Started: {new Date(r.createdAt).toLocaleString()}
                 </div>
               </div>
               <span
-                className={`px-3 py-1 text-xs font-semibold rounded-full ${
+                className={`px-3 py-1 text-xs font-semibold rounded-full flex-shrink-0 ${
                   r.status === 'COMPLETED' ? 'bg-green-100 text-green-800' : 'bg-red-100 text-red-800'
                 }`}
               >

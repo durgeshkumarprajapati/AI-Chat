@@ -661,7 +661,7 @@ function ChatPageContent() {
   ];
 
   return (
-    <div className="w-full max-w-[1600px] mx-auto h-[calc(100vh-7rem)] flex flex-col md:flex-row gap-6">
+    <div className="w-full max-w-[1600px] mx-auto h-[calc(100dvh-7rem)] flex flex-col md:flex-row gap-6">
       {/* Rename Modal */}
       {renameConvId && (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/70 backdrop-blur-sm p-4">
@@ -942,8 +942,8 @@ function ChatPageContent() {
       {/* Main Chat Interface */}
       <main className="flex-1 bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-2xl flex flex-col justify-between shadow-xl overflow-hidden min-w-0 transition-colors">
         {/* Header Bar */}
-        <div className="px-6 py-3.5 border-b border-slate-200 dark:border-slate-800/80 bg-slate-50/80 dark:bg-slate-950/60 flex items-center justify-between flex-shrink-0">
-          <div className="flex items-center space-x-3 text-xs font-medium text-slate-700 dark:text-slate-300 min-w-0">
+        <div className="px-4 sm:px-6 py-3.5 border-b border-slate-200 dark:border-slate-800/80 bg-slate-50/80 dark:bg-slate-950/60 flex flex-wrap items-center justify-between gap-y-2 flex-shrink-0">
+          <div className="flex flex-wrap items-center gap-x-3 gap-y-1.5 text-xs font-medium text-slate-700 dark:text-slate-300 min-w-0">
             {chatMode === 'GROUP' ? (
               <>
                 <span className="font-bold text-slate-900 dark:text-white truncate max-w-[200px]">👥 {activeGroup?.title || 'Select Group Workspace'}</span>
@@ -1012,15 +1012,15 @@ function ChatPageContent() {
 
         {/* Phase 24 Web Discovery Config Toolbar */}
         {chatMode === 'PRIVATE' && sourceMode === 'web_discovery' && (
-          <div className="px-6 py-2.5 bg-slate-50 dark:bg-slate-950/90 border-b border-slate-200 dark:border-slate-800/80 flex flex-wrap items-center justify-between gap-3 text-xs flex-shrink-0">
-            <div className="flex items-center space-x-2 min-w-[280px]">
-              <span className="text-slate-500 dark:text-slate-400 text-[11px] font-medium">Target Website:</span>
+          <div className="px-4 sm:px-6 py-2.5 bg-slate-50 dark:bg-slate-950/90 border-b border-slate-200 dark:border-slate-800/80 flex flex-wrap items-center justify-between gap-3 text-xs flex-shrink-0">
+            <div className="flex flex-1 items-center gap-2 min-w-0 sm:min-w-[280px]">
+              <span className="text-slate-500 dark:text-slate-400 text-[11px] font-medium whitespace-nowrap">Target Website:</span>
               <input
                 type="url"
                 value={targetWebsite}
                 onChange={(e) => setTargetWebsite(e.target.value)}
                 placeholder="https://docs.python.org"
-                className="bg-white dark:bg-slate-900 border border-slate-300 dark:border-slate-800 rounded-lg px-3 py-1 text-xs text-slate-900 dark:text-white placeholder-slate-400 dark:placeholder-slate-500 font-mono focus:outline-none focus:border-indigo-500 w-64 shadow-sm"
+                className="bg-white dark:bg-slate-900 border border-slate-300 dark:border-slate-800 rounded-lg px-3 py-1 text-xs text-slate-900 dark:text-white placeholder-slate-400 dark:placeholder-slate-500 font-mono focus:outline-none focus:border-indigo-500 w-full sm:w-64 shadow-sm min-w-0"
               />
             </div>
             <div className="flex items-center space-x-4 text-[11px] text-slate-700 dark:text-slate-300">
@@ -1134,7 +1134,7 @@ function ChatPageContent() {
                 className={`flex flex-col ${msg.role === 'USER' ? 'items-end' : 'items-start'} space-y-2`}
               >
                 <div
-                  className={`max-w-3xl rounded-2xl p-4 text-xs leading-relaxed shadow-md relative group ${
+                  className={`max-w-[85vw] sm:max-w-3xl rounded-2xl p-4 text-xs leading-relaxed shadow-md relative group ${
                     msg.role === 'USER'
                       ? 'bg-indigo-600 text-white rounded-br-none'
                       : 'bg-slate-50 dark:bg-slate-950 text-slate-900 dark:text-slate-200 border border-slate-200 dark:border-slate-800 rounded-bl-none'
@@ -1160,7 +1160,7 @@ function ChatPageContent() {
                     </div>
                   )}
 
-                  <div className="whitespace-pre-wrap">
+                  <div className="whitespace-pre-wrap break-words">
                     {msg.content}
                     {msg.isStreaming && (
                       <span className="inline-block w-2 h-3 ml-1 bg-indigo-400 animate-pulse rounded-sm align-middle" />
@@ -1434,7 +1434,7 @@ function ChatPageContent() {
             </div>
           )}
 
-          <div className="flex items-center space-x-3">
+          <div className="flex flex-wrap items-center gap-2">
             <label className="cursor-pointer px-3 py-3 rounded-xl bg-slate-100 dark:bg-slate-900 border border-slate-300 dark:border-slate-800 hover:border-indigo-500/50 text-slate-700 dark:text-slate-300 hover:text-slate-900 dark:hover:text-white text-xs font-medium transition flex items-center space-x-1.5 flex-shrink-0 shadow-sm">
               <span>📎</span>
               <span className="hidden sm:inline">Attach</span>
@@ -1519,7 +1519,7 @@ function ChatPageContent() {
               </select>
             </div>
 
-            <div className="flex-1 flex flex-col min-w-0">
+            <div className="flex-1 flex flex-col min-w-[140px]">
               <textarea
                 value={question}
                 onChange={(e) => setQuestion(e.target.value)}
@@ -1557,7 +1557,7 @@ function ChatPageContent() {
             </div>
 
             {chatMode === 'GROUP' ? (
-              <div className="flex items-center space-x-2">
+              <div className="flex flex-wrap items-center gap-2">
                 <button
                   onClick={() => handleSendGroupMsg(false)}
                   disabled={loading || !question.trim() || !activeGroup}

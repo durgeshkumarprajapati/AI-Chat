@@ -626,7 +626,7 @@ function KnowledgeGraphExplorerPageInner() {
 
       {/* Canvas + Details */}
       <div className="grid grid-cols-1 lg:grid-cols-4 gap-6">
-        <div className="lg:col-span-3 rounded-2xl border border-border bg-surface/90 overflow-hidden relative shadow-sm min-h-[560px] h-[560px] flex flex-col">
+        <div className="lg:col-span-3 rounded-2xl border border-border bg-surface/90 overflow-hidden relative shadow-sm min-h-[380px] h-[60dvh] sm:h-[460px] lg:h-[560px] flex flex-col">
           {!hasSearched && !loading ? (
             <div className="m-auto text-center space-y-3 p-10 max-w-md">
               <span className="text-3xl block" aria-hidden="true">🕸️</span>
@@ -686,7 +686,7 @@ function KnowledgeGraphExplorerPageInner() {
           ) : null}
         </div>
 
-        <div className="lg:col-span-1 rounded-2xl border border-border bg-surface p-5 shadow-sm overflow-y-auto max-h-[560px]">
+        <div className="lg:col-span-1 rounded-2xl border border-border bg-surface p-5 shadow-sm overflow-y-auto max-h-[60dvh] sm:max-h-[460px] lg:max-h-[560px]">
           <h3 className="font-bold text-xs uppercase tracking-wide text-muted-foreground border-b border-border pb-3 mb-4">
             Node Details
           </h3>

@@ -106,22 +106,22 @@ export default function VisualWorkflowEditorPage({ params }: { params: { id: str
   if (loading) return <div className="p-8 text-center text-gray-500">Loading visual canvas...</div>;
 
   return (
-    <div className="flex flex-col h-[calc(100vh-4rem)]">
+    <div className="flex flex-col h-[calc(100dvh-4rem)]">
       {/* Top Action Header */}
-      <div className="p-4 border-b flex justify-between items-center bg-white dark:bg-gray-900">
-        <div className="flex items-center gap-3">
-          <Link href={`/workflows/${params.id}`} className="text-xs text-gray-500 hover:underline">
+      <div className="p-4 border-b flex flex-wrap gap-3 justify-between items-center bg-white dark:bg-gray-900">
+        <div className="flex flex-wrap items-center gap-3 min-w-0">
+          <Link href={`/workflows/${params.id}`} className="text-xs text-gray-500 hover:underline flex-shrink-0">
             ← Back to Details
           </Link>
-          <h1 className="text-lg font-bold text-gray-900 dark:text-white">
+          <h1 className="text-lg font-bold text-gray-900 dark:text-white truncate">
             {workflow?.name || 'Workflow Editor'}
           </h1>
-          <span className="text-xs px-2 py-0.5 bg-gray-100 dark:bg-gray-800 text-gray-600 dark:text-gray-300 rounded font-mono">
+          <span className="text-xs px-2 py-0.5 bg-gray-100 dark:bg-gray-800 text-gray-600 dark:text-gray-300 rounded font-mono flex-shrink-0">
             {nodes.length} Nodes, {edges.length} Edges
           </span>
         </div>
 
-        <div className="flex items-center gap-3">
+        <div className="flex flex-wrap items-center gap-3">
           <button
             onClick={handleValidate}
             className="px-3 py-1.5 text-xs font-medium text-gray-700 dark:text-gray-300 bg-gray-100 dark:bg-gray-800 hover:bg-gray-200 rounded"
@@ -155,9 +155,9 @@ export default function VisualWorkflowEditorPage({ params }: { params: { id: str
       )}
 
       {/* Main Canvas Body */}
-      <div className="flex flex-1 overflow-hidden">
+      <div className="flex flex-col lg:flex-row flex-1 overflow-y-auto lg:overflow-hidden">
         {/* Left Node Palette Sidebar */}
-        <div className="w-64 border-r p-4 bg-gray-50 dark:bg-gray-900 space-y-4 overflow-y-auto">
+        <div className="w-full lg:w-64 lg:shrink-0 border-b lg:border-b-0 lg:border-r p-4 bg-gray-50 dark:bg-gray-900 space-y-4 lg:overflow-y-auto">
           <h2 className="text-xs font-bold text-gray-500 uppercase tracking-wider">Node Palette</h2>
 
           <div className="space-y-2">
@@ -204,13 +204,13 @@ export default function VisualWorkflowEditorPage({ params }: { params: { id: str
         </div>
 
         {/* Center Node Visual Canvas */}
-        <div className="flex-1 bg-gray-100 dark:bg-gray-950 p-6 overflow-auto relative space-y-6">
+        <div className="flex-1 bg-gray-100 dark:bg-gray-950 p-4 sm:p-6 lg:overflow-auto relative space-y-6 min-w-0">
           <div className="flex flex-col items-center gap-6">
             {nodes.map((n, idx) => (
-              <div key={n.key} className="flex flex-col items-center">
+              <div key={n.key} className="flex flex-col items-center w-full">
                 <div
                   onClick={() => setSelectedNodeKey(n.key)}
-                  className={`w-72 p-4 bg-white dark:bg-gray-900 border-2 rounded-xl shadow cursor-pointer transition relative ${
+                  className={`w-full max-w-72 p-4 bg-white dark:bg-gray-900 border-2 rounded-xl shadow cursor-pointer transition relative ${
                     selectedNodeKey === n.key
                       ? 'border-indigo-600 ring-2 ring-indigo-300'
                       : 'border-gray-200 dark:border-gray-800'
@@ -247,7 +247,7 @@ export default function VisualWorkflowEditorPage({ params }: { params: { id: str
 
         {/* Right Configuration Inspector Panel */}
         {selectedNode && (
-          <div className="w-80 border-l p-4 bg-white dark:bg-gray-900 space-y-4 overflow-y-auto">
+          <div className="w-full lg:w-80 lg:shrink-0 border-t lg:border-t-0 lg:border-l p-4 bg-white dark:bg-gray-900 space-y-4 lg:overflow-y-auto">
             <div className="flex justify-between items-center border-b pb-2">
               <h3 className="font-bold text-sm">Node Configuration</h3>
               <span className="text-xs font-mono text-indigo-600">{selectedNode.key}</span>

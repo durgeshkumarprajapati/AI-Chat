@@ -324,7 +324,7 @@ export default function MockTestDetailPage({ params }: { params: { id: string } 
 
         {/* Google Calendar Integration Diagnostic Banner */}
         {test.googleCalendarSyncStatus === 'SYNCED' || test.googleCalendarEventUrl ? (
-          <div className="p-4 bg-emerald-950/40 border border-emerald-500/30 rounded-2xl flex items-center justify-between text-xs">
+          <div className="p-4 bg-emerald-950/40 border border-emerald-500/30 rounded-2xl flex flex-wrap items-center justify-between gap-2 text-xs">
             <span className="text-emerald-300 font-semibold flex items-center gap-2">
               <span>✓ Added to Google Calendar</span>
             </span>
@@ -338,7 +338,7 @@ export default function MockTestDetailPage({ params }: { params: { id: string } 
             </a>
           </div>
         ) : test.googleCalendarSyncStatus === 'NOT_CONNECTED' ? (
-          <div className="p-4 bg-amber-950/40 border border-amber-500/30 rounded-2xl flex items-center justify-between text-xs">
+          <div className="p-4 bg-amber-950/40 border border-amber-500/30 rounded-2xl flex flex-wrap items-center justify-between gap-2 text-xs">
             <span className="text-amber-300 font-semibold flex items-center gap-2">
               <span>⚠ Google Calendar not connected</span>
             </span>
@@ -351,7 +351,7 @@ export default function MockTestDetailPage({ params }: { params: { id: string } 
           </div>
         ) : test.googleCalendarSyncError &&
           (test.googleCalendarSyncError.includes('SCOPE_REQUIRED') || test.googleCalendarSyncError.includes('PERMISSION_DENIED')) ? (
-          <div className="p-4 bg-amber-950/40 border border-amber-500/30 rounded-2xl flex items-center justify-between text-xs">
+          <div className="p-4 bg-amber-950/40 border border-amber-500/30 rounded-2xl flex flex-wrap items-center justify-between gap-2 text-xs">
             <span className="text-amber-300 font-semibold flex items-center gap-2">
               <span>⚠ Google Calendar permission required</span>
             </span>
@@ -363,7 +363,7 @@ export default function MockTestDetailPage({ params }: { params: { id: string } 
             </a>
           </div>
         ) : (
-          <div className="p-4 bg-rose-950/40 border border-rose-500/30 rounded-2xl flex items-center justify-between text-xs">
+          <div className="p-4 bg-rose-950/40 border border-rose-500/30 rounded-2xl flex flex-wrap items-center justify-between gap-2 text-xs">
             <div className="space-y-0.5">
               <span className="text-rose-300 font-semibold flex items-center gap-2">
                 <span>⚠ Google Calendar event creation failed</span>
@@ -384,7 +384,7 @@ export default function MockTestDetailPage({ params }: { params: { id: string } 
 
         {/* Score Summary Banner if completed */}
         {(isCompleted || scoreResult) && (
-          <div className="p-5 bg-gradient-to-r from-emerald-950/60 to-slate-900 border border-emerald-500/30 rounded-2xl flex items-center justify-between">
+          <div className="p-5 bg-gradient-to-r from-emerald-950/60 to-slate-900 border border-emerald-500/30 rounded-2xl flex flex-wrap items-center justify-between gap-3">
             <div>
               <h3 className="text-sm font-bold text-emerald-400">Quiz Submitted & Evaluated</h3>
               <p className="text-xs text-foreground mt-0.5">

@@ -492,7 +492,7 @@ export default function AdminBillingPage() {
 
         {/* Subscription Management */}
         <div className="bg-white dark:bg-slate-900/80 border border-slate-200 dark:border-slate-800 rounded-2xl p-6 shadow-sm space-y-4">
-          <div className="flex items-center justify-between border-b border-slate-200 dark:border-slate-800 pb-3">
+          <div className="flex flex-wrap items-center justify-between gap-2 border-b border-slate-200 dark:border-slate-800 pb-3">
             <h3 className="text-sm font-semibold text-slate-900 dark:text-white">Subscriptions ({subTotal})</h3>
             <div className="flex items-center space-x-2 text-xs">
               <button
@@ -741,7 +741,7 @@ export default function AdminBillingPage() {
             />
           </div>
 
-          <div className="grid grid-cols-3 gap-3">
+          <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
             <div>
               <label className={LABEL_CLASS}>Currency</label>
               <select

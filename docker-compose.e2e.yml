@@ -1,0 +1,52 @@
+version: '3.8'
+
+# Isolated E2E test infrastructure. Deliberately uses DIFFERENT host ports than
+# docker-compose.yml (dev: 5433/5672/6379) so an E2E run can never collide with a dev
+# stack already running on the same machine, and a separate ephemeral (non-persistent,
+# no named volume) data store so E2E runs never accumulate or leak state between runs
+# and can never be pointed at real dev/production data by accident. No `ollama` service
+# and no `pdf-service` — the E2E suite exercises no AI-provider or document-processing
+# code paths (see tests/e2e/README.md), only page rendering and auth.
+
+services:
+  postgres_e2e:
+    image: pgvector/pgvector:pg16
+    container_name: document_ai_postgres_e2e
+    environment:
+      POSTGRES_USER: postgres
+      POSTGRES_PASSWORD: postgres
+      POSTGRES_DB: document_ai_e2e
+    ports:
+      - '5544:5432'
+    tmpfs:
+      - /var/lib/postgresql/data
+    healthcheck:
+      test: ['CMD-SHELL', 'pg_isready -U postgres -d document_ai_e2e']
+      interval: 5s
+      timeout: 5s
+      retries: 10
+
+  redis_e2e:
+    image: redis:7-alpine
+    container_name: document_ai_redis_e2e
+    ports:
+      - '6390:6379'
+    healthcheck:
+      test: ['CMD', 'redis-cli', 'ping']
+      interval: 5s
+      timeout: 5s
+      retries: 10
+
+  rabbitmq_e2e:
+    image: rabbitmq:3-management
+    container_name: document_ai_rabbitmq_e2e
+    environment:
+      RABBITMQ_DEFAULT_USER: guest
+      RABBITMQ_DEFAULT_PASS: guest
+    ports:
+      - '5680:5672'
+    healthcheck:
+      test: ['CMD', 'rabbitmq-diagnostics', '-q', 'ping']
+      interval: 5s
+      timeout: 5s
+      retries: 10

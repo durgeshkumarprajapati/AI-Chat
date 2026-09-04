@@ -33,7 +33,14 @@ yarn-error.log*
 .env
 .env*.local
 .env.test
+.env.e2e
 !.env.example
+
+# Playwright (E2E) — .auth holds a real session cookie for the seeded test user, never commit it
+/test-results/
+/playwright-report/
+/blob-report/
+tests/e2e/.auth/
 
 # Prisma
 /prisma/migrations/dev.db

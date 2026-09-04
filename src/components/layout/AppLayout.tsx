@@ -26,9 +26,10 @@ function HeaderTourControls() {
         onClick={() => startTour(activeTour.id)}
         className="flex items-center space-x-1.5 px-3 py-1.5 rounded-xl bg-white dark:bg-[#0f131d] hover:bg-slate-100 dark:hover:bg-[#141926] text-indigo-700 dark:text-[#adc6ff] border border-slate-300 dark:border-[#424754] text-xs font-semibold transition-all shadow-sm"
         title={`Take ${buttonTitle}`}
+        aria-label={`Take ${buttonTitle}`}
       >
-        <span className="hidden lg:inline">{buttonTitle}</span>
-        <span>✨</span>
+        <span className="hidden lg:inline" aria-hidden="true">{buttonTitle}</span>
+        <span aria-hidden="true">✨</span>
       </button>
     </div>
   );

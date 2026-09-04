@@ -1,5 +1,8 @@
--- AlterEnum
-ALTER TYPE "ConfigCategory" ADD VALUE 'BILLING';
+-- The ConfigCategory enum (including its 'BILLING' value) is now created by
+-- 20260828120000_phase75_enterprise_configuration_management, which this migration depends on.
+-- (Previously this file tried to conditionally create-or-alter that type itself, but nothing in
+-- this migration actually references it — that fragment was orphaned and broken on a fresh
+-- database where the type didn't exist yet at all. Removed; see that migration for the fix.)
 
 -- CreateEnum
 CREATE TYPE "PlanCode" AS ENUM ('FREE', 'PRO', 'PREMIUM');

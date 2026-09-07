@@ -660,6 +660,14 @@ export class ChatService {
 
     const duration = Date.now() - startTime;
     const latencyTrace = {
+      // Fixed (RAG Quality Monitoring pass): this previously cherry-picked only 6 specific fields
+      // from orchResult.latencyTrace instead of spreading it wholesale like sendMessage already
+      // does — silently dropping every graph count/timing field (graphChunksAddedCount,
+      // graphDroppedByLimitCount, graphTotalMs, graphNodesCount, etc.) for every STREAMED request.
+      // Since those fields flow into RagEvaluation.latencyTrace unchanged, this was systematically
+      // under-counting graph metrics in any historical aggregate for the streaming path specifically
+      // — a real data-completeness bug, not a behavior change to retrieval/GraphRAG/citation logic.
+      ...orchResult.latencyTrace,
       conversationContextMs,
       queryRewriteMs: convContext.queryRewriteMs,
       embeddingMs: orchResult.latencyTrace?.embeddingMs ?? 0,

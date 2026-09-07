@@ -8,6 +8,7 @@ import { AppError } from '@/errors';
 import { telemetryAggregationService } from '@/features/performance/telemetry-aggregation.service';
 import { rabbitmq, QUEUES } from '@/lib/rabbitmq';
 import type * as amqp from 'amqplib';
+import { ragHealthService, isRagHealthTimeWindow, RagHealthTimeWindow } from '@/features/rag/evaluation/rag-health.service';
 
 export const dynamic = 'force-dynamic';
 
@@ -49,6 +50,18 @@ async function handleGet(req: NextRequest) {
   try {
     const authUser = await requireAuthenticatedUser(req);
     requireRole(authUser, UserRole.ADMIN);
+
+    // RAG Quality Monitoring — ?window=1h|24h|7d|30d, defaulting to 24h to match this route's
+    // existing convention elsewhere. createdAt is already indexed (schema.prisma), so every window
+    // here is a bounded, indexed range scan — no unbounded query is introduced.
+    const requestedWindow = req.nextUrl.searchParams.get('window');
+    const ragHealthWindow: RagHealthTimeWindow = isRagHealthTimeWindow(requestedWindow) ? requestedWindow : '24h';
+    let ragHealth: Awaited<ReturnType<typeof ragHealthService.computeRagHealth>> | { available: false; reason: string };
+    try {
+      ragHealth = await ragHealthService.computeRagHealth(ragHealthWindow);
+    } catch (err) {
+      ragHealth = { available: false, reason: `RAG health aggregation failed: ${err instanceof Error ? err.message : String(err)}` };
+    }
 
     const dbStart = Date.now();
     let dbLatencyMs: number | null = null;
@@ -281,8 +294,15 @@ async function handleGet(req: NextRequest) {
         // Observability-hardening pass — bounded recent-sample aggregation over RagEvaluation's
         // already-persisted latencyTrace JSON (see this block's own comment above for why it's a
         // sample, not a full population average). No raw answers/queries/document content — counts,
-        // rates, and an enum distribution only.
-        citationAttribution
+        // rates, and an enum distribution only. Superseded by the more complete `ragHealth` block
+        // below (RAG Quality Monitoring pass) — kept for backward compatibility with any existing
+        // consumer of this exact field, not duplicated logic (both read the same underlying data).
+        citationAttribution,
+        // RAG Quality Monitoring pass — structured {overview, retrieval, graph, citations, failures,
+        // limitations} view, supporting ?window=1h|24h|7d|30d (see rag-health.service.ts's own
+        // doc comment for the full audit trail of where every field comes from). No raw prompts,
+        // questions, answers, document content, tokens, secrets, or internal database IDs.
+        ragHealth
       }
     });
   } catch (error) {

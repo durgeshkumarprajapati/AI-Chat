@@ -51,6 +51,13 @@ export class RagPerformanceTelemetryService {
   // below stays suppressed in tests, exactly as before this change.
   private cacheHits = 0;
   private cacheMisses = 0;
+  // RAG Quality Monitoring pass — `rag.request.failed` is fired only from the API route layer
+  // (chat.service.ts throws before any DB write happens for a failed request, so a failed request
+  // never produces a RagEvaluation row to aggregate historically from). This counter is the ONLY
+  // signal available for it: in-memory, per-process, resets on restart/deploy — NOT a historical
+  // metric. See getFailureDiagnostics's own doc comment and this pass's report for the honest
+  // limitation this implies for the admin API.
+  private requestFailures = 0;
 
   /**
    * Logs structured RAG performance telemetry without logging raw document content or secrets.
@@ -58,6 +65,7 @@ export class RagPerformanceTelemetryService {
   public logEvent(payload: RagTelemetryEvent): void {
     if (payload.event === 'rag.cache.answer.hit') this.cacheHits++;
     else if (payload.event === 'rag.cache.answer.miss') this.cacheMisses++;
+    else if (payload.event === 'rag.request.failed') this.requestFailures++;
 
     if (process.env.NODE_ENV === 'test') return;
 
@@ -86,6 +94,14 @@ export class RagPerformanceTelemetryService {
       misses: this.cacheMisses,
       hitRatio: total > 0 ? Number(((this.cacheHits / total) * 100).toFixed(1)) : 0
     };
+  }
+
+  /**
+   * Request-failure count since this process started (not historically persisted — see this
+   * field's own doc comment above). Never throws.
+   */
+  public getFailureDiagnostics(): { requestFailures: number } {
+    return { requestFailures: this.requestFailures };
   }
 
   private sanitizeMetadata(data: Record<string, unknown>): Record<string, unknown> {

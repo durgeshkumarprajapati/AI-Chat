@@ -1,6 +1,6 @@
 'use client';
 
-import React, { useEffect, useState, useRef, useCallback } from 'react';
+import React, { useEffect, useState, useRef, useCallback, useMemo } from 'react';
 import Link from 'next/link';
 import { useWorkspace } from '@/context/WorkspaceContext';
 import { mergeMessages, CollabMessageItem } from '@/features/collaboration/message-deduplication';
@@ -28,6 +28,17 @@ interface MemberItem {
   role: 'OWNER' | 'ADMIN' | 'MEMBER';
   user: UserSummary;
   presence?: PresenceState;
+}
+
+interface ScheduledMessageItem {
+  id: string;
+  channelId: string;
+  senderId: string;
+  content: string;
+  scheduledFor: string;
+  timezone: string;
+  status: 'PENDING' | 'PROCESSING' | 'SENT' | 'FAILED' | 'CANCELLED';
+  failureReason: string | null;
 }
 
 interface MessageItem extends CollabMessageItem {
@@ -375,6 +386,17 @@ export default function CollabChatPage() {
   const [messages, setMessages] = useState<MessageItem[]>([]);
   const [inputContent, setInputContent] = useState('');
   const [replyToMessage, setReplyToMessage] = useState<MessageItem | null>(null);
+
+  // Scheduled Messaging state
+  const [showSendMenu, setShowSendMenu] = useState(false);
+  const [showScheduleModal, setShowScheduleModal] = useState(false);
+  const [scheduleDate, setScheduleDate] = useState('');
+  const [scheduleTime, setScheduleTime] = useState('');
+  const [schedulingError, setSchedulingError] = useState<string | null>(null);
+  const [showScheduledPanel, setShowScheduledPanel] = useState(false);
+  const [scheduledMessages, setScheduledMessages] = useState<ScheduledMessageItem[]>([]);
+  const [editingScheduledId, setEditingScheduledId] = useState<string | null>(null);
+  const localTimezone = useMemo(() => Intl.DateTimeFormat().resolvedOptions().timeZone, []);
 
   // Periodic tick for relative timestamps refresh
   const [timeTick, setTimeTick] = useState<number>(Date.now());
@@ -881,6 +903,101 @@ export default function CollabChatPage() {
       setMessages((prev) =>
         prev.map((m) => (m.clientMessageId === clientMessageId ? { ...m, status: 'FAILED' } : m))
       );
+    }
+  };
+
+  const loadScheduledMessages = useCallback(async () => {
+    if (!activeChannelId) return;
+    try {
+      const res = await fetch(`/api/collaboration/scheduled-messages?channelId=${activeChannelId}&status=PENDING`);
+      const data = await res.json();
+      if (data.success) setScheduledMessages(data.data);
+    } catch {
+      // Non-fatal — the panel simply stays at its previous/empty state.
+    }
+  }, [activeChannelId]);
+
+  // Reload the sender's own pending scheduled messages whenever the active channel changes
+  // (existing state-refresh pattern; no new real-time event needed for this — see the feature's
+  // own Phase 16 audit note).
+  useEffect(() => {
+    setScheduledMessages([]);
+    loadScheduledMessages();
+  }, [activeChannelId, loadScheduledMessages]);
+
+  /** Native Date arithmetic constructs the instant in the BROWSER's own local timezone by
+   * definition — this is the entire client-side timezone conversion: no IANA/DST math is
+   * reimplemented anywhere, the browser already does it correctly via the OS. */
+  const buildScheduledForIso = (): string | null => {
+    if (!scheduleDate || !scheduleTime) return null;
+    const dateParts = scheduleDate.split('-').map(Number);
+    const timeParts = scheduleTime.split(':').map(Number);
+    if (dateParts.length !== 3 || timeParts.length !== 2 || dateParts.some(Number.isNaN) || timeParts.some(Number.isNaN)) {
+      return null;
+    }
+    const [year, month, day] = dateParts as [number, number, number];
+    const [hour, minute] = timeParts as [number, number];
+    const local = new Date(year, month - 1, day, hour, minute, 0, 0);
+    if (Number.isNaN(local.getTime())) return null;
+    return local.toISOString();
+  };
+
+  const handleScheduleMessage = async () => {
+    if (!inputContent.trim() || !activeChannelId) return;
+    const scheduledFor = buildScheduledForIso();
+    if (!scheduledFor) {
+      setSchedulingError('Please select a valid date and time.');
+      return;
+    }
+    setSchedulingError(null);
+    try {
+      const res = await fetch('/api/collaboration/scheduled-messages', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ channelId: activeChannelId, content: inputContent.trim(), scheduledFor, timezone: localTimezone })
+      });
+      const data = await res.json();
+      if (!data.success) {
+        setSchedulingError(data.error || 'Failed to schedule message.');
+        return;
+      }
+      setInputContent('');
+      setShowScheduleModal(false);
+      setScheduleDate('');
+      setScheduleTime('');
+      await loadScheduledMessages();
+      setShowScheduledPanel(true);
+    } catch {
+      setSchedulingError('Failed to schedule message.');
+    }
+  };
+
+  const handleCancelScheduledMessage = async (id: string) => {
+    try {
+      const res = await fetch(`/api/collaboration/scheduled-messages/${id}`, { method: 'DELETE' });
+      const data = await res.json();
+      if (data.success) {
+        setScheduledMessages((prev) => prev.filter((m) => m.id !== id));
+      }
+    } catch {
+      // Non-fatal — the panel keeps its current state; the user can retry.
+    }
+  };
+
+  const handleEditScheduledMessage = async (id: string, content: string) => {
+    try {
+      const res = await fetch(`/api/collaboration/scheduled-messages/${id}`, {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ content })
+      });
+      const data = await res.json();
+      if (data.success) {
+        setScheduledMessages((prev) => prev.map((m) => (m.id === id ? data.data : m)));
+        setEditingScheduledId(null);
+      }
+    } catch {
+      // Non-fatal — editing UI simply stays open for the user to retry.
     }
   };
 
@@ -1510,12 +1627,62 @@ export default function CollabChatPage() {
                 </button>
 
                 <button
-                  type="submit"
-                  disabled={!inputContent.trim()}
-                  className="px-5 py-3 bg-indigo-600 hover:bg-indigo-500 disabled:opacity-50 text-white font-semibold text-xs rounded-xl shadow-md transition"
+                  type="button"
+                  onClick={() => setShowScheduledPanel((prev) => !prev)}
+                  className={`px-3 py-3 rounded-xl border font-semibold text-xs transition ${
+                    scheduledMessages.length > 0
+                      ? 'bg-amber-100 dark:bg-amber-950/60 hover:bg-amber-200 text-amber-700 dark:text-amber-300 border-amber-200 dark:border-amber-800'
+                      : 'bg-slate-100 dark:bg-slate-800 hover:bg-slate-200 text-slate-600 dark:text-slate-300 border-slate-200 dark:border-slate-700'
+                  }`}
+                  title="Scheduled Messages"
                 >
-                  Send 🚀
+                  🕒{scheduledMessages.length > 0 ? ` ${scheduledMessages.length}` : ''}
                 </button>
+
+                <div className="relative flex">
+                  <button
+                    type="submit"
+                    disabled={!inputContent.trim()}
+                    className="px-5 py-3 bg-indigo-600 hover:bg-indigo-500 disabled:opacity-50 text-white font-semibold text-xs rounded-l-xl shadow-md transition"
+                  >
+                    Send 🚀
+                  </button>
+                  <button
+                    type="button"
+                    disabled={!inputContent.trim()}
+                    onClick={() => setShowSendMenu((prev) => !prev)}
+                    className="px-2 py-3 bg-indigo-600 hover:bg-indigo-500 disabled:opacity-50 text-white font-semibold text-xs rounded-r-xl shadow-md transition border-l border-indigo-400/40"
+                    aria-label="More send options"
+                  >
+                    ▼
+                  </button>
+                  {showSendMenu && (
+                    <div className="absolute bottom-full right-0 mb-2 w-48 bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-xl shadow-2xl overflow-hidden z-20">
+                      <button
+                        type="button"
+                        onClick={() => {
+                          setShowSendMenu(false);
+                          handleSendMessage();
+                        }}
+                        className="w-full text-left px-4 py-2.5 text-xs text-slate-700 dark:text-slate-300 hover:bg-slate-100 dark:hover:bg-slate-800"
+                      >
+                        Send Now
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => {
+                          setShowSendMenu(false);
+                          setSchedulingError(null);
+                          setShowScheduleModal(true);
+                        }}
+                        disabled={!inputContent.trim()}
+                        className="w-full text-left px-4 py-2.5 text-xs text-slate-700 dark:text-slate-300 hover:bg-slate-100 dark:hover:bg-slate-800 disabled:opacity-50"
+                      >
+                        Schedule Message
+                      </button>
+                    </div>
+                  )}
+                </div>
               </form>
             </>
           ) : (
@@ -1525,6 +1692,117 @@ export default function CollabChatPage() {
           )}
         </div>
       </div>
+
+      {/* Schedule Message Modal */}
+      {showScheduleModal && (
+        <div className="fixed inset-0 z-50 bg-black/60 backdrop-blur-xs flex items-center justify-center p-4">
+          <div className="bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-2xl w-full max-w-sm p-6 shadow-2xl space-y-4">
+            <div className="flex justify-between items-center">
+              <h3 className="text-sm font-bold text-slate-900 dark:text-white">Schedule Message</h3>
+              <button onClick={() => setShowScheduleModal(false)} className="text-slate-400 hover:text-white">✕</button>
+            </div>
+            <p className="text-xs text-slate-500 dark:text-slate-400 line-clamp-2">&ldquo;{inputContent.trim()}&rdquo;</p>
+            <div className="grid grid-cols-2 gap-3">
+              <label className="text-xs space-y-1 block">
+                <span className="text-slate-500 dark:text-slate-400 font-semibold">Date</span>
+                <input
+                  type="date"
+                  value={scheduleDate}
+                  onChange={(e) => setScheduleDate(e.target.value)}
+                  min={new Date().toISOString().slice(0, 10)}
+                  className="w-full bg-slate-100 dark:bg-slate-950 border border-slate-200 dark:border-slate-800 rounded-lg px-2 py-2 text-xs text-slate-900 dark:text-white"
+                />
+              </label>
+              <label className="text-xs space-y-1 block">
+                <span className="text-slate-500 dark:text-slate-400 font-semibold">Time</span>
+                <input
+                  type="time"
+                  value={scheduleTime}
+                  onChange={(e) => setScheduleTime(e.target.value)}
+                  className="w-full bg-slate-100 dark:bg-slate-950 border border-slate-200 dark:border-slate-800 rounded-lg px-2 py-2 text-xs text-slate-900 dark:text-white"
+                />
+              </label>
+            </div>
+            <p className="text-[10px] text-slate-400 font-mono">Timezone: {localTimezone}</p>
+            {schedulingError && <p className="text-xs text-rose-500">{schedulingError}</p>}
+            <div className="flex justify-end space-x-2 pt-2 border-t border-slate-200 dark:border-slate-800">
+              <button
+                onClick={() => setShowScheduleModal(false)}
+                className="px-4 py-2 text-xs font-semibold text-slate-500 hover:text-slate-800 dark:hover:text-white"
+              >
+                Cancel
+              </button>
+              <button
+                onClick={handleScheduleMessage}
+                disabled={!scheduleDate || !scheduleTime}
+                className="px-4 py-2 bg-indigo-600 hover:bg-indigo-500 disabled:opacity-50 text-white font-semibold text-xs rounded-xl shadow-md transition"
+              >
+                Schedule
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Scheduled Messages Panel — sender-only; never shown to recipients since these rows are
+          never CollabMessages until actually delivered. */}
+      {showScheduledPanel && (
+        <div className="fixed inset-0 z-50 bg-black/60 backdrop-blur-xs flex items-center justify-center p-4">
+          <div className="bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-2xl w-full max-w-md p-6 shadow-2xl space-y-4 max-h-[80dvh] flex flex-col">
+            <div className="flex justify-between items-center shrink-0">
+              <h3 className="text-sm font-bold text-slate-900 dark:text-white">Scheduled Messages</h3>
+              <button onClick={() => setShowScheduledPanel(false)} className="text-slate-400 hover:text-white">✕</button>
+            </div>
+            <div className="overflow-y-auto space-y-2 flex-1">
+              {scheduledMessages.length === 0 ? (
+                <p className="text-xs text-slate-400 text-center py-8">No scheduled messages for this conversation.</p>
+              ) : (
+                scheduledMessages.map((sm) => (
+                  <div key={sm.id} className="p-3 rounded-xl bg-slate-50 dark:bg-slate-950 border border-slate-200 dark:border-slate-800 space-y-2">
+                    <div className="text-[10px] font-mono text-slate-400">
+                      {new Date(sm.scheduledFor).toLocaleString()} ({sm.timezone})
+                    </div>
+                    {editingScheduledId === sm.id ? (
+                      <div className="space-y-2">
+                        <textarea
+                          defaultValue={sm.content}
+                          id={`edit-scheduled-${sm.id}`}
+                          rows={2}
+                          className="w-full bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-lg px-2 py-1.5 text-xs text-slate-900 dark:text-white resize-none"
+                        />
+                        <div className="flex justify-end space-x-2">
+                          <button onClick={() => setEditingScheduledId(null)} className="text-[11px] text-slate-400 hover:text-slate-700 dark:hover:text-white">Cancel</button>
+                          <button
+                            onClick={() => {
+                              const el = document.getElementById(`edit-scheduled-${sm.id}`) as HTMLTextAreaElement | null;
+                              if (el) handleEditScheduledMessage(sm.id, el.value);
+                            }}
+                            className="text-[11px] font-semibold text-indigo-600 dark:text-indigo-400 hover:underline"
+                          >
+                            Save
+                          </button>
+                        </div>
+                      </div>
+                    ) : (
+                      <>
+                        <p className="text-xs text-slate-700 dark:text-slate-300">{sm.content}</p>
+                        <div className="flex justify-end space-x-3">
+                          <button onClick={() => setEditingScheduledId(sm.id)} className="text-[11px] font-semibold text-indigo-600 dark:text-indigo-400 hover:underline">
+                            Edit
+                          </button>
+                          <button onClick={() => handleCancelScheduledMessage(sm.id)} className="text-[11px] font-semibold text-rose-500 hover:underline">
+                            Cancel
+                          </button>
+                        </div>
+                      </>
+                    )}
+                  </div>
+                ))
+              )}
+            </div>
+          </div>
+        </div>
+      )}
 
       {/* User Search / New DM Modal */}
       {showUserSearchModal && (

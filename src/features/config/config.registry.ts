@@ -2140,6 +2140,49 @@ export const CONFIG_REGISTRY: Record<string, RegistryConfigItem> = {
     minValue: 3600000,
     maxValue: 604800000
   },
+
+  // SCHEDULED MESSAGING — periodic worker tick that finds/claims/delivers due ScheduledMessage
+  // rows via the existing, unmodified collaborationService.sendMessage(). See
+  // scheduled-message.service.ts for the full design.
+  SCHEDULED_MESSAGE_DELIVERY_INTERVAL_MS: {
+    key: 'SCHEDULED_MESSAGE_DELIVERY_INTERVAL_MS',
+    valueType: ConfigValueType.NUMBER,
+    category: ConfigCategory.WORKER,
+    defaultValue: '30000',
+    purpose: 'Interval in milliseconds between worker ticks that find and deliver due scheduled messages. Lower values reduce delivery latency at the cost of more frequent bounded queries.',
+    description: 'Scheduled message delivery cadence.',
+    isEditable: true,
+    isHighImpact: false,
+    requiresRestart: true,
+    minValue: 5000,
+    maxValue: 300000
+  },
+  SCHEDULED_MESSAGE_MAX_DELIVERY_ATTEMPTS: {
+    key: 'SCHEDULED_MESSAGE_MAX_DELIVERY_ATTEMPTS',
+    valueType: ConfigValueType.NUMBER,
+    category: ConfigCategory.WORKER,
+    defaultValue: '3',
+    purpose: 'Maximum delivery attempts for a scheduled message before it is left in FAILED status after a transient (non-authorization) error. Mirrors NOTIFICATION_MAX_RETRIES\' convention.',
+    description: 'Scheduled message max delivery attempts.',
+    isEditable: true,
+    isHighImpact: false,
+    requiresRestart: false,
+    minValue: 1,
+    maxValue: 10
+  },
+  SCHEDULED_MESSAGE_MIN_LEAD_MINUTES: {
+    key: 'SCHEDULED_MESSAGE_MIN_LEAD_MINUTES',
+    valueType: ConfigValueType.NUMBER,
+    category: ConfigCategory.FEATURE_FLAG,
+    defaultValue: '2',
+    purpose: 'Minimum minutes a scheduled message must be in the future at creation/edit time — a small safety buffer so a message is never scheduled for an instant that may already have passed by the time the request completes.',
+    description: 'Scheduled message minimum lead time (minutes).',
+    isEditable: true,
+    isHighImpact: false,
+    requiresRestart: false,
+    minValue: 1,
+    maxValue: 60
+  },
   EMAIL_FROM_ADDRESS: {
     key: 'EMAIL_FROM_ADDRESS',
     valueType: ConfigValueType.STRING,

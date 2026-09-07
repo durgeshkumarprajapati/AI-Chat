@@ -111,6 +111,7 @@ model User {
   createdCollabChannels  CollabChannel[]        @relation("CreatedCollabChannels")
   collabMemberships      CollabChannelMember[]
   collabMessagesSent     CollabMessage[]
+  scheduledMessagesSent  ScheduledMessage[]     @relation("ScheduledMessageSender")
   collabReceipts         CollabMessageReceipt[]
   collabMentions         CollabMessageMention[] @relation("UserCollabMentions")
   createdMockTests       ScheduledMockTest[]    @relation("CreatedMockTests")
@@ -2708,6 +2709,7 @@ model CollabChannel {
   messages  CollabMessage[]
   calls     CollabCall[]
   scheduledCalls ScheduledCall[]
+  scheduledMessages ScheduledMessage[]
 
   @@index([createdById])
   @@map("collab_channels")
@@ -2775,12 +2777,61 @@ model CollabMessage {
   sharedMockTest ScheduledMockTest?    @relation("SharedMockTestMessages", fields: [sharedMockTestId], references: [id], onDelete: SetNull)
   callSession    CollabCall?           @relation("CallEventMessages", fields: [callSessionId], references: [id], onDelete: SetNull)
   scheduledCall  ScheduledCall?        @relation("ScheduledCallMessages", fields: [scheduledCallId], references: [id], onDelete: SetNull)
+  scheduledMessageSource ScheduledMessage? @relation("ScheduledMessageDelivered")
 
   @@unique([channelId, clientMessageId])
   @@index([channelId])
   @@index([senderId])
   @@index([replyToId])
   @@map("collab_messages")
+}
+
+enum ScheduledMessageStatus {
+  PENDING
+  PROCESSING
+  SENT
+  FAILED
+  CANCELLED
+}
+
+// Scheduled Messaging pass — the PENDING delivery instruction only; deliberately does NOT
+// duplicate CollabMessage's fields. Once delivered, `sentMessageId` points at the real
+// CollabMessage created via the existing, unmodified collaborationService.sendMessage() — the
+// scheduled row is never itself shown to recipients as a message. `timezone` is stored purely for
+// UI display (e.g. "10:00 AM IST") — `scheduledFor` is always the already-converted absolute UTC
+// instant, computed client-side from the user's local input before this row is ever created (see
+// scheduled-message.service.ts's own doc comment for the full timezone strategy).
+model ScheduledMessage {
+  id                   String                 @id @default(uuid())
+  channelId            String                 @map("channel_id")
+  senderId             String                 @map("sender_id")
+  content              String                 @db.Text
+  scheduledFor         DateTime               @map("scheduled_for")
+  timezone             String                 @default("UTC")
+  status               ScheduledMessageStatus @default(PENDING)
+  deliveryAttemptCount Int                    @default(0) @map("delivery_attempt_count")
+  lastAttemptAt        DateTime?              @map("last_attempt_at")
+  // Short, sanitized reason only — never a raw error message/stack trace (see the worker
+  // processor's own doc comment).
+  failureReason        String?                @map("failure_reason")
+  sentAt               DateTime?              @map("sent_at")
+  cancelledAt          DateTime?              @map("cancelled_at")
+  // Set exactly once, at successful delivery — doubles as the idempotency invariant: a row with
+  // sentMessageId already set is definitionally SENT and can never be delivered again.
+  sentMessageId        String?                @unique @map("sent_message_id")
+  createdAt            DateTime               @default(now()) @map("created_at")
+  updatedAt            DateTime               @updatedAt @map("updated_at")
+
+  channel     CollabChannel  @relation(fields: [channelId], references: [id], onDelete: Cascade)
+  sender      User           @relation("ScheduledMessageSender", fields: [senderId], references: [id], onDelete: Cascade)
+  sentMessage CollabMessage? @relation("ScheduledMessageDelivered", fields: [sentMessageId], references: [id], onDelete: SetNull)
+
+  // Supports the worker's bounded due-message query (WHERE status = 'PENDING' AND scheduled_for
+  // <= now) without a full-table scan.
+  @@index([status, scheduledFor])
+  @@index([senderId])
+  @@index([channelId])
+  @@map("scheduled_messages")
 }
 
 model CollabMessageMention {

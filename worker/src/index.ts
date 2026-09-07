@@ -17,6 +17,7 @@ import { automationExecutionProcessor } from './processors/automation-execution.
 import { memoryExtractionProcessor } from './processors/memory-extraction.processor.js';
 import { ragHealthAlertProcessor } from './processors/rag-health-alert.processor.js';
 import { ragIncidentActionProcessor } from './processors/rag-incident-action.processor.js';
+import { scheduledMessageDeliveryProcessor } from './processors/scheduled-message-delivery.processor.js';
 import {
   MultimodalJobPayload,
   AIIntelligenceJobPayload,
@@ -878,6 +879,30 @@ export async function startWorker() {
       );
     }, notificationRetentionSweepIntervalMs);
     notificationRetentionSweepInterval.unref();
+
+    // Scheduled Messaging — periodic tick that finds/claims/delivers due ScheduledMessage rows.
+    // Multi-replica safety comes from the per-row atomic claim inside deliverDueMessages() itself
+    // (UPDATE ... WHERE status = 'PENDING'), not from this scheduler lock alone — the lock here
+    // only prevents every replica from running the bounded findMany redundantly every tick.
+    const scheduledMessageDeliveryIntervalMs = await configService.getNumber('SCHEDULED_MESSAGE_DELIVERY_INTERVAL_MS', 30000);
+    const scheduledMessageDeliveryInterval = setInterval(async () => {
+      if (isShuttingDown) return;
+      await runWithSchedulerLock(
+        'scheduled-message-delivery',
+        deriveLockTtlSeconds(scheduledMessageDeliveryIntervalMs),
+        async () => {
+          try {
+            const { delivered, failed, skipped } = await scheduledMessageDeliveryProcessor.run();
+            if (delivered > 0 || failed > 0) {
+              console.log(`[Worker] Scheduled message delivery: ${delivered} delivered, ${failed} failed, ${skipped} skipped.`);
+            }
+          } catch (err) {
+            console.error('[Worker] Periodic scheduled message delivery error:', err);
+          }
+        }
+      );
+    }, scheduledMessageDeliveryIntervalMs);
+    scheduledMessageDeliveryInterval.unref();
 
     // Phase 88 — periodic DELAY-node re-check tick. RabbitMQ has no native delay; a DELAY node's
     // handler (automation-engine.service.ts) records `nextRunAt` on its AutomationExecutionStep

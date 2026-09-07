@@ -2,6 +2,7 @@ import { LLMProvider, LLMGenerateInput } from './llm.provider';
 import { ai, AI_CONFIG } from '@/lib/openai';
 import { env } from '@/config/env';
 import { DocumentProcessingError, InfrastructureError } from '@/errors';
+import { buildRagSystemPrompt } from './rag-system-prompt';
 
 export interface OpenAILLMProviderOptions {
   model?: string;
@@ -16,16 +17,7 @@ export class OpenAILLMProvider implements LLMProvider {
   }
 
   public async generateAnswer(input: LLMGenerateInput): Promise<string> {
-    const systemPrompt = `You are a document question-answering assistant.
-
-Answer the user's question using ONLY the provided document context.
-
-Rules:
-1. Do not use external knowledge.
-2. Do not invent facts or assumptions.
-3. If the context does not contain enough information to answer the question, explicitly state: "I couldn't find enough relevant information in your uploaded documents to answer that question."
-4. Every factual claim should be supported by the supplied context.
-5. Keep answers concise, factual, and well-structured.`;
+    const systemPrompt = buildRagSystemPrompt();
 
     const userPrompt = `DOCUMENT CONTEXT:
 ${input.context}
@@ -66,16 +58,7 @@ ${input.question}`;
   }
 
   public async *streamAnswer(input: LLMGenerateInput): AsyncIterable<string> {
-    const systemPrompt = `You are a document question-answering assistant.
-
-Answer the user's question using ONLY the provided document context.
-
-Rules:
-1. Do not use external knowledge.
-2. Do not invent facts or assumptions.
-3. If the context does not contain enough information to answer the question, explicitly state: "I couldn't find enough relevant information in your uploaded documents to answer that question."
-4. Every factual claim should be supported by the supplied context.
-5. Keep answers concise, factual, and well-structured.`;
+    const systemPrompt = buildRagSystemPrompt();
 
     const userPrompt = `DOCUMENT CONTEXT:
 ${input.context}

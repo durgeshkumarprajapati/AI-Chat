@@ -39,7 +39,17 @@ export type GraphRetrievalReason =
   | 'WEB_ONLY_MODE'
   | 'QUERY_NOT_GRAPH_RELEVANT'
   | 'QUERY_CLASSIFIED_GRAPH_RELEVANT'
-  | 'ALWAYS_ON_ENABLED';
+  | 'ALWAYS_ON_ENABLED'
+  /**
+   * These two only ever occur when OrchestrationInput.evaluationGraphOverride is set — never by
+   * any live user request, since no production caller (chat.service.ts, any API route) sets that
+   * field. They exist so the GraphRAG A/B comparison framework (graph-comparison.service.ts) can
+   * force each variant's decision deterministically without mutating the global, shared
+   * RAG_GRAPH_RETRIEVAL_ENABLED/RAG_GRAPH_RETRIEVAL_ALWAYS_ON env flags (which would race against
+   * concurrent live requests reading the same process-wide config).
+   */
+  | 'EVALUATION_FORCED_ON'
+  | 'EVALUATION_FORCED_OFF';
 
 export type GraphRetrievalFailureCategory =
   | 'TIMEOUT'
@@ -135,4 +145,15 @@ export interface OrchestrationInput {
    * `documentTypeFilter` (intentionally not part of the cache key).
    */
   documentIdFilter?: string[];
+  /**
+   * Evaluation-only escape hatch (GraphRAG A/B comparison framework, see
+   * graph-comparison.service.ts). Never set by any production caller. Forces
+   * maybeAugmentWithGraphContext's decision for THIS SINGLE call only — no shared/global state is
+   * read or mutated — so a true baseline-vs-graph-augmented comparison can run through the exact
+   * same orchestrator and retrieval pipeline. 'FORCE_OFF' skips graph augmentation even if
+   * RAG_GRAPH_RETRIEVAL_ENABLED is true; 'FORCE_ON' attempts it even if the query wasn't classified
+   * as graph-relevant and RAG_GRAPH_RETRIEVAL_ALWAYS_ON is false. Absent (undefined) for every
+   * existing/normal request, which is byte-identical to this field never having been added.
+   */
+  evaluationGraphOverride?: 'FORCE_ON' | 'FORCE_OFF';
 }

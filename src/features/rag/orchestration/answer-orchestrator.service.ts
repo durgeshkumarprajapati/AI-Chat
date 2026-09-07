@@ -66,7 +66,15 @@ export class AnswerOrchestratorService {
    * cache scope. No caller sets this yet, so this is a no-op for every existing request.
    */
   private shouldBypassCache(input: OrchestrationInput): boolean {
-    return Boolean(input.skipCache || input.documentTypeFilter?.length || input.documentIdFilter?.length);
+    return Boolean(
+      input.skipCache ||
+      input.documentTypeFilter?.length ||
+      input.documentIdFilter?.length ||
+      // GraphRAG A/B comparison framework (evaluationGraphOverride): a forced-on/off run must never
+      // read a stale cached answer (that would silently skip the very retrieval being compared) and
+      // must never write its forced-state answer where a later, normal request could read it back.
+      input.evaluationGraphOverride
+    );
   }
 
   /**
@@ -207,8 +215,19 @@ export class AnswerOrchestratorService {
     latencyTrace: Record<string, number>,
     requestId: string
   ): Promise<{ chunks: RetrievedChunk[]; explanation: GraphRetrievalExplanation }> {
-    const graphRetrievalEnabled = Boolean(env.server?.RAG_GRAPH_RETRIEVAL_ENABLED);
-    const graphRetrievalAlwaysOn = Boolean(env.server?.RAG_GRAPH_RETRIEVAL_ALWAYS_ON);
+    // See OrchestrationInput.evaluationGraphOverride's own doc comment — request-scoped only, no
+    // shared/global state is read or mutated here, so this never affects any concurrent request.
+    const evalOverride = input.evaluationGraphOverride;
+    const graphRetrievalEnabled = evalOverride === 'FORCE_OFF'
+      ? false
+      : evalOverride === 'FORCE_ON'
+        ? true
+        : Boolean(env.server?.RAG_GRAPH_RETRIEVAL_ENABLED);
+    const graphRetrievalAlwaysOn = evalOverride === 'FORCE_OFF'
+      ? false
+      : evalOverride === 'FORCE_ON'
+        ? true
+        : Boolean(env.server?.RAG_GRAPH_RETRIEVAL_ALWAYS_ON);
     const queryIntelligenceEnabled = Boolean(getQueryIntelligenceConfig().queryIntelligenceEnabled);
 
     const baseTrace = {
@@ -233,7 +252,14 @@ export class AnswerOrchestratorService {
         event: 'rag.retrieval.graph.completed', requestId,
         metadata: { ...baseTrace, graphDecision: 'DISABLED', graphStatus: 'DISABLED', graphChunksAdded: 0 }
       });
-      return { chunks, explanation: { attempted: false, executed: false, reason: 'FEATURE_DISABLED', success: false, ...emptyExplanationFields } };
+      return {
+        chunks,
+        explanation: {
+          attempted: false, executed: false,
+          reason: evalOverride === 'FORCE_OFF' ? 'EVALUATION_FORCED_OFF' : 'FEATURE_DISABLED',
+          success: false, ...emptyExplanationFields
+        }
+      };
     }
     if (sourceMode === 'web_only') {
       ragPerformanceTelemetryService.logEvent({
@@ -251,7 +277,9 @@ export class AnswerOrchestratorService {
     }
 
     const graphDecision = graphRetrievalAlwaysOn && !graphPriority ? 'ALWAYS_ON' : 'QUERY_CLASSIFIED';
-    const reason: GraphRetrievalReason = graphDecision === 'ALWAYS_ON' ? 'ALWAYS_ON_ENABLED' : 'QUERY_CLASSIFIED_GRAPH_RELEVANT';
+    const reason: GraphRetrievalReason = evalOverride === 'FORCE_ON'
+      ? 'EVALUATION_FORCED_ON'
+      : graphDecision === 'ALWAYS_ON' ? 'ALWAYS_ON_ENABLED' : 'QUERY_CLASSIFIED_GRAPH_RELEVANT';
     const result = await graphContextAugmenterService.augment(
       input.userId,
       effectiveQuery,

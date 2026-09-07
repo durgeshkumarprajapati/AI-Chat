@@ -2,8 +2,47 @@ import { prisma } from '@/lib/prisma';
 import { SecurityError } from '@/errors';
 import { Citation } from '../chat/chat.types';
 import { RetrievedChunk } from '../retrieval/retrieval.types';
+import { EvidenceIdEntry, parseEvidenceReferences } from './evidence-attribution';
 
 export class CitationService {
+  /**
+   * Shared per-chunk citation builder, used by both mapCitationsToAnswer (maps EVERY chunk
+   * unconditionally — kept exactly as-is for its existing pre-generation "citation candidate"
+   * callers) and mapEvidenceReferencesToCitations (maps only chunks the generated answer actually
+   * referenced by evidence identifier). Pure refactor — no behavior change to either caller.
+   */
+  private buildCitationFromChunk(chunk: RetrievedChunk, idx: number, query: string): Citation {
+    const { confidence, label } = this.calculateEvidenceConfidence(chunk);
+    const contentType = chunk.metadata?.contentType as string | undefined;
+    let displayFilename = chunk.filename;
+
+    if (contentType === 'TABLE') {
+      displayFilename = `📊 Table — ${chunk.filename}`;
+    } else if (contentType === 'IMAGE') {
+      displayFilename = `🖼 Image — ${chunk.filename}`;
+    } else if (contentType === 'CHART' || contentType === 'DIAGRAM') {
+      displayFilename = `📈 Chart — ${chunk.filename}`;
+    }
+
+    return {
+      id: `cit-${idx + 1}`,
+      index: idx + 1,
+      documentId: chunk.documentId,
+      chunkId: chunk.id,
+      filename: displayFilename,
+      pageNumber: chunk.pageNumber,
+      similarity: Number(chunk.similarity.toFixed(4)),
+      rerankScore: chunk.rerankScore ? Number(chunk.rerankScore.toFixed(4)) : undefined,
+      sourceType: chunk.retrievalSource || 'hybrid',
+      knowledgeSourceType: chunk.sourceType || 'DOCUMENT',
+      webUrl: chunk.webUrl,
+      canonicalUrl: chunk.canonicalUrl,
+      evidenceSnippet: this.createEvidenceSnippet(chunk.content, query),
+      confidence,
+      confidenceLabel: label
+    };
+  }
+
   /**
    * Deterministically extracts an evidence snippet from chunk content centered around query terms.
    * NEVER invents text, NEVER paraphrases, uses strictly DocumentChunk.content.
@@ -78,37 +117,7 @@ export class CitationService {
       return { enrichedAnswer: answer, citations: [], citationCoverage: 0 };
     }
 
-    const citations: Citation[] = chunks.map((chunk, idx) => {
-      const { confidence, label } = this.calculateEvidenceConfidence(chunk);
-      const contentType = chunk.metadata?.contentType as string | undefined;
-      let displayFilename = chunk.filename;
-
-      if (contentType === 'TABLE') {
-        displayFilename = `📊 Table — ${chunk.filename}`;
-      } else if (contentType === 'IMAGE') {
-        displayFilename = `🖼 Image — ${chunk.filename}`;
-      } else if (contentType === 'CHART' || contentType === 'DIAGRAM') {
-        displayFilename = `📈 Chart — ${chunk.filename}`;
-      }
-
-      return {
-        id: `cit-${idx + 1}`,
-        index: idx + 1,
-        documentId: chunk.documentId,
-        chunkId: chunk.id,
-        filename: displayFilename,
-        pageNumber: chunk.pageNumber,
-        similarity: Number(chunk.similarity.toFixed(4)),
-        rerankScore: chunk.rerankScore ? Number(chunk.rerankScore.toFixed(4)) : undefined,
-        sourceType: chunk.retrievalSource || 'hybrid',
-        knowledgeSourceType: chunk.sourceType || 'DOCUMENT',
-        webUrl: chunk.webUrl,
-        canonicalUrl: chunk.canonicalUrl,
-        evidenceSnippet: this.createEvidenceSnippet(chunk.content, query),
-        confidence,
-        confidenceLabel: label
-      };
-    });
+    const citations: Citation[] = chunks.map((chunk, idx) => this.buildCitationFromChunk(chunk, idx, query));
 
     // Compute citation coverage ratio: supported sentences / total sentences
     const sentences = answer
@@ -144,6 +153,39 @@ export class CitationService {
       enrichedAnswer: answer,
       citations,
       citationCoverage
+    };
+  }
+
+  /**
+   * Evidence-aware citation attribution (Phase 5 of this pass). Unlike mapCitationsToAnswer (which
+   * maps EVERY retrieved chunk to a citation unconditionally, regardless of the answer text), this
+   * builds citations ONLY from evidence the generated answer actually referenced by identifier —
+   * see evidence-attribution.ts's parseEvidenceReferences for the validation contract (a reference
+   * only ever resolves against `evidenceEntries`, this request's own in-memory registry; a
+   * fabricated/out-of-range/malformed identifier is never resolved to anything, just counted).
+   *
+   * Fallback behavior (Phase 8): if the answer contains zero valid evidence markers, this returns
+   * an EMPTY citations array — it never falls back to citing every retrieved chunk again, since
+   * that would silently reintroduce the exact "citation candidate, not proof of use" problem this
+   * phase exists to fix. The answer text itself is never altered or blocked by this method.
+   */
+  public mapEvidenceReferencesToCitations(
+    answer: string,
+    evidenceEntries: EvidenceIdEntry[],
+    query: string
+  ): { citations: Citation[]; referencedEvidenceIds: string[]; invalidEvidenceReferenceCount: number } {
+    if (!evidenceEntries || evidenceEntries.length === 0) {
+      return { citations: [], referencedEvidenceIds: [], invalidEvidenceReferenceCount: 0 };
+    }
+
+    const { referencedEntries, invalidEvidenceReferenceCount } = parseEvidenceReferences(answer, evidenceEntries);
+
+    const citations = referencedEntries.map((entry, idx) => this.buildCitationFromChunk(entry.chunk, idx, query));
+
+    return {
+      citations,
+      referencedEvidenceIds: referencedEntries.map((e) => e.evidenceId),
+      invalidEvidenceReferenceCount
     };
   }
 

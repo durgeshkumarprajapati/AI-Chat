@@ -10,6 +10,7 @@ import { ChatResponse, Citation, ConversationDetail, StreamEvent } from './chat.
 import { MessageRole, Prisma } from '@prisma/client';
 import { promptContextService } from './prompt-context.service';
 import { citationService } from '../citation/citation.service';
+import { computeEvidenceAttributionMetrics, EvidenceAttributionMetrics } from '../citation/evidence-attribution';
 import { env } from '@/config/env';
 
 export class ChatService {
@@ -132,6 +133,7 @@ export class ChatService {
     let promptTokenEstimate = 0;
     let conversationContextTokens = 0;
     let retrievedContextTokens = 0;
+    let evidenceAttribution: EvidenceAttributionMetrics | undefined;
 
     if (orchResult.cacheHit) {
       // Exact Cache Hit — validate cached citations
@@ -171,8 +173,17 @@ export class ChatService {
       });
       llmLatencyMs = Date.now() - llmStart;
 
-      const citationResult = citationService.mapCitationsToAnswer(answer, retrievedChunks, trimmedQuestion);
-      citations = await citationService.validateCitations(citationResult.citations, userId, targetKbId, retrievedChunks, orchestrationInput.sourceMode);
+      // Evidence-aware attribution (Phase 5): citations now come ONLY from evidence identifiers
+      // ([DOC-n]/[GRAPH-n]) the generated answer actually referenced — see
+      // citation.service.ts's mapEvidenceReferencesToCitations doc comment for the fallback
+      // contract (zero valid markers => empty citations, never "cite every chunk again").
+      const evidenceResult = citationService.mapEvidenceReferencesToCitations(answer, optimizedContext.evidenceEntries, trimmedQuestion);
+      citations = await citationService.validateCitations(evidenceResult.citations, userId, targetKbId, retrievedChunks, orchestrationInput.sourceMode);
+      evidenceAttribution = computeEvidenceAttributionMetrics(
+        optimizedContext.evidenceEntries.length,
+        optimizedContext.evidenceEntries.filter((e) => evidenceResult.referencedEvidenceIds.includes(e.evidenceId)),
+        evidenceResult.invalidEvidenceReferenceCount
+      );
 
       // Cache completed answer for exact matches
       await this.orchestratorService
@@ -238,7 +249,14 @@ export class ChatService {
       llmFirstTokenMs: 0,
       llmGenerationMs: llmLatencyMs,
       persistenceMs,
-      totalResponseMs: duration
+      totalResponseMs: duration,
+      ...(evidenceAttribution ? {
+        totalRetrievedEvidenceCount: evidenceAttribution.totalRetrievedEvidenceCount,
+        documentEvidenceReferencedCount: evidenceAttribution.documentEvidenceReferencedCount,
+        graphEvidenceReferencedCount: evidenceAttribution.graphEvidenceReferencedCount,
+        graphEvidenceReferencedRatio: evidenceAttribution.graphEvidenceReferencedRatio,
+        invalidEvidenceReferenceCount: evidenceAttribution.invalidEvidenceReferenceCount
+      } : {})
     };
     console.log(`[RAG Latency] conversationId=${conversationId} memory=${conversationContextMs}ms embedding=${latencyTrace.embeddingMs}ms vector=${latencyTrace.vectorMs}ms keyword=${latencyTrace.keywordMs}ms rerank=${latencyTrace.rerankMs}ms llm=${llmLatencyMs}ms persistence=${persistenceMs}ms totalResponse=${duration}ms`);
 
@@ -398,6 +416,7 @@ export class ChatService {
     let promptTokenEstimate = 0;
     let conversationContextTokens = 0;
     let retrievedContextTokens = 0;
+    let evidenceAttribution: EvidenceAttributionMetrics | undefined;
 
     if (orchResult.cacheHit) {
       answer = orchResult.answer;
@@ -461,8 +480,18 @@ export class ChatService {
       }
       llmGenerationMs = receivedFirstToken ? Date.now() - llmStart - llmFirstTokenMs : Date.now() - llmStart;
 
-      const citationResult = citationService.mapCitationsToAnswer(answer.trim(), retrievedChunks, trimmedQuestion);
-      citations = await citationService.validateCitations(citationResult.citations, userId, targetKbId, retrievedChunks, orchestrationInput.sourceMode);
+      // Evidence-aware attribution (Phase 5/6): the token-delivery loop above is fully unbuffered
+      // and untouched — every delta is yielded to the client as soon as it arrives. Only this final
+      // attribution step runs after the stream has fully completed, on the fully assembled answer
+      // text, exactly like the pre-existing mapCitationsToAnswer call it replaces did. No SSE event
+      // contract changes; the 'done' event still carries `citations`, now evidence-based.
+      const evidenceResult = citationService.mapEvidenceReferencesToCitations(answer.trim(), optimizedStreamContext.evidenceEntries, trimmedQuestion);
+      citations = await citationService.validateCitations(evidenceResult.citations, userId, targetKbId, retrievedChunks, orchestrationInput.sourceMode);
+      evidenceAttribution = computeEvidenceAttributionMetrics(
+        optimizedStreamContext.evidenceEntries.length,
+        optimizedStreamContext.evidenceEntries.filter((e) => evidenceResult.referencedEvidenceIds.includes(e.evidenceId)),
+        evidenceResult.invalidEvidenceReferenceCount
+      );
 
       // Cache exact answer
       this.orchestratorService
@@ -534,7 +563,14 @@ export class ChatService {
       llmFirstTokenMs,
       llmGenerationMs,
       persistenceMs,
-      totalResponseMs: duration
+      totalResponseMs: duration,
+      ...(evidenceAttribution ? {
+        totalRetrievedEvidenceCount: evidenceAttribution.totalRetrievedEvidenceCount,
+        documentEvidenceReferencedCount: evidenceAttribution.documentEvidenceReferencedCount,
+        graphEvidenceReferencedCount: evidenceAttribution.graphEvidenceReferencedCount,
+        graphEvidenceReferencedRatio: evidenceAttribution.graphEvidenceReferencedRatio,
+        invalidEvidenceReferenceCount: evidenceAttribution.invalidEvidenceReferenceCount
+      } : {})
     };
     console.log(`[RAG Latency] conversationId=${conversationId} memory=${conversationContextMs}ms embedding=${latencyTrace.embeddingMs}ms vector=${latencyTrace.vectorMs}ms keyword=${latencyTrace.keywordMs}ms rerank=${latencyTrace.rerankMs}ms llmFirstToken=${llmFirstTokenMs}ms llmGeneration=${llmGenerationMs}ms persistence=${persistenceMs}ms totalResponse=${duration}ms`);
 

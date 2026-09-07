@@ -1,5 +1,6 @@
 import { env } from '@/config/env';
 import { RetrievedChunk } from '../retrieval/retrieval.types';
+import { assignEvidenceIds, buildEvidenceBlockHeader, EvidenceIdEntry } from '../citation/evidence-attribution';
 
 export type PromptContextInput = {
   summary: string | null;
@@ -13,6 +14,12 @@ export type OptimizedPromptContext = {
   promptTokenEstimate: number;
   conversationContextTokens: number;
   retrievedContextTokens: number;
+  /**
+   * Request-scoped evidence identifiers for exactly the chunks included in `context` above (post
+   * budget-truncation) — the in-memory registry used to validate any [DOC-n]/[GRAPH-n] reference
+   * the LLM produces. See evidence-attribution.ts's own doc comment.
+   */
+  evidenceEntries: EvidenceIdEntry[];
 };
 
 /** Deterministically budgets prompt content without altering retrieval or citation identity. */
@@ -44,7 +51,7 @@ export class PromptContextService {
     }
 
     const selected: RetrievedChunk[] = [];
-    const evidenceParts: string[] = [];
+    const selectedContents: string[] = [];
     let evidenceTokens = 0;
     for (const chunk of input.chunks.slice(0, chunkLimit)) {
       const remaining = evidenceBudget - evidenceTokens;
@@ -52,16 +59,30 @@ export class PromptContextService {
       const content = this.truncate(chunk.content, Math.max(1, remaining - 12));
       if (!content) continue;
       selected.push(chunk);
-      evidenceParts.push(`[Document: ${chunk.filename} | Page: ${chunk.pageNumber}]\n${content}`);
+      selectedContents.push(content);
       evidenceTokens += this.estimateTokens(content) + 12;
     }
+
+    // Evidence identifiers are assigned only over the FINAL, budget-truncated `selected` list —
+    // every id handed to the LLM below corresponds to a block that is actually present in `context`.
+    const evidenceEntries = assignEvidenceIds(selected);
+    const evidenceParts = evidenceEntries.map(
+      (entry, idx) => `${buildEvidenceBlockHeader(entry)}\n${selectedContents[idx]}`
+    );
 
     const blocks = [
       ...(conversationParts.length ? [`=== CONVERSATION HISTORY ===\n${conversationParts.join('\n')}`] : []),
       `=== RETRIEVED DOCUMENT EVIDENCE ===\n${evidenceParts.join('\n\n---\n\n')}`
     ];
     const context = blocks.join('\n\n');
-    return { context, chunks: selected, promptTokenEstimate: this.estimateTokens(context), conversationContextTokens: conversationTokens, retrievedContextTokens: evidenceTokens };
+    return {
+      context,
+      chunks: selected,
+      promptTokenEstimate: this.estimateTokens(context),
+      conversationContextTokens: conversationTokens,
+      retrievedContextTokens: evidenceTokens,
+      evidenceEntries
+    };
   }
 
   private truncate(text: string, maxTokens: number): string {

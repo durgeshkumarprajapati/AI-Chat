@@ -727,6 +727,11 @@ const serverEnvSchema = z
     // query-intelligence classification once an operator opts in.
     RAG_GRAPH_RETRIEVAL_ENABLED: z.coerce.boolean().default(false),
     RAG_GRAPH_RETRIEVAL_ALWAYS_ON: z.coerce.boolean().default(false),
+    // GraphRAG A/B evaluation framework (graph-comparison.service.ts) — offline/test-only, never
+    // invoked by any production request path. Defaults off like every other new capability this
+    // session; flipping it on only gates GraphComparisonService.compareForCase itself, never any
+    // live user-facing behavior.
+    RAG_GRAPH_EVALUATION_ENABLED: z.coerce.boolean().default(false),
 
     // PHASE 74 — AI MEETING INTELLIGENCE + CLICKUP INTEGRATION + SYSTEM ARCHITECTURE EXPLORER
     MEETING_INTELLIGENCE_ENABLED: z.coerce.boolean().default(true),

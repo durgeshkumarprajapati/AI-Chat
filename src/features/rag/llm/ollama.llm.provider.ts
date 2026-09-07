@@ -1,6 +1,7 @@
 import { LLMProvider, LLMGenerateInput } from './llm.provider';
 import { env } from '@/config/env';
 import { InfrastructureError, DocumentProcessingError } from '@/errors';
+import { buildRagSystemPrompt } from './rag-system-prompt';
 
 export interface OllamaLLMProviderOptions {
   baseUrl?: string;
@@ -36,7 +37,12 @@ export class OllamaLLMProvider implements LLMProvider {
         const res = await llmGateway.generate({
           prompt: input.question,
           context: input.context,
-          systemPrompt: `You are a document question-answering assistant. Answer the user's question using ONLY the provided document context. Cite sources using [1], [2] tags.`,
+          // Was previously a DIFFERENT, inconsistent instruction ("Cite sources using [1], [2]
+          // tags") that referenced a marker format nothing in the actual prompt context produced
+          // and nothing downstream parsed for. Now the same shared prompt every other call site
+          // uses, so the gateway-routed path's citation behavior is finally consistent with the
+          // rest of the system (Phase 3's explicit "update all providers consistently" requirement).
+          systemPrompt: buildRagSystemPrompt(),
           feature: 'RAG_CHAT',
           localOnly: true
         });
@@ -46,16 +52,7 @@ export class OllamaLLMProvider implements LLMProvider {
       }
     }
 
-    const systemPrompt = `You are a document question-answering assistant.
-
-Answer the user's question using ONLY the provided document context.
-
-Rules:
-1. Do not use external knowledge.
-2. Do not invent facts or assumptions.
-3. If the context does not contain enough information to answer the question, explicitly state: "I couldn't find enough relevant information in your uploaded documents to answer that question."
-4. Every factual claim should be supported by the supplied context.
-5. Keep answers concise, factual, and well-structured.`;
+    const systemPrompt = buildRagSystemPrompt();
 
     const prompt = `DOCUMENT CONTEXT:
 ${input.context}
@@ -131,16 +128,7 @@ ${input.question}`;
   }
 
   public async *streamAnswer(input: LLMGenerateInput): AsyncIterable<string> {
-    const systemPrompt = `You are a document question-answering assistant.
-
-Answer the user's question using ONLY the provided document context.
-
-Rules:
-1. Do not use external knowledge.
-2. Do not invent facts or assumptions.
-3. If the context does not contain enough information to answer the question, explicitly state: "I couldn't find enough relevant information in your uploaded documents to answer that question."
-4. Every factual claim should be supported by the supplied context.
-5. Keep answers concise, factual, and well-structured.`;
+    const systemPrompt = buildRagSystemPrompt();
 
     const prompt = `DOCUMENT CONTEXT:
 ${input.context}

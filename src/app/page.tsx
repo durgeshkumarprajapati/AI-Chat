@@ -1,5 +1,10 @@
 import type { Metadata } from 'next';
+import { cookies } from 'next/headers';
+import { redirect } from 'next/navigation';
 import LandingPage from '@/components/landing/LandingPage';
+import { sessionService } from '@/features/auth/session.service';
+
+export const dynamic = 'force-dynamic';
 
 export const metadata: Metadata = {
   title: 'Document AI — Enterprise AI Intelligence Platform',
@@ -26,6 +31,26 @@ export const metadata: Metadata = {
   }
 };
 
-export default function Home() {
+export default async function Home() {
+  let isAuthenticated = false;
+
+  try {
+    const cookieStore = cookies();
+    const sessionToken = cookieStore.get(sessionService.COOKIE_NAME)?.value;
+
+    if (sessionToken) {
+      const user = await sessionService.validateSession(sessionToken);
+      if (user) {
+        isAuthenticated = true;
+      }
+    }
+  } catch (error) {
+    console.warn('[Home] Session validation check failed:', error);
+  }
+
+  if (isAuthenticated) {
+    redirect('/dashboard');
+  }
+
   return <LandingPage />;
 }

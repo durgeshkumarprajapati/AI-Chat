@@ -127,6 +127,10 @@ export class RagHealthAlertNotificationService {
       body: alert.detectionReason,
       metadata: {
         alertId: alert.id,
+        // Reuses the existing generic metadata.deepLink navigation resolver
+        // (notification-display.ts's getNotificationDeepLink) — no new notification type, no new
+        // navigation mechanism, just a link this already-generic resolver already knows to follow.
+        deepLink: `/admin/rag-health-alerts?alertId=${alert.id}`,
         category: alert.category,
         metric: alert.metric,
         severity: alert.severity,
@@ -148,6 +152,7 @@ export class RagHealthAlertNotificationService {
       body: 'This alert is no longer active.',
       metadata: {
         alertId: alert.id,
+        deepLink: `/admin/rag-health-alerts?alertId=${alert.id}`,
         category: alert.category,
         metric: alert.metric,
         severity: alert.severity,

@@ -1,5 +1,5 @@
 import { prisma } from '@/lib/prisma';
-import { RagHealthAlertStatus, RagHealthAlert } from '@prisma/client';
+import { RagHealthAlertStatus, RagHealthAlertSeverity, RagHealthAlertCategory, RagHealthAlert } from '@prisma/client';
 import { DetectedCondition } from './rag-health-alert-rules';
 
 /**
@@ -98,18 +98,37 @@ export class RagHealthAlertService {
 
   /** Bounded, indexed listing for the admin API — never returns more than `limit` rows. Enriches
    * each row with `notificationStatus`/`durationMs` — both computed from existing columns already
-   * on this row (no new query, no raw content). */
-  public async listAlerts(options: { status?: RagHealthAlertStatus; category?: string; limit?: number } = {}) {
+   * on this row (no new query, no raw content). `severity`/`since` (Incident Operations Dashboard
+   * pass) are additive filters: omitted, behavior is byte-identical to before. `since` filters on
+   * the already-indexed `lastDetectedAt` column (an incident's most recent activity), not a new
+   * query shape. */
+  public async listAlerts(options: {
+    status?: RagHealthAlertStatus;
+    category?: RagHealthAlertCategory;
+    severity?: RagHealthAlertSeverity;
+    since?: Date;
+    limit?: number;
+  } = {}) {
     const limit = Math.min(Math.max(options.limit ?? 50, 1), 200);
     const rows = await prisma.ragHealthAlert.findMany({
       where: {
         ...(options.status ? { status: options.status } : {}),
-        ...(options.category ? { category: options.category as never } : {})
+        ...(options.category ? { category: options.category } : {}),
+        ...(options.severity ? { severity: options.severity } : {}),
+        ...(options.since ? { lastDetectedAt: { gte: options.since } } : {})
       },
       orderBy: [{ status: 'asc' }, { lastDetectedAt: 'desc' }],
       take: limit
     });
     return rows.map((row) => this.enrichAlert(row));
+  }
+
+  /** Single-alert lookup for deep-linking (notification navigation) — the list above is bounded/
+   * paginated and cannot be relied on to contain an arbitrary older alert. Returns null (not a
+   * throw) for a missing/invalid id so callers can render a graceful "not found" state. */
+  public async getAlertById(id: string) {
+    const row = await prisma.ragHealthAlert.findUnique({ where: { id } });
+    return row ? this.enrichAlert(row) : null;
   }
 
   /** notificationStatus is derived, not stored: NOT_NOTIFIED (lastNotifiedAt is null) or NOTIFIED.

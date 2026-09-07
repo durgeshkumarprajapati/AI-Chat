@@ -109,6 +109,12 @@ function InnerAppLayout({ children }: { children: React.ReactNode }) {
                 href: '/admin/performance',
                 icon: '⚡',
                 badge: 'ADMIN'
+              },
+              {
+                name: 'RAG Incidents',
+                href: '/admin/rag-health-alerts',
+                icon: '🚨',
+                badge: 'ADMIN'
               }
             ]
           }

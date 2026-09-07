@@ -10,10 +10,12 @@ jest.mock('@/lib/auth', () => ({
 
 const mockListAlerts = jest.fn();
 const mockAcknowledgeAlert = jest.fn();
+const mockGetAlertById = jest.fn();
 jest.mock('@/features/rag/evaluation/rag-health-alert.service', () => ({
   ragHealthAlertService: {
     listAlerts: (...args: unknown[]) => mockListAlerts(...args),
-    acknowledgeAlert: (...args: unknown[]) => mockAcknowledgeAlert(...args)
+    acknowledgeAlert: (...args: unknown[]) => mockAcknowledgeAlert(...args),
+    getAlertById: (...args: unknown[]) => mockGetAlertById(...args)
   }
 }));
 
@@ -22,9 +24,19 @@ jest.mock('@/lib/prisma', () => ({
   prisma: { ragHealthAlert: { findUnique: (...args: unknown[]) => mockFindUnique(...args) } }
 }));
 
+// rag-health.service.ts pulls in the real telemetry-aggregation/config/redis/env chain at import
+// time (same class of import-time coupling seen with the notification service in the check-service
+// test) — mocked here to keep this route test isolated, using the SAME real WINDOW_MS values so
+// the time-range assertions below still reflect real behavior.
+jest.mock('@/features/rag/evaluation/rag-health.service', () => ({
+  isRagHealthTimeWindow: (value: unknown) => value === '1h' || value === '24h' || value === '7d' || value === '30d',
+  WINDOW_MS: { '1h': 3600000, '24h': 86400000, '7d': 604800000, '30d': 2592000000 }
+}));
+
 import { NextRequest } from 'next/server';
 import { requireAuthenticatedUser } from '@/lib/auth';
 import { GET } from '@/app/api/admin/rag-health-alerts/route';
+import { GET as getById } from '@/app/api/admin/rag-health-alerts/[id]/route';
 import { POST as acknowledge } from '@/app/api/admin/rag-health-alerts/[id]/acknowledge/route';
 
 describe('/api/admin/rag-health-alerts', () => {
@@ -71,6 +83,87 @@ describe('/api/admin/rag-health-alerts', () => {
     for (const alert of body.data.alerts) {
       expect(Object.keys(alert)).not.toEqual(expect.arrayContaining(['question', 'answer', 'documentContent']));
     }
+  });
+
+  it('severity filtering: passes a valid severity through, ignores an invalid one', async () => {
+    (requireAuthenticatedUser as jest.Mock).mockResolvedValue({ id: 'admin-1', role: 'ADMIN' });
+    mockListAlerts.mockResolvedValue([]);
+
+    await GET(new NextRequest('http://localhost:3000/api/admin/rag-health-alerts?severity=CRITICAL'));
+    expect(mockListAlerts).toHaveBeenCalledWith(expect.objectContaining({ severity: 'CRITICAL' }));
+
+    mockListAlerts.mockClear();
+    await GET(new NextRequest('http://localhost:3000/api/admin/rag-health-alerts?severity=NOT_REAL'));
+    expect(mockListAlerts).toHaveBeenCalledWith(expect.objectContaining({ severity: undefined }));
+  });
+
+  it('category filtering: passes a valid category through, ignores an invalid one (validated against the real enum, not accepted as an arbitrary string)', async () => {
+    (requireAuthenticatedUser as jest.Mock).mockResolvedValue({ id: 'admin-1', role: 'ADMIN' });
+    mockListAlerts.mockResolvedValue([]);
+
+    await GET(new NextRequest('http://localhost:3000/api/admin/rag-health-alerts?category=GRAPH'));
+    expect(mockListAlerts).toHaveBeenCalledWith(expect.objectContaining({ category: 'GRAPH' }));
+
+    mockListAlerts.mockClear();
+    await GET(new NextRequest('http://localhost:3000/api/admin/rag-health-alerts?category=NOT_A_REAL_CATEGORY'));
+    expect(mockListAlerts).toHaveBeenCalledWith(expect.objectContaining({ category: undefined }));
+  });
+
+  it('time-range filtering: a valid timeRange computes a `since` Date; an invalid one is ignored', async () => {
+    (requireAuthenticatedUser as jest.Mock).mockResolvedValue({ id: 'admin-1', role: 'ADMIN' });
+    mockListAlerts.mockResolvedValue([]);
+
+    await GET(new NextRequest('http://localhost:3000/api/admin/rag-health-alerts?timeRange=24h'));
+    expect(mockListAlerts).toHaveBeenCalledWith(expect.objectContaining({ since: expect.any(Date) }));
+
+    mockListAlerts.mockClear();
+    await GET(new NextRequest('http://localhost:3000/api/admin/rag-health-alerts?timeRange=45minutes'));
+    expect(mockListAlerts).toHaveBeenCalledWith(expect.objectContaining({ since: undefined }));
+  });
+
+  it('omitting every new filter param leaves listAlerts called with them undefined (backward compatible)', async () => {
+    (requireAuthenticatedUser as jest.Mock).mockResolvedValue({ id: 'admin-1', role: 'ADMIN' });
+    mockListAlerts.mockResolvedValue([]);
+
+    await GET(new NextRequest('http://localhost:3000/api/admin/rag-health-alerts'));
+
+    expect(mockListAlerts).toHaveBeenCalledWith({ status: undefined, category: undefined, severity: undefined, since: undefined, limit: undefined });
+  });
+});
+
+describe('/api/admin/rag-health-alerts/[id] (notification deep-link lookup)', () => {
+  beforeEach(() => jest.clearAllMocks());
+
+  it('rejects a non-admin caller with 403', async () => {
+    (requireAuthenticatedUser as jest.Mock).mockResolvedValue({ id: 'u1', role: 'USER' });
+
+    const res = await getById(new NextRequest('http://localhost:3000/api/admin/rag-health-alerts/a1'), { params: { id: 'a1' } });
+
+    expect(res.status).toBe(403);
+    expect(mockGetAlertById).not.toHaveBeenCalled();
+  });
+
+  it('a valid alertId resolves to the correct alert', async () => {
+    (requireAuthenticatedUser as jest.Mock).mockResolvedValue({ id: 'admin-1', role: 'ADMIN' });
+    mockGetAlertById.mockResolvedValue({ id: 'a1', category: 'CITATION', status: 'OPEN' });
+
+    const res = await getById(new NextRequest('http://localhost:3000/api/admin/rag-health-alerts/a1'), { params: { id: 'a1' } });
+    const body = await res.json();
+
+    expect(res.status).toBe(200);
+    expect(body.data.id).toBe('a1');
+    expect(mockGetAlertById).toHaveBeenCalledWith('a1');
+  });
+
+  it('a missing/invalid alertId fails safely with 404, not a crash', async () => {
+    (requireAuthenticatedUser as jest.Mock).mockResolvedValue({ id: 'admin-1', role: 'ADMIN' });
+    mockGetAlertById.mockResolvedValue(null);
+
+    const res = await getById(new NextRequest('http://localhost:3000/api/admin/rag-health-alerts/does-not-exist'), { params: { id: 'does-not-exist' } });
+    const body = await res.json();
+
+    expect(res.status).toBe(404);
+    expect(body.success).toBe(false);
   });
 });
 

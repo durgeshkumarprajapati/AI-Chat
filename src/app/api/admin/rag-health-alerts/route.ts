@@ -1,10 +1,13 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { requireAuthenticatedUser, requireRole } from '@/lib/auth';
-import { UserRole, RagHealthAlertStatus } from '@prisma/client';
+import { UserRole, RagHealthAlertStatus, RagHealthAlertSeverity, RagHealthAlertCategory } from '@prisma/client';
 import { AppError } from '@/errors';
 import { ragHealthAlertService } from '@/features/rag/evaluation/rag-health-alert.service';
+import { isRagHealthTimeWindow, WINDOW_MS } from '@/features/rag/evaluation/rag-health.service';
 
 const VALID_STATUSES: RagHealthAlertStatus[] = ['OPEN', 'ACKNOWLEDGED', 'RESOLVED'];
+const VALID_SEVERITIES: RagHealthAlertSeverity[] = ['WARNING', 'CRITICAL'];
+const VALID_CATEGORIES: RagHealthAlertCategory[] = ['CITATION', 'GRAPH', 'RETRIEVAL', 'RELIABILITY'];
 
 /**
  * Current active alerts + alert history (Phase 6). Reuses the exact same admin auth pattern as
@@ -21,11 +24,22 @@ async function handleGet(req: NextRequest) {
     const status = statusParam && VALID_STATUSES.includes(statusParam as RagHealthAlertStatus)
       ? (statusParam as RagHealthAlertStatus)
       : undefined;
-    const category = req.nextUrl.searchParams.get('category') || undefined;
+    const categoryParam = req.nextUrl.searchParams.get('category');
+    const category = categoryParam && VALID_CATEGORIES.includes(categoryParam as RagHealthAlertCategory)
+      ? (categoryParam as RagHealthAlertCategory)
+      : undefined;
+    // Incident Operations Dashboard pass — additive severity + time-range filters. Both undefined
+    // for every pre-existing caller, so listAlerts()'s where clause is unchanged when omitted.
+    const severityParam = req.nextUrl.searchParams.get('severity');
+    const severity = severityParam && VALID_SEVERITIES.includes(severityParam as RagHealthAlertSeverity)
+      ? (severityParam as RagHealthAlertSeverity)
+      : undefined;
+    const timeRangeParam = req.nextUrl.searchParams.get('timeRange');
+    const since = isRagHealthTimeWindow(timeRangeParam) ? new Date(Date.now() - WINDOW_MS[timeRangeParam]) : undefined;
     const limitParam = req.nextUrl.searchParams.get('limit');
     const limit = limitParam ? Number(limitParam) : undefined;
 
-    const alerts = await ragHealthAlertService.listAlerts({ status, category, limit });
+    const alerts = await ragHealthAlertService.listAlerts({ status, category, severity, since, limit });
 
     return NextResponse.json({
       success: true,

@@ -34,7 +34,9 @@ import { telemetryAggregationService } from '@/features/performance/telemetry-ag
 
 export type RagHealthTimeWindow = '1h' | '24h' | '7d' | '30d';
 
-const WINDOW_MS: Record<RagHealthTimeWindow, number> = {
+// Exported (Incident Operations Dashboard pass) so the alert API's time-range filter can reuse
+// this exact mapping rather than duplicating a second 1h/24h/7d/30d -> ms table.
+export const WINDOW_MS: Record<RagHealthTimeWindow, number> = {
   '1h': 60 * 60 * 1000,
   '24h': 24 * 60 * 60 * 1000,
   '7d': 7 * 24 * 60 * 60 * 1000,

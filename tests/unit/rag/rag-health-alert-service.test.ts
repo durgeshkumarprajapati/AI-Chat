@@ -131,4 +131,52 @@ describe('RagHealthAlertService.listAlerts', () => {
       expect(Object.keys(alert)).not.toEqual(expect.arrayContaining(['question', 'answer', 'documentContent']));
     }
   });
+
+  it('severity filtering: passed through to the where clause only when provided', async () => {
+    mockFindMany.mockResolvedValue([]);
+    await ragHealthAlertService.listAlerts({ severity: 'CRITICAL' });
+
+    expect(mockFindMany).toHaveBeenCalledWith(expect.objectContaining({
+      where: expect.objectContaining({ severity: 'CRITICAL' })
+    }));
+  });
+
+  it('time-range filtering: `since` is applied against the already-indexed lastDetectedAt column', async () => {
+    mockFindMany.mockResolvedValue([]);
+    const since = new Date('2026-01-01T00:00:00Z');
+    await ragHealthAlertService.listAlerts({ since });
+
+    expect(mockFindMany).toHaveBeenCalledWith(expect.objectContaining({
+      where: expect.objectContaining({ lastDetectedAt: { gte: since } })
+    }));
+  });
+
+  it('omitting severity/since leaves the where clause unchanged from before this extension', async () => {
+    mockFindMany.mockResolvedValue([]);
+    await ragHealthAlertService.listAlerts({ status: 'OPEN' });
+
+    expect(mockFindMany).toHaveBeenCalledWith(expect.objectContaining({
+      where: { status: 'OPEN' }
+    }));
+  });
+});
+
+describe('RagHealthAlertService.getAlertById', () => {
+  it('returns the enriched alert for an existing id', async () => {
+    mockFindUnique.mockResolvedValue({ id: 'a1', status: 'OPEN', firstDetectedAt: new Date(), resolvedAt: null, lastNotifiedAt: null });
+
+    const result = await ragHealthAlertService.getAlertById('a1');
+
+    expect(result).not.toBeNull();
+    expect(result?.id).toBe('a1');
+    expect(result?.notificationStatus).toBe('NOT_NOTIFIED');
+  });
+
+  it('returns null (not a throw) for a missing id, so callers can fail safely', async () => {
+    mockFindUnique.mockResolvedValue(null);
+
+    const result = await ragHealthAlertService.getAlertById('does-not-exist');
+
+    expect(result).toBeNull();
+  });
 });

@@ -4,8 +4,6 @@ import { redirect } from 'next/navigation';
 import LandingPage from '@/components/landing/LandingPage';
 import { sessionService } from '@/features/auth/session.service';
 
-export const dynamic = 'force-dynamic';
-
 export const metadata: Metadata = {
   title: 'Document AI — Enterprise AI Intelligence Platform',
   description: 'Transform enterprise documents, knowledge and workflows into grounded, actionable AI intelligence with state-of-the-art OCR, RAG Chat, and Knowledge Graphs.',

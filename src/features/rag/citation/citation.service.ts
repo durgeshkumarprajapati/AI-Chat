@@ -173,19 +173,31 @@ export class CitationService {
     answer: string,
     evidenceEntries: EvidenceIdEntry[],
     query: string
-  ): { citations: Citation[]; referencedEvidenceIds: string[]; invalidEvidenceReferenceCount: number } {
+  ): {
+    citations: Citation[];
+    referencedEvidenceIds: string[];
+    invalidEvidenceReferenceCount: number;
+    duplicateReferenceCount: number;
+    malformedReferenceCount: number;
+  } {
     if (!evidenceEntries || evidenceEntries.length === 0) {
-      return { citations: [], referencedEvidenceIds: [], invalidEvidenceReferenceCount: 0 };
+      return {
+        citations: [], referencedEvidenceIds: [],
+        invalidEvidenceReferenceCount: 0, duplicateReferenceCount: 0, malformedReferenceCount: 0
+      };
     }
 
-    const { referencedEntries, invalidEvidenceReferenceCount } = parseEvidenceReferences(answer, evidenceEntries);
+    const { referencedEntries, invalidEvidenceReferenceCount, duplicateReferenceCount, malformedReferenceCount } =
+      parseEvidenceReferences(answer, evidenceEntries);
 
     const citations = referencedEntries.map((entry, idx) => this.buildCitationFromChunk(entry.chunk, idx, query));
 
     return {
       citations,
       referencedEvidenceIds: referencedEntries.map((e) => e.evidenceId),
-      invalidEvidenceReferenceCount
+      invalidEvidenceReferenceCount,
+      duplicateReferenceCount,
+      malformedReferenceCount
     };
   }
 

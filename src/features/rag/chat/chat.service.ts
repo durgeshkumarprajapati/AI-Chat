@@ -182,7 +182,9 @@ export class ChatService {
       evidenceAttribution = computeEvidenceAttributionMetrics(
         optimizedContext.evidenceEntries.length,
         optimizedContext.evidenceEntries.filter((e) => evidenceResult.referencedEvidenceIds.includes(e.evidenceId)),
-        evidenceResult.invalidEvidenceReferenceCount
+        evidenceResult.invalidEvidenceReferenceCount,
+        evidenceResult.duplicateReferenceCount,
+        evidenceResult.malformedReferenceCount
       );
 
       // Cache completed answer for exact matches
@@ -255,7 +257,19 @@ export class ChatService {
         documentEvidenceReferencedCount: evidenceAttribution.documentEvidenceReferencedCount,
         graphEvidenceReferencedCount: evidenceAttribution.graphEvidenceReferencedCount,
         graphEvidenceReferencedRatio: evidenceAttribution.graphEvidenceReferencedRatio,
-        invalidEvidenceReferenceCount: evidenceAttribution.invalidEvidenceReferenceCount
+        invalidEvidenceReferenceCount: evidenceAttribution.invalidEvidenceReferenceCount,
+        // New (reliability-hardening pass) numeric metrics — see EvidenceAttributionMetrics's own
+        // doc comments for precise definitions. attributionQuality/uncitedAnswer are NOT numeric
+        // (an enum string and a boolean), so they're surfaced as their own top-level response
+        // fields instead (see the return statement below), not inside this numbers-only bag.
+        citationRequestedEvidenceCount: evidenceAttribution.citationRequestedEvidenceCount,
+        citationReferencedEvidenceCount: evidenceAttribution.citationReferencedEvidenceCount,
+        citationInvalidReferenceCount: evidenceAttribution.citationInvalidReferenceCount,
+        citationDuplicateReferenceCount: evidenceAttribution.citationDuplicateReferenceCount,
+        citationMalformedReferenceCount: evidenceAttribution.citationMalformedReferenceCount,
+        citationCoverageRatio: evidenceAttribution.citationCoverageRatio,
+        documentCitationCount: evidenceAttribution.documentCitationCount,
+        graphCitationCount: evidenceAttribution.graphCitationCount
       } : {})
     };
     console.log(`[RAG Latency] conversationId=${conversationId} memory=${conversationContextMs}ms embedding=${latencyTrace.embeddingMs}ms vector=${latencyTrace.vectorMs}ms keyword=${latencyTrace.keywordMs}ms rerank=${latencyTrace.rerankMs}ms llm=${llmLatencyMs}ms persistence=${persistenceMs}ms totalResponse=${duration}ms`);
@@ -300,7 +314,9 @@ export class ChatService {
       rerankCalled: orchResult.rerankCalled,
       recoveryAttempted: orchResult.recoveryAttempted,
       recoveryAttempts: orchResult.recoveryAttempts,
-      latencyTrace
+      latencyTrace,
+      attributionQuality: evidenceAttribution?.attributionQuality,
+      uncitedAnswer: evidenceAttribution?.uncitedAnswer
     };
   }
 
@@ -490,7 +506,9 @@ export class ChatService {
       evidenceAttribution = computeEvidenceAttributionMetrics(
         optimizedStreamContext.evidenceEntries.length,
         optimizedStreamContext.evidenceEntries.filter((e) => evidenceResult.referencedEvidenceIds.includes(e.evidenceId)),
-        evidenceResult.invalidEvidenceReferenceCount
+        evidenceResult.invalidEvidenceReferenceCount,
+        evidenceResult.duplicateReferenceCount,
+        evidenceResult.malformedReferenceCount
       );
 
       // Cache exact answer
@@ -569,7 +587,15 @@ export class ChatService {
         documentEvidenceReferencedCount: evidenceAttribution.documentEvidenceReferencedCount,
         graphEvidenceReferencedCount: evidenceAttribution.graphEvidenceReferencedCount,
         graphEvidenceReferencedRatio: evidenceAttribution.graphEvidenceReferencedRatio,
-        invalidEvidenceReferenceCount: evidenceAttribution.invalidEvidenceReferenceCount
+        invalidEvidenceReferenceCount: evidenceAttribution.invalidEvidenceReferenceCount,
+        citationRequestedEvidenceCount: evidenceAttribution.citationRequestedEvidenceCount,
+        citationReferencedEvidenceCount: evidenceAttribution.citationReferencedEvidenceCount,
+        citationInvalidReferenceCount: evidenceAttribution.citationInvalidReferenceCount,
+        citationDuplicateReferenceCount: evidenceAttribution.citationDuplicateReferenceCount,
+        citationMalformedReferenceCount: evidenceAttribution.citationMalformedReferenceCount,
+        citationCoverageRatio: evidenceAttribution.citationCoverageRatio,
+        documentCitationCount: evidenceAttribution.documentCitationCount,
+        graphCitationCount: evidenceAttribution.graphCitationCount
       } : {})
     };
     console.log(`[RAG Latency] conversationId=${conversationId} memory=${conversationContextMs}ms embedding=${latencyTrace.embeddingMs}ms vector=${latencyTrace.vectorMs}ms keyword=${latencyTrace.keywordMs}ms rerank=${latencyTrace.rerankMs}ms llmFirstToken=${llmFirstTokenMs}ms llmGeneration=${llmGenerationMs}ms persistence=${persistenceMs}ms totalResponse=${duration}ms`);
@@ -601,7 +627,9 @@ export class ChatService {
       messageId: assistantMessage.id,
       answer: finalAnswer,
       citations,
-      latencyTrace
+      latencyTrace,
+      attributionQuality: evidenceAttribution?.attributionQuality,
+      uncitedAnswer: evidenceAttribution?.uncitedAnswer
     };
   }
 

@@ -1,3 +1,5 @@
+import { AttributionQuality } from '../citation/evidence-attribution';
+
 export interface Citation {
   id?: string;
   index?: number;
@@ -57,6 +59,11 @@ export interface ChatResponse {
   recoveryAttempted?: boolean;
   recoveryAttempts?: number;
   latencyTrace?: Record<string, number>;
+  /** Deterministic attribution-quality classification (see evidence-attribution.ts's
+   * classifyAttributionQuality doc comment) — only present for grounded/LLM-generated answers. */
+  attributionQuality?: AttributionQuality;
+  /** True when retrieved evidence existed but the answer cited none of it. */
+  uncitedAnswer?: boolean;
 }
 
 export type StreamEvent =
@@ -88,5 +95,7 @@ export type StreamEvent =
       answer: string;
       citations: Citation[];
       latencyTrace?: Record<string, number>;
+      attributionQuality?: AttributionQuality;
+      uncitedAnswer?: boolean;
     }
   | { type: 'error'; message: string };

@@ -54,7 +54,10 @@ describe('CitationService.mapEvidenceReferencesToCitations', () => {
 
   it('returns empty immediately when no evidence entries were ever presented to the LLM', () => {
     const result = citationService.mapEvidenceReferencesToCitations('[DOC-1]', [], 'q');
-    expect(result).toEqual({ citations: [], referencedEvidenceIds: [], invalidEvidenceReferenceCount: 0 });
+    expect(result).toEqual({
+      citations: [], referencedEvidenceIds: [],
+      invalidEvidenceReferenceCount: 0, duplicateReferenceCount: 0, malformedReferenceCount: 0
+    });
   });
 
   it('does not affect mapCitationsToAnswer\'s existing unconditional-mapping behavior (backward compatibility)', () => {

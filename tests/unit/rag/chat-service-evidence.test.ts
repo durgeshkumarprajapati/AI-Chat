@@ -97,6 +97,56 @@ describe('ChatService — evidence-aware citation attribution (non-streaming)', 
     expect(result.latencyTrace?.documentEvidenceReferencedCount).toBe(1);
     expect(result.latencyTrace?.graphEvidenceReferencedCount).toBe(1);
     expect(result.latencyTrace?.invalidEvidenceReferenceCount).toBe(0);
+    expect(result.latencyTrace?.citationCoverageRatio).toBe(1);
+    expect(result.attributionQuality).toBe('VALID_REFERENCES');
+    expect(result.uncitedAnswer).toBe(false);
+  });
+
+  it('11/12. duplicate references are deduplicated into a single citation, and ownership validation still executes', async () => {
+    const fakeOrchestrator = buildFakeOrchestrator();
+    const fakeContext = buildFakeContextService();
+    const fakeLLM = {
+      generateAnswer: jest.fn().mockResolvedValue('MFA is required [DOC-1]. As stated [DOC-1], this is mandatory [DOC-1].'),
+      streamAnswer: jest.fn()
+    };
+    const chatService = new ChatService(undefined, fakeLLM as any, fakeContext as any, fakeOrchestrator as any);
+
+    const result = await chatService.sendMessage(TEST_USER_ID, { question: 'q' });
+
+    expect(result.citations).toHaveLength(1);
+    expect(result.latencyTrace?.citationDuplicateReferenceCount).toBe(2);
+  });
+
+  it('malformed markers are recorded distinctly and surface attributionQuality=INVALID_REFERENCES_PRESENT', async () => {
+    const fakeOrchestrator = buildFakeOrchestrator();
+    const fakeContext = buildFakeContextService();
+    const fakeLLM = {
+      generateAnswer: jest.fn().mockResolvedValue('MFA is required [DOC-1], see also [DOC-X] for details.'),
+      streamAnswer: jest.fn()
+    };
+    const chatService = new ChatService(undefined, fakeLLM as any, fakeContext as any, fakeOrchestrator as any);
+
+    const result = await chatService.sendMessage(TEST_USER_ID, { question: 'q' });
+
+    expect(result.citations).toHaveLength(1);
+    expect(result.latencyTrace?.citationMalformedReferenceCount).toBe(1);
+    expect(result.attributionQuality).toBe('INVALID_REFERENCES_PRESENT');
+  });
+
+  it('uncitedAnswer=true and attributionQuality=NO_REFERENCES when evidence existed but nothing was cited', async () => {
+    const fakeOrchestrator = buildFakeOrchestrator();
+    const fakeContext = buildFakeContextService();
+    const fakeLLM = {
+      generateAnswer: jest.fn().mockResolvedValue('MFA is required for all production logins.'),
+      streamAnswer: jest.fn()
+    };
+    const chatService = new ChatService(undefined, fakeLLM as any, fakeContext as any, fakeOrchestrator as any);
+
+    const result = await chatService.sendMessage(TEST_USER_ID, { question: 'q' });
+
+    expect(result.citations).toEqual([]);
+    expect(result.uncitedAnswer).toBe(true);
+    expect(result.attributionQuality).toBe('NO_REFERENCES');
   });
 
   it('produces zero citations (not all retrieved chunks) when the answer cites nothing (Phase 8 fallback)', async () => {
@@ -157,6 +207,10 @@ describe('ChatService — evidence-aware citation attribution (streaming)', () =
     expect(doneEvent.citations).toHaveLength(1);
     expect(doneEvent.citations[0].chunkId).toBe('chunk-doc-1');
     expect(doneEvent.answer).toBe(tokens.join('').trim());
+    // Only 1 of the 2 presented evidence entries (DOC_CHUNK + GRAPH_CHUNK) was cited — correctly
+    // PARTIAL_REFERENCES, not VALID_REFERENCES (which requires ALL presented evidence to be cited).
+    expect(doneEvent.attributionQuality).toBe('PARTIAL_REFERENCES');
+    expect(doneEvent.uncitedAnswer).toBe(false);
   });
 
   it('the preliminary "start" event never blocks token delivery and citations are only finalized at "done"', async () => {

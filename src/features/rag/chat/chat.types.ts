@@ -7,7 +7,7 @@ export interface Citation {
   pageNumber: number;
   similarity: number;
   rerankScore?: number;
-  sourceType?: 'vector' | 'keyword' | 'hybrid';
+  sourceType?: 'vector' | 'keyword' | 'hybrid' | 'graph';
   knowledgeSourceType?: 'DOCUMENT' | 'WEB';
   webUrl?: string;
   canonicalUrl?: string;

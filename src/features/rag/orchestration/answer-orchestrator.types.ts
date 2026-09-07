@@ -27,6 +27,60 @@ export interface EvidenceAssessmentResult {
   suggestedAction?: UserAction;
 }
 
+/**
+ * Why graph retrieval was or wasn't attempted for this request — only reasons that correspond to
+ * a real branch in AnswerOrchestratorService.maybeAugmentWithGraphContext. Not exposed to end
+ * users; consumed internally (debug logging / the rag.retrieval.graph.completed telemetry event /
+ * this field on OrchestratedAnswer, for any internal caller that wants structured access instead
+ * of parsing log lines).
+ */
+export type GraphRetrievalReason =
+  | 'FEATURE_DISABLED'
+  | 'WEB_ONLY_MODE'
+  | 'QUERY_NOT_GRAPH_RELEVANT'
+  | 'QUERY_CLASSIFIED_GRAPH_RELEVANT'
+  | 'ALWAYS_ON_ENABLED';
+
+export type GraphRetrievalFailureCategory =
+  | 'TIMEOUT'
+  | 'DATABASE_FAILURE'
+  | 'GRAPH_QUERY_FAILURE'
+  | 'EVIDENCE_LOOKUP_FAILURE'
+  | 'UNEXPECTED_ERROR';
+
+/**
+ * Structured, internal-only explanation of graph augmentation for this request. Present on
+ * OrchestratedAnswer only when the request reached the standard (non-web-only, non-auto,
+ * non-web-search/discovery) retrieval branch — see graph-context-augmenter.service.ts's own
+ * source-mode documentation for exactly which modes that covers.
+ *
+ * `graphChunksInCitationCandidates` is deliberately named for what it actually measures: how many
+ * graph-sourced chunks survived into the citation CANDIDATE list built by
+ * citationService.mapCitationsToAnswer (which runs before LLM generation, on an empty answer
+ * string). It is NOT proof the LLM's final generated text actually referenced a graph citation —
+ * that would require the citation-finalization step in chat.service.ts (which parses the LLM's
+ * raw output for citation markers, after generation) to also report which chunks survived, which
+ * is a genuinely separate, currently-unbuilt capability. See this field's own doc comment.
+ */
+export interface GraphRetrievalExplanation {
+  attempted: boolean;
+  executed: boolean;
+  reason: GraphRetrievalReason;
+  priority?: boolean;
+  success: boolean;
+  failureCategory?: GraphRetrievalFailureCategory;
+  entitiesFound: number;
+  relationshipsFound: number;
+  evidenceFound: number;
+  chunksAdded: number;
+  chunksDeduplicated: number;
+  chunksDroppedByLimit: number;
+  /** See this interface's own doc comment above — a citation-candidate count, not proof of final-
+   * answer usage. Only populated once citations have actually been computed for this request. */
+  graphChunksInCitationCandidates?: number;
+  latencyMs?: number;
+}
+
 export interface OrchestratedAnswer {
   conversationId: string;
   messageId?: string;
@@ -49,6 +103,9 @@ export interface OrchestratedAnswer {
   recoveryAttempts: number;
   latencyTrace: Record<string, number>;
   sourceEvidenceFingerprint?: string;
+  /** Only present when the request reached the standard retrieval branch — see
+   * GraphRetrievalExplanation's own doc comment for exactly what it covers and its limitations. */
+  graphRetrieval?: GraphRetrievalExplanation;
 }
 
 export interface OrchestrationInput {

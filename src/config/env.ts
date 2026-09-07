@@ -719,7 +719,13 @@ const serverEnvSchema = z
     RAG_FAST_PATH_ENABLED: z.coerce.boolean().default(true),
     RAG_FAST_PATH_CONFIDENCE_THRESHOLD: z.coerce.number().min(0).max(1).default(0.90),
     RAG_GRACEFUL_DEGRADATION_ENABLED: z.coerce.boolean().default(true),
-    RAG_GRAPH_RETRIEVAL_ENABLED: z.coerce.boolean().default(true),
+    // Default flipped to false: this flag existed but had zero readers anywhere in the codebase
+    // until it was wired into answer-orchestrator.service.ts (graph-context-augmenter.service.ts
+    // integration) — defaulting it on the moment it becomes live would be an unexpected behavior
+    // change for every existing deployment that never set this var. RAG_GRAPH_RETRIEVAL_ALWAYS_ON
+    // (below) is the pre-existing, already-designed escape hatch for forcing it on regardless of
+    // query-intelligence classification once an operator opts in.
+    RAG_GRAPH_RETRIEVAL_ENABLED: z.coerce.boolean().default(false),
     RAG_GRAPH_RETRIEVAL_ALWAYS_ON: z.coerce.boolean().default(false),
 
     // PHASE 74 — AI MEETING INTELLIGENCE + CLICKUP INTEGRATION + SYSTEM ARCHITECTURE EXPLORER

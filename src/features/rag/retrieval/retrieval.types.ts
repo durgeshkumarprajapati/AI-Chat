@@ -11,7 +11,7 @@ export interface RetrievedChunk {
   keywordScore?: number;
   hybridScore?: number;
   rerankScore?: number;
-  retrievalSource?: 'vector' | 'keyword' | 'hybrid';
+  retrievalSource?: 'vector' | 'keyword' | 'hybrid' | 'graph';
   sourceType?: 'DOCUMENT' | 'WEB';
   webUrl?: string;
   canonicalUrl?: string;

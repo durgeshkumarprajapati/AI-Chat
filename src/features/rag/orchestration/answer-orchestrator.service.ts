@@ -6,7 +6,7 @@ import { RetrievedChunk, RetrievalOptions } from '../retrieval/retrieval.types';
 import { Reranker } from '../retrieval/reranker';
 import { evidenceAssessmentService, EvidenceAssessmentService } from './evidence-assessment.service';
 import { webDiscoveryService } from '../web-discovery/web-discovery.service';
-import { AnswerMode, OrchestrationInput, OrchestratedAnswer, UserAction } from './answer-orchestrator.types';
+import { AnswerMode, OrchestrationInput, OrchestratedAnswer, UserAction, GraphRetrievalExplanation, GraphRetrievalReason } from './answer-orchestrator.types';
 import { getLLMProvider } from '../llm/llm.provider.factory';
 import { LLMProvider } from '../llm/llm.provider';
 import { Citation } from '../chat/chat.types';
@@ -29,11 +29,16 @@ import { queryNormalizer } from '../cache/query-normalizer';
 import { singleFlightService } from '../cache/single-flight.service';
 import { ragExecutionContextManager } from '../performance/rag-execution-context';
 import { ragPerformanceTelemetryService } from '../performance/rag-telemetry.service';
+import { graphContextAugmenterService } from '../retrieval/graph-context-augmenter.service';
 
 interface IntelligentRetrievalPlan {
   retrievalOverrides: Partial<RetrievalOptions>;
   rerankerOverride?: Reranker;
   analysis?: QueryIntelligenceResult;
+  /** From strategySelectorService.selectStrategy() — previously computed and discarded without
+   * ever being propagated out of computeIntelligentRetrievalOptions. Now surfaced so
+   * maybeAugmentWithGraphContext can use it as the query-relevance gate for graph retrieval. */
+  graphPriority?: boolean;
 }
 
 export class AnswerOrchestratorService {
@@ -98,6 +103,7 @@ export class AnswerOrchestratorService {
       const retrievalOverrides: Partial<RetrievalOptions> = {};
       let rerankerOverride: Reranker | undefined;
       let boostDocumentIds: string[] = [];
+      let graphPriority: boolean | undefined;
 
       if (config.queryRoutingEnabled) {
         const routing = await documentRoutingService.route(input.userId, analysis, input.knowledgeBaseId);
@@ -133,6 +139,7 @@ export class AnswerOrchestratorService {
         const strategy = strategySelectorService.selectStrategy(analysis.intent, baseVectorWeight, baseKeywordWeight);
         retrievalOverrides.vectorWeight = strategy.vectorWeight;
         retrievalOverrides.keywordWeight = strategy.keywordWeight;
+        graphPriority = strategy.graphPriority;
         queryIntelligenceTelemetryService.logEvent({
           event: 'rag.strategy.selected',
           userId: input.userId,
@@ -169,11 +176,144 @@ export class AnswerOrchestratorService {
         });
       }
 
-      return { retrievalOverrides, rerankerOverride, analysis };
+      return { retrievalOverrides, rerankerOverride, analysis, graphPriority };
     } catch (err) {
       console.warn('[AnswerOrchestratorService] computeIntelligentRetrievalOptions failed (falling back to existing behavior):', err);
       return { retrievalOverrides: {} };
     }
+  }
+
+  /**
+   * Connects the previously-unreachable Knowledge Graph retrieval machinery to the live answer
+   * path. Master-gated by RAG_GRAPH_RETRIEVAL_ENABLED (defaults false — this capability has never
+   * run in production, so it must stay fully inert until an operator explicitly opts in). When
+   * enabled, runs only for queries the existing (Phase 69B) query-intelligence system already
+   * flags as graph-relevant (`graphPriority`) — unless RAG_GRAPH_RETRIEVAL_ALWAYS_ON is set,
+   * which forces it for every request regardless of that classification (an explicit escape
+   * hatch, not the default). Irrelevant for web-only answers, since graph entities are extracted
+   * only from uploaded documents. Never throws — GraphContextAugmenterService itself already
+   * falls back to the unmodified chunk list on any internal failure; this wrapper only adds the
+   * flag/mode gating on top, plus the production observability (decision trace + timings) for
+   * whichever path was taken, gated or not — every request that reaches this method logs exactly
+   * one `rag.retrieval.graph.completed` telemetry event, reusing the event name already
+   * pre-declared (but previously unfired) in rag-telemetry.service.ts.
+   */
+  private async maybeAugmentWithGraphContext(
+    input: OrchestrationInput,
+    effectiveQuery: string,
+    chunks: RetrievedChunk[],
+    sourceMode: string,
+    graphPriority: boolean | undefined,
+    latencyTrace: Record<string, number>,
+    requestId: string
+  ): Promise<{ chunks: RetrievedChunk[]; explanation: GraphRetrievalExplanation }> {
+    const graphRetrievalEnabled = Boolean(env.server?.RAG_GRAPH_RETRIEVAL_ENABLED);
+    const graphRetrievalAlwaysOn = Boolean(env.server?.RAG_GRAPH_RETRIEVAL_ALWAYS_ON);
+    const queryIntelligenceEnabled = Boolean(getQueryIntelligenceConfig().queryIntelligenceEnabled);
+
+    const baseTrace = {
+      sourceMode,
+      queryIntelligenceEnabled,
+      graphPriority: graphPriority ?? false,
+      graphRetrievalEnabled,
+      graphRetrievalAlwaysOn
+    };
+    const emptyExplanationFields = {
+      entitiesFound: 0, relationshipsFound: 0, evidenceFound: 0,
+      chunksAdded: 0, chunksDeduplicated: 0, chunksDroppedByLimit: 0
+    };
+
+    // Each of these is a distinct, traceable reason the augmenter is never even called — matches
+    // Phase 2's requested DISABLED / SKIPPED_SOURCE_MODE / SKIPPED_NOT_GRAPH_PRIORITY states (kept
+    // as the existing telemetry event's own vocabulary — see graphDecision/graphStatus below) and
+    // this same decision surfaced separately as the newer, more precisely-named
+    // GraphRetrievalReason on the structured explanation object returned to the caller.
+    if (!graphRetrievalEnabled) {
+      ragPerformanceTelemetryService.logEvent({
+        event: 'rag.retrieval.graph.completed', requestId,
+        metadata: { ...baseTrace, graphDecision: 'DISABLED', graphStatus: 'DISABLED', graphChunksAdded: 0 }
+      });
+      return { chunks, explanation: { attempted: false, executed: false, reason: 'FEATURE_DISABLED', success: false, ...emptyExplanationFields } };
+    }
+    if (sourceMode === 'web_only') {
+      ragPerformanceTelemetryService.logEvent({
+        event: 'rag.retrieval.graph.completed', requestId,
+        metadata: { ...baseTrace, graphDecision: 'SOURCE_MODE_EXCLUDED', graphStatus: 'SKIPPED_SOURCE_MODE', graphChunksAdded: 0 }
+      });
+      return { chunks, explanation: { attempted: false, executed: false, reason: 'WEB_ONLY_MODE', priority: graphPriority, success: false, ...emptyExplanationFields } };
+    }
+    if (!graphRetrievalAlwaysOn && !graphPriority) {
+      ragPerformanceTelemetryService.logEvent({
+        event: 'rag.retrieval.graph.completed', requestId,
+        metadata: { ...baseTrace, graphDecision: 'NOT_CLASSIFIED', graphStatus: 'SKIPPED_NOT_GRAPH_PRIORITY', graphChunksAdded: 0 }
+      });
+      return { chunks, explanation: { attempted: true, executed: false, reason: 'QUERY_NOT_GRAPH_RELEVANT', priority: graphPriority, success: false, ...emptyExplanationFields } };
+    }
+
+    const graphDecision = graphRetrievalAlwaysOn && !graphPriority ? 'ALWAYS_ON' : 'QUERY_CLASSIFIED';
+    const reason: GraphRetrievalReason = graphDecision === 'ALWAYS_ON' ? 'ALWAYS_ON_ENABLED' : 'QUERY_CLASSIFIED_GRAPH_RELEVANT';
+    const result = await graphContextAugmenterService.augment(
+      input.userId,
+      effectiveQuery,
+      chunks,
+      { knowledgeBaseId: input.searchAllKbs ? undefined : input.knowledgeBaseId },
+      env.server?.RAG_GRAPH_TIMEOUT_MS
+    );
+
+    // Additive to the existing latencyTrace bag — new keys only, nothing here is read by any
+    // pre-existing consumer, so this cannot change behavior for requests that don't reach here.
+    latencyTrace.graphSubgraphRetrievalMs = result.graphSubgraphRetrievalMs;
+    latencyTrace.graphEvidenceLookupMs = result.graphEvidenceLookupMs;
+    latencyTrace.graphContextMappingMs = result.graphContextMappingMs;
+    latencyTrace.graphTotalMs = result.graphTotalMs;
+    latencyTrace.graphUsed = result.usedGraph ? 1 : 0;
+    latencyTrace.graphNodesCount = result.graphNodesCount;
+    latencyTrace.graphEdgesCount = result.graphEdgesCount;
+    latencyTrace.graphEvidenceRecordsCount = result.evidenceRecordsCount;
+    latencyTrace.graphChunksAddedCount = result.chunksAddedCount;
+    latencyTrace.graphDuplicatesRemovedCount = result.duplicatesRemovedCount;
+    latencyTrace.graphDroppedByLimitCount = result.droppedByLimitCount;
+
+    ragPerformanceTelemetryService.logEvent({
+      event: 'rag.retrieval.graph.completed',
+      requestId,
+      durationMs: result.graphTotalMs,
+      metadata: {
+        ...baseTrace,
+        graphDecision,
+        graphStatus: result.status,
+        graphFailureCategory: result.failureCategory,
+        graphChunksAdded: result.chunksAddedCount,
+        graphNodesCount: result.graphNodesCount,
+        graphEdgesCount: result.graphEdgesCount,
+        graphEvidenceRecordsCount: result.evidenceRecordsCount,
+        graphDuplicatesRemovedCount: result.duplicatesRemovedCount,
+        graphDroppedByLimitCount: result.droppedByLimitCount,
+        graphSubgraphRetrievalMs: result.graphSubgraphRetrievalMs,
+        graphEvidenceLookupMs: result.graphEvidenceLookupMs,
+        graphContextMappingMs: result.graphContextMappingMs,
+        graphTotalMs: result.graphTotalMs
+      }
+    });
+
+    return {
+      chunks: result.chunks,
+      explanation: {
+        attempted: true,
+        executed: true,
+        reason,
+        priority: graphPriority,
+        success: result.status === 'SUCCESS' || result.status === 'EMPTY_GRAPH',
+        failureCategory: result.failureCategory,
+        entitiesFound: result.graphNodesCount,
+        relationshipsFound: result.graphEdgesCount,
+        evidenceFound: result.evidenceRecordsCount,
+        chunksAdded: result.chunksAddedCount,
+        chunksDeduplicated: result.duplicatesRemovedCount,
+        chunksDroppedByLimit: result.droppedByLimitCount,
+        latencyMs: result.graphTotalMs
+      }
+    };
   }
 
   /**
@@ -399,6 +539,9 @@ export class AnswerOrchestratorService {
 
     // 4. Primary Retrieval & Evidence Assessment
     let chunks: RetrievedChunk[] = [];
+    // Populated only on the standard retrieval branch below — see GraphRetrievalExplanation's own
+    // doc comment (answer-orchestrator.types.ts) for exactly what it does/doesn't prove.
+    let graphRetrievalExplanation: GraphRetrievalExplanation | undefined;
 
     if (sourceMode === 'web_discovery') {
       const discoveryRes = await webDiscoveryService.discoverAndFetchCandidates(input.userId, {
@@ -493,6 +636,17 @@ export class AnswerOrchestratorService {
       }
 
       chunks = retResult.chunks;
+      const graphAugmentation = await this.maybeAugmentWithGraphContext(
+        input,
+        effectiveQuery,
+        chunks,
+        sourceMode,
+        intelligentPlan.graphPriority,
+        latencyTrace,
+        execCtx.requestId
+      );
+      chunks = graphAugmentation.chunks;
+      graphRetrievalExplanation = graphAugmentation.explanation;
     }
 
     // Hard Validation Boundary for Source Isolation
@@ -583,7 +737,8 @@ export class AnswerOrchestratorService {
         rerankCalled: true,
         recoveryAttempted,
         recoveryAttempts: recoveryAttempted ? 1 : 0,
-        latencyTrace
+        latencyTrace,
+        graphRetrieval: graphRetrievalExplanation
       };
     }
 
@@ -618,13 +773,26 @@ export class AnswerOrchestratorService {
         rerankCalled: true,
         recoveryAttempted,
         recoveryAttempts: recoveryAttempted ? 1 : 0,
-        latencyTrace
+        latencyTrace,
+        graphRetrieval: graphRetrievalExplanation
       };
     }
 
     // 8. Grounded Citations & Output Construction
     const citationResult = citationService.mapCitationsToAnswer('', chunks, input.question);
     const citations: Citation[] = citationResult.citations;
+
+    // Phase 5 quality signal: how many graph-sourced chunks survived into the citation CANDIDATE
+    // list. citationService.mapCitationsToAnswer is called above with an empty answer string —
+    // citations are scored from the chunks themselves BEFORE the LLM generates any text. This
+    // proves "was a citation candidate," not "was referenced in the LLM's final generated answer."
+    // Proving the latter would require the post-generation citation-finalization step in
+    // chat.service.ts (which parses the LLM's raw output for citation markers) to report back which
+    // chunks survived — that capability doesn't exist today, so it is intentionally not faked here.
+    if (graphRetrievalExplanation) {
+      graphRetrievalExplanation.graphChunksInCitationCandidates =
+        citations.filter((c) => c.sourceType === 'graph').length;
+    }
 
     latencyTrace.totalMs = Date.now() - startTime;
 
@@ -646,7 +814,8 @@ export class AnswerOrchestratorService {
         rerankCalled: true,
         recoveryAttempted,
         recoveryAttempts: recoveryAttempted ? 1 : 0,
-        latencyTrace
+        latencyTrace,
+        graphRetrieval: graphRetrievalExplanation
       };
     });
   }

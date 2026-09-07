@@ -102,6 +102,38 @@ describe('RagHealthAlertNotificationService.processCheckResult', () => {
     expect(mockCreateNotification).toHaveBeenCalledWith(expect.objectContaining({ priority: 'CRITICAL' }));
   });
 
+  it('detectionCount increasing alone (severity/lastNotifiedAt unchanged, still within cooldown) never triggers a notification', async () => {
+    mockFindManyUsers.mockResolvedValue([{ id: 'admin-1' }]);
+    const manyMoreDetections = alert({
+      lastNotifiedAt: new Date(Date.now() - 5 * 60000),
+      lastNotifiedSeverity: 'WARNING',
+      lastNotifiedDetectionCount: 1,
+      detectionCount: 50
+    });
+
+    const result = await ragHealthAlertNotificationService.processCheckResult([manyMoreDetections as any], [], CONFIG);
+
+    expect(result.alertsNotified).toBe(0);
+    expect(mockCreateNotification).not.toHaveBeenCalled();
+  });
+
+  it('severity escalation still notifies even while the alert is ACKNOWLEDGED (acknowledgement never suppresses escalation)', async () => {
+    mockFindManyUsers.mockResolvedValue([{ id: 'admin-1' }]);
+    const acknowledgedButEscalating = alert({
+      status: 'ACKNOWLEDGED',
+      acknowledgedAt: new Date(Date.now() - 10 * 60000),
+      acknowledgedBy: 'admin-1',
+      severity: 'CRITICAL',
+      lastNotifiedAt: new Date(Date.now() - 60000),
+      lastNotifiedSeverity: 'WARNING'
+    });
+
+    const result = await ragHealthAlertNotificationService.processCheckResult([acknowledgedButEscalating as any], [], CONFIG);
+
+    expect(result.alertsNotified).toBe(1);
+    expect(mockCreateNotification).toHaveBeenCalledWith(expect.objectContaining({ priority: 'CRITICAL' }));
+  });
+
   it('3. does not notify again for a repeated detection still within cooldown', async () => {
     mockFindManyUsers.mockResolvedValue([{ id: 'admin-1' }]);
     const recentlyNotified = alert({ lastNotifiedAt: new Date(Date.now() - 5 * 60000), lastNotifiedSeverity: 'WARNING', detectionCount: 2 });

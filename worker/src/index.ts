@@ -15,6 +15,7 @@ import { aiAgentExecutionProcessor } from './processors/ai-agent-execution.proce
 import { automationTriggerMatcherProcessor } from './processors/automation-trigger-matcher.processor.js';
 import { automationExecutionProcessor } from './processors/automation-execution.processor.js';
 import { memoryExtractionProcessor } from './processors/memory-extraction.processor.js';
+import { ragHealthAlertProcessor } from './processors/rag-health-alert.processor.js';
 import {
   MultimodalJobPayload,
   AIIntelligenceJobPayload,
@@ -669,6 +670,23 @@ export async function startWorker() {
       });
     }, intelligenceAnalysisIntervalMs);
     intelligenceInterval.unref();
+
+    // RAG Health Alerting — periodic, bounded, deterministic threshold + baseline-anomaly check
+    // over the existing ragHealth aggregation (RagEvaluation queries only — no chat/LLM calls, no
+    // ML). A no-op while RAG_HEALTH_ALERTS_ENABLED=false (checked inside the service itself); a
+    // failure here never affects any other worker job or request-path traffic.
+    const ragHealthCheckIntervalMs = await configService.getNumber('RAG_HEALTH_CHECK_INTERVAL_MS', 900000);
+    const ragHealthCheckInterval = setInterval(async () => {
+      if (isShuttingDown) return;
+      await runWithSchedulerLock('rag-health-check', deriveLockTtlSeconds(ragHealthCheckIntervalMs), async () => {
+        try {
+          await ragHealthAlertProcessor.run();
+        } catch (err) {
+          console.error('[Worker] Periodic RAG health check error:', err);
+        }
+      });
+    }, ragHealthCheckIntervalMs);
+    ragHealthCheckInterval.unref();
 
     // Phase 85 — periodic AI Workspace Intelligence scheduler tick: finds users due for a daily/
     // weekly briefing (per their own AIIntelligencePreference row/timezone/preferredHour) and

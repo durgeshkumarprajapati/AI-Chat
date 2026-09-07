@@ -9,6 +9,7 @@ import { telemetryAggregationService } from '@/features/performance/telemetry-ag
 import { rabbitmq, QUEUES } from '@/lib/rabbitmq';
 import type * as amqp from 'amqplib';
 import { ragHealthService, isRagHealthTimeWindow, RagHealthTimeWindow } from '@/features/rag/evaluation/rag-health.service';
+import { ragHealthAlertService } from '@/features/rag/evaluation/rag-health-alert.service';
 
 export const dynamic = 'force-dynamic';
 
@@ -61,6 +62,22 @@ async function handleGet(req: NextRequest) {
       ragHealth = await ragHealthService.computeRagHealth(ragHealthWindow);
     } catch (err) {
       ragHealth = { available: false, reason: `RAG health aggregation failed: ${err instanceof Error ? err.message : String(err)}` };
+    }
+
+    // RAG Health Alerting pass — small, bounded summary only (active/critical counts); the full
+    // list/history/acknowledge actions live at the dedicated /api/admin/rag-health-alerts route
+    // (see that route's own file), consistent with how billing/llm-diagnostics are already
+    // separate admin sub-resources from this route rather than being crammed into it.
+    let ragHealthAlertSummary: { available: boolean; activeCount?: number; criticalCount?: number; reason?: string };
+    try {
+      const activeAlerts = await ragHealthAlertService.listAlerts({ status: 'OPEN', limit: 200 });
+      ragHealthAlertSummary = {
+        available: true,
+        activeCount: activeAlerts.length,
+        criticalCount: activeAlerts.filter((a) => a.severity === 'CRITICAL').length
+      };
+    } catch (err) {
+      ragHealthAlertSummary = { available: false, reason: `Alert summary failed: ${err instanceof Error ? err.message : String(err)}` };
     }
 
     const dbStart = Date.now();
@@ -302,7 +319,10 @@ async function handleGet(req: NextRequest) {
         // limitations} view, supporting ?window=1h|24h|7d|30d (see rag-health.service.ts's own
         // doc comment for the full audit trail of where every field comes from). No raw prompts,
         // questions, answers, document content, tokens, secrets, or internal database IDs.
-        ragHealth
+        ragHealth,
+        // RAG Health Alerting pass — bounded active/critical alert counts only. See
+        // /api/admin/rag-health-alerts for the full list, history, and acknowledge action.
+        ragHealthAlertSummary
       }
     });
   } catch (error) {

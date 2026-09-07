@@ -249,6 +249,191 @@ export const CONFIG_REGISTRY: Record<string, RegistryConfigItem> = {
     requiresRestart: false
   },
 
+  // RAG HEALTH ALERTING — deterministic threshold/anomaly detection over the existing ragHealth
+  // aggregation (rag-health.service.ts), run periodically by the worker (rag-health-alert
+  // processor). Disabled by default: no established alerting policy exists yet in this
+  // application, so this must be an explicit admin opt-in, not an automatic behavior change.
+  RAG_HEALTH_ALERTS_ENABLED: {
+    key: 'RAG_HEALTH_ALERTS_ENABLED',
+    valueType: ConfigValueType.BOOLEAN,
+    category: ConfigCategory.RAG,
+    defaultValue: 'false',
+    purpose: 'Master switch for the periodic RAG health check (deterministic threshold + baseline-anomaly detection). No alert of any kind is ever created while this is false.',
+    description: 'RAG health alerting master flag.',
+    isEditable: true,
+    isHighImpact: true,
+    requiresRestart: false
+  },
+  RAG_HEALTH_CHECK_INTERVAL_MS: {
+    key: 'RAG_HEALTH_CHECK_INTERVAL_MS',
+    valueType: ConfigValueType.NUMBER,
+    category: ConfigCategory.RAG,
+    defaultValue: '900000',
+    purpose: 'Interval in milliseconds between worker RAG health check passes.',
+    description: 'RAG health check job cadence.',
+    isEditable: true,
+    isHighImpact: false,
+    requiresRestart: true,
+    minValue: 60000,
+    maxValue: 21600000
+  },
+  RAG_HEALTH_MIN_SAMPLE_SIZE: {
+    key: 'RAG_HEALTH_MIN_SAMPLE_SIZE',
+    valueType: ConfigValueType.NUMBER,
+    category: ConfigCategory.RAG,
+    defaultValue: '20',
+    purpose: 'Minimum RagEvaluation row count (current window) required before ANY threshold or anomaly check runs — protects against misleading alerts from tiny datasets.',
+    description: 'Minimum sample size for RAG health alerts.',
+    isEditable: true,
+    isHighImpact: false,
+    requiresRestart: false,
+    minValue: 1,
+    maxValue: 10000
+  },
+  RAG_HEALTH_MAX_UNCITED_RATE_PERCENT: {
+    key: 'RAG_HEALTH_MAX_UNCITED_RATE_PERCENT',
+    valueType: ConfigValueType.NUMBER,
+    category: ConfigCategory.RAG,
+    defaultValue: '40',
+    purpose: 'Uncited-answer rate (percent) above which a CITATION health alert fires.',
+    description: 'Max uncited-answer rate threshold.',
+    isEditable: true,
+    isHighImpact: false,
+    requiresRestart: false,
+    minValue: 0,
+    maxValue: 100
+  },
+  RAG_HEALTH_MAX_INVALID_REFERENCE_RATE_PERCENT: {
+    key: 'RAG_HEALTH_MAX_INVALID_REFERENCE_RATE_PERCENT',
+    valueType: ConfigValueType.NUMBER,
+    category: ConfigCategory.RAG,
+    defaultValue: '15',
+    purpose: 'Invalid evidence-reference rate (percent, occurrences per 100 sampled answers) above which a CITATION health alert fires.',
+    description: 'Max invalid citation reference rate threshold.',
+    isEditable: true,
+    isHighImpact: false,
+    requiresRestart: false,
+    minValue: 0,
+    maxValue: 1000
+  },
+  RAG_HEALTH_MAX_MALFORMED_REFERENCE_RATE_PERCENT: {
+    key: 'RAG_HEALTH_MAX_MALFORMED_REFERENCE_RATE_PERCENT',
+    valueType: ConfigValueType.NUMBER,
+    category: ConfigCategory.RAG,
+    defaultValue: '15',
+    purpose: 'Malformed evidence-reference rate (percent, occurrences per 100 sampled answers) above which a CITATION health alert fires.',
+    description: 'Max malformed citation reference rate threshold.',
+    isEditable: true,
+    isHighImpact: false,
+    requiresRestart: false,
+    minValue: 0,
+    maxValue: 1000
+  },
+  RAG_HEALTH_MAX_GRAPH_FAILURE_RATE_PERCENT: {
+    key: 'RAG_HEALTH_MAX_GRAPH_FAILURE_RATE_PERCENT',
+    valueType: ConfigValueType.NUMBER,
+    category: ConfigCategory.RAG,
+    defaultValue: '30',
+    purpose: 'Graph retrieval failure rate (percent of executed attempts) above which a GRAPH health alert fires.',
+    description: 'Max graph retrieval failure rate threshold.',
+    isEditable: true,
+    isHighImpact: false,
+    requiresRestart: false,
+    minValue: 0,
+    maxValue: 100
+  },
+  RAG_HEALTH_MAX_GRAPH_LATENCY_MS: {
+    key: 'RAG_HEALTH_MAX_GRAPH_LATENCY_MS',
+    valueType: ConfigValueType.NUMBER,
+    category: ConfigCategory.RAG,
+    defaultValue: '3000',
+    purpose: 'Average graph retrieval latency (milliseconds) above which a GRAPH health alert fires.',
+    description: 'Max graph retrieval latency threshold.',
+    isEditable: true,
+    isHighImpact: false,
+    requiresRestart: false,
+    minValue: 100,
+    maxValue: 60000
+  },
+  RAG_HEALTH_MIN_GRAPH_CONTRIBUTION_RATE_PERCENT: {
+    key: 'RAG_HEALTH_MIN_GRAPH_CONTRIBUTION_RATE_PERCENT',
+    valueType: ConfigValueType.NUMBER,
+    category: ConfigCategory.RAG,
+    defaultValue: '5',
+    purpose: 'Minimum graph unique-contribution rate (percent of executed attempts that added at least one non-duplicate chunk) below which a GRAPH health alert fires — signals graph retrieval running but contributing near-zero evidence. Not a claim GraphRAG fails to improve answer quality; see graph-comparison.service.ts for that distinct, offline question.',
+    description: 'Min graph contribution rate threshold.',
+    isEditable: true,
+    isHighImpact: false,
+    requiresRestart: false,
+    minValue: 0,
+    maxValue: 100
+  },
+  RAG_HEALTH_MAX_RETRIEVAL_LATENCY_MS: {
+    key: 'RAG_HEALTH_MAX_RETRIEVAL_LATENCY_MS',
+    valueType: ConfigValueType.NUMBER,
+    category: ConfigCategory.RAG,
+    defaultValue: '3000',
+    purpose: 'Average retrieval latency (milliseconds) above which a RETRIEVAL health alert fires.',
+    description: 'Max retrieval latency threshold.',
+    isEditable: true,
+    isHighImpact: false,
+    requiresRestart: false,
+    minValue: 100,
+    maxValue: 60000
+  },
+  RAG_HEALTH_MAX_TOTAL_LATENCY_MS: {
+    key: 'RAG_HEALTH_MAX_TOTAL_LATENCY_MS',
+    valueType: ConfigValueType.NUMBER,
+    category: ConfigCategory.RAG,
+    defaultValue: '8000',
+    purpose: 'Average total end-to-end RAG request latency (milliseconds) above which a RETRIEVAL health alert fires.',
+    description: 'Max total RAG latency threshold.',
+    isEditable: true,
+    isHighImpact: false,
+    requiresRestart: false,
+    minValue: 100,
+    maxValue: 120000
+  },
+  RAG_HEALTH_MAX_REQUEST_FAILURE_COUNT: {
+    key: 'RAG_HEALTH_MAX_REQUEST_FAILURE_COUNT',
+    valueType: ConfigValueType.NUMBER,
+    category: ConfigCategory.RAG,
+    defaultValue: '20',
+    purpose: 'In-memory, since-process-start request failure count above which a RELIABILITY health alert fires. NOT a historical/durable metric — resets on restart/deploy; see ragPerformanceTelemetryService.getFailureDiagnostics.',
+    description: 'Max request failure count threshold (in-memory, non-durable).',
+    isEditable: true,
+    isHighImpact: false,
+    requiresRestart: false,
+    minValue: 1,
+    maxValue: 100000
+  },
+  RAG_HEALTH_LATENCY_ANOMALY_INCREASE_PERCENT: {
+    key: 'RAG_HEALTH_LATENCY_ANOMALY_INCREASE_PERCENT',
+    valueType: ConfigValueType.NUMBER,
+    category: ConfigCategory.RAG,
+    defaultValue: '50',
+    purpose: 'Relative latency increase (percent above a same-metric baseline window) required before a baseline-anomaly RETRIEVAL alert fires — avoids flagging tiny fluctuations as incidents.',
+    description: 'Latency anomaly relative-increase threshold.',
+    isEditable: true,
+    isHighImpact: false,
+    requiresRestart: false,
+    minValue: 5,
+    maxValue: 1000
+  },
+  RAG_HEALTH_RATE_ANOMALY_INCREASE_POINTS: {
+    key: 'RAG_HEALTH_RATE_ANOMALY_INCREASE_POINTS',
+    valueType: ConfigValueType.NUMBER,
+    category: ConfigCategory.RAG,
+    defaultValue: '15',
+    purpose: 'Absolute percentage-point increase (e.g. uncited-rate 20% -> 40% = 20 points) above a same-metric baseline window required before a baseline-anomaly CITATION/GRAPH alert fires.',
+    description: 'Rate anomaly absolute-increase threshold (percentage points).',
+    isEditable: true,
+    isHighImpact: false,
+    requiresRestart: false,
+    minValue: 1,
+    maxValue: 100
+  },
+
   // LLM & PROVIDERS
   LLM_PROVIDER: {
     key: 'LLM_PROVIDER',

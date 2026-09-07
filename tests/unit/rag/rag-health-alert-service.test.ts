@@ -1,0 +1,134 @@
+const mockFindMany = jest.fn();
+const mockCreate = jest.fn();
+const mockUpdate = jest.fn();
+const mockUpdateMany = jest.fn();
+const mockFindUnique = jest.fn();
+
+jest.mock('@/lib/prisma', () => ({
+  prisma: {
+    ragHealthAlert: {
+      findMany: (...args: unknown[]) => mockFindMany(...args),
+      create: (...args: unknown[]) => mockCreate(...args),
+      update: (...args: unknown[]) => mockUpdate(...args),
+      updateMany: (...args: unknown[]) => mockUpdateMany(...args),
+      findUnique: (...args: unknown[]) => mockFindUnique(...args)
+    }
+  }
+}));
+
+import { ragHealthAlertService } from '@/features/rag/evaluation/rag-health-alert.service';
+import { DetectedCondition } from '@/features/rag/evaluation/rag-health-alert-rules';
+
+function condition(overrides: Partial<DetectedCondition> = {}): DetectedCondition {
+  return {
+    category: 'CITATION', metric: 'uncitedAnswerRatePercent', severity: 'WARNING',
+    detectionReason: 'test reason', currentValue: 55, thresholdValue: 40,
+    window: '24h', sampleSize: 100, dedupeKey: 'CITATION:uncitedAnswerRatePercent:24h',
+    ...overrides
+  };
+}
+
+describe('RagHealthAlertService.applyDetectedConditions', () => {
+  beforeEach(() => jest.clearAllMocks());
+
+  it('10. creates a new alert only once for a repeated identical condition across ticks (deduplication)', async () => {
+    // Tick 1: no existing alert.
+    mockFindMany.mockResolvedValueOnce([]);
+    await ragHealthAlertService.applyDetectedConditions([condition()], ['24h']);
+    expect(mockCreate).toHaveBeenCalledTimes(1);
+
+    // Tick 2: the same condition recurs — this time an existing OPEN row is returned.
+    mockFindMany.mockResolvedValueOnce([{ id: 'alert-1', dedupeKey: 'CITATION:uncitedAnswerRatePercent:24h', status: 'OPEN' }]);
+    await ragHealthAlertService.applyDetectedConditions([condition()], ['24h']);
+    expect(mockCreate).toHaveBeenCalledTimes(1); // still only once total
+    expect(mockUpdate).toHaveBeenCalledTimes(1);
+  });
+
+  it('11. a repeated anomaly updates the existing alert (incrementing detectionCount, refreshing currentValue/lastDetectedAt)', async () => {
+    mockFindMany.mockResolvedValueOnce([{ id: 'alert-1', dedupeKey: 'CITATION:uncitedAnswerRatePercent:24h', status: 'OPEN' }]);
+
+    await ragHealthAlertService.applyDetectedConditions([condition({ currentValue: 61, severity: 'CRITICAL' })], ['24h']);
+
+    expect(mockUpdate).toHaveBeenCalledWith({
+      where: { id: 'alert-1' },
+      data: expect.objectContaining({
+        currentValue: 61,
+        severity: 'CRITICAL',
+        detectionCount: { increment: 1 },
+        lastDetectedAt: expect.any(Date)
+      })
+    });
+  });
+
+  it('12. auto-resolves an existing alert once its underlying condition is no longer detected', async () => {
+    mockFindMany.mockResolvedValueOnce([
+      { id: 'alert-1', dedupeKey: 'CITATION:uncitedAnswerRatePercent:24h', status: 'OPEN' },
+      { id: 'alert-2', dedupeKey: 'RETRIEVAL:avgRetrievalLatencyMs:24h', status: 'ACKNOWLEDGED' }
+    ]);
+    mockUpdateMany.mockResolvedValue({ count: 2 });
+
+    // Neither condition detected this tick — both should be resolved.
+    const result = await ragHealthAlertService.applyDetectedConditions([], ['24h']);
+
+    expect(mockUpdateMany).toHaveBeenCalledWith({
+      where: { id: { in: ['alert-1', 'alert-2'] } },
+      data: { status: 'RESOLVED', resolvedAt: expect.any(Date) }
+    });
+    expect(result.resolved).toBe(2);
+  });
+
+  it('only resolves alerts NOT present in the current detection set, leaving still-active ones alone', async () => {
+    mockFindMany.mockResolvedValueOnce([
+      { id: 'alert-1', dedupeKey: 'CITATION:uncitedAnswerRatePercent:24h', status: 'OPEN' },
+      { id: 'alert-2', dedupeKey: 'RETRIEVAL:avgRetrievalLatencyMs:24h', status: 'OPEN' }
+    ]);
+    mockUpdateMany.mockResolvedValue({ count: 1 });
+
+    // Only the citation condition recurs — the retrieval one should auto-resolve.
+    await ragHealthAlertService.applyDetectedConditions([condition()], ['24h']);
+
+    expect(mockUpdateMany).toHaveBeenCalledWith({
+      where: { id: { in: ['alert-2'] } },
+      data: { status: 'RESOLVED', resolvedAt: expect.any(Date) }
+    });
+  });
+
+  it('never queries or resolves alerts outside the windows actually checked this run', async () => {
+    mockFindMany.mockResolvedValueOnce([]);
+    await ragHealthAlertService.applyDetectedConditions([], ['1h', '24h']);
+
+    expect(mockFindMany).toHaveBeenCalledWith({
+      where: { status: { in: ['OPEN', 'ACKNOWLEDGED'] }, window: { in: ['1h', '24h'] } }
+    });
+  });
+});
+
+describe('RagHealthAlertService.acknowledgeAlert', () => {
+  it('transitions an alert to ACKNOWLEDGED with an actor and timestamp', async () => {
+    mockUpdate.mockResolvedValue({ id: 'alert-1', status: 'ACKNOWLEDGED' });
+    const result = await ragHealthAlertService.acknowledgeAlert('alert-1', 'admin-user-1');
+
+    expect(mockUpdate).toHaveBeenCalledWith({
+      where: { id: 'alert-1' },
+      data: { status: 'ACKNOWLEDGED', acknowledgedAt: expect.any(Date), acknowledgedBy: 'admin-user-1' }
+    });
+    expect(result.status).toBe('ACKNOWLEDGED');
+  });
+});
+
+describe('RagHealthAlertService.listAlerts', () => {
+  it('bounds the query to a maximum of 200 rows regardless of the requested limit', async () => {
+    mockFindMany.mockResolvedValue([]);
+    await ragHealthAlertService.listAlerts({ limit: 100000 });
+
+    expect(mockFindMany).toHaveBeenCalledWith(expect.objectContaining({ take: 200 }));
+  });
+
+  it('14. selects/returns no question/answer/document-content field (the model has none by design)', async () => {
+    mockFindMany.mockResolvedValue([{ id: 'a1', category: 'CITATION', metric: 'x', currentValue: 1 }]);
+    const alerts = await ragHealthAlertService.listAlerts({});
+    for (const alert of alerts) {
+      expect(Object.keys(alert)).not.toEqual(expect.arrayContaining(['question', 'answer', 'documentContent']));
+    }
+  });
+});

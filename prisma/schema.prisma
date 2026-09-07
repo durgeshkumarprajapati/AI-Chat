@@ -394,6 +394,66 @@ model RagEvaluation {
   @@map("rag_evaluations")
 }
 
+enum RagHealthAlertCategory {
+  CITATION
+  GRAPH
+  RETRIEVAL
+  RELIABILITY
+}
+
+enum RagHealthAlertSeverity {
+  WARNING
+  CRITICAL
+}
+
+enum RagHealthAlertStatus {
+  OPEN
+  ACKNOWLEDGED
+  RESOLVED
+}
+
+// RAG Health Alerting pass — system-wide (not per-user) operational alert. Deliberately NOT a
+// Notification row: Notification requires a userId/User relation (in-app/email delivery to one
+// person), but a "GraphRAG failure rate degraded" condition belongs to no single user. No
+// existing model fit this system-scoped, deduplicated, lifecycle-tracked shape, so this is a new,
+// intentionally small table — operational metadata only, never raw RAG content (no question,
+// answer, document, or entity fields exist here by design).
+model RagHealthAlert {
+  id              String                 @id @default(uuid())
+  category        RagHealthAlertCategory
+  metric          String
+  severity        RagHealthAlertSeverity
+  status          RagHealthAlertStatus   @default(OPEN)
+  // Stable per (category, metric, window) key, conceptually mirroring Notification.dedupeKey. NOT
+  // a DB-unique constraint (deliberately) — the health-check task only ever runs under
+  // runWithSchedulerLock, so at most one process writes alerts at a time and an application-level
+  // "find existing non-resolved row with this key, else create" check (rag-health-alert.service.ts)
+  // is sufficient; a unique index would need to be partial (WHERE status != 'RESOLVED', so a
+  // resolved condition recurring later can open a fresh alert), which Prisma's schema DSL cannot
+  // express directly. Indexed below for that lookup's query performance.
+  dedupeKey       String                 @map("dedupe_key")
+  detectionReason String                 @db.Text @map("detection_reason")
+  currentValue    Float                  @map("current_value")
+  baselineValue   Float?                 @map("baseline_value")
+  thresholdValue  Float?                 @map("threshold_value")
+  window          String
+  sampleSize      Int                    @map("sample_size")
+  detectionCount  Int                    @default(1) @map("detection_count")
+  firstDetectedAt DateTime               @default(now()) @map("first_detected_at")
+  lastDetectedAt  DateTime               @default(now()) @map("last_detected_at")
+  acknowledgedAt  DateTime?              @map("acknowledged_at")
+  acknowledgedBy  String?                @map("acknowledged_by")
+  resolvedAt      DateTime?              @map("resolved_at")
+  createdAt       DateTime               @default(now()) @map("created_at")
+  updatedAt       DateTime               @updatedAt @map("updated_at")
+
+  @@index([status])
+  @@index([category, status])
+  @@index([lastDetectedAt])
+  @@index([dedupeKey])
+  @@map("rag_health_alerts")
+}
+
 model DocumentVisual {
   id           String   @id @default(uuid())
   documentId   String   @map("document_id")

@@ -16,6 +16,7 @@ import { automationTriggerMatcherProcessor } from './processors/automation-trigg
 import { automationExecutionProcessor } from './processors/automation-execution.processor.js';
 import { memoryExtractionProcessor } from './processors/memory-extraction.processor.js';
 import { ragHealthAlertProcessor } from './processors/rag-health-alert.processor.js';
+import { ragIncidentActionProcessor } from './processors/rag-incident-action.processor.js';
 import {
   MultimodalJobPayload,
   AIIntelligenceJobPayload,
@@ -25,6 +26,7 @@ import {
   AutomationDomainEventPayload,
   AutomationExecutionJobPayload,
   MemoryCandidateExtractionJobPayload,
+  RagIncidentActionJobPayload,
   QUEUES,
   rabbitmq
 } from '@/lib/rabbitmq';
@@ -52,6 +54,7 @@ const AI_AGENT_EXECUTION_QUEUE_NAME = QUEUES.AI_AGENT_EXECUTION;
 const AUTOMATION_EVENT_DISPATCH_QUEUE_NAME = QUEUES.AUTOMATION_EVENT_DISPATCH;
 const AUTOMATION_EXECUTION_QUEUE_NAME = QUEUES.AUTOMATION_EXECUTION;
 const MEMORY_CANDIDATE_EXTRACTION_QUEUE_NAME = QUEUES.MEMORY_CANDIDATE_EXTRACTION;
+const RAG_INCIDENT_ACTION_QUEUE_NAME = QUEUES.RAG_INCIDENT_ACTION;
 const RABBITMQ_URL = process.env.RABBITMQ_URL || 'amqp://guest:guest@localhost:5672';
 const MAX_RETRIES = 3;
 const TIMEOUT_MINUTES = process.env.DOCUMENT_PROCESSING_TIMEOUT_MINUTES
@@ -73,6 +76,7 @@ let aiAgentExecutionConsumerTag: string | null = null;
 let automationEventDispatchConsumerTag: string | null = null;
 let automationExecutionConsumerTag: string | null = null;
 let memoryCandidateExtractionConsumerTag: string | null = null;
+let ragIncidentActionConsumerTag: string | null = null;
 let isShuttingDown = false;
 let activeInFlightJobs = 0;
 // Phase 91 — the in-flight-job drain wait used to be hardcoded to 5000ms. Read once at worker
@@ -620,6 +624,34 @@ export async function startWorker() {
     );
     memoryCandidateExtractionConsumerTag = memoryCandidateExtractionConsumeResult.consumerTag;
 
+    // 12. Consume rag-incident-action (channel2). RAG Incident Response Automation — single
+    // allow-listed background action (RERUN_HEALTH_EVALUATION), published by an admin API request
+    // or as an automatic post-action follow-up. Deliberately always acks regardless of outcome
+    // (no nack/retry loop): re-running the health check is itself idempotent and harmless, so a
+    // failed attempt just means the admin can click the action again rather than needing an
+    // automatic retry.
+    await channel2.assertQueue(RAG_INCIDENT_ACTION_QUEUE_NAME, { durable: true });
+    const ragIncidentActionConsumeResult = await channel2.consume(
+      RAG_INCIDENT_ACTION_QUEUE_NAME,
+      async (msg: ConsumeMessage | null) => {
+        if (!msg || isShuttingDown) return;
+
+        activeInFlightJobs++;
+        try {
+          const payload = JSON.parse(msg.content.toString()) as RagIncidentActionJobPayload;
+          console.log(`[Worker-RagIncidentAction] Job received: ${payload.actionType} for alert ${payload.alertId} (Job ID: ${payload.jobId})`);
+          await ragIncidentActionProcessor.process(payload);
+        } catch (error) {
+          console.error('[Worker-RagIncidentAction] Unexpected job execution error:', error instanceof Error ? error.message : error);
+        } finally {
+          channel2?.ack(msg);
+          activeInFlightJobs--;
+        }
+      },
+      { noAck: false }
+    );
+    ragIncidentActionConsumerTag = ragIncidentActionConsumeResult.consumerTag;
+
     // Start periodic Google Calendar Sync Retry loop
     // Phase 91 — guarded by a distributed Redis lock so only one worker replica runs this tick;
     // see runWithSchedulerLock's own doc comment for the fail-mode (Redis down => skip, not
@@ -958,6 +990,10 @@ export async function shutdownWorker(signal?: string) {
     if (memoryCandidateExtractionConsumerTag && channel2) {
       await channel2.cancel(memoryCandidateExtractionConsumerTag).catch(() => {});
       memoryCandidateExtractionConsumerTag = null;
+    }
+    if (ragIncidentActionConsumerTag && channel2) {
+      await channel2.cancel(ragIncidentActionConsumerTag).catch(() => {});
+      ragIncidentActionConsumerTag = null;
     }
     console.log('[Worker] RabbitMQ consumers stopped.');
 

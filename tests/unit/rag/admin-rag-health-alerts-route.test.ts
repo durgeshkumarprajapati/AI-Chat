@@ -33,6 +33,26 @@ jest.mock('@/features/rag/evaluation/rag-health.service', () => ({
   WINDOW_MS: { '1h': 3600000, '24h': 86400000, '7d': 604800000, '30d': 2592000000 }
 }));
 
+// RAG Incident Response Automation pass — rag-incident-action.service.ts pulls in the real
+// rabbitmq/config/redis/audit chain at import time (same class of coupling as the notification
+// service above); mocked here to keep this route test isolated. Defaults mirror the conservative
+// RAG_INCIDENT_OPERATIONS_ENABLED=false default, so every pre-existing test below is unaffected.
+const mockLoadOpsConfig = jest.fn();
+jest.mock('@/features/rag/evaluation/rag-incident-operations-config', () => ({
+  loadRagIncidentOperationsConfig: () => mockLoadOpsConfig()
+}));
+const mockGetDiagnostics = jest.fn();
+jest.mock('@/features/rag/evaluation/rag-incident-diagnostics.service', () => ({
+  ragIncidentDiagnosticsService: { getDiagnostics: (...args: unknown[]) => mockGetDiagnostics(...args) }
+}));
+const mockListRecentActions = jest.fn();
+jest.mock('@/features/rag/evaluation/rag-incident-action.service', () => ({
+  ragIncidentActionService: {
+    executeAction: jest.fn(),
+    listRecentActions: (...args: unknown[]) => mockListRecentActions(...args)
+  }
+}));
+
 import { NextRequest } from 'next/server';
 import { requireAuthenticatedUser } from '@/lib/auth';
 import { GET } from '@/app/api/admin/rag-health-alerts/route';
@@ -132,7 +152,12 @@ describe('/api/admin/rag-health-alerts', () => {
 });
 
 describe('/api/admin/rag-health-alerts/[id] (notification deep-link lookup)', () => {
-  beforeEach(() => jest.clearAllMocks());
+  beforeEach(() => {
+    jest.clearAllMocks();
+    // Conservative default — byte-identical to pre-Incident-Response-Automation behavior unless a
+    // test explicitly enables it below.
+    mockLoadOpsConfig.mockResolvedValue({ operationsEnabled: false, actionsEnabled: false });
+  });
 
   it('rejects a non-admin caller with 403', async () => {
     (requireAuthenticatedUser as jest.Mock).mockResolvedValue({ id: 'u1', role: 'USER' });
@@ -164,6 +189,51 @@ describe('/api/admin/rag-health-alerts/[id] (notification deep-link lookup)', ()
 
     expect(res.status).toBe(404);
     expect(body.success).toBe(false);
+  });
+
+  it('when RAG_INCIDENT_OPERATIONS_ENABLED is off (the default), the response is byte-identical to before this pass — no diagnostics/runbooks/actions fields', async () => {
+    (requireAuthenticatedUser as jest.Mock).mockResolvedValue({ id: 'admin-1', role: 'ADMIN' });
+    mockGetAlertById.mockResolvedValue({ id: 'a1', category: 'CITATION', status: 'OPEN' });
+
+    const res = await getById(new NextRequest('http://localhost:3000/api/admin/rag-health-alerts/a1'), { params: { id: 'a1' } });
+    const body = await res.json();
+
+    expect(body.data).toEqual({ id: 'a1', category: 'CITATION', status: 'OPEN' });
+    expect(mockGetDiagnostics).not.toHaveBeenCalled();
+    expect(mockListRecentActions).not.toHaveBeenCalled();
+  });
+
+  it('when enabled, additively includes diagnostics/runbooks/availableActions/recentActions', async () => {
+    (requireAuthenticatedUser as jest.Mock).mockResolvedValue({ id: 'admin-1', role: 'ADMIN' });
+    mockLoadOpsConfig.mockResolvedValue({ operationsEnabled: true, actionsEnabled: true });
+    mockGetAlertById.mockResolvedValue({ id: 'a1', category: 'CITATION', status: 'OPEN' });
+    mockGetDiagnostics.mockResolvedValue({ currentValue: 55, totalLatencyMs: null });
+    mockListRecentActions.mockResolvedValue([{ actionType: 'INVALIDATE_ANSWER_CACHE', status: 'SUCCEEDED' }]);
+
+    const res = await getById(new NextRequest('http://localhost:3000/api/admin/rag-health-alerts/a1'), { params: { id: 'a1' } });
+    const body = await res.json();
+
+    expect(body.data.diagnostics).toEqual({ currentValue: 55, totalLatencyMs: null });
+    expect(Array.isArray(body.data.runbooks)).toBe(true);
+    expect(body.data.runbooks.length).toBeGreaterThan(0);
+    expect(Array.isArray(body.data.availableActions)).toBe(true);
+    expect(body.data.recentActions).toEqual([{ actionType: 'INVALIDATE_ANSWER_CACHE', status: 'SUCCEEDED' }]);
+  });
+
+  it('a diagnostics failure degrades to null rather than breaking the whole response', async () => {
+    (requireAuthenticatedUser as jest.Mock).mockResolvedValue({ id: 'admin-1', role: 'ADMIN' });
+    mockLoadOpsConfig.mockResolvedValue({ operationsEnabled: true, actionsEnabled: true });
+    mockGetAlertById.mockResolvedValue({ id: 'a1', category: 'CITATION', status: 'OPEN' });
+    mockGetDiagnostics.mockRejectedValue(new Error('aggregation failed'));
+    mockListRecentActions.mockResolvedValue([]);
+    const consoleErrorSpy = jest.spyOn(console, 'error').mockImplementation(() => {});
+
+    const res = await getById(new NextRequest('http://localhost:3000/api/admin/rag-health-alerts/a1'), { params: { id: 'a1' } });
+    const body = await res.json();
+
+    expect(res.status).toBe(200);
+    expect(body.data.diagnostics).toBeNull();
+    consoleErrorSpy.mockRestore();
   });
 });
 

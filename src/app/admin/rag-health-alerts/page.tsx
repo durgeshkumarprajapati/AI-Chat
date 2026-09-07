@@ -20,6 +20,61 @@ interface ExternalDelivery {
   failureReason: string | null;
 }
 
+// RAG Incident Response Automation pass — additive, only populated by the single-alert detail
+// endpoint (getAlertById) when RAG_INCIDENT_OPERATIONS_ENABLED; the bulk list never carries these.
+interface IncidentDiagnostics {
+  currentValue: number;
+  baselineValue: number | null;
+  thresholdValue: number | null;
+  sampleSize: number;
+  window: string;
+  detectionCount: number;
+  alertDurationMs: number;
+  totalLatencyMs: number | null;
+  retrievalLatencyMs: number | null;
+  graphAttemptedRatePercent: number | null;
+  graphSuccessRatePercent: number | null;
+  citationAttributionQualityDistribution: Record<string, number> | null;
+  requestFailureCount: number | null;
+}
+
+type RunbookActionKind = 'AUTOMATIC' | 'MANUAL' | 'CONFIRMATION_REQUIRED';
+type ActionType = 'INVALIDATE_ANSWER_CACHE' | 'REFRESH_CONFIG_CACHE' | 'RERUN_HEALTH_EVALUATION';
+
+interface RunbookRecommendedAction {
+  label: string;
+  kind: RunbookActionKind;
+  actionType: ActionType | null;
+}
+
+interface RunbookRecommendation {
+  id: string;
+  title: string;
+  description: string;
+  severityRelevance: Severity[];
+  diagnosticChecks: string[];
+  recommendedActions: RunbookRecommendedAction[];
+}
+
+interface ActionDefinition {
+  actionType: ActionType;
+  label: string;
+  description: string;
+  riskLevel: 'LOW' | 'MEDIUM' | 'HIGH';
+  requiresConfirmation: boolean;
+  reversible: boolean;
+  backgroundExecutionRequired: boolean;
+}
+
+interface RecentAction {
+  requestId: string;
+  actionType: ActionType;
+  status: 'REQUESTED' | 'RUNNING' | 'SUCCEEDED' | 'FAILED' | 'CANCELLED';
+  resultSummary: string;
+  initiatedBy: string;
+  createdAt: string;
+}
+
 interface AlertRow {
   id: string;
   category: Category;
@@ -52,6 +107,10 @@ interface AlertRow {
   escalatedAt: string | null;
   escalationStatus: 'ESCALATED' | 'NOT_ESCALATED';
   externalDeliveries?: ExternalDelivery[];
+  diagnostics?: IncidentDiagnostics | null;
+  runbooks?: RunbookRecommendation[];
+  availableActions?: ActionDefinition[];
+  recentActions?: RecentAction[];
 }
 
 // Mirrors RagHealthAlertCategory (schema.prisma) — a literal union, same convention as this
@@ -137,6 +196,9 @@ function RagHealthAlertsPageInner() {
   const [selectedAlert, setSelectedAlert] = useState<AlertRow | null>(null);
   const [deepLinkError, setDeepLinkError] = useState<string | null>(null);
   const [acknowledging, setAcknowledging] = useState(false);
+  const [executingAction, setExecutingAction] = useState<ActionType | null>(null);
+  const [confirmingAction, setConfirmingAction] = useState<ActionDefinition | null>(null);
+  const [actionError, setActionError] = useState<string | null>(null);
 
   const buildQuery = useCallback(() => {
     const params = new URLSearchParams();
@@ -240,6 +302,51 @@ function RagHealthAlertsPageInner() {
       }
     } finally {
       setAcknowledging(false);
+    }
+  };
+
+  /** Re-fetches the single-alert detail (diagnostics/recentActions can change after an action
+   * runs) without touching the bulk list's own filtered fetch. */
+  const refreshSelectedAlertDetail = async (id: string) => {
+    try {
+      const res = await fetch(`/api/admin/rag-health-alerts/${id}`).then((r) => r.json());
+      if (res.success) setSelectedAlert((prev) => (prev && prev.id === id ? res.data : prev));
+    } catch {
+      // Non-fatal — the admin still sees the action's own immediate result summary.
+    }
+  };
+
+  const runAction = async (actionType: ActionType) => {
+    if (!selectedAlert) return;
+    setExecutingAction(actionType);
+    setActionError(null);
+    try {
+      const res = await fetch(`/api/admin/rag-health-alerts/${selectedAlert.id}/actions`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ actionType })
+      });
+      const data = await res.json();
+      if (!data.success) {
+        setActionError(data.error?.message || 'Action failed.');
+      } else {
+        await refreshSelectedAlertDetail(selectedAlert.id);
+      }
+    } catch {
+      setActionError('Action failed. See server logs for details.');
+    } finally {
+      setExecutingAction(null);
+    }
+  };
+
+  /** Phase 6 — actions flagged requiresConfirmation must show an explicit
+   * "this changes production behavior" dialog before executing; none of the three currently
+   * implemented actions require it, but the mechanism exists for a future action that does. */
+  const handleActionClick = (definition: ActionDefinition) => {
+    if (definition.requiresConfirmation) {
+      setConfirmingAction(definition);
+    } else {
+      runAction(definition.actionType);
     }
   };
 
@@ -531,6 +638,115 @@ function RagHealthAlertsPageInner() {
               )}
             </div>
 
+            {/* RAG Incident Response Automation — Diagnostics, Recommended Runbooks, and
+                Operational Actions. All optional: only present when RAG_INCIDENT_OPERATIONS_ENABLED. */}
+            {selectedAlert.diagnostics && (
+              <div>
+                <h4 className="text-xs font-bold text-foreground mb-2">Diagnostics</h4>
+                <div className="grid grid-cols-2 sm:grid-cols-3 gap-3">
+                  <div>
+                    <div className="text-[10px] text-muted-foreground uppercase font-mono">Total Latency</div>
+                    <div className="text-sm font-bold">{selectedAlert.diagnostics.totalLatencyMs ?? '—'}</div>
+                  </div>
+                  <div>
+                    <div className="text-[10px] text-muted-foreground uppercase font-mono">Retrieval Latency</div>
+                    <div className="text-sm font-bold">{selectedAlert.diagnostics.retrievalLatencyMs ?? '—'}</div>
+                  </div>
+                  <div>
+                    <div className="text-[10px] text-muted-foreground uppercase font-mono">Graph Attempt Rate</div>
+                    <div className="text-sm font-bold">{selectedAlert.diagnostics.graphAttemptedRatePercent ?? '—'}</div>
+                  </div>
+                  <div>
+                    <div className="text-[10px] text-muted-foreground uppercase font-mono">Graph Success Rate</div>
+                    <div className="text-sm font-bold">{selectedAlert.diagnostics.graphSuccessRatePercent ?? '—'}</div>
+                  </div>
+                  <div>
+                    <div className="text-[10px] text-muted-foreground uppercase font-mono">Request Failures</div>
+                    <div className="text-sm font-bold">{selectedAlert.diagnostics.requestFailureCount ?? '—'}</div>
+                  </div>
+                </div>
+                {selectedAlert.diagnostics.citationAttributionQualityDistribution && (
+                  <div className="mt-2 flex flex-wrap gap-2">
+                    {Object.entries(selectedAlert.diagnostics.citationAttributionQualityDistribution).map(([quality, count]) => (
+                      <Badge key={quality} variant="neutral">{quality}: {count}</Badge>
+                    ))}
+                  </div>
+                )}
+              </div>
+            )}
+
+            {selectedAlert.runbooks && selectedAlert.runbooks.length > 0 && (
+              <div>
+                <h4 className="text-xs font-bold text-foreground mb-2">Recommended Runbooks</h4>
+                <div className="space-y-3">
+                  {selectedAlert.runbooks.map((runbook) => (
+                    <div key={runbook.id} className="rounded-xl border border-border p-3 space-y-2">
+                      <div className="text-xs font-semibold text-foreground">{runbook.title}</div>
+                      <p className="text-[11px] text-muted-foreground">{runbook.description}</p>
+                      <div>
+                        <div className="text-[10px] font-mono uppercase text-muted-foreground mb-1">Diagnostic Checks</div>
+                        <ul className="list-disc list-inside space-y-0.5">
+                          {runbook.diagnosticChecks.map((check, i) => (
+                            <li key={i} className="text-[11px] text-muted-foreground">{check}</li>
+                          ))}
+                        </ul>
+                      </div>
+                      <div className="flex flex-wrap gap-2 pt-1">
+                        {runbook.recommendedActions.map((action, i) => (
+                          <Badge key={i} variant={action.kind === 'MANUAL' ? 'neutral' : 'info'}>
+                            {action.kind === 'MANUAL' ? 'Manual' : 'Recommended'}: {action.label}
+                          </Badge>
+                        ))}
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              </div>
+            )}
+
+            {selectedAlert.availableActions && selectedAlert.availableActions.length > 0 && (
+              <div>
+                <h4 className="text-xs font-bold text-foreground mb-2">Operational Actions</h4>
+                {actionError && <p className="text-[11px] text-destructive mb-2">{actionError}</p>}
+                <div className="flex flex-wrap gap-2">
+                  {selectedAlert.availableActions.map((definition) => (
+                    <Button
+                      key={definition.actionType}
+                      size="sm"
+                      variant={definition.riskLevel === 'HIGH' ? 'destructive' : 'secondary'}
+                      loading={executingAction === definition.actionType}
+                      onClick={() => handleActionClick(definition)}
+                      title={definition.description}
+                    >
+                      {definition.label}
+                    </Button>
+                  ))}
+                </div>
+              </div>
+            )}
+
+            {selectedAlert.recentActions && (
+              <div>
+                <h4 className="text-xs font-bold text-foreground mb-2">Recent Actions</h4>
+                {selectedAlert.recentActions.length === 0 ? (
+                  <p className="text-[11px] text-muted-foreground">No operational actions have been run for this incident yet.</p>
+                ) : (
+                  <ul className="space-y-1.5">
+                    {selectedAlert.recentActions.map((action, i) => (
+                      <li key={i} className="text-[11px] flex flex-wrap items-center gap-2">
+                        <Badge variant={action.status === 'SUCCEEDED' ? 'success' : action.status === 'FAILED' ? 'destructive' : 'neutral'}>
+                          {action.status}
+                        </Badge>
+                        <span className="text-muted-foreground">
+                          {action.actionType} · {action.resultSummary} · {formatTs(action.createdAt)}
+                        </span>
+                      </li>
+                    ))}
+                  </ul>
+                )}
+              </div>
+            )}
+
             {selectedAlert.status === 'OPEN' && (
               <div className="flex justify-end pt-2 border-t border-border">
                 <Button variant="primary" loading={acknowledging} onClick={() => handleAcknowledge(selectedAlert.id)}>
@@ -538,6 +754,45 @@ function RagHealthAlertsPageInner() {
                 </Button>
               </div>
             )}
+          </div>
+        )}
+      </Modal>
+
+      {/* Phase 6 — explicit confirmation for any action flagged requiresConfirmation. None of the
+          three currently implemented actions need it (none change retrieval/GraphRAG/citation/chat
+          behavior), but the mechanism exists for a future action that does. */}
+      <Modal isOpen={!!confirmingAction} onClose={() => setConfirmingAction(null)} title="Confirm Operational Action" maxWidthClassName="max-w-md">
+        {confirmingAction && (
+          <div className="space-y-4">
+            <div className="bg-warning/10 border border-warning/30 text-warning text-xs rounded-xl p-3">
+              This action changes production behavior.
+            </div>
+            <div>
+              <div className="text-[10px] text-muted-foreground uppercase font-mono">Action</div>
+              <div className="text-sm font-bold">{confirmingAction.label}</div>
+            </div>
+            <div>
+              <div className="text-[10px] text-muted-foreground uppercase font-mono">Expected Effect</div>
+              <p className="text-xs text-muted-foreground">{confirmingAction.description}</p>
+            </div>
+            <div>
+              <div className="text-[10px] text-muted-foreground uppercase font-mono">Risk</div>
+              <Badge variant={confirmingAction.riskLevel === 'HIGH' ? 'destructive' : 'warning'}>{confirmingAction.riskLevel}</Badge>
+            </div>
+            <div className="flex justify-end gap-2 pt-2 border-t border-border">
+              <Button variant="ghost" onClick={() => setConfirmingAction(null)}>Cancel</Button>
+              <Button
+                variant="destructive"
+                loading={executingAction === confirmingAction.actionType}
+                onClick={() => {
+                  const actionType = confirmingAction.actionType;
+                  setConfirmingAction(null);
+                  runAction(actionType);
+                }}
+              >
+                Confirm
+              </Button>
+            </div>
           </div>
         )}
       </Modal>

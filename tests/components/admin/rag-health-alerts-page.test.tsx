@@ -67,8 +67,17 @@ const RESOLVED_WARNING_ALERT = {
   escalationStatus: 'NOT_ESCALATED'
 };
 
-function mockFetchSequence(alerts: unknown[], detailById: Record<string, unknown> = {}) {
+function mockFetchSequence(
+  alerts: unknown[],
+  detailById: Record<string, unknown> = {},
+  actionResult: unknown = { requestId: 'req-1', actionType: 'INVALIDATE_ANSWER_CACHE', status: 'SUCCEEDED', resultSummary: 'Answer cache invalidated.' }
+) {
   global.fetch = jest.fn().mockImplementation((url: string) => {
+    // Action execution: /api/admin/rag-health-alerts/<id>/actions (checked before the single-alert
+    // regex below, since it also ends in a path segment after the id).
+    if (/\/api\/admin\/rag-health-alerts\/[^/?]+\/actions$/.exec(url)) {
+      return Promise.resolve({ json: () => Promise.resolve({ success: true, data: actionResult }) });
+    }
     // Single-alert detail: /api/admin/rag-health-alerts/<id> (no query string — the list endpoint
     // always has one, e.g. ?limit=..., so this distinguishes the two without a path regex).
     const singleMatch = /\/api\/admin\/rag-health-alerts\/([^/?]+)$/.exec(url);
@@ -173,6 +182,118 @@ describe('RAG Incident Operations Dashboard', () => {
     fireEvent.click(screen.getByText('graphFailureRatePercent').closest('tr') as HTMLElement);
 
     await waitFor(() => expect(screen.getByText('ESCALATED')).toBeInTheDocument());
+  });
+
+  it('renders diagnostics (with a placeholder for unavailable values) and recommended runbooks when RAG_INCIDENT_OPERATIONS_ENABLED', async () => {
+    const detail = {
+      ...OPEN_CRITICAL_ALERT,
+      externalDeliveries: [],
+      diagnostics: {
+        currentValue: 60, baselineValue: null, thresholdValue: 30, sampleSize: 120, window: '24h', detectionCount: 3, alertDurationMs: 7200000,
+        totalLatencyMs: 1200, retrievalLatencyMs: null, graphAttemptedRatePercent: 40, graphSuccessRatePercent: 90,
+        citationAttributionQualityDistribution: null, requestFailureCount: null
+      },
+      runbooks: [
+        {
+          id: 'graph-degradation', title: 'GraphRAG degradation', description: 'Graph metrics moved outside expected bounds.',
+          severityRelevance: ['CRITICAL'], diagnosticChecks: ['Inspect graph success rate'],
+          recommendedActions: [{ label: 'Re-run health evaluation to confirm current state', kind: 'AUTOMATIC', actionType: 'RERUN_HEALTH_EVALUATION' }]
+        }
+      ],
+      availableActions: [],
+      recentActions: []
+    };
+    mockFetchSequence([OPEN_CRITICAL_ALERT], { 'alert-critical': detail });
+    render(<RagHealthAlertsPage />);
+    await waitFor(() => expect(screen.getByText('Incidents (1)')).toBeInTheDocument());
+
+    fireEvent.click(screen.getByText('graphFailureRatePercent').closest('tr') as HTMLElement);
+
+    await waitFor(() => expect(screen.getByText('GraphRAG degradation')).toBeInTheDocument());
+    expect(screen.getByText('1200')).toBeInTheDocument();
+    expect(screen.getByText('Inspect graph success rate')).toBeInTheDocument();
+    expect(screen.getByText(/Recommended: Re-run health evaluation/)).toBeInTheDocument();
+    // retrievalLatencyMs is null — rendered as a placeholder, never fabricated.
+    const retrievalLabel = screen.getByText('Retrieval Latency');
+    expect(retrievalLabel.parentElement?.textContent).toContain('—');
+  });
+
+  it('executing a low-risk action (no confirmation required) calls the actions endpoint directly', async () => {
+    const detail = {
+      ...OPEN_CRITICAL_ALERT,
+      externalDeliveries: [],
+      diagnostics: null,
+      runbooks: [],
+      availableActions: [
+        { actionType: 'INVALIDATE_ANSWER_CACHE', label: 'Invalidate Answer Cache', description: 'Clears cached answers.', riskLevel: 'LOW', requiresConfirmation: false, reversible: true, backgroundExecutionRequired: false }
+      ],
+      recentActions: []
+    };
+    mockFetchSequence([OPEN_CRITICAL_ALERT], { 'alert-critical': detail });
+    render(<RagHealthAlertsPage />);
+    await waitFor(() => expect(screen.getByText('Incidents (1)')).toBeInTheDocument());
+    fireEvent.click(screen.getByText('graphFailureRatePercent').closest('tr') as HTMLElement);
+    await waitFor(() => expect(screen.getByText('Invalidate Answer Cache')).toBeInTheDocument());
+
+    fireEvent.click(screen.getByRole('button', { name: 'Invalidate Answer Cache' }));
+
+    await waitFor(() => expect(global.fetch as jest.Mock).toHaveBeenCalledWith(
+      '/api/admin/rag-health-alerts/alert-critical/actions',
+      expect.objectContaining({ method: 'POST' })
+    ));
+    // No confirmation dialog should have appeared for a non-confirmation-required action.
+    expect(screen.queryByText('This action changes production behavior.')).not.toBeInTheDocument();
+  });
+
+  it('a requiresConfirmation action shows the confirmation dialog and does not execute until confirmed', async () => {
+    const detail = {
+      ...OPEN_CRITICAL_ALERT,
+      externalDeliveries: [],
+      diagnostics: null,
+      runbooks: [],
+      availableActions: [
+        { actionType: 'RERUN_HEALTH_EVALUATION', label: 'Disable Something Risky', description: 'This would change production behavior.', riskLevel: 'HIGH', requiresConfirmation: true, reversible: false, backgroundExecutionRequired: true }
+      ],
+      recentActions: []
+    };
+    mockFetchSequence([OPEN_CRITICAL_ALERT], { 'alert-critical': detail });
+    render(<RagHealthAlertsPage />);
+    await waitFor(() => expect(screen.getByText('Incidents (1)')).toBeInTheDocument());
+    fireEvent.click(screen.getByText('graphFailureRatePercent').closest('tr') as HTMLElement);
+    await waitFor(() => expect(screen.getByText('Disable Something Risky')).toBeInTheDocument());
+
+    fireEvent.click(screen.getByRole('button', { name: 'Disable Something Risky' }));
+
+    await waitFor(() => expect(screen.getByText('This action changes production behavior.')).toBeInTheDocument());
+    expect(global.fetch as jest.Mock).not.toHaveBeenCalledWith('/api/admin/rag-health-alerts/alert-critical/actions', expect.anything());
+
+    fireEvent.click(screen.getByRole('button', { name: 'Confirm' }));
+
+    await waitFor(() => expect(global.fetch as jest.Mock).toHaveBeenCalledWith(
+      '/api/admin/rag-health-alerts/alert-critical/actions',
+      expect.objectContaining({ method: 'POST' })
+    ));
+  });
+
+  it('renders recent action history in the detail view', async () => {
+    const detail = {
+      ...OPEN_CRITICAL_ALERT,
+      externalDeliveries: [],
+      diagnostics: null,
+      runbooks: [],
+      availableActions: [],
+      recentActions: [
+        { requestId: 'req-1', actionType: 'INVALIDATE_ANSWER_CACHE', status: 'SUCCEEDED', resultSummary: 'Answer cache invalidated.', initiatedBy: 'admin-1', createdAt: '2026-01-01T01:00:00.000Z' }
+      ]
+    };
+    mockFetchSequence([OPEN_CRITICAL_ALERT], { 'alert-critical': detail });
+    render(<RagHealthAlertsPage />);
+    await waitFor(() => expect(screen.getByText('Incidents (1)')).toBeInTheDocument());
+
+    fireEvent.click(screen.getByText('graphFailureRatePercent').closest('tr') as HTMLElement);
+
+    await waitFor(() => expect(screen.getByText(/Answer cache invalidated\./)).toBeInTheDocument());
+    expect(screen.getByText('SUCCEEDED')).toBeInTheDocument();
   });
 
   it('shows an Access Denied state when the API rejects the request', async () => {

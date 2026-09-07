@@ -534,6 +534,30 @@ export const CONFIG_REGISTRY: Record<string, RegistryConfigItem> = {
     isEditable: true, isHighImpact: false, requiresRestart: false, minValue: 15, maxValue: 1440
   },
 
+  // RAG INCIDENT RESPONSE AUTOMATION — read-only diagnostics/runbooks and a strict, allow-listed
+  // set of low-risk operational actions (see rag-incident-action.registry.ts). Two separate gates:
+  // operations (viewing diagnostics/runbooks) is lower-risk than actions (executing something),
+  // so they are independently toggleable. Both disabled by default — no established policy exists
+  // yet, matching every other RAG_HEALTH_* flag's own default.
+  RAG_INCIDENT_OPERATIONS_ENABLED: {
+    key: 'RAG_INCIDENT_OPERATIONS_ENABLED',
+    valueType: ConfigValueType.BOOLEAN,
+    category: ConfigCategory.RAG,
+    defaultValue: 'false',
+    purpose: 'Master switch for the incident diagnostics/runbook-recommendation additions to the RAG health alert detail API. When false, the existing alert list/detail/acknowledge behavior is completely unaffected — only the new diagnostics/runbooks/availableActions/recentActions fields are omitted.',
+    description: 'RAG incident diagnostics/runbooks master flag.',
+    isEditable: true, isHighImpact: false, requiresRestart: false
+  },
+  RAG_INCIDENT_ACTIONS_ENABLED: {
+    key: 'RAG_INCIDENT_ACTIONS_ENABLED',
+    valueType: ConfigValueType.BOOLEAN,
+    category: ConfigCategory.RAG,
+    defaultValue: 'false',
+    purpose: 'Master switch for EXECUTING an allow-listed RAG incident operational action (cache invalidation, config cache refresh, on-demand health re-evaluation). Independent of RAG_INCIDENT_OPERATIONS_ENABLED — diagnostics/runbooks can be visible without actions being executable.',
+    description: 'RAG incident operational actions master flag.',
+    isEditable: true, isHighImpact: true, requiresRestart: false
+  },
+
   // LLM & PROVIDERS
   LLM_PROVIDER: {
     key: 'LLM_PROVIDER',

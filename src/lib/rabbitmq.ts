@@ -20,7 +20,12 @@ export const QUEUES = {
   // Phase 90 — AI Memory, Personalization & Adaptive Intelligence. Published fire-and-forget by
   // the Assistant orchestrator once a chat turn completes successfully; consumed by
   // worker/src/processors/memory-extraction.processor.ts.
-  MEMORY_CANDIDATE_EXTRACTION: 'memory-candidate-extraction'
+  MEMORY_CANDIDATE_EXTRACTION: 'memory-candidate-extraction',
+  // RAG Incident Response Automation — ONE shared queue for every allow-listed RAG incident
+  // action (discriminated by `actionType`, mirroring MultimodalJobPayload's established
+  // "shared queue, discriminated by jobType" convention), not one queue per action. Published by
+  // rag-incident-action.service.ts; consumed by worker/src/processors/rag-incident-action.processor.ts.
+  RAG_INCIDENT_ACTION: 'rag-incident-action'
 } as const;
 
 export type QueueName = typeof QUEUES[keyof typeof QUEUES];
@@ -123,6 +128,27 @@ export interface NotificationEmailJobPayload {
   version: number;
   jobId: string;
   notificationId: string;
+  attempt: number;
+  createdAt: string;
+}
+
+/**
+ * RAG Incident Response Automation — background execution for the one allow-listed action that
+ * cannot safely run inline in an admin request (RERUN_HEALTH_EVALUATION must be guarded by the
+ * SAME 'rag-health-check' distributed lock the periodic scheduler tick already uses, and that
+ * lock-guarded code only runs in the worker process). Published by rag-incident-action.service.ts,
+ * consumed by worker/src/processors/rag-incident-action.processor.ts. `actionType` is restricted
+ * to background-execution actions only — synchronous actions never touch this queue.
+ */
+export interface RagIncidentActionJobPayload {
+  jobType: 'RAG_INCIDENT_ACTION';
+  version: number;
+  jobId: string;
+  actionType: 'RERUN_HEALTH_EVALUATION';
+  requestId: string;
+  alertId: string;
+  initiatedBy: string;
+  trigger: 'MANUAL' | 'AUTOMATIC_FOLLOW_UP';
   attempt: number;
   createdAt: string;
 }

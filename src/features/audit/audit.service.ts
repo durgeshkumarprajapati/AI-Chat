@@ -96,6 +96,10 @@ export class AuditService {
     projectId?: string;
     action?: string;
     actorId?: string;
+    /** Additive (RAG Incident Response Automation pass) — filters on the existing, already-typed
+     * targetId column. Omitted for every pre-existing caller, so behavior is unchanged when
+     * absent. */
+    targetId?: string;
     page?: number;
     pageSize?: number;
   }): Promise<{ items: AuditLogItem[]; total: number; page: number; pageSize: number }> {
@@ -110,6 +114,9 @@ export class AuditService {
     }
     if (opts.actorId) {
       where.actorId = opts.actorId;
+    }
+    if (opts.targetId) {
+      where.targetId = opts.targetId;
     }
     if (opts.projectId) {
       where.details = {

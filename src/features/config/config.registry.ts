@@ -434,6 +434,46 @@ export const CONFIG_REGISTRY: Record<string, RegistryConfigItem> = {
     maxValue: 100
   },
 
+  // RAG ALERT NOTIFICATIONS — delivery layer over the RAG health alerts above, reusing the
+  // existing Notification/NotificationType.SYSTEM/dedupeKey infrastructure (see
+  // rag-health-alert-notification.service.ts). Disabled by default: no established alerting
+  // policy exists yet, matching RAG_HEALTH_ALERTS_ENABLED's own default.
+  RAG_HEALTH_ALERT_NOTIFICATIONS_ENABLED: {
+    key: 'RAG_HEALTH_ALERT_NOTIFICATIONS_ENABLED',
+    valueType: ConfigValueType.BOOLEAN,
+    category: ConfigCategory.RAG,
+    defaultValue: 'false',
+    purpose: 'Master switch for delivering RAG health alerts to eligible admins as Notification rows. When false, alerts are still detected/persisted (RAG_HEALTH_ALERTS_ENABLED) but no notification is ever created.',
+    description: 'RAG health alert notification master flag.',
+    isEditable: true,
+    isHighImpact: true,
+    requiresRestart: false
+  },
+  RAG_HEALTH_ALERT_NOTIFICATION_COOLDOWN_MINUTES: {
+    key: 'RAG_HEALTH_ALERT_NOTIFICATION_COOLDOWN_MINUTES',
+    valueType: ConfigValueType.NUMBER,
+    category: ConfigCategory.RAG,
+    defaultValue: '60',
+    purpose: 'Minimum minutes between repeat notifications for the SAME ongoing alert (an alert re-detected every 15 minutes must not re-notify every tick). A new notification is still sent immediately regardless of cooldown when an alert first opens or its severity escalates.',
+    description: 'RAG alert re-notification cooldown (minutes).',
+    isEditable: true,
+    isHighImpact: false,
+    requiresRestart: false,
+    minValue: 5,
+    maxValue: 1440
+  },
+  RAG_HEALTH_ALERT_NOTIFY_ON_RESOLUTION: {
+    key: 'RAG_HEALTH_ALERT_NOTIFY_ON_RESOLUTION',
+    valueType: ConfigValueType.BOOLEAN,
+    category: ConfigCategory.RAG,
+    defaultValue: 'true',
+    purpose: 'Whether to notify admins when an alert auto-resolves — only ever sent for an alert that was previously notified while active (never for an alert nobody was told about).',
+    description: 'RAG alert resolution notification flag.',
+    isEditable: true,
+    isHighImpact: false,
+    requiresRestart: false
+  },
+
   // LLM & PROVIDERS
   LLM_PROVIDER: {
     key: 'LLM_PROVIDER',

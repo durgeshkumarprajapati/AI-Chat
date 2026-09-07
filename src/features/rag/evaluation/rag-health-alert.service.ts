@@ -1,5 +1,5 @@
 import { prisma } from '@/lib/prisma';
-import { RagHealthAlertStatus } from '@prisma/client';
+import { RagHealthAlertStatus, RagHealthAlert } from '@prisma/client';
 import { DetectedCondition } from './rag-health-alert-rules';
 
 /**
@@ -22,9 +22,18 @@ export class RagHealthAlertService {
     created: number;
     updated: number;
     resolved: number;
+    /** Every row created or updated this run (candidates for the notification layer to consider —
+     * see rag-health-alert-notification.service.ts). Additive: existing callers that only read the
+     * counts above are unaffected. */
+    activeAlerts: RagHealthAlert[];
+    /** Rows resolved this run, already reflecting status:RESOLVED/resolvedAt — built from the
+     * in-memory pre-resolve rows plus the resolution timestamp actually written, avoiding a
+     * redundant follow-up fetch. */
+    resolvedAlerts: RagHealthAlert[];
   }> {
     let created = 0;
     let updated = 0;
+    const activeAlerts: RagHealthAlert[] = [];
 
     const existingOpen = await prisma.ragHealthAlert.findMany({
       where: { status: { in: ['OPEN', 'ACKNOWLEDGED'] }, window: { in: checkedWindows } }
@@ -35,7 +44,7 @@ export class RagHealthAlertService {
     for (const condition of detected) {
       const existing = existingByKey.get(condition.dedupeKey);
       if (existing) {
-        await prisma.ragHealthAlert.update({
+        const updatedRow = await prisma.ragHealthAlert.update({
           where: { id: existing.id },
           data: {
             severity: condition.severity,
@@ -48,9 +57,10 @@ export class RagHealthAlertService {
             lastDetectedAt: new Date()
           }
         });
+        activeAlerts.push(updatedRow);
         updated++;
       } else {
-        await prisma.ragHealthAlert.create({
+        const createdRow = await prisma.ragHealthAlert.create({
           data: {
             category: condition.category,
             metric: condition.metric,
@@ -65,27 +75,33 @@ export class RagHealthAlertService {
             sampleSize: condition.sampleSize
           }
         });
+        activeAlerts.push(createdRow);
         created++;
       }
     }
 
     const toResolve = existingOpen.filter((row) => !detectedKeys.has(row.dedupeKey));
     let resolved = 0;
+    let resolvedAlerts: RagHealthAlert[] = [];
     if (toResolve.length > 0) {
+      const resolvedAt = new Date();
       const result = await prisma.ragHealthAlert.updateMany({
         where: { id: { in: toResolve.map((r) => r.id) } },
-        data: { status: RagHealthAlertStatus.RESOLVED, resolvedAt: new Date() }
+        data: { status: RagHealthAlertStatus.RESOLVED, resolvedAt }
       });
       resolved = result.count;
+      resolvedAlerts = toResolve.map((row) => ({ ...row, status: RagHealthAlertStatus.RESOLVED, resolvedAt }));
     }
 
-    return { created, updated, resolved };
+    return { created, updated, resolved, activeAlerts, resolvedAlerts };
   }
 
-  /** Bounded, indexed listing for the admin API — never returns more than `limit` rows. */
+  /** Bounded, indexed listing for the admin API — never returns more than `limit` rows. Enriches
+   * each row with `notificationStatus`/`durationMs` — both computed from existing columns already
+   * on this row (no new query, no raw content). */
   public async listAlerts(options: { status?: RagHealthAlertStatus; category?: string; limit?: number } = {}) {
     const limit = Math.min(Math.max(options.limit ?? 50, 1), 200);
-    return prisma.ragHealthAlert.findMany({
+    const rows = await prisma.ragHealthAlert.findMany({
       where: {
         ...(options.status ? { status: options.status } : {}),
         ...(options.category ? { category: options.category as never } : {})
@@ -93,13 +109,32 @@ export class RagHealthAlertService {
       orderBy: [{ status: 'asc' }, { lastDetectedAt: 'desc' }],
       take: limit
     });
+    return rows.map((row) => this.enrichAlert(row));
   }
 
+  /** notificationStatus is derived, not stored: NOT_NOTIFIED (lastNotifiedAt is null) or NOTIFIED.
+   * durationMs is null for a still-active alert, otherwise resolvedAt - firstDetectedAt. */
+  private enrichAlert(row: RagHealthAlert): RagHealthAlert & { notificationStatus: 'NOTIFIED' | 'NOT_NOTIFIED'; durationMs: number | null } {
+    return {
+      ...row,
+      notificationStatus: row.lastNotifiedAt ? 'NOTIFIED' : 'NOT_NOTIFIED',
+      durationMs: row.resolvedAt ? row.resolvedAt.getTime() - row.firstDetectedAt.getTime() : null
+    };
+  }
+
+  /**
+   * OPEN -> ACKNOWLEDGED. Deliberately does NOT touch severity, detectionCount, dedupeKey, or any
+   * notification-tracking field: acknowledgement is purely an operator "I've seen this" marker —
+   * it must never suppress a future severity escalation's notification (shouldSendAlertNotification
+   * only looks at lastNotifiedSeverity, never at status) and must never itself resolve the alert
+   * (only applyDetectedConditions's auto-resolution does that, when the condition genuinely clears).
+   */
   public async acknowledgeAlert(id: string, acknowledgedBy: string) {
-    return prisma.ragHealthAlert.update({
+    const row = await prisma.ragHealthAlert.update({
       where: { id },
       data: { status: RagHealthAlertStatus.ACKNOWLEDGED, acknowledgedAt: new Date(), acknowledgedBy }
     });
+    return this.enrichAlert(row);
   }
 }
 

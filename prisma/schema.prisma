@@ -444,6 +444,12 @@ model RagHealthAlert {
   acknowledgedAt  DateTime?              @map("acknowledged_at")
   acknowledgedBy  String?                @map("acknowledged_by")
   resolvedAt      DateTime?              @map("resolved_at")
+  // RAG Alert Notification pass — tracks delivery state on the SAME alert row rather than adding a
+  // second table or querying the shared Notification model's JSON metadata (fragile/unindexed).
+  // All nullable: null means "never notified" (a genuinely new/unnotified alert).
+  lastNotifiedAt             DateTime?               @map("last_notified_at")
+  lastNotifiedSeverity       RagHealthAlertSeverity? @map("last_notified_severity")
+  lastNotifiedDetectionCount Int?                    @map("last_notified_detection_count")
   createdAt       DateTime               @default(now()) @map("created_at")
   updatedAt       DateTime               @updatedAt @map("updated_at")
 

@@ -13,6 +13,13 @@ type Status = 'OPEN' | 'ACKNOWLEDGED' | 'RESOLVED';
 type Category = 'CITATION' | 'GRAPH' | 'RETRIEVAL' | 'RELIABILITY';
 type TimeRange = '1h' | '24h' | '7d' | '30d';
 
+interface ExternalDelivery {
+  status: 'PENDING' | 'SENT' | 'FAILED' | 'SKIPPED';
+  attemptCount: number;
+  lastAttemptAt: string | null;
+  failureReason: string | null;
+}
+
 interface AlertRow {
   id: string;
   category: Category;
@@ -36,6 +43,15 @@ interface AlertRow {
   lastNotifiedDetectionCount: number | null;
   notificationStatus: 'NOTIFIED' | 'NOT_NOTIFIED';
   durationMs: number | null;
+  // RAG External Alert Delivery pass — additive. lastExternalNotifiedAt/escalatedAt are always
+  // present (from the same row); externalDeliveries is only populated by the single-alert detail
+  // endpoint (getAlertById), never the bulk list — see handleOpenDetail below.
+  lastExternalNotifiedAt: string | null;
+  lastExternalNotifiedSeverity: Severity | null;
+  externalNotificationStatus: 'NOTIFIED' | 'NOT_NOTIFIED';
+  escalatedAt: string | null;
+  escalationStatus: 'ESCALATED' | 'NOT_ESCALATED';
+  externalDeliveries?: ExternalDelivery[];
 }
 
 // Mirrors RagHealthAlertCategory (schema.prisma) — a literal union, same convention as this
@@ -88,6 +104,12 @@ function buildTimeline(alert: AlertRow): { label: string; detail: string; ts: st
   }
   if (alert.lastNotifiedAt) {
     events.push({ label: 'Notified', detail: `Admins notified · severity ${alert.lastNotifiedSeverity ?? alert.severity}`, ts: alert.lastNotifiedAt });
+  }
+  if (alert.lastExternalNotifiedAt) {
+    events.push({ label: 'Externally notified', detail: `Email delivery attempted · severity ${alert.lastExternalNotifiedSeverity ?? alert.severity}`, ts: alert.lastExternalNotifiedAt });
+  }
+  if (alert.escalatedAt) {
+    events.push({ label: 'Escalated', detail: 'Unacknowledged CRITICAL alert — re-notified', ts: alert.escalatedAt });
   }
   if (alert.acknowledgedAt) {
     events.push({ label: 'Acknowledged', detail: alert.acknowledgedBy ? `By ${alert.acknowledgedBy}` : 'Acknowledged', ts: alert.acknowledgedAt });
@@ -184,6 +206,21 @@ function RagHealthAlertsPageInner() {
       })
       .catch(() => setDeepLinkError('Alert not found or no longer available.'));
   }, [searchParams]);
+
+  /** Opens the modal instantly with the row data already in hand, then enriches it in the
+   * background via the single-alert endpoint (the only source of the externalDeliveries
+   * breakdown — never fetched in the bulk list, to avoid an unindexed JSON-path scan there). */
+  const handleOpenDetail = (row: AlertRow) => {
+    setSelectedAlert(row);
+    fetch(`/api/admin/rag-health-alerts/${row.id}`)
+      .then((r) => r.json())
+      .then((res) => {
+        if (res.success) setSelectedAlert((prev) => (prev && prev.id === row.id ? res.data : prev));
+      })
+      .catch(() => {
+        // Non-fatal — the modal still shows the row data already fetched for the list.
+      });
+  };
 
   const handleRefresh = async () => {
     setRefreshing(true);
@@ -386,7 +423,7 @@ function RagHealthAlertsPageInner() {
                 </thead>
                 <tbody className={TABLE.bodyDivide}>
                   {alerts.map((alert) => (
-                    <tr key={alert.id} className={`${TABLE.row} cursor-pointer`} onClick={() => setSelectedAlert(alert)}>
+                    <tr key={alert.id} className={`${TABLE.row} cursor-pointer`} onClick={() => handleOpenDetail(alert)}>
                       <td className={TABLE.cell}><SeverityBadge severity={alert.severity} /></td>
                       <td className={TABLE.cell}><StatusBadge status={alert.status} /></td>
                       <td className={TABLE.cell}>{CATEGORY_LABELS[alert.category]}</td>
@@ -465,6 +502,33 @@ function RagHealthAlertsPageInner() {
                 <div className="text-[10px] text-muted-foreground uppercase font-mono">Duration</div>
                 <div className="text-sm font-bold">{formatDuration(selectedAlert.durationMs)}</div>
               </div>
+            </div>
+
+            <div>
+              <h4 className="text-xs font-bold text-foreground mb-2">External Delivery &amp; Escalation</h4>
+              <div className="flex flex-wrap items-center gap-2 mb-2">
+                <Badge variant={selectedAlert.externalNotificationStatus === 'NOTIFIED' ? 'info' : 'neutral'}>
+                  {selectedAlert.externalNotificationStatus === 'NOTIFIED' ? 'EXTERNALLY NOTIFIED' : 'NOT EXTERNALLY NOTIFIED'}
+                </Badge>
+                {selectedAlert.escalationStatus === 'ESCALATED' && <Badge variant="destructive">ESCALATED</Badge>}
+              </div>
+              {selectedAlert.externalDeliveries === undefined ? (
+                <p className="text-[11px] text-muted-foreground">Loading delivery outcomes…</p>
+              ) : selectedAlert.externalDeliveries.length === 0 ? (
+                <p className="text-[11px] text-muted-foreground">No external (email) delivery has been attempted for this incident.</p>
+              ) : (
+                <ul className="space-y-1.5">
+                  {selectedAlert.externalDeliveries.map((d, i) => (
+                    <li key={i} className="text-[11px] flex flex-wrap items-center gap-2">
+                      <Badge variant={d.status === 'SENT' ? 'success' : d.status === 'FAILED' ? 'destructive' : 'neutral'}>{d.status}</Badge>
+                      <span className="text-muted-foreground">
+                        {d.attemptCount} attempt{d.attemptCount === 1 ? '' : 's'} · {formatTs(d.lastAttemptAt)}
+                        {d.failureReason ? ` · ${d.failureReason}` : ''}
+                      </span>
+                    </li>
+                  ))}
+                </ul>
+              )}
             </div>
 
             {selectedAlert.status === 'OPEN' && (

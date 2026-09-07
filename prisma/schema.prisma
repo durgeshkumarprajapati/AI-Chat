@@ -450,6 +450,17 @@ model RagHealthAlert {
   lastNotifiedAt             DateTime?               @map("last_notified_at")
   lastNotifiedSeverity       RagHealthAlertSeverity? @map("last_notified_severity")
   lastNotifiedDetectionCount Int?                    @map("last_notified_detection_count")
+  // RAG External Alert Delivery pass — mirrors the in-app tracking fields above exactly, but for
+  // the EMAIL channel (reuses the existing Notification/NotificationDelivery(EMAIL)/NOTIFICATION_EMAIL
+  // queue infrastructure end to end; see rag-health-alert-notification.service.ts). Null means
+  // "never externally notified." No detectionCount equivalent — external delivery's decision never
+  // depends on detectionCount, only on severity/cooldown, exactly like the in-app decision.
+  lastExternalNotifiedAt       DateTime?               @map("last_external_notified_at")
+  lastExternalNotifiedSeverity RagHealthAlertSeverity? @map("last_external_notified_severity")
+  // Last time an acknowledgement-based escalation notification was sent for this alert while it
+  // remained continuously OPEN. Null means "never escalated." Naturally reset for a future alert
+  // instance since a resolved-then-reopened condition is a brand NEW row (create, not update).
+  escalatedAt DateTime? @map("escalated_at")
   createdAt       DateTime               @default(now()) @map("created_at")
   updatedAt       DateTime               @updatedAt @map("updated_at")
 

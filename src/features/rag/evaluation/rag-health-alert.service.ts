@@ -125,18 +125,49 @@ export class RagHealthAlertService {
 
   /** Single-alert lookup for deep-linking (notification navigation) — the list above is bounded/
    * paginated and cannot be relied on to contain an arbitrary older alert. Returns null (not a
-   * throw) for a missing/invalid id so callers can render a graceful "not found" state. */
+   * throw) for a missing/invalid id so callers can render a graceful "not found" state. Additively
+   * enriched with `externalDeliveries` — a derived, bounded, on-demand breakdown of the EMAIL
+   * NotificationDelivery rows for this alert's notifications (never in the bulk list — only here,
+   * for one alert at a time, to avoid an unindexed JSON-path scan across the whole table). Contains
+   * no recipient identity/email — outcome/attempt-count/timing only. */
   public async getAlertById(id: string) {
     const row = await prisma.ragHealthAlert.findUnique({ where: { id } });
-    return row ? this.enrichAlert(row) : null;
+    if (!row) return null;
+    return { ...this.enrichAlert(row), externalDeliveries: await this.getExternalDeliveriesForAlert(id) };
   }
 
-  /** notificationStatus is derived, not stored: NOT_NOTIFIED (lastNotifiedAt is null) or NOTIFIED.
-   * durationMs is null for a still-active alert, otherwise resolvedAt - firstDetectedAt. */
-  private enrichAlert(row: RagHealthAlert): RagHealthAlert & { notificationStatus: 'NOTIFIED' | 'NOT_NOTIFIED'; durationMs: number | null } {
+  /** Best-effort — never throws. A query failure degrades to an empty array rather than breaking
+   * the whole alert-detail response. */
+  private async getExternalDeliveriesForAlert(
+    alertId: string
+  ): Promise<Array<{ status: string; attemptCount: number; lastAttemptAt: Date | null; failureReason: string | null }>> {
+    try {
+      const deliveries = await prisma.notificationDelivery.findMany({
+        where: { channel: 'EMAIL', notification: { metadata: { path: ['alertId'], equals: alertId } } },
+        select: { status: true, attemptCount: true, lastAttemptAt: true, failureReason: true }
+      });
+      return deliveries;
+    } catch (err) {
+      console.error(`[RagHealthAlertService] Failed to load external deliveries for alert ${alertId}:`, err instanceof Error ? err.message : err);
+      return [];
+    }
+  }
+
+  /** notificationStatus/externalNotificationStatus are derived, not stored: NOT_NOTIFIED or
+   * NOTIFIED based on the corresponding lastNotifiedAt/lastExternalNotifiedAt columns.
+   * escalationStatus is similarly derived from escalatedAt. durationMs is null for a still-active
+   * alert, otherwise resolvedAt - firstDetectedAt. */
+  private enrichAlert(row: RagHealthAlert): RagHealthAlert & {
+    notificationStatus: 'NOTIFIED' | 'NOT_NOTIFIED';
+    externalNotificationStatus: 'NOTIFIED' | 'NOT_NOTIFIED';
+    escalationStatus: 'ESCALATED' | 'NOT_ESCALATED';
+    durationMs: number | null;
+  } {
     return {
       ...row,
       notificationStatus: row.lastNotifiedAt ? 'NOTIFIED' : 'NOT_NOTIFIED',
+      externalNotificationStatus: row.lastExternalNotifiedAt ? 'NOTIFIED' : 'NOT_NOTIFIED',
+      escalationStatus: row.escalatedAt ? 'ESCALATED' : 'NOT_ESCALATED',
       durationMs: row.resolvedAt ? row.resolvedAt.getTime() - row.firstDetectedAt.getTime() : null
     };
   }

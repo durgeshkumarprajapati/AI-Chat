@@ -1,5 +1,5 @@
 import React from 'react';
-import { render, screen, waitFor, within } from '@testing-library/react';
+import { render, screen, waitFor, within, fireEvent } from '@testing-library/react';
 
 jest.mock('next/navigation', () => ({
   useSearchParams: () => new URLSearchParams()
@@ -29,7 +29,12 @@ const OPEN_CRITICAL_ALERT = {
   lastNotifiedSeverity: 'CRITICAL',
   lastNotifiedDetectionCount: 1,
   notificationStatus: 'NOTIFIED',
-  durationMs: null
+  durationMs: null,
+  lastExternalNotifiedAt: '2026-01-01T00:05:00.000Z',
+  lastExternalNotifiedSeverity: 'CRITICAL',
+  externalNotificationStatus: 'NOTIFIED',
+  escalatedAt: null,
+  escalationStatus: 'NOT_ESCALATED'
 };
 
 const RESOLVED_WARNING_ALERT = {
@@ -54,11 +59,26 @@ const RESOLVED_WARNING_ALERT = {
   lastNotifiedSeverity: null,
   lastNotifiedDetectionCount: null,
   notificationStatus: 'NOT_NOTIFIED',
-  durationMs: 10800000
+  durationMs: 10800000,
+  lastExternalNotifiedAt: null,
+  lastExternalNotifiedSeverity: null,
+  externalNotificationStatus: 'NOT_NOTIFIED',
+  escalatedAt: null,
+  escalationStatus: 'NOT_ESCALATED'
 };
 
-function mockFetchSequence(alerts: unknown[]) {
+function mockFetchSequence(alerts: unknown[], detailById: Record<string, unknown> = {}) {
   global.fetch = jest.fn().mockImplementation((url: string) => {
+    // Single-alert detail: /api/admin/rag-health-alerts/<id> (no query string — the list endpoint
+    // always has one, e.g. ?limit=..., so this distinguishes the two without a path regex).
+    const singleMatch = /\/api\/admin\/rag-health-alerts\/([^/?]+)$/.exec(url);
+    if (singleMatch && singleMatch[1]) {
+      const id = singleMatch[1];
+      const found = detailById[id] ?? alerts.find((a) => (a as { id: string }).id === id);
+      return Promise.resolve({
+        json: () => Promise.resolve(found ? { success: true, data: found } : { success: false, error: { message: 'Alert not found or no longer available.' } })
+      });
+    }
     if (url.includes('/api/admin/rag-health-alerts')) {
       return Promise.resolve({
         json: () => Promise.resolve({ success: true, data: { alerts, count: alerts.length } })
@@ -123,6 +143,36 @@ describe('RAG Incident Operations Dashboard', () => {
     const table = container.querySelector('table');
     expect(table?.closest('.overflow-x-auto')).not.toBeNull();
     expect(container.querySelector('.overflow-x-hidden')).not.toBeNull();
+  });
+
+  it('clicking a row opens the detail modal and shows external delivery outcomes fetched from the single-alert endpoint', async () => {
+    mockFetchSequence([OPEN_CRITICAL_ALERT], {
+      'alert-critical': {
+        ...OPEN_CRITICAL_ALERT,
+        externalDeliveries: [
+          { status: 'SENT', attemptCount: 1, lastAttemptAt: '2026-01-01T00:06:00.000Z', failureReason: null }
+        ]
+      }
+    });
+    render(<RagHealthAlertsPage />);
+    await waitFor(() => expect(screen.getByText('Incidents (1)')).toBeInTheDocument());
+
+    fireEvent.click(screen.getByText('graphFailureRatePercent').closest('tr') as HTMLElement);
+
+    await waitFor(() => expect(screen.getByText('EXTERNALLY NOTIFIED')).toBeInTheDocument());
+    await waitFor(() => expect(screen.getByText(/1 attempt/)).toBeInTheDocument());
+    expect(screen.getByText('SENT')).toBeInTheDocument();
+  });
+
+  it('shows an ESCALATED badge in the detail view for an escalated incident', async () => {
+    const escalated = { ...OPEN_CRITICAL_ALERT, escalatedAt: '2026-01-01T01:00:00.000Z', escalationStatus: 'ESCALATED' };
+    mockFetchSequence([escalated], { 'alert-critical': { ...escalated, externalDeliveries: [] } });
+    render(<RagHealthAlertsPage />);
+    await waitFor(() => expect(screen.getByText('Incidents (1)')).toBeInTheDocument());
+
+    fireEvent.click(screen.getByText('graphFailureRatePercent').closest('tr') as HTMLElement);
+
+    await waitFor(() => expect(screen.getByText('ESCALATED')).toBeInTheDocument());
   });
 
   it('shows an Access Denied state when the API rejects the request', async () => {

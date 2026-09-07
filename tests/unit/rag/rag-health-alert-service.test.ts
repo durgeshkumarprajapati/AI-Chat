@@ -3,6 +3,7 @@ const mockCreate = jest.fn();
 const mockUpdate = jest.fn();
 const mockUpdateMany = jest.fn();
 const mockFindUnique = jest.fn();
+const mockFindManyDeliveries = jest.fn();
 
 jest.mock('@/lib/prisma', () => ({
   prisma: {
@@ -12,6 +13,9 @@ jest.mock('@/lib/prisma', () => ({
       update: (...args: unknown[]) => mockUpdate(...args),
       updateMany: (...args: unknown[]) => mockUpdateMany(...args),
       findUnique: (...args: unknown[]) => mockFindUnique(...args)
+    },
+    notificationDelivery: {
+      findMany: (...args: unknown[]) => mockFindManyDeliveries(...args)
     }
   }
 }));
@@ -162,14 +166,24 @@ describe('RagHealthAlertService.listAlerts', () => {
 });
 
 describe('RagHealthAlertService.getAlertById', () => {
+  beforeEach(() => {
+    jest.clearAllMocks();
+    mockFindManyDeliveries.mockResolvedValue([]);
+  });
+
   it('returns the enriched alert for an existing id', async () => {
-    mockFindUnique.mockResolvedValue({ id: 'a1', status: 'OPEN', firstDetectedAt: new Date(), resolvedAt: null, lastNotifiedAt: null });
+    mockFindUnique.mockResolvedValue({
+      id: 'a1', status: 'OPEN', firstDetectedAt: new Date(), resolvedAt: null,
+      lastNotifiedAt: null, lastExternalNotifiedAt: null, escalatedAt: null
+    });
 
     const result = await ragHealthAlertService.getAlertById('a1');
 
     expect(result).not.toBeNull();
     expect(result?.id).toBe('a1');
     expect(result?.notificationStatus).toBe('NOT_NOTIFIED');
+    expect(result?.externalNotificationStatus).toBe('NOT_NOTIFIED');
+    expect(result?.escalationStatus).toBe('NOT_ESCALATED');
   });
 
   it('returns null (not a throw) for a missing id, so callers can fail safely', async () => {
@@ -178,5 +192,48 @@ describe('RagHealthAlertService.getAlertById', () => {
     const result = await ragHealthAlertService.getAlertById('does-not-exist');
 
     expect(result).toBeNull();
+    expect(mockFindManyDeliveries).not.toHaveBeenCalled();
+  });
+
+  it('reports NOTIFIED/ESCALATED status once the corresponding timestamps are set', async () => {
+    mockFindUnique.mockResolvedValue({
+      id: 'a1', status: 'OPEN', firstDetectedAt: new Date(), resolvedAt: null,
+      lastNotifiedAt: new Date(), lastExternalNotifiedAt: new Date(), escalatedAt: new Date()
+    });
+
+    const result = await ragHealthAlertService.getAlertById('a1');
+
+    expect(result?.externalNotificationStatus).toBe('NOTIFIED');
+    expect(result?.escalationStatus).toBe('ESCALATED');
+  });
+
+  it('enriches with a bounded, anonymized externalDeliveries breakdown scoped to this one alert (no recipient identity)', async () => {
+    mockFindUnique.mockResolvedValue({ id: 'a1', status: 'OPEN', firstDetectedAt: new Date(), resolvedAt: null, lastNotifiedAt: new Date() });
+    mockFindManyDeliveries.mockResolvedValue([
+      { status: 'SENT', attemptCount: 1, lastAttemptAt: new Date(), failureReason: null },
+      { status: 'FAILED', attemptCount: 3, lastAttemptAt: new Date(), failureReason: 'Email provider not configured' }
+    ]);
+
+    const result = await ragHealthAlertService.getAlertById('a1');
+
+    expect(mockFindManyDeliveries).toHaveBeenCalledWith({
+      where: { channel: 'EMAIL', notification: { metadata: { path: ['alertId'], equals: 'a1' } } },
+      select: { status: true, attemptCount: true, lastAttemptAt: true, failureReason: true }
+    });
+    expect(result?.externalDeliveries).toHaveLength(2);
+    for (const delivery of result?.externalDeliveries ?? []) {
+      expect(Object.keys(delivery)).not.toEqual(expect.arrayContaining(['email', 'userId', 'name']));
+    }
+  });
+
+  it('degrades to an empty externalDeliveries array (never throws) if the delivery query fails', async () => {
+    mockFindUnique.mockResolvedValue({ id: 'a1', status: 'OPEN', firstDetectedAt: new Date(), resolvedAt: null, lastNotifiedAt: null });
+    mockFindManyDeliveries.mockRejectedValue(new Error('DB unavailable'));
+    const consoleErrorSpy = jest.spyOn(console, 'error').mockImplementation(() => {});
+
+    const result = await ragHealthAlertService.getAlertById('a1');
+
+    expect(result?.externalDeliveries).toEqual([]);
+    consoleErrorSpy.mockRestore();
   });
 });

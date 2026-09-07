@@ -23,6 +23,10 @@ jest.mock('@/features/rag/evaluation/rag-health-alert-notification.service', () 
 jest.mock('@/features/rag/evaluation/rag-health-alert-notification-config', () => ({
   loadRagHealthAlertNotificationConfig: () => mockLoadNotificationConfig()
 }));
+const mockLoadExternalConfig = jest.fn();
+jest.mock('@/features/rag/evaluation/rag-health-alert-external-delivery-config', () => ({
+  loadRagHealthAlertExternalDeliveryConfig: () => mockLoadExternalConfig()
+}));
 
 import { ragHealthAlertCheckService } from '@/features/rag/evaluation/rag-health-alert-check.service';
 
@@ -47,10 +51,16 @@ function emptyRagHealth(window: string) {
 }
 
 describe('RagHealthAlertCheckService.runHealthCheck', () => {
+  const EXTERNAL_CONFIG = {
+    externalEnabled: false, externalCooldownMinutes: 120, externalNotifyOnResolution: true,
+    escalationEnabled: false, escalationDelayMinutes: 30, escalationCooldownMinutes: 60
+  };
+
   beforeEach(() => {
     jest.clearAllMocks();
     mockLoadNotificationConfig.mockResolvedValue({ enabled: false, cooldownMinutes: 60, notifyOnResolution: true });
-    mockProcessCheckResult.mockResolvedValue({ alertsNotified: 0, resolutionsNotified: 0 });
+    mockLoadExternalConfig.mockResolvedValue(EXTERNAL_CONFIG);
+    mockProcessCheckResult.mockResolvedValue({ alertsNotified: 0, resolutionsNotified: 0, escalationsSent: 0 });
   });
 
   it('15. produces no alerts and makes no DB/aggregation calls at all when the feature is disabled', async () => {
@@ -85,12 +95,14 @@ describe('RagHealthAlertCheckService.runHealthCheck', () => {
     const resolvedAlerts = [{ id: 'a2' }];
     mockApplyDetectedConditions.mockResolvedValue({ created: 1, updated: 0, resolved: 1, activeAlerts, resolvedAlerts });
     mockLoadNotificationConfig.mockResolvedValue({ enabled: true, cooldownMinutes: 60, notifyOnResolution: true });
-    mockProcessCheckResult.mockResolvedValue({ alertsNotified: 1, resolutionsNotified: 1 });
+    mockProcessCheckResult.mockResolvedValue({ alertsNotified: 1, resolutionsNotified: 1, escalationsSent: 2 });
 
     const result = await ragHealthAlertCheckService.runHealthCheck();
 
-    expect(mockProcessCheckResult).toHaveBeenCalledWith(activeAlerts, resolvedAlerts, expect.objectContaining({ enabled: true }));
-    expect(result).toEqual({ enabled: true, created: 1, updated: 0, resolved: 1, alertsNotified: 1, resolutionsNotified: 1 });
+    expect(mockProcessCheckResult).toHaveBeenCalledWith(
+      activeAlerts, resolvedAlerts, expect.objectContaining({ enabled: true }), expect.objectContaining(EXTERNAL_CONFIG)
+    );
+    expect(result).toEqual({ enabled: true, created: 1, updated: 0, resolved: 1, alertsNotified: 1, resolutionsNotified: 1, escalationsSent: 2 });
   });
 
   it('a notification-layer failure never breaks alert detection/persistence (defense-in-depth)', async () => {
@@ -102,7 +114,7 @@ describe('RagHealthAlertCheckService.runHealthCheck', () => {
 
     const result = await ragHealthAlertCheckService.runHealthCheck();
 
-    expect(result).toEqual({ enabled: true, created: 1, updated: 0, resolved: 0, alertsNotified: undefined, resolutionsNotified: undefined });
+    expect(result).toEqual({ enabled: true, created: 1, updated: 0, resolved: 0, alertsNotified: undefined, resolutionsNotified: undefined, escalationsSent: undefined });
     expect(consoleErrorSpy).toHaveBeenCalled();
     consoleErrorSpy.mockRestore();
   });

@@ -4,6 +4,7 @@ import { ragHealthAlertService } from './rag-health-alert.service';
 import { loadRagHealthAlertConfig } from './rag-health-alert-config';
 import { ragHealthAlertNotificationService } from './rag-health-alert-notification.service';
 import { loadRagHealthAlertNotificationConfig } from './rag-health-alert-notification-config';
+import { loadRagHealthAlertExternalDeliveryConfig } from './rag-health-alert-external-delivery-config';
 
 /**
  * Orchestrates one full RAG health check pass: computes the existing ragHealth aggregation for
@@ -24,6 +25,7 @@ export class RagHealthAlertCheckService {
     resolved?: number;
     alertsNotified?: number;
     resolutionsNotified?: number;
+    escalationsSent?: number;
   }> {
     const config = await loadRagHealthAlertConfig();
     if (!config.enabled) {
@@ -49,16 +51,21 @@ export class RagHealthAlertCheckService {
     // ChatService.safeLogTelemetry from the observability pass).
     let alertsNotified: number | undefined;
     let resolutionsNotified: number | undefined;
+    let escalationsSent: number | undefined;
     try {
-      const notificationConfig = await loadRagHealthAlertNotificationConfig();
-      const notifyResult = await ragHealthAlertNotificationService.processCheckResult(activeAlerts, resolvedAlerts, notificationConfig);
+      const [notificationConfig, externalConfig] = await Promise.all([
+        loadRagHealthAlertNotificationConfig(),
+        loadRagHealthAlertExternalDeliveryConfig()
+      ]);
+      const notifyResult = await ragHealthAlertNotificationService.processCheckResult(activeAlerts, resolvedAlerts, notificationConfig, externalConfig);
       alertsNotified = notifyResult.alertsNotified;
       resolutionsNotified = notifyResult.resolutionsNotified;
+      escalationsSent = notifyResult.escalationsSent;
     } catch (err) {
       console.error('[RagHealthAlertCheckService] Notification delivery failed (alerts unaffected):', err);
     }
 
-    return { enabled: true, created, updated, resolved, alertsNotified, resolutionsNotified };
+    return { enabled: true, created, updated, resolved, alertsNotified, resolutionsNotified, escalationsSent };
   }
 }
 

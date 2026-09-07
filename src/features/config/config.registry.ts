@@ -474,6 +474,66 @@ export const CONFIG_REGISTRY: Record<string, RegistryConfigItem> = {
     requiresRestart: false
   },
 
+  // RAG EXTERNAL ALERT DELIVERY AND ESCALATION — reuses the existing Notification/
+  // NotificationDelivery(EMAIL)/NOTIFICATION_EMAIL queue infrastructure end to end (see
+  // rag-health-alert-notification.service.ts). Subordinate to the existing global
+  // NOTIFICATION_EMAIL_ENABLED flag — this is an additional, RAG-specific gate on top of it, not a
+  // replacement. Disabled by default: no established external-alerting policy exists yet.
+  RAG_HEALTH_EXTERNAL_NOTIFICATIONS_ENABLED: {
+    key: 'RAG_HEALTH_EXTERNAL_NOTIFICATIONS_ENABLED',
+    valueType: ConfigValueType.BOOLEAN,
+    category: ConfigCategory.RAG,
+    defaultValue: 'false',
+    purpose: 'Master switch for delivering RAG health alerts to eligible admins via the existing external (email) notification channel, in addition to in-app. When false, only in-app notifications are sent regardless of NOTIFICATION_EMAIL_ENABLED.',
+    description: 'RAG health alert external (email) delivery master flag.',
+    isEditable: true, isHighImpact: true, requiresRestart: false
+  },
+  RAG_HEALTH_EXTERNAL_NOTIFICATION_COOLDOWN_MINUTES: {
+    key: 'RAG_HEALTH_EXTERNAL_NOTIFICATION_COOLDOWN_MINUTES',
+    valueType: ConfigValueType.NUMBER,
+    category: ConfigCategory.RAG,
+    defaultValue: '120',
+    purpose: 'Minimum minutes between repeat EXTERNAL (email) notifications for the same ongoing alert — independent of the in-app cooldown, so external delivery can be tuned more conservatively. A CRITICAL escalation still bypasses this immediately, exactly like the in-app cooldown.',
+    description: 'RAG alert external re-notification cooldown (minutes).',
+    isEditable: true, isHighImpact: false, requiresRestart: false, minValue: 15, maxValue: 1440
+  },
+  RAG_HEALTH_EXTERNAL_NOTIFY_ON_RESOLUTION: {
+    key: 'RAG_HEALTH_EXTERNAL_NOTIFY_ON_RESOLUTION',
+    valueType: ConfigValueType.BOOLEAN,
+    category: ConfigCategory.RAG,
+    defaultValue: 'true',
+    purpose: 'Whether to send an external (email) resolution notification when an alert auto-resolves — only ever sent for an alert that was previously notified externally while active.',
+    description: 'RAG alert external resolution notification flag.',
+    isEditable: true, isHighImpact: false, requiresRestart: false
+  },
+  RAG_HEALTH_ALERT_ESCALATION_ENABLED: {
+    key: 'RAG_HEALTH_ALERT_ESCALATION_ENABLED',
+    valueType: ConfigValueType.BOOLEAN,
+    category: ConfigCategory.RAG,
+    defaultValue: 'false',
+    purpose: 'Master switch for acknowledgement-aware escalation: re-notifying admins (in-app + external, subject to the same external gate above) when a CRITICAL alert remains OPEN and unacknowledged past the configured delay. Never changes alert status or acknowledgement state.',
+    description: 'RAG CRITICAL alert escalation master flag.',
+    isEditable: true, isHighImpact: true, requiresRestart: false
+  },
+  RAG_HEALTH_ALERT_ESCALATION_DELAY_MINUTES: {
+    key: 'RAG_HEALTH_ALERT_ESCALATION_DELAY_MINUTES',
+    valueType: ConfigValueType.NUMBER,
+    category: ConfigCategory.RAG,
+    defaultValue: '30',
+    purpose: 'Minutes an OPEN CRITICAL alert may remain unacknowledged before the first escalation notification is sent.',
+    description: 'RAG alert escalation delay (minutes).',
+    isEditable: true, isHighImpact: false, requiresRestart: false, minValue: 5, maxValue: 1440
+  },
+  RAG_HEALTH_ALERT_ESCALATION_COOLDOWN_MINUTES: {
+    key: 'RAG_HEALTH_ALERT_ESCALATION_COOLDOWN_MINUTES',
+    valueType: ConfigValueType.NUMBER,
+    category: ConfigCategory.RAG,
+    defaultValue: '60',
+    purpose: 'Minimum minutes between repeat escalation notifications for the same still-unacknowledged alert — prevents escalating every scheduler tick.',
+    description: 'RAG alert escalation re-notification cooldown (minutes).',
+    isEditable: true, isHighImpact: false, requiresRestart: false, minValue: 15, maxValue: 1440
+  },
+
   // LLM & PROVIDERS
   LLM_PROVIDER: {
     key: 'LLM_PROVIDER',

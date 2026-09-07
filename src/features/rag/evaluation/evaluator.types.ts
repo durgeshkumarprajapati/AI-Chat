@@ -28,7 +28,14 @@ export interface EvaluationInput {
   llmLatencyMs?: number;
   llmFirstTokenMs?: number;
   evaluationLatencyMs?: number;
-  latencyTrace?: Record<string, number>;
+  /**
+   * Widened (observability-hardening pass) from Record<string, number> to also allow the string
+   * enum / boolean fields chat.service.ts now adds before persisting (attributionQuality,
+   * uncitedAnswer, graph decision/outcome fields) — Prisma stores this column as JSON regardless,
+   * so this was purely a TypeScript-side restriction, not a storage one. Every existing caller only
+   * ever passed numbers, so this is additive/backward compatible.
+   */
+  latencyTrace?: Record<string, number | string | boolean>;
 }
 
 export interface UserFeedbackInput {
@@ -84,7 +91,7 @@ export interface PaginatedEvaluations {
     llmLatencyMs: number | null;
     llmFirstTokenMs: number | null;
     evaluationLatencyMs: number | null;
-    latencyTrace: Record<string, number> | null;
+    latencyTrace: Record<string, number | string | boolean> | null;
     retrievedChunkCount: number;
     citedChunkCount: number;
     isFallback: boolean;

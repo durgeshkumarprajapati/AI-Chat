@@ -31,6 +31,7 @@ function chunk(overrides: Partial<RetrievedChunk> & { id: string; content: strin
 
 function orchestratedAnswer(overrides: Partial<OrchestratedAnswer>): OrchestratedAnswer {
   return {
+    requestId: 'test-request-id',
     conversationId: 'conv-1',
     answerMode: 'DOCUMENT_GROUNDED',
     answer: '',

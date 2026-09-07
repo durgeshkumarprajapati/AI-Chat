@@ -16,7 +16,23 @@ export interface RagTelemetryEvent {
     | 'rag.context.completed'
     | 'rag.llm.first_token'
     | 'rag.request.completed'
-    | 'rag.request.timeout';
+    | 'rag.request.timeout'
+    // --- Added by the observability-hardening pass ---
+    // `rag.retrieval.completed` — fired once per request right after retrieval (vector/keyword/
+    // web/graph fusion, whichever branch ran) finalizes, reporting the chunk count actually
+    // available going into evidence assessment. Distinct from `rag.retrieval.graph.completed`
+    // (which already existed and reports the graph-specific decision/outcome breakdown).
+    | 'rag.retrieval.completed'
+    // `rag.llm.generation.completed` — LLM generation timing/provider was already computed into
+    // chat.service.ts's own latencyTrace bag but never emitted as a structured, correlatable event.
+    | 'rag.llm.generation.completed'
+    // `rag.citation.attribution.completed` — evidence-attribution metrics (see
+    // evidence-attribution.ts) were already computed but never emitted as a structured event.
+    | 'rag.citation.attribution.completed'
+    // `rag.request.failed` — fired only from the API route layer (chat.service.ts itself has no
+    // top-level try/catch and none was added — see this pass's report for why), so this covers
+    // failures the route layer already catches today, without restructuring chat.service.ts.
+    | 'rag.request.failed';
   requestId: string;
   scopeType?: string;
   durationMs?: number;

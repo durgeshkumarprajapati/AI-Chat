@@ -64,6 +64,10 @@ export interface ChatResponse {
   attributionQuality?: AttributionQuality;
   /** True when retrieved evidence existed but the answer cited none of it. */
   uncitedAnswer?: boolean;
+  /** Correlation ID for this RAG request (see rag-execution-context.ts) — safe to expose: a random
+   * hex suffix only, no user/document/query data. Useful for referencing a specific request in
+   * support/ops discussions against server-side telemetry logs. */
+  requestId?: string;
 }
 
 export type StreamEvent =
@@ -97,5 +101,6 @@ export type StreamEvent =
       latencyTrace?: Record<string, number>;
       attributionQuality?: AttributionQuality;
       uncitedAnswer?: boolean;
+      requestId?: string;
     }
   | { type: 'error'; message: string };

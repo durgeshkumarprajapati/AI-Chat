@@ -353,6 +353,10 @@ export class AnswerOrchestratorService {
     if (input.requestedAnswerMode === 'GENERAL_KNOWLEDGE' || (input.allowGeneralKnowledge && !input.knowledgeBaseId)) return null;
     const start = Date.now();
     const latencyTrace: Record<string, number> = {};
+    // This preflight never reaches the main orchestrate() pipeline (that's the whole point of a
+    // cheap cache-only check), so it has no execCtx to reuse — generate its own requestId so every
+    // OrchestratedAnswer this service returns has one, consistent with orchestrate()'s contract.
+    const requestId = ragExecutionContextManager.create().requestId;
     const options = {
       userId: input.userId,
       knowledgeBaseId: input.searchAllKbs ? null : input.knowledgeBaseId || null,
@@ -369,7 +373,7 @@ export class AnswerOrchestratorService {
       if (options.answerMode === 'GROUNDED' && validCitations.length === 0) {
         // Cached citations invalid or missing for grounded mode; treat as cache miss
       } else {
-        return this.cachedAnswer(input, { ...exact, citations: validCitations }, 'exact', latencyTrace);
+        return this.cachedAnswer(input, { ...exact, citations: validCitations }, 'exact', latencyTrace, requestId);
       }
     }
     const semanticStart = Date.now();
@@ -389,11 +393,12 @@ export class AnswerOrchestratorService {
       return null;
     }
     latencyTrace.totalMs = Date.now() - start;
-    return this.cachedAnswer(input, { ...semantic, citations: validSemanticCitations }, 'semantic', latencyTrace, !embedding.cacheHit);
+    return this.cachedAnswer(input, { ...semantic, citations: validSemanticCitations }, 'semantic', latencyTrace, requestId, !embedding.cacheHit);
   }
 
-  private cachedAnswer(input: OrchestrationInput, item: { answer: string; citations: Citation[]; answerMode: string; topSimilarity: number; retrievalQuery?: string; contextMessagesCount?: number; sourceFingerprint?: string }, cacheType: 'exact' | 'semantic', latencyTrace: Record<string, number>, embeddingCalled = false): OrchestratedAnswer {
+  private cachedAnswer(input: OrchestrationInput, item: { answer: string; citations: Citation[]; answerMode: string; topSimilarity: number; retrievalQuery?: string; contextMessagesCount?: number; sourceFingerprint?: string }, cacheType: 'exact' | 'semantic', latencyTrace: Record<string, number>, requestId: string, embeddingCalled = false): OrchestratedAnswer {
     return {
+      requestId,
       conversationId: input.conversationId || '', answerMode: item.answerMode as AnswerMode,
       answer: item.answer, citations: item.citations, retrievedChunks: [], topSimilarity: item.topSimilarity,
       retrievalQuery: item.retrievalQuery || input.question, contextMessagesCount: item.contextMessagesCount || 0,
@@ -442,6 +447,7 @@ export class AnswerOrchestratorService {
       latencyTrace.totalMs = totalMs;
 
       return {
+        requestId: execCtx.requestId,
         conversationId: input.conversationId || '',
         answerMode: 'GENERAL_KNOWLEDGE',
         answer: `General Knowledge — This answer is not based on your uploaded documents.\n\n${answerText.trim()}`,
@@ -490,6 +496,7 @@ export class AnswerOrchestratorService {
       });
       latencyTrace.totalMs = Date.now() - startTime;
       return {
+        requestId: execCtx.requestId,
         conversationId: input.conversationId || '',
         answerMode: (cachedExact.answerMode as AnswerMode) || 'GROUNDED',
         answer: cachedExact.answer,
@@ -534,6 +541,7 @@ export class AnswerOrchestratorService {
       });
       latencyTrace.totalMs = Date.now() - startTime;
       return {
+        requestId: execCtx.requestId,
         conversationId: input.conversationId || '', answerMode: cachedSemantic.answerMode as AnswerMode,
         answer: cachedSemantic.answer, citations: cachedSemantic.citations, retrievedChunks: [],
         topSimilarity: cachedSemantic.topSimilarity, retrievalQuery: cachedSemantic.retrievalQuery || effectiveQuery,
@@ -680,6 +688,28 @@ export class AnswerOrchestratorService {
     // Hard Validation Boundary for Source Isolation
     chunks = this.validateEvidenceForSourceMode(chunks, sourceMode);
 
+    // Observability (added this pass): reports the chunk count actually available going into
+    // evidence assessment, for whichever retrieval branch ran (documents_only/all_sources/web_only/
+    // web_discovery/web_search/auto), including graph augmentation when that branch ran it. Counts
+    // and an enum only — no query text, no chunk content. Distinct from the existing
+    // `rag.retrieval.graph.completed` event, which already reports the graph-specific breakdown.
+    // Defense-in-depth beyond logEvent's own internal try/catch (Phase 6 requirement: a telemetry
+    // failure must never fail the actual request) — guarded independently here too.
+    try {
+      ragPerformanceTelemetryService.logEvent({
+        event: 'rag.retrieval.completed',
+        requestId: execCtx.requestId,
+        durationMs: latencyTrace.retrievalMs,
+        metadata: {
+          sourceMode,
+          retrievedChunkCount: chunks.length,
+          isEmpty: chunks.length === 0
+        }
+      });
+    } catch (err) {
+      console.warn('[AnswerOrchestratorService] Telemetry logging failed (request unaffected):', err);
+    }
+
     // Multimodal Visual Query Classification & Boundary
     const visStart = Date.now();
     const visualQueryDec = visualQueryClassifier.classifyQuery(input.question);
@@ -747,6 +777,7 @@ export class AnswerOrchestratorService {
     if (evidence.isAmbiguousQuestion && chunks.length === 0) {
       latencyTrace.totalMs = Date.now() - startTime;
       return {
+        requestId: execCtx.requestId,
         conversationId: input.conversationId || '',
         answerMode: 'CLARIFICATION_REQUIRED',
         availableActions: ['REFINE_QUERY'],
@@ -783,6 +814,7 @@ export class AnswerOrchestratorService {
       }
 
       return {
+        requestId: execCtx.requestId,
         conversationId: input.conversationId || '',
         answerMode: 'NO_DOCUMENT_EVIDENCE',
         availableActions: actions,
@@ -825,6 +857,7 @@ export class AnswerOrchestratorService {
     latencyTrace.totalMs = Date.now() - startTime;
 
       return {
+        requestId: execCtx.requestId,
         conversationId: input.conversationId || '',
         answerMode: currentMode,
         answer: '', // Filled by caller via stream or non-stream generation

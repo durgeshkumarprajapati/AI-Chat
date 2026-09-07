@@ -85,6 +85,73 @@ async function handleGet(req: NextRequest) {
       prisma.ragEvaluation.count({ where: { createdAt: { gte: since } } })
     ]);
 
+    // Observability-hardening pass — citation/attribution/graph metrics are already persisted
+    // (chat.service.ts widens the SAME RagEvaluation.latencyTrace JSON column it already writes;
+    // no schema change) but aren't Prisma-aggregatable as typed columns, so this reads a BOUNDED
+    // recent sample (most recent 200 rows in the same 24h window) and aggregates in JS. This is
+    // deliberately NOT a full-population average — `sampleSize` reports exactly how many rows were
+    // actually read, and it can be smaller than `ragSampleCount` above whenever more than 200 rows
+    // exist in the window. Adequate for an operational diagnostic; a dedicated indexed column would
+    // be needed for precise analytics at much higher volume — see this pass's report.
+    let citationAttribution: {
+      available: boolean;
+      sampleSize?: number;
+      uncitedAnswerRate?: number;
+      attributionQualityDistribution?: Record<string, number>;
+      graphContributedRate?: number;
+      graphSuccessRateAmongAttempted?: number;
+      reason?: string;
+    };
+    try {
+      const sample = await prisma.ragEvaluation.findMany({
+        where: { createdAt: { gte: since } },
+        orderBy: { createdAt: 'desc' },
+        take: 200,
+        select: { latencyTrace: true }
+      });
+
+      if (sample.length === 0) {
+        citationAttribution = {
+          available: false,
+          reason: 'No RagEvaluation rows in the last 24h — nothing to aggregate yet.'
+        };
+      } else {
+        let uncitedCount = 0;
+        let graphContributedCount = 0;
+        let graphAttemptedCount = 0;
+        let graphSucceededCount = 0;
+        const qualityDist: Record<string, number> = {};
+
+        for (const row of sample) {
+          const trace = (row.latencyTrace as Record<string, unknown> | null) || {};
+          if (trace.uncitedAnswer === true) uncitedCount++;
+          if (typeof trace.attributionQuality === 'string') {
+            qualityDist[trace.attributionQuality] = (qualityDist[trace.attributionQuality] || 0) + 1;
+          }
+          if (trace.graphUsed === 1) graphContributedCount++;
+          if (trace.graphAttempted === true) {
+            graphAttemptedCount++;
+            if (trace.graphSuccess === true) graphSucceededCount++;
+          }
+        }
+
+        citationAttribution = {
+          available: true,
+          sampleSize: sample.length,
+          uncitedAnswerRate: Number(((uncitedCount / sample.length) * 100).toFixed(1)),
+          attributionQualityDistribution: qualityDist,
+          graphContributedRate: Number(((graphContributedCount / sample.length) * 100).toFixed(1)),
+          graphSuccessRateAmongAttempted:
+            graphAttemptedCount > 0 ? Number(((graphSucceededCount / graphAttemptedCount) * 100).toFixed(1)) : undefined
+        };
+      }
+    } catch (err) {
+      citationAttribution = {
+        available: false,
+        reason: `Aggregation failed: ${err instanceof Error ? err.message : String(err)}`
+      };
+    }
+
     const [answerCacheTtl, singleFlightEnabled, slowQueryThresholdMs, multimodalConcurrency, apiTargetLatencyMs, slowRequestThresholdMs] =
       await Promise.all([
         configService.getNumber('RAG_CACHE_TTL_SECONDS', 300),
@@ -210,7 +277,12 @@ async function handleGet(req: NextRequest) {
         workflowMetrics,
         // Phase 91 — additive. Per-queue message/consumer counts, keyed by the QUEUES const's
         // own key names (e.g. "AI_INTELLIGENCE_DAILY"). available:false + reason on failure.
-        queueDepths
+        queueDepths,
+        // Observability-hardening pass — bounded recent-sample aggregation over RagEvaluation's
+        // already-persisted latencyTrace JSON (see this block's own comment above for why it's a
+        // sample, not a full population average). No raw answers/queries/document content — counts,
+        // rates, and an enum distribution only.
+        citationAttribution
       }
     });
   } catch (error) {

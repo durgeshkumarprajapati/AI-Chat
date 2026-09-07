@@ -92,6 +92,14 @@ export interface GraphRetrievalExplanation {
 }
 
 export interface OrchestratedAnswer {
+  /**
+   * Correlation ID for this RAG request (see rag-execution-context.ts) — production-safe: contains
+   * no user ID, document ID, or raw query text, only a random hex suffix. Present on every code
+   * path (cache hit, early bypass, or full retrieval) so callers (chat.service.ts) can tag their
+   * OWN later-stage telemetry (LLM generation, citation attribution) with the SAME id used by the
+   * orchestrator's own events, instead of each stage using an uncorrelated id or none at all.
+   */
+  requestId: string;
   conversationId: string;
   messageId?: string;
   answerMode: AnswerMode;

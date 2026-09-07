@@ -32,7 +32,7 @@ const GRAPH_CHUNK: RetrievedChunk = {
 
 function orchestratedAnswer(overrides: Partial<OrchestratedAnswer>): OrchestratedAnswer {
   return {
-    conversationId: '', answerMode: 'DOCUMENT_GROUNDED', answer: '', citations: [],
+    requestId: 'test-request-id', conversationId: '', answerMode: 'DOCUMENT_GROUNDED', answer: '', citations: [],
     retrievedChunks: [], topSimilarity: 0.8, cacheHit: false, cacheType: 'none',
     llmCalled: true, embeddingCalled: true, vectorSearchCalled: true, keywordSearchCalled: true,
     rerankCalled: true, recoveryAttempted: false, recoveryAttempts: 0, latencyTrace: {},

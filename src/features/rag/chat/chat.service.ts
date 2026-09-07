@@ -12,6 +12,7 @@ import { promptContextService } from './prompt-context.service';
 import { citationService } from '../citation/citation.service';
 import { computeEvidenceAttributionMetrics, EvidenceAttributionMetrics } from '../citation/evidence-attribution';
 import { env } from '@/config/env';
+import { ragPerformanceTelemetryService, RagTelemetryEvent } from '../performance/rag-telemetry.service';
 
 export class ChatService {
   private llmProvider: LLMProvider;
@@ -33,6 +34,21 @@ export class ChatService {
       (retrievalService || llmProvider
         ? new AnswerOrchestratorService(undefined, retrievalService, undefined, this.llmProvider)
         : answerOrchestratorService);
+  }
+
+  /**
+   * Defense-in-depth beyond ragPerformanceTelemetryService.logEvent's own internal try/catch
+   * (verified never-throws in rag-telemetry-service.test.ts): Phase 6 of the observability pass
+   * requires that a telemetry failure can NEVER fail a real chat request, so this call site also
+   * guards independently rather than relying solely on the telemetry service's own contract. Warns
+   * (never silently swallows) so a real regression there is still visible in logs.
+   */
+  private safeLogTelemetry(payload: RagTelemetryEvent): void {
+    try {
+      ragPerformanceTelemetryService.logEvent(payload);
+    } catch (err) {
+      console.warn('[ChatService] Telemetry logging failed (request unaffected):', err);
+    }
   }
 
   public async sendMessage(
@@ -173,6 +189,13 @@ export class ChatService {
       });
       llmLatencyMs = Date.now() - llmStart;
 
+      this.safeLogTelemetry({
+        event: 'rag.llm.generation.completed',
+        requestId: orchResult.requestId,
+        durationMs: llmLatencyMs,
+        metadata: { provider: orchestrationInput.model, streaming: false }
+      });
+
       // Evidence-aware attribution (Phase 5): citations now come ONLY from evidence identifiers
       // ([DOC-n]/[GRAPH-n]) the generated answer actually referenced — see
       // citation.service.ts's mapEvidenceReferencesToCitations doc comment for the fallback
@@ -186,6 +209,22 @@ export class ChatService {
         evidenceResult.duplicateReferenceCount,
         evidenceResult.malformedReferenceCount
       );
+
+      this.safeLogTelemetry({
+        event: 'rag.citation.attribution.completed',
+        requestId: orchResult.requestId,
+        metadata: {
+          attributionQuality: evidenceAttribution.attributionQuality,
+          uncitedAnswer: evidenceAttribution.uncitedAnswer,
+          citationRequestedEvidenceCount: evidenceAttribution.citationRequestedEvidenceCount,
+          citationReferencedEvidenceCount: evidenceAttribution.citationReferencedEvidenceCount,
+          citationInvalidReferenceCount: evidenceAttribution.citationInvalidReferenceCount,
+          citationDuplicateReferenceCount: evidenceAttribution.citationDuplicateReferenceCount,
+          citationMalformedReferenceCount: evidenceAttribution.citationMalformedReferenceCount,
+          documentCitationCount: evidenceAttribution.documentCitationCount,
+          graphCitationCount: evidenceAttribution.graphCitationCount
+        }
+      });
 
       // Cache completed answer for exact matches
       await this.orchestratorService
@@ -274,6 +313,33 @@ export class ChatService {
     };
     console.log(`[RAG Latency] conversationId=${conversationId} memory=${conversationContextMs}ms embedding=${latencyTrace.embeddingMs}ms vector=${latencyTrace.vectorMs}ms keyword=${latencyTrace.keywordMs}ms rerank=${latencyTrace.rerankMs}ms llm=${llmLatencyMs}ms persistence=${persistenceMs}ms totalResponse=${duration}ms`);
 
+    this.safeLogTelemetry({
+      event: 'rag.request.completed',
+      requestId: orchResult.requestId,
+      durationMs: duration,
+      cacheHit: orchResult.cacheHit,
+      metadata: { answerMode: orchResult.answerMode }
+    });
+
+    // Persisted metrics widen latencyTrace's own (numeric-only) shape with the attribution-quality
+    // enum/booleans and graph decision/outcome fields — all already computed above, none of it raw
+    // content. See evaluator.types.ts's EvaluationInput.latencyTrace doc comment for why this is
+    // safe (Prisma stores this column as JSON regardless of the narrower TS type elsewhere).
+    const persistedMetrics: Record<string, number | string | boolean> = {
+      ...latencyTrace,
+      ...(evidenceAttribution ? {
+        attributionQuality: evidenceAttribution.attributionQuality,
+        uncitedAnswer: evidenceAttribution.uncitedAnswer
+      } : {}),
+      ...(orchResult.graphRetrieval ? {
+        graphAttempted: orchResult.graphRetrieval.attempted,
+        graphExecuted: orchResult.graphRetrieval.executed,
+        graphReason: orchResult.graphRetrieval.reason,
+        graphSuccess: orchResult.graphRetrieval.success,
+        ...(orchResult.graphRetrieval.failureCategory ? { graphFailureCategory: orchResult.graphRetrieval.failureCategory } : {})
+      } : {})
+    };
+
     // Non-blocking RAG Evaluation
     evaluationService
       .evaluateAndPersist({
@@ -290,7 +356,7 @@ export class ChatService {
         ,responseLatencyMs: duration
         ,retrievalLatencyMs: latencyTrace.retrievalMs
         ,llmLatencyMs
-        ,latencyTrace
+        ,latencyTrace: persistedMetrics
       })
       .catch((err) => console.warn('[ChatService] Background evaluation error:', err));
 
@@ -316,7 +382,8 @@ export class ChatService {
       recoveryAttempts: orchResult.recoveryAttempts,
       latencyTrace,
       attributionQuality: evidenceAttribution?.attributionQuality,
-      uncitedAnswer: evidenceAttribution?.uncitedAnswer
+      uncitedAnswer: evidenceAttribution?.uncitedAnswer,
+      requestId: orchResult.requestId
     };
   }
 
@@ -496,6 +563,17 @@ export class ChatService {
       }
       llmGenerationMs = receivedFirstToken ? Date.now() - llmStart - llmFirstTokenMs : Date.now() - llmStart;
 
+      // Telemetry only, fired AFTER the token-delivery loop above has fully finished — this call is
+      // synchronous and non-blocking (console.log under the hood), so it cannot delay or affect
+      // anything the client already received. See rag-telemetry.service.ts's own failure-safety
+      // (logEvent never throws).
+      this.safeLogTelemetry({
+        event: 'rag.llm.generation.completed',
+        requestId: orchResult.requestId,
+        durationMs: llmFirstTokenMs + llmGenerationMs,
+        metadata: { provider: orchestrationInput.model, streaming: true, timeToFirstTokenMs: llmFirstTokenMs }
+      });
+
       // Evidence-aware attribution (Phase 5/6): the token-delivery loop above is fully unbuffered
       // and untouched — every delta is yielded to the client as soon as it arrives. Only this final
       // attribution step runs after the stream has fully completed, on the fully assembled answer
@@ -510,6 +588,22 @@ export class ChatService {
         evidenceResult.duplicateReferenceCount,
         evidenceResult.malformedReferenceCount
       );
+
+      this.safeLogTelemetry({
+        event: 'rag.citation.attribution.completed',
+        requestId: orchResult.requestId,
+        metadata: {
+          attributionQuality: evidenceAttribution.attributionQuality,
+          uncitedAnswer: evidenceAttribution.uncitedAnswer,
+          citationRequestedEvidenceCount: evidenceAttribution.citationRequestedEvidenceCount,
+          citationReferencedEvidenceCount: evidenceAttribution.citationReferencedEvidenceCount,
+          citationInvalidReferenceCount: evidenceAttribution.citationInvalidReferenceCount,
+          citationDuplicateReferenceCount: evidenceAttribution.citationDuplicateReferenceCount,
+          citationMalformedReferenceCount: evidenceAttribution.citationMalformedReferenceCount,
+          documentCitationCount: evidenceAttribution.documentCitationCount,
+          graphCitationCount: evidenceAttribution.graphCitationCount
+        }
+      });
 
       // Cache exact answer
       this.orchestratorService
@@ -600,6 +694,29 @@ export class ChatService {
     };
     console.log(`[RAG Latency] conversationId=${conversationId} memory=${conversationContextMs}ms embedding=${latencyTrace.embeddingMs}ms vector=${latencyTrace.vectorMs}ms keyword=${latencyTrace.keywordMs}ms rerank=${latencyTrace.rerankMs}ms llmFirstToken=${llmFirstTokenMs}ms llmGeneration=${llmGenerationMs}ms persistence=${persistenceMs}ms totalResponse=${duration}ms`);
 
+    this.safeLogTelemetry({
+      event: 'rag.request.completed',
+      requestId: orchResult.requestId,
+      durationMs: duration,
+      cacheHit: orchResult.cacheHit,
+      metadata: { answerMode: orchResult.answerMode }
+    });
+
+    const persistedMetrics: Record<string, number | string | boolean> = {
+      ...latencyTrace,
+      ...(evidenceAttribution ? {
+        attributionQuality: evidenceAttribution.attributionQuality,
+        uncitedAnswer: evidenceAttribution.uncitedAnswer
+      } : {}),
+      ...(orchResult.graphRetrieval ? {
+        graphAttempted: orchResult.graphRetrieval.attempted,
+        graphExecuted: orchResult.graphRetrieval.executed,
+        graphReason: orchResult.graphRetrieval.reason,
+        graphSuccess: orchResult.graphRetrieval.success,
+        ...(orchResult.graphRetrieval.failureCategory ? { graphFailureCategory: orchResult.graphRetrieval.failureCategory } : {})
+      } : {})
+    };
+
     // Non-blocking RAG Evaluation
     evaluationService
       .evaluateAndPersist({
@@ -617,7 +734,7 @@ export class ChatService {
         ,retrievalLatencyMs: latencyTrace.retrievalMs
         ,llmLatencyMs: llmFirstTokenMs + llmGenerationMs
         ,llmFirstTokenMs
-        ,latencyTrace
+        ,latencyTrace: persistedMetrics
       })
       .catch((err) => console.warn('[ChatService] Background evaluation error:', err));
 
@@ -629,7 +746,8 @@ export class ChatService {
       citations,
       latencyTrace,
       attributionQuality: evidenceAttribution?.attributionQuality,
-      uncitedAnswer: evidenceAttribution?.uncitedAnswer
+      uncitedAnswer: evidenceAttribution?.uncitedAnswer,
+      requestId: orchResult.requestId
     };
   }
 

@@ -10,6 +10,7 @@ import { citationService } from '../citation/citation.service';
 import { getLLMProvider } from '../llm/llm.provider.factory';
 import { OrchestratedAnswer } from '../orchestration/answer-orchestrator.types';
 import { RetrievalScope } from './retrieval-scope.types';
+import { ragExecutionContextManager } from '../performance/rag-execution-context';
 
 interface OwnerResolution {
   owners: Set<string>;
@@ -32,6 +33,7 @@ export class MultiOwnerAnswerService {
   public async answer(scope: RetrievalScope, question: string): Promise<OrchestratedAnswer> {
     const startTime = Date.now();
     const latencyTrace: Record<string, number> = {};
+    const requestId = ragExecutionContextManager.create().requestId;
 
     const { owners, ownerOfDocument, ownerOfKnowledgeBase } = await this.resolveOwners(scope);
     const maxFanout = env.server?.RAG_GROUP_MAX_FANOUT_OWNERS ?? 20;
@@ -129,6 +131,7 @@ export class MultiOwnerAnswerService {
     latencyTrace.totalMs = Date.now() - startTime;
 
     return {
+      requestId,
       conversationId: scope.conversationId,
       answerMode: llmCalled ? 'DOCUMENT_GROUNDED' : 'NO_DOCUMENT_EVIDENCE',
       answer,

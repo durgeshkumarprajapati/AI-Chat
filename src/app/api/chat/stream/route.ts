@@ -2,6 +2,8 @@ import { NextRequest } from 'next/server';
 import { getAuthUser } from '@/lib/auth';
 import { chatService } from '@/features/rag/chat/chat.service';
 import { AppError } from '@/errors';
+import { ragPerformanceTelemetryService } from '@/features/rag/performance/rag-telemetry.service';
+import { ragExecutionContextManager } from '@/features/rag/performance/rag-execution-context';
 
 export async function POST(req: NextRequest) {
   try {
@@ -49,6 +51,18 @@ export async function POST(req: NextRequest) {
           }
         } catch (error) {
           const message = error instanceof AppError ? error.message : (error instanceof Error ? error.message : 'An error occurred during streaming.');
+          try {
+            ragPerformanceTelemetryService.logEvent({
+              event: 'rag.request.failed',
+              requestId: ragExecutionContextManager.create().requestId,
+              metadata: {
+                route: 'POST /api/chat/stream',
+                errorCode: error instanceof AppError ? error.code : 'INTERNAL_SERVER_ERROR'
+              }
+            });
+          } catch (telemetryErr) {
+            console.warn('[api/chat/stream] Telemetry logging failed (stream unaffected):', telemetryErr);
+          }
           sendEvent('error', { message });
         } finally {
           try {
@@ -68,6 +82,20 @@ export async function POST(req: NextRequest) {
       }
     });
   } catch (error) {
+    try {
+      ragPerformanceTelemetryService.logEvent({
+        event: 'rag.request.failed',
+        requestId: ragExecutionContextManager.create().requestId,
+        metadata: {
+          route: 'POST /api/chat/stream',
+          errorCode: error instanceof AppError ? error.code : 'INTERNAL_SERVER_ERROR',
+          statusCode: error instanceof AppError ? error.statusCode : 500
+        }
+      });
+    } catch (telemetryErr) {
+      console.warn('[api/chat/stream] Telemetry logging failed (response unaffected):', telemetryErr);
+    }
+
     if (error instanceof AppError) {
       return new Response(
         JSON.stringify({ success: false, error: { code: error.code, message: error.message } }),

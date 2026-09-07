@@ -34,6 +34,8 @@ jest.mock('@/features/rag/evaluation/evaluation.service', () => ({
 import { ChatService } from '@/features/rag/chat/chat.service';
 import { RetrievedChunk } from '@/features/rag/retrieval/retrieval.types';
 import { OrchestratedAnswer } from '@/features/rag/orchestration/answer-orchestrator.types';
+import { ragPerformanceTelemetryService } from '@/features/rag/performance/rag-telemetry.service';
+import { evaluationService } from '@/features/rag/evaluation/evaluation.service';
 
 /**
  * Integration-level tests for evidence-aware citation attribution through the REAL ChatService
@@ -54,7 +56,7 @@ const GRAPH_CHUNK: RetrievedChunk = {
 
 function orchestratedAnswer(overrides: Partial<OrchestratedAnswer> = {}): OrchestratedAnswer {
   return {
-    conversationId: '', answerMode: 'DOCUMENT_GROUNDED', answer: '', citations: [],
+    requestId: 'test-request-id', conversationId: '', answerMode: 'DOCUMENT_GROUNDED', answer: '', citations: [],
     retrievedChunks: [DOC_CHUNK, GRAPH_CHUNK], topSimilarity: 0.9, cacheHit: false, cacheType: 'none',
     llmCalled: true, embeddingCalled: true, vectorSearchCalled: true, keywordSearchCalled: true,
     rerankCalled: true, recoveryAttempted: false, recoveryAttempts: 0, latencyTrace: {},
@@ -233,5 +235,123 @@ describe('ChatService — evidence-aware citation attribution (streaming)', () =
     const doneEvent = events.find((e) => e.type === 'done');
     expect(doneEvent.citations).toHaveLength(1);
     expect(doneEvent.citations[0].sourceType).toBe('graph');
+  });
+});
+
+describe('ChatService — observability (requestId correlation, telemetry privacy, failure safety)', () => {
+  it('1/6. the SAME requestId from orchestrate() correlates the llm.generation / citation.attribution / request.completed telemetry events (non-streaming)', async () => {
+    const logSpy = jest.spyOn(ragPerformanceTelemetryService, 'logEvent');
+    const fakeOrchestrator = buildFakeOrchestrator();
+    const fakeContext = buildFakeContextService();
+    const fakeLLM = {
+      generateAnswer: jest.fn().mockResolvedValue('MFA is mandatory [DOC-1].'),
+      streamAnswer: jest.fn()
+    };
+    const chatService = new ChatService(undefined, fakeLLM as any, fakeContext as any, fakeOrchestrator as any);
+
+    const result = await chatService.sendMessage(TEST_USER_ID, { question: 'q' });
+
+    expect(result.requestId).toBe('test-request-id');
+    const events = logSpy.mock.calls.map((c) => c[0]).filter((e) =>
+      ['rag.llm.generation.completed', 'rag.citation.attribution.completed', 'rag.request.completed'].includes(e.event)
+    );
+    expect(events).toHaveLength(3);
+    for (const e of events) expect(e.requestId).toBe('test-request-id');
+  });
+
+  it('4/5/10. streaming fires the same 3 telemetry events with the same requestId, without altering token delivery', async () => {
+    const logSpy = jest.spyOn(ragPerformanceTelemetryService, 'logEvent');
+    const fakeOrchestrator = buildFakeOrchestrator();
+    const fakeContext = buildFakeContextService();
+    const tokens = ['MFA ', 'is ', 'required ', '[DOC-1]', '.'];
+    const fakeLLM = {
+      generateAnswer: jest.fn(),
+      streamAnswer: jest.fn().mockImplementation(async function* () {
+        for (const t of tokens) yield t;
+      })
+    };
+    const chatService = new ChatService(undefined, fakeLLM as any, fakeContext as any, fakeOrchestrator as any);
+
+    const events: any[] = [];
+    for await (const event of chatService.streamMessage(TEST_USER_ID, { question: 'q' })) {
+      events.push(event);
+    }
+
+    expect(events.filter((e) => e.type === 'delta').map((e) => e.text)).toEqual(tokens);
+    const doneEvent = events.find((e) => e.type === 'done');
+    expect(doneEvent.requestId).toBe('test-request-id');
+
+    const telemetryEvents = logSpy.mock.calls.map((c) => c[0]).filter((e) =>
+      ['rag.llm.generation.completed', 'rag.citation.attribution.completed', 'rag.request.completed'].includes(e.event)
+    );
+    expect(telemetryEvents).toHaveLength(3);
+    for (const e of telemetryEvents) expect(e.requestId).toBe('test-request-id');
+  });
+
+  it('7/8. telemetry metadata never contains the raw question or the raw generated answer', async () => {
+    const logSpy = jest.spyOn(ragPerformanceTelemetryService, 'logEvent');
+    const fakeOrchestrator = buildFakeOrchestrator();
+    const fakeContext = buildFakeContextService();
+    const secretQuestion = 'What is codename Falcon-Seven?';
+    const secretAnswer = 'The codename Falcon-Seven refers to [DOC-1] the Q3 launch plan.';
+    const fakeLLM = { generateAnswer: jest.fn().mockResolvedValue(secretAnswer), streamAnswer: jest.fn() };
+    const chatService = new ChatService(undefined, fakeLLM as any, fakeContext as any, fakeOrchestrator as any);
+
+    await chatService.sendMessage(TEST_USER_ID, { question: secretQuestion });
+
+    for (const call of logSpy.mock.calls) {
+      const serialized = JSON.stringify(call[0]);
+      expect(serialized).not.toContain('Falcon-Seven');
+      expect(serialized).not.toContain('Q3 launch plan');
+    }
+  });
+
+  it('11. telemetry metadata never contains the raw userId', async () => {
+    const logSpy = jest.spyOn(ragPerformanceTelemetryService, 'logEvent');
+    const fakeOrchestrator = buildFakeOrchestrator();
+    const fakeContext = buildFakeContextService();
+    const fakeLLM = { generateAnswer: jest.fn().mockResolvedValue('MFA is mandatory [DOC-1].'), streamAnswer: jest.fn() };
+    const chatService = new ChatService(undefined, fakeLLM as any, fakeContext as any, fakeOrchestrator as any);
+
+    await chatService.sendMessage(TEST_USER_ID, { question: 'q' });
+
+    for (const call of logSpy.mock.calls) {
+      expect(JSON.stringify(call[0])).not.toContain(TEST_USER_ID);
+    }
+  });
+
+  it('9. a telemetry logging failure does not fail the RAG request', async () => {
+    const logSpy = jest.spyOn(ragPerformanceTelemetryService, 'logEvent').mockImplementation(() => {
+      throw new Error('simulated telemetry backend outage');
+    });
+    try {
+      const fakeOrchestrator = buildFakeOrchestrator();
+      const fakeContext = buildFakeContextService();
+      const fakeLLM = { generateAnswer: jest.fn().mockResolvedValue('MFA is mandatory [DOC-1].'), streamAnswer: jest.fn() };
+      const chatService = new ChatService(undefined, fakeLLM as any, fakeContext as any, fakeOrchestrator as any);
+
+      // ChatService.safeLogTelemetry wraps every call site independently (defense-in-depth beyond
+      // logEvent's own internal try/catch) — this mock replaces logEvent's ENTIRE implementation,
+      // bypassing that internal safety net entirely, so this genuinely proves the OUTER guard
+      // (chat.service.ts's own try/catch) is what makes the request succeed regardless.
+      const result = await chatService.sendMessage(TEST_USER_ID, { question: 'q' });
+      expect(result.citations).toHaveLength(1);
+      expect(logSpy).toHaveBeenCalled();
+    } finally {
+      logSpy.mockRestore();
+    }
+  });
+
+  it('12. RagEvaluation persistence is scoped to the requesting user (tenant isolation, pre-existing and unchanged)', async () => {
+    const fakeOrchestrator = buildFakeOrchestrator();
+    const fakeContext = buildFakeContextService();
+    const fakeLLM = { generateAnswer: jest.fn().mockResolvedValue('MFA is mandatory [DOC-1].'), streamAnswer: jest.fn() };
+    const chatService = new ChatService(undefined, fakeLLM as any, fakeContext as any, fakeOrchestrator as any);
+
+    await chatService.sendMessage(TEST_USER_ID, { question: 'q' });
+
+    expect(evaluationService.evaluateAndPersist).toHaveBeenCalledWith(
+      expect.objectContaining({ userId: TEST_USER_ID })
+    );
   });
 });

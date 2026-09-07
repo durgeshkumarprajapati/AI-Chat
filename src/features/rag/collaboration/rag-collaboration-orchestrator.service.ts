@@ -3,6 +3,7 @@ import { OrchestratedAnswer, OrchestrationInput } from '../orchestration/answer-
 import { scopeResolverService } from './scope-resolver.service';
 import { multiOwnerAnswerService } from './multi-owner-answer.service';
 import { RetrievalScope } from './retrieval-scope.types';
+import { randomBytes } from 'crypto';
 
 export interface OrchestrateForConversationOptions {
   model?: string;
@@ -65,6 +66,11 @@ export class RagCollaborationOrchestratorService {
 
   private emptyAuthorizedAnswer(scope: RetrievalScope): OrchestratedAnswer {
     return {
+      // Matches rag-execution-context.ts's own id format, without importing that module — it pulls
+      // in @/config/env, which this file (and multi-owner-answer.service.ts) previously had no
+      // dependency on; a test exercising this wrapper with mocked collaborators but no env mock
+      // would otherwise break (confirmed: tests/phase71a-orchestrator-wrapper.test.ts).
+      requestId: `rag_req_${randomBytes(6).toString('hex')}`,
       conversationId: scope.conversationId,
       answerMode: 'NO_DOCUMENT_EVIDENCE',
       answer: 'No authorized documents or knowledge bases are available in this conversation yet.',

@@ -25,12 +25,27 @@ const BASE_ROADMAP = {
   ]
 };
 
+const DEFAULT_INSIGHTS = {
+  overview: {
+    totalPhases: 1, totalTasks: 2, completedTasks: 1, inProgressTasks: 0, pendingTasks: 1,
+    blockedTasks: 0, overdueTasks: 0, dueSoonTasks: 0, unassignedTasks: 2, currentProgress: 50
+  },
+  bottlenecks: [],
+  workload: { assignees: [], flags: [] },
+  dependencyImpact: [],
+  phaseAnalytics: [{ phaseId: 'phase-1', phaseTitle: 'Foundations', totalTasks: 2, completedTasks: 1, inProgressTasks: 0, blockedTasks: 0, overdueTasks: 0, progressPercentage: 50 }],
+  trends: { taskCompletion: { status: 'INSUFFICIENT_DATA', reason: 'No tasks have been completed yet.' } }
+};
+
 function mockFetchSequence(overrides: {
   nextStep?: unknown; permission?: string; roadmap?: unknown;
   executionHealth?: unknown; readyTaskCount?: number; blockedTaskCount?: number; overdueTaskCount?: number;
-  activity?: unknown[];
+  activity?: unknown[]; insights?: unknown;
 } = {}) {
   global.fetch = jest.fn().mockImplementation((url: string, init?: RequestInit) => {
+    if (url.includes('/insights')) {
+      return Promise.resolve({ ok: true, json: () => Promise.resolve({ success: true, data: overrides.insights ?? DEFAULT_INSIGHTS }) });
+    }
     if (url.includes('/activity')) {
       return Promise.resolve({ ok: true, json: () => Promise.resolve({ success: true, data: overrides.activity ?? [] }) });
     }
@@ -69,7 +84,7 @@ describe('Roadmap Detail Page — Smart Execution', () => {
 
     await waitFor(() => expect(screen.getByText('Learn Rust')).toBeInTheDocument());
 
-    expect(screen.getByText('Completed')).toBeInTheDocument();
+    expect(screen.getAllByText('Completed').length).toBeGreaterThan(0);
     expect(screen.getByText('Ready to Start')).toBeInTheDocument();
   });
 
@@ -304,7 +319,7 @@ describe('Roadmap Detail Page — Smart Execution', () => {
       fireEvent.click(screen.getByText('Activity 🕒'));
 
       await waitFor(() => expect(screen.getByText('Alice')).toBeInTheDocument());
-      expect(screen.getByText(/completed/)).toBeInTheDocument();
+      expect(screen.getAllByText(/completed/).length).toBeGreaterThan(0);
     });
 
     it('shows an empty state when there is no activity', async () => {
@@ -331,6 +346,126 @@ describe('Roadmap Detail Page — Smart Execution', () => {
 
       const scheduleButton = screen.getByRole('button', { name: 'Schedule' });
       expect(scheduleButton).toBeDisabled(); // no channel/time selected yet
+    });
+  });
+
+  describe('execution dashboard', () => {
+    it('renders overview cards from the insights payload', async () => {
+      mockFetchSequence();
+      render(<RoadmapDetailPage />);
+
+      await waitFor(() => expect(screen.getByText('Execution Dashboard')).toBeInTheDocument());
+      expect(screen.getByText('Phases')).toBeInTheDocument();
+      expect(screen.getAllByText('Tasks').length).toBeGreaterThan(0);
+      expect(screen.getAllByText('Unassigned').length).toBeGreaterThan(0);
+    });
+
+    it('renders the Attention Required section from bottlenecks', async () => {
+      mockFetchSequence({
+        insights: {
+          ...DEFAULT_INSIGHTS,
+          bottlenecks: [{ type: 'OVERDUE_TASKS', severity: 'CRITICAL', affectedTaskCount: 2, affectedPhaseIds: ['phase-1'], explanation: '2 tasks overdue', recommendedAction: 'Reschedule them' }]
+        }
+      });
+      render(<RoadmapDetailPage />);
+
+      await waitFor(() => expect(screen.getByText('Attention Required')).toBeInTheDocument());
+      expect(screen.getByText('Overdue Tasks (2)')).toBeInTheDocument();
+      expect(screen.getByText('2 tasks overdue')).toBeInTheDocument();
+      expect(screen.getByText('→ Reschedule them')).toBeInTheDocument();
+    });
+
+    it('does not render Attention Required when there are no bottlenecks', async () => {
+      mockFetchSequence();
+      render(<RoadmapDetailPage />);
+      await waitFor(() => expect(screen.getByText('Execution Dashboard')).toBeInTheDocument());
+      expect(screen.queryByText('Attention Required')).not.toBeInTheDocument();
+    });
+
+    it('renders Phase Analytics with progress percentage', async () => {
+      mockFetchSequence();
+      render(<RoadmapDetailPage />);
+
+      await waitFor(() => expect(screen.getByText('Phase Analytics')).toBeInTheDocument());
+      expect(screen.getByText(/1\/2 \(50%\)/)).toBeInTheDocument();
+    });
+
+    it('renders Workload with assignee flags', async () => {
+      mockFetchSequence({
+        insights: {
+          ...DEFAULT_INSIGHTS,
+          workload: {
+            assignees: [{ assigneeId: 'owner-1', assignedTaskCount: 5, inProgressCount: 1, overdueCount: 0, blockedCount: 0, completedCount: 1 }],
+            flags: [{ type: 'HIGH_WORKLOAD', severity: 'WARNING', assigneeId: 'owner-1', explanation: '4 incomplete tasks vs average of 2' }]
+          }
+        }
+      });
+      render(<RoadmapDetailPage />);
+
+      await waitFor(() => expect(screen.getByText('Workload')).toBeInTheDocument());
+      expect(screen.getAllByText('Owner Person').length).toBeGreaterThan(0);
+      expect(screen.getByText('High Workload')).toBeInTheDocument();
+    });
+
+    it('renders Dependency Impact ranked entries', async () => {
+      mockFetchSequence({
+        insights: {
+          ...DEFAULT_INSIGHTS,
+          dependencyImpact: [{ taskId: 'db', title: 'Setup Database', directDependentCount: 1, transitiveDependentCount: 3, blocksNextStep: true, chainContainsOverdueTask: false }]
+        }
+      });
+      render(<RoadmapDetailPage />);
+
+      await waitFor(() => expect(screen.getByText('Dependency Impact')).toBeInTheDocument());
+      expect(screen.getByText('Setup Database')).toBeInTheDocument();
+      expect(screen.getByText(/blocks 3 downstream/)).toBeInTheDocument();
+      expect(screen.getByText('Blocks next step')).toBeInTheDocument();
+    });
+
+    it('shows the insufficient-data state for the completion trend when nothing has completed', async () => {
+      mockFetchSequence();
+      render(<RoadmapDetailPage />);
+
+      await waitFor(() => expect(screen.getByText('Task Completion Trend')).toBeInTheDocument());
+      expect(screen.getAllByText(/No tasks have been completed yet/).length).toBeGreaterThan(0);
+    });
+
+    it('shows a real trend when completion data exists', async () => {
+      mockFetchSequence({
+        insights: {
+          ...DEFAULT_INSIGHTS,
+          trends: { taskCompletion: { status: 'OK', points: [{ date: '2026-01-01', completedCount: 1, cumulativeCompleted: 1 }] } }
+        }
+      });
+      render(<RoadmapDetailPage />);
+
+      await waitFor(() => expect(screen.getByText(/1 completed as of 2026-01-01/)).toBeInTheDocument());
+    });
+
+    it('the Refresh button re-fetches insights', async () => {
+      mockFetchSequence();
+      render(<RoadmapDetailPage />);
+      await waitFor(() => expect(screen.getByText('Execution Dashboard')).toBeInTheDocument());
+
+      const callsBefore = (global.fetch as jest.Mock).mock.calls.length;
+      fireEvent.click(screen.getByText('Refresh ↻'));
+
+      await waitFor(() => expect((global.fetch as jest.Mock).mock.calls.length).toBeGreaterThan(callsBefore));
+      expect((global.fetch as jest.Mock).mock.calls.some((c: unknown[]) => String(c[0]).includes('/insights'))).toBe(true);
+    });
+
+    it('shows an insights error message without crashing the rest of the page', async () => {
+      global.fetch = jest.fn().mockImplementation((url: string) => {
+        if (url.includes('/insights')) {
+          return Promise.resolve({ ok: false, json: () => Promise.resolve({ success: false, error: { message: 'Insights unavailable' } }) });
+        }
+        return Promise.resolve({ ok: true, json: () => Promise.resolve({ success: true, data: { roadmap: BASE_ROADMAP, permission: 'OWNER', nextStep: null, executionHealth: { status: 'HEALTHY', reasons: [] }, readyTaskCount: 1, blockedTaskCount: 0, overdueTaskCount: 0 } }) });
+      }) as unknown as typeof fetch;
+
+      render(<RoadmapDetailPage />);
+
+      await waitFor(() => expect(screen.getByText('Learn Rust')).toBeInTheDocument());
+      await waitFor(() => expect(screen.getByText('Insights unavailable')).toBeInTheDocument());
     });
   });
 });

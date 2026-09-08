@@ -3,7 +3,7 @@
 import React, { useEffect, useState } from 'react';
 import { useParams } from 'next/navigation';
 import Link from 'next/link';
-import { Badge, Button, Modal } from '@/components/ui';
+import { Badge, Button, Modal, Card, CardHeader, CardTitle } from '@/components/ui';
 
 interface UserSummary {
   id: string;
@@ -86,6 +86,66 @@ interface ActivityEntry {
   taskTitle: string | null;
   phaseTitle: string | null;
   createdAt: string;
+}
+
+// Roadmap Analytics, Insights & Execution Dashboard — mirrors src/features/roadmap/execution/
+// roadmap-insights.ts's return shape exactly (this is a read-only display of that computation,
+// never a second definition of any of these concepts).
+type BottleneckSeverity = 'CRITICAL' | 'WARNING' | 'INFO';
+interface Bottleneck {
+  type: string;
+  severity: BottleneckSeverity;
+  affectedTaskCount: number;
+  affectedPhaseIds: string[];
+  explanation: string;
+  recommendedAction: string;
+}
+interface AssigneeWorkload {
+  assigneeId: string;
+  assignedTaskCount: number;
+  inProgressCount: number;
+  overdueCount: number;
+  blockedCount: number;
+  completedCount: number;
+}
+interface WorkloadFlag {
+  type: string;
+  severity: BottleneckSeverity;
+  assigneeId: string;
+  explanation: string;
+}
+interface DependencyImpactEntry {
+  taskId: string;
+  title: string;
+  directDependentCount: number;
+  transitiveDependentCount: number;
+  blocksNextStep: boolean;
+  chainContainsOverdueTask: boolean;
+}
+interface PhaseAnalyticsEntry {
+  phaseId: string;
+  phaseTitle: string;
+  totalTasks: number;
+  completedTasks: number;
+  inProgressTasks: number;
+  blockedTasks: number;
+  overdueTasks: number;
+  progressPercentage: number;
+}
+type TaskCompletionTrend =
+  | { status: 'INSUFFICIENT_DATA'; reason: string }
+  | { status: 'OK'; points: { date: string; completedCount: number; cumulativeCompleted: number }[] };
+
+interface RoadmapInsights {
+  overview: {
+    totalPhases: number; totalTasks: number; completedTasks: number; inProgressTasks: number; pendingTasks: number;
+    blockedTasks: number; overdueTasks: number; dueSoonTasks: number; unassignedTasks: number; currentProgress: number;
+  };
+  bottlenecks: Bottleneck[];
+  workload: { assignees: AssigneeWorkload[]; flags: WorkloadFlag[] };
+  dependencyImpact: DependencyImpactEntry[];
+  phaseAnalytics: PhaseAnalyticsEntry[];
+  trends: { taskCompletion: TaskCompletionTrend };
 }
 
 interface ShareSummary {
@@ -230,6 +290,28 @@ const HEALTH_BADGE: Record<ExecutionHealthStatus, { label: string; variant: 'suc
   BLOCKED: { label: 'Blocked', variant: 'destructive' }
 };
 
+const SEVERITY_BADGE: Record<BottleneckSeverity, { variant: 'destructive' | 'warning' | 'neutral' }> = {
+  CRITICAL: { variant: 'destructive' },
+  WARNING: { variant: 'warning' },
+  INFO: { variant: 'neutral' }
+};
+
+const SEVERITY_RANK: Record<BottleneckSeverity, number> = { CRITICAL: 3, WARNING: 2, INFO: 1 };
+
+const BOTTLENECK_LABEL: Record<string, string> = {
+  BLOCKED_DEPENDENCIES: 'Blocked Dependencies',
+  OVERDUE_TASKS: 'Overdue Tasks',
+  UNASSIGNED_WORK: 'Unassigned Work',
+  PHASE_STAGNATION: 'Phase Stagnation',
+  EXCESSIVE_IN_PROGRESS_WORK: 'Excessive In-Progress Work'
+};
+
+const WORKLOAD_FLAG_LABEL: Record<string, string> = {
+  HIGH_WORKLOAD: 'High Workload',
+  OVERDUE_WORKLOAD: 'Overdue Workload',
+  BLOCKED_WORKLOAD: 'Blocked Workload'
+};
+
 /** Human-readable labels for the Activity Timeline — mirrors roadmap-activity.ts's action
  * allowlist. An unrecognized action (should never happen, given the server-side whitelist) just
  * falls back to the raw action string rather than crashing. */
@@ -303,6 +385,28 @@ export default function RoadmapDetailPage() {
   const [scheduleFor, setScheduleFor] = useState('');
   const [scheduleStatus, setScheduleStatus] = useState<string | null>(null);
 
+  // Roadmap Analytics, Insights & Execution Dashboard
+  const [insights, setInsights] = useState<RoadmapInsights | null>(null);
+  const [insightsLoading, setInsightsLoading] = useState(true);
+  const [insightsError, setInsightsError] = useState<string | null>(null);
+
+  const fetchInsights = async () => {
+    setInsightsLoading(true);
+    setInsightsError(null);
+    try {
+      const res = await fetch(`/api/roadmaps/${roadmapId}/insights`);
+      const data = await res.json();
+      if (!res.ok || !data.success) {
+        throw new Error(data.error?.message || 'Failed to load insights.');
+      }
+      setInsights(data.data);
+    } catch (err) {
+      setInsightsError(err instanceof Error ? err.message : 'Error loading insights.');
+    } finally {
+      setInsightsLoading(false);
+    }
+  };
+
   useEffect(() => {
     async function fetchRoadmap() {
       try {
@@ -324,7 +428,11 @@ export default function RoadmapDetailPage() {
         setLoading(false);
       }
     }
+    // Loaded once, in parallel, on initial mount — never polled. The dashboard refreshes again
+    // only on an explicit user action (the Refresh button) or a dependency add/remove (which
+    // already refreshes the main roadmap data via refreshRoadmap below).
     fetchRoadmap();
+    fetchInsights();
   }, [roadmapId]);
 
   /** Phase 5 — Start/Mark Completed/Reopen all funnel through the SAME existing PATCH endpoint
@@ -475,6 +583,9 @@ export default function RoadmapDetailPage() {
       setBlockedTaskCount(data.data.blockedTaskCount ?? 0);
       setOverdueTaskCount(data.data.overdueTaskCount ?? 0);
     }
+    // A dependency add/remove can change bottlenecks/dependencyImpact/health significantly — a
+    // single deliberate refetch here, not a poll.
+    fetchInsights();
   };
 
   const openActivityModal = async () => {
@@ -777,6 +888,176 @@ export default function RoadmapDetailPage() {
             </div>
           )}
         </div>
+
+        {/* Roadmap Analytics, Insights & Execution Dashboard — additive section, loaded once
+            alongside the main roadmap fetch, refreshed only on explicit user action (never
+            polled). Every number here is a read-only display of computeRoadmapInsights — no
+            second definition of blocked/overdue/progress lives in this file. */}
+        <Card>
+          <CardHeader>
+            <CardTitle>Execution Dashboard</CardTitle>
+            <button
+              onClick={fetchInsights}
+              disabled={insightsLoading}
+              className="text-[11px] text-indigo-400 hover:text-indigo-300 underline disabled:opacity-50"
+            >
+              {insightsLoading ? 'Refreshing…' : 'Refresh ↻'}
+            </button>
+          </CardHeader>
+
+          {insightsError && <p className="text-[11px] text-rose-500 mb-4">{insightsError}</p>}
+
+          {insights && (
+            <div className="space-y-6">
+              {/* Overview Cards */}
+              <div className="grid grid-cols-2 sm:grid-cols-4 lg:grid-cols-8 gap-3">
+                {[
+                  { label: 'Phases', value: insights.overview.totalPhases },
+                  { label: 'Tasks', value: insights.overview.totalTasks },
+                  { label: 'Completed', value: insights.overview.completedTasks },
+                  { label: 'In Progress', value: insights.overview.inProgressTasks },
+                  { label: 'Pending', value: insights.overview.pendingTasks },
+                  { label: 'Blocked', value: insights.overview.blockedTasks },
+                  { label: 'Due Soon', value: insights.overview.dueSoonTasks },
+                  { label: 'Unassigned', value: insights.overview.unassignedTasks }
+                ].map((stat) => (
+                  <div key={stat.label} className="bg-background border border-border rounded-xl p-3 text-center">
+                    <div className="text-lg font-bold text-foreground font-mono">{stat.value}</div>
+                    <div className="text-[10px] text-muted-foreground uppercase">{stat.label}</div>
+                  </div>
+                ))}
+              </div>
+
+              {/* Attention Required */}
+              {insights.bottlenecks.length > 0 && (
+                <div>
+                  <h4 className="text-xs font-bold text-foreground mb-2">Attention Required</h4>
+                  <div className="space-y-2">
+                    {[...insights.bottlenecks]
+                      .sort((a, b) => SEVERITY_RANK[b.severity] - SEVERITY_RANK[a.severity])
+                      .map((b, idx) => (
+                        <div key={idx} className="flex items-start gap-3 bg-background border border-border rounded-xl p-3">
+                          <Badge variant={SEVERITY_BADGE[b.severity].variant}>{b.severity}</Badge>
+                          <div className="flex-1 text-xs">
+                            <div className="font-semibold text-foreground">{BOTTLENECK_LABEL[b.type] ?? b.type} ({b.affectedTaskCount})</div>
+                            <div className="text-muted-foreground mt-0.5">{b.explanation}</div>
+                            <div className="text-indigo-400 mt-0.5">→ {b.recommendedAction}</div>
+                          </div>
+                        </div>
+                      ))}
+                  </div>
+                </div>
+              )}
+
+              {/* Phase Analytics — CSS bars, matching this page's existing progress-bar convention */}
+              <div>
+                <h4 className="text-xs font-bold text-foreground mb-2">Phase Analytics</h4>
+                <div className="space-y-2">
+                  {insights.phaseAnalytics.map((p) => (
+                    <div key={p.phaseId} className="text-xs">
+                      <div className="flex justify-between mb-1">
+                        <span className="text-foreground">{p.phaseTitle}</span>
+                        <span className="text-muted-foreground font-mono">
+                          {p.completedTasks}/{p.totalTasks} ({p.progressPercentage}%)
+                          {p.blockedTasks > 0 && ` · ${p.blockedTasks} blocked`}
+                          {p.overdueTasks > 0 && ` · ${p.overdueTasks} overdue`}
+                        </span>
+                      </div>
+                      <div className="w-full h-2 bg-background rounded-full overflow-hidden border border-border/50">
+                        <div className="h-full bg-emerald-500 transition-all duration-500" style={{ width: `${p.progressPercentage}%` }} />
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              </div>
+
+              {/* Workload */}
+              {insights.workload.assignees.length > 0 && (
+                <div>
+                  <h4 className="text-xs font-bold text-foreground mb-2">Workload</h4>
+                  <div className="space-y-2">
+                    {insights.workload.assignees.map((a) => {
+                      const assigneeName =
+                        roadmap.owner?.id === a.assigneeId
+                          ? roadmap.owner.name || roadmap.owner.email
+                          : eligibleAssignees(roadmap).find((u) => u.id === a.assigneeId)?.name
+                            || eligibleAssignees(roadmap).find((u) => u.id === a.assigneeId)?.email
+                            || a.assigneeId;
+                      const assigneeFlags = insights.workload.flags.filter((f) => f.assigneeId === a.assigneeId);
+                      return (
+                        <div key={a.assigneeId} className="bg-background border border-border rounded-xl p-3 text-xs">
+                          <div className="flex justify-between items-center">
+                            <span className="font-semibold text-foreground">{assigneeName}</span>
+                            <span className="text-muted-foreground font-mono">
+                              {a.completedCount}/{a.assignedTaskCount} done · {a.inProgressCount} in progress
+                              {a.blockedCount > 0 && ` · ${a.blockedCount} blocked`}
+                              {a.overdueCount > 0 && ` · ${a.overdueCount} overdue`}
+                            </span>
+                          </div>
+                          {assigneeFlags.length > 0 && (
+                            <div className="flex flex-wrap gap-1.5 mt-1.5">
+                              {assigneeFlags.map((f, idx) => (
+                                <Badge key={idx} variant={SEVERITY_BADGE[f.severity].variant}>{WORKLOAD_FLAG_LABEL[f.type] ?? f.type}</Badge>
+                              ))}
+                            </div>
+                          )}
+                        </div>
+                      );
+                    })}
+                  </div>
+                </div>
+              )}
+
+              {/* Dependency Impact — ranked by transitive dependent count, never a duration-based
+                  "critical path" (no task durations exist in this schema). */}
+              {insights.dependencyImpact.length > 0 && (
+                <div>
+                  <h4 className="text-xs font-bold text-foreground mb-2">Dependency Impact</h4>
+                  <div className="space-y-1.5">
+                    {insights.dependencyImpact.slice(0, 5).map((d) => (
+                      <div key={d.taskId} className="flex items-center gap-2 text-xs">
+                        <span className="flex-1 text-foreground truncate">{d.title}</span>
+                        <span className="text-muted-foreground font-mono">blocks {d.transitiveDependentCount} downstream task(s)</span>
+                        {d.blocksNextStep && <Badge variant="destructive">Blocks next step</Badge>}
+                        {d.chainContainsOverdueTask && <Badge variant="warning">Chain overdue</Badge>}
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              )}
+
+              {/* Task Completion Trend */}
+              <div>
+                <h4 className="text-xs font-bold text-foreground mb-2">Task Completion Trend</h4>
+                {insights.trends.taskCompletion.status === 'INSUFFICIENT_DATA' ? (
+                  <p className="text-[11px] text-muted-foreground italic">{insights.trends.taskCompletion.reason}</p>
+                ) : (
+                  <>
+                    <div className="flex items-end gap-1 h-16">
+                      {(() => {
+                        const points = insights.trends.taskCompletion.points;
+                        const max = Math.max(...points.map((p) => p.cumulativeCompleted));
+                        return points.map((pt) => {
+                          const heightPct = max > 0 ? Math.max(8, Math.round((pt.cumulativeCompleted / max) * 100)) : 8;
+                          return (
+                            <div key={pt.date} className="flex-1 flex flex-col items-center justify-end h-full" title={`${pt.date}: ${pt.cumulativeCompleted} completed total`}>
+                              <div className="w-full bg-indigo-500 rounded-t transition-all duration-500" style={{ height: `${heightPct}%` }} />
+                            </div>
+                          );
+                        });
+                      })()}
+                    </div>
+                    {/* Structured, accessible values alongside the chart — never chart-only info. */}
+                    <p className="text-[10px] text-muted-foreground font-mono mt-1">
+                      {insights.trends.taskCompletion.points[insights.trends.taskCompletion.points.length - 1]?.cumulativeCompleted} completed as of{' '}
+                      {insights.trends.taskCompletion.points[insights.trends.taskCompletion.points.length - 1]?.date}
+                    </p>
+                  </>
+                )}
+              </div>
+            </div>
+          )}
+        </Card>
 
         {/* Phases & Tasks Breakdown */}
         <div className="space-y-6">

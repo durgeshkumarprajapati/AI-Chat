@@ -2250,6 +2250,21 @@ export const CONFIG_REGISTRY: Record<string, RegistryConfigItem> = {
     isEditable: true, isHighImpact: true, requiresRestart: false
   },
 
+  // ROADMAP ANALYTICS, INSIGHTS & EXECUTION DASHBOARD — a single configurable threshold, mirroring
+  // the fixed-threshold convention already established by project-health.service.ts. Everything
+  // else in the insights/bottleneck/workload/dependency-impact analysis uses fixed, documented
+  // constants directly in the analysis modules (same convention), since per-threshold config keys
+  // for every rule would be over-engineering for this scope.
+  ROADMAP_PHASE_STAGNATION_DAYS: {
+    key: 'ROADMAP_PHASE_STAGNATION_DAYS',
+    valueType: ConfigValueType.NUMBER,
+    category: ConfigCategory.FEATURE_FLAG,
+    defaultValue: '14',
+    purpose: 'A phase with incomplete tasks and no completion/start activity more recent than this many days is flagged as a PHASE_STAGNATION bottleneck.',
+    description: 'Phase stagnation threshold (days).',
+    isEditable: true, isHighImpact: false, requiresRestart: false, minValue: 1, maxValue: 180
+  },
+
   EMAIL_FROM_ADDRESS: {
     key: 'EMAIL_FROM_ADDRESS',
     valueType: ConfigValueType.STRING,

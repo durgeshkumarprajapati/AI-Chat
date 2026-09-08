@@ -82,9 +82,15 @@ describe('buildCopilotContext', () => {
     expect(JSON.stringify(context)).not.toContain('user-1');
   });
 
-  it('never includes a retrievalContext this phase (RAG is never automatically invoked)', () => {
+  it('leaves retrievalContext undefined when the caller does not supply one (RAG is never automatically invoked)', () => {
     const context = buildCopilotContext({ roadmapTitle: 'App', insights: baseInsights(), rawPhases: RAW_PHASES });
     expect(context.retrievalContext).toBeUndefined();
+  });
+
+  it('passes through a supplied retrievalContext unchanged', () => {
+    const retrievalContext = { used: true, documents: [{ title: 'requirements.pdf', sourceId: 'doc-1', excerpts: ['OAuth2 is required.'] }] };
+    const context = buildCopilotContext({ roadmapTitle: 'App', insights: baseInsights(), rawPhases: RAW_PHASES, retrievalContext });
+    expect(context.retrievalContext).toEqual(retrievalContext);
   });
 
   it('caps dependencyImpact at 10 entries', () => {

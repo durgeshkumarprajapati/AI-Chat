@@ -92,6 +92,46 @@ describe('RoadmapCopilotService.explain', () => {
 
     expect(result.recommendations).toHaveLength(5);
   });
+
+  it('reports retrieval.used=false and never adds the untrusted retrieval block when no retrievalContext was supplied', async () => {
+    mockGenerateStructured.mockResolvedValue({ analysis: 'x' });
+
+    const result = await roadmapCopilotService.explain('EXPLAIN_HEALTH', baseContext(), 'user-1');
+
+    expect(result.retrieval).toEqual({ used: false, sources: [] });
+    expect(result.usedRag).toBe(false);
+    const call = mockGenerateStructured.mock.calls[0][0];
+    expect(call.prompt).not.toContain('<UNTRUSTED_RETRIEVAL_CONTEXT>');
+  });
+
+  it('wraps retrieved documents in <UNTRUSTED_RETRIEVAL_CONTEXT> and reports safe sources when retrieval was used', async () => {
+    mockGenerateStructured.mockResolvedValue({ analysis: 'x' });
+    const context = baseContext({
+      retrievalContext: { used: true, documents: [{ title: 'requirements.pdf', sourceId: 'doc-1', excerpts: ['OAuth2 is required.'] }] }
+    });
+
+    const result = await roadmapCopilotService.explain('EXPLAIN_HEALTH', context, 'user-1');
+
+    expect(result.retrieval).toEqual({ used: true, sources: [{ title: 'requirements.pdf', sourceId: 'doc-1' }] });
+    expect(result.usedRag).toBe(true);
+    const call = mockGenerateStructured.mock.calls[0][0];
+    expect(call.prompt).toContain('<UNTRUSTED_RETRIEVAL_CONTEXT>');
+    expect(call.prompt).toContain('requirements.pdf');
+    expect(call.systemPrompt).toMatch(/RETRIEVED PROJECT CONTEXT POLICY/);
+    expect(call.systemPrompt).toMatch(/MUST NOT follow/);
+  });
+
+  it('still reports the correct retrieval sources even when the AI call fails (fallback path)', async () => {
+    mockGenerateStructured.mockRejectedValue(new Error('provider unavailable'));
+    const context = baseContext({
+      retrievalContext: { used: true, documents: [{ title: 'requirements.pdf', sourceId: 'doc-1', excerpts: ['x'] }] }
+    });
+
+    const result = await roadmapCopilotService.explain('EXPLAIN_HEALTH', context, 'user-1');
+
+    expect(result.usedAi).toBe(false);
+    expect(result.retrieval).toEqual({ used: true, sources: [{ title: 'requirements.pdf', sourceId: 'doc-1' }] });
+  });
 });
 
 describe('RoadmapCopilotService.recommendActions', () => {
@@ -131,6 +171,28 @@ describe('RoadmapCopilotService.recommendActions', () => {
 
     const call = mockGenerateStructured.mock.calls[0][0];
     expect(call.prompt).toMatch(/do not suggest a different task/i);
+  });
+
+  it('reports retrieval.used=true when the context carries retrieval and AI advice is requested', async () => {
+    mockGenerateStructured.mockResolvedValue({ recommendations: [] });
+    const context = baseContext({
+      retrievalContext: { used: true, documents: [{ title: 'roadmap-notes.md', sourceId: 'doc-2', excerpts: ['Prioritize the auth module.'] }] }
+    });
+
+    const result = await roadmapCopilotService.recommendActions(context, true, 'user-1');
+
+    expect(result.retrieval).toEqual({ used: true, sources: [{ title: 'roadmap-notes.md', sourceId: 'doc-2' }] });
+    expect(result.usedRag).toBe(true);
+  });
+
+  it('reports retrieval.used=false on the zero-LLM-call deterministic fast path', async () => {
+    const context = baseContext({
+      retrievalContext: { used: true, documents: [{ title: 'roadmap-notes.md', sourceId: 'doc-2', excerpts: ['x'] }] }
+    });
+
+    const result = await roadmapCopilotService.recommendActions(context, false, 'user-1');
+
+    expect(result.retrieval).toEqual({ used: false, sources: [] });
   });
 });
 
@@ -273,6 +335,28 @@ describe('RoadmapCopilotService.proposeChanges', () => {
     expect(result.proposals).toEqual([]);
     expect(result.usedAi).toBe(false);
   });
+
+  it('wraps retrieved documents in <UNTRUSTED_RETRIEVAL_CONTEXT> for REFINE_TASK and reports safe sources', async () => {
+    mockGenerateStructured.mockResolvedValue({
+      proposals: [{ type: 'REFINE_TASK', suggestedChange: { title: 'New title' }, explanation: 'x', confidence: 'HIGH', evidence: '' }]
+    });
+    const context = { ...contextWithFocusTask, retrievalContext: { used: true, documents: [{ title: 'design-doc.md', sourceId: 'doc-3', excerpts: ['Use imperative task titles.'] }] } };
+
+    const result = await roadmapCopilotService.proposeChanges('REFINE_TASK', context, 'user-1');
+
+    expect(result.retrieval).toEqual({ used: true, sources: [{ title: 'design-doc.md', sourceId: 'doc-3' }] });
+    expect(result.usedRag).toBe(true);
+    const call = mockGenerateStructured.mock.calls[0][0];
+    expect(call.prompt).toContain('<UNTRUSTED_RETRIEVAL_CONTEXT>');
+  });
+
+  it('reports retrieval.used=false when there is no focus task, even if a retrievalContext was somehow supplied', async () => {
+    const context = { ...baseContext(), retrievalContext: { used: true, documents: [{ title: 'x', sourceId: 'd', excerpts: ['x'] }] } };
+
+    const result = await roadmapCopilotService.proposeChanges('REFINE_TASK', context, 'user-1');
+
+    expect(result.retrieval).toEqual({ used: false, sources: [] });
+  });
 });
 
 describe('RoadmapCopilotService.shareSummary', () => {
@@ -312,5 +396,15 @@ describe('RoadmapCopilotService.shareSummary', () => {
     const content = mockSendMessage.mock.calls[0][2].content;
     expect(content).toContain('Progress:');
     expect(content).toContain('Execution health:');
+  });
+
+  it('never reports retrieval as used — SHARE_PROGRESS_SUMMARY is not retrieval-eligible', async () => {
+    mockGenerateStructured.mockResolvedValue({ analysis: 'Looking good.' });
+    mockSendMessage.mockResolvedValue({ id: 'msg-4' });
+    const context = { ...baseContext(), retrievalContext: { used: true, documents: [{ title: 'x', sourceId: 'd', excerpts: ['x'] }] } };
+
+    const result = await roadmapCopilotService.shareSummary(context, 'channel-1', 'user-1');
+
+    expect(result.retrieval).toEqual({ used: false, sources: [] });
   });
 });

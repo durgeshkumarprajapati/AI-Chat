@@ -18,6 +18,14 @@ jest.mock('@/features/roadmap/execution/roadmap-bottleneck-config', () => ({
   loadRoadmapBottleneckConfig: jest.fn().mockResolvedValue({ phaseStagnationDays: 14 })
 }));
 
+jest.mock('@/features/roadmap/copilot/roadmap-copilot-rag-config', () => ({
+  loadRoadmapCopilotRagConfig: jest.fn().mockResolvedValue({ enabled: false, maxDocuments: 3, maxExcerpts: 3, maxExcerptChars: 400, maxContextChars: 3000 })
+}));
+const mockRetrieve = jest.fn();
+jest.mock('@/features/roadmap/copilot/roadmap-copilot-retrieval.service', () => ({
+  roadmapCopilotRetrievalService: { retrieve: (...args: unknown[]) => mockRetrieve(...args) }
+}));
+
 const mockAssertEnabled = jest.fn();
 const mockExplain = jest.fn();
 const mockRecommendActions = jest.fn();
@@ -73,6 +81,7 @@ describe('POST /api/roadmaps/[id]/copilot', () => {
     jest.clearAllMocks();
     mockListDependencyEdgesForRoadmap.mockResolvedValue([]);
     mockAssertEnabled.mockResolvedValue(undefined);
+    mockRetrieve.mockResolvedValue({ used: false, documents: [] });
   });
 
   it('rejects a user with no access to the roadmap', async () => {
@@ -251,5 +260,85 @@ describe('POST /api/roadmaps/[id]/copilot', () => {
 
     expect(mockFindRoadmapByIdForUser).toHaveBeenCalledTimes(1);
     expect(mockListDependencyEdgesForRoadmap).toHaveBeenCalledTimes(1);
+  });
+
+  describe('RAG-Grounded Context — optional authorized retrieval', () => {
+    it('invokes retrieval with the correct roadmapId/userId/query/config for an eligible action with a real query', async () => {
+      (getAuthUser as jest.Mock).mockResolvedValue({ id: 'user-1' });
+      mockFindRoadmapByIdForUser.mockResolvedValue(roadmapResult());
+      mockExplain.mockResolvedValue({ action: 'EXPLAIN_DEPENDENCY', facts: [], usedAi: true, usedRag: false });
+
+      await POST(postRequest({ action: 'EXPLAIN_DEPENDENCY', context: { taskId: 'task-1' } }), { params: { id: 'roadmap-1' } });
+
+      expect(mockRetrieve).toHaveBeenCalledWith({
+        roadmapId: 'roadmap-1',
+        userId: 'user-1',
+        query: expect.stringContaining('Write hello world'),
+        config: { enabled: false, maxDocuments: 3, maxExcerpts: 3, maxExcerptChars: 400, maxContextChars: 3000 }
+      });
+    });
+
+    it('passes the resolved retrievalContext through to the copilot context object', async () => {
+      (getAuthUser as jest.Mock).mockResolvedValue({ id: 'user-1' });
+      mockFindRoadmapByIdForUser.mockResolvedValue(roadmapResult());
+      mockRetrieve.mockResolvedValue({ used: true, documents: [{ title: 'design.md', sourceId: 'doc-1', excerpts: ['x'] }] });
+      mockExplain.mockResolvedValue({ action: 'EXPLAIN_DEPENDENCY', facts: [], usedAi: true, usedRag: true });
+
+      await POST(postRequest({ action: 'EXPLAIN_DEPENDENCY', context: { taskId: 'task-1' } }), { params: { id: 'roadmap-1' } });
+
+      const passedContext = mockExplain.mock.calls[0][1];
+      expect(passedContext.retrievalContext).toEqual({ used: true, documents: [{ title: 'design.md', sourceId: 'doc-1', excerpts: ['x'] }] });
+    });
+
+    it('skips retrieval entirely for SUMMARIZE_PROGRESS — never retrieval-eligible', async () => {
+      (getAuthUser as jest.Mock).mockResolvedValue({ id: 'user-1' });
+      mockFindRoadmapByIdForUser.mockResolvedValue(roadmapResult());
+      mockExplain.mockResolvedValue({ action: 'SUMMARIZE_PROGRESS', facts: [], usedAi: true, usedRag: false });
+
+      await POST(postRequest({ action: 'SUMMARIZE_PROGRESS' }), { params: { id: 'roadmap-1' } });
+
+      expect(mockRetrieve).not.toHaveBeenCalled();
+    });
+
+    it('skips retrieval for SHARE_PROGRESS_SUMMARY — never retrieval-eligible', async () => {
+      (getAuthUser as jest.Mock).mockResolvedValue({ id: 'user-1' });
+      mockFindRoadmapByIdForUser.mockResolvedValue(roadmapResult());
+      mockCollabChannelMemberFindUnique.mockResolvedValue({ channelId: 'channel-1', userId: 'user-1' });
+      mockShareSummary.mockResolvedValue({ action: 'SHARE_PROGRESS_SUMMARY', facts: [], usedAi: true, usedRag: false, sharedMessage: { id: 'msg-1', channelId: 'channel-1' } });
+
+      await POST(postRequest({ action: 'SHARE_PROGRESS_SUMMARY', context: { channelId: 'channel-1' } }), { params: { id: 'roadmap-1' } });
+
+      expect(mockRetrieve).not.toHaveBeenCalled();
+    });
+
+    it('skips retrieval for RECOMMEND_ACTIONS unless wantsAiAdvice is true', async () => {
+      (getAuthUser as jest.Mock).mockResolvedValue({ id: 'user-1' });
+      mockFindRoadmapByIdForUser.mockResolvedValue(roadmapResult());
+      mockRecommendActions.mockResolvedValue({ action: 'RECOMMEND_ACTIONS', facts: [], usedAi: false, usedRag: false });
+
+      await POST(postRequest({ action: 'RECOMMEND_ACTIONS' }), { params: { id: 'roadmap-1' } });
+
+      expect(mockRetrieve).not.toHaveBeenCalled();
+    });
+
+    it('attempts retrieval for RECOMMEND_ACTIONS when wantsAiAdvice is true and a deterministic next step exists', async () => {
+      (getAuthUser as jest.Mock).mockResolvedValue({ id: 'user-1' });
+      mockFindRoadmapByIdForUser.mockResolvedValue(roadmapResult());
+      mockRecommendActions.mockResolvedValue({ action: 'RECOMMEND_ACTIONS', facts: [], usedAi: true, usedRag: false });
+
+      await POST(postRequest({ action: 'RECOMMEND_ACTIONS', context: { wantsAiAdvice: true } }), { params: { id: 'roadmap-1' } });
+
+      expect(mockRetrieve).toHaveBeenCalledTimes(1);
+    });
+
+    it('skips retrieval when buildRetrievalQuery returns null even for a nominally-eligible action (e.g. a healthy roadmap has nothing to explain)', async () => {
+      (getAuthUser as jest.Mock).mockResolvedValue({ id: 'user-1' });
+      mockFindRoadmapByIdForUser.mockResolvedValue(roadmapResult());
+      mockExplain.mockResolvedValue({ action: 'EXPLAIN_HEALTH', facts: [], usedAi: true, usedRag: false });
+
+      await POST(postRequest({ action: 'EXPLAIN_HEALTH' }), { params: { id: 'roadmap-1' } });
+
+      expect(mockRetrieve).not.toHaveBeenCalled();
+    });
   });
 });

@@ -176,6 +176,7 @@ interface CopilotResponse {
   proposals?: CopilotProposal[];
   usedAi: boolean;
   usedRag: boolean;
+  retrieval?: { used: boolean; sources: { title: string; sourceId: string }[] };
   sharedMessage?: { id: string; channelId: string };
 }
 
@@ -1731,6 +1732,20 @@ export default function RoadmapDetailPage() {
                 <ul className="space-y-1 text-xs text-foreground">
                   {copilotResponse.recommendations.map((r, i) => <li key={i}>• {r}</li>)}
                 </ul>
+              </div>
+            )}
+
+            {/* Grounded in Project Knowledge — shown ONLY when authorized retrieval actually found
+                and used project documentation for this response. Safe source titles only, never
+                raw excerpt content. Deterministic roadmap facts above are never sourced from here. */}
+            {copilotResponse.retrieval?.used && copilotResponse.retrieval.sources.length > 0 && (
+              <div className="p-3 rounded-xl bg-emerald-950/30 border border-emerald-900">
+                <h4 className="text-[10px] font-mono text-emerald-300 uppercase mb-1.5">Grounded in Project Knowledge</h4>
+                <div className="flex flex-wrap gap-1.5">
+                  {copilotResponse.retrieval.sources.map((s, i) => (
+                    <Badge key={i} variant="success">{s.title}</Badge>
+                  ))}
+                </div>
               </div>
             )}
 

@@ -31,6 +31,16 @@ export const COPILOT_READ_ACTIONS: CopilotAction[] = [
  * never act on the proposal anyway) never spends an LLM call on one. */
 export const COPILOT_PROPOSAL_ACTIONS: CopilotAction[] = ['REFINE_TASK', 'SUGGEST_SUBTASKS', 'SUGGEST_DEPENDENCIES'];
 
+/** RAG-Grounded Context pass (Section 9) — actions that MAY benefit from authorized project
+ * document retrieval. Deliberately excludes SUMMARIZE_PROGRESS/SHARE_PROGRESS_SUMMARY (a concise
+ * status summary needs no document grounding) so the fast/simple paths never pay a retrieval
+ * cost. RECOMMEND_ACTIONS is included here but the route additionally gates it on
+ * `wantsAiAdvice` — the zero-LLM-call deterministic fast path never triggers retrieval either. */
+export const COPILOT_RETRIEVAL_ELIGIBLE_ACTIONS: CopilotAction[] = [
+  'EXPLAIN_HEALTH', 'EXPLAIN_BOTTLENECKS', 'RECOMMEND_ACTIONS', 'EXPLAIN_DEPENDENCY',
+  'REFINE_TASK', 'SUGGEST_SUBTASKS', 'SUGGEST_DEPENDENCIES'
+];
+
 /** Model self-reported confidence ONLY — never presented as objective/deterministic truth. There
  * is no deterministic way to score "how likely is this LLM suggestion correct," so this is
  * deliberately a coarse qualitative label (matching how the UI labels it: "Model confidence"),
@@ -71,8 +81,12 @@ export interface CopilotResponse {
    * UI/observability distinguish "answered instantly from deterministic data" from "required an
    * AI call." */
   usedAi: boolean;
-  /** Reserved for a future RAG-integration pass (see roadmap-copilot-context.ts) — always false
-   * this phase, since RAG is never automatically invoked. */
+  /** True only when retrieval actually found and used authorized project content for this
+   * specific response — mirrors `retrieval.used` below. RAG is never automatically invoked. */
   usedRag: boolean;
+  /** RAG-Grounded Context — safe source references only (title + document id), never raw chunk
+   * content, never full documents, never an unauthorized identifier. `sources` is empty and
+   * `used` is false whenever retrieval was skipped, disabled, unauthorized, or found nothing. */
+  retrieval?: { used: boolean; sources: { title: string; sourceId: string }[] };
   sharedMessage?: { id: string; channelId: string };
 }

@@ -504,6 +504,38 @@ describe('Roadmap Detail Page — Smart Execution', () => {
       expect(screen.getByText('Everything looks fine.')).toBeInTheDocument();
     });
 
+    it('does NOT show a "Grounded in Project Knowledge" section when retrieval was not used', async () => {
+      mockFetchSequence();
+      render(<RoadmapDetailPage />);
+      await waitFor(() => expect(screen.getByText('Learn Rust')).toBeInTheDocument());
+
+      fireEvent.click(screen.getByText('Copilot 🤖'));
+      await waitFor(() => expect(screen.getByText('Roadmap Copilot')).toBeInTheDocument());
+      fireEvent.click(screen.getByText('Explain Health'));
+
+      await waitFor(() => expect(screen.getByText('Facts')).toBeInTheDocument());
+      expect(screen.queryByText('Grounded in Project Knowledge')).not.toBeInTheDocument();
+    });
+
+    it('shows a "Grounded in Project Knowledge" section with safe source titles when retrieval was used', async () => {
+      mockFetchSequence({
+        copilot: {
+          action: 'EXPLAIN_HEALTH', facts: ['Execution health: HEALTHY.'], analysis: 'Everything looks fine.', recommendations: [],
+          usedAi: true, usedRag: true,
+          retrieval: { used: true, sources: [{ title: 'requirements.pdf', sourceId: 'doc-1' }] }
+        }
+      });
+      render(<RoadmapDetailPage />);
+      await waitFor(() => expect(screen.getByText('Learn Rust')).toBeInTheDocument());
+
+      fireEvent.click(screen.getByText('Copilot 🤖'));
+      await waitFor(() => expect(screen.getByText('Roadmap Copilot')).toBeInTheDocument());
+      fireEvent.click(screen.getByText('Explain Health'));
+
+      await waitFor(() => expect(screen.getByText('Grounded in Project Knowledge')).toBeInTheDocument());
+      expect(screen.getByText('requirements.pdf')).toBeInTheDocument();
+    });
+
     it('shows a loading state while the copilot request is in flight', async () => {
       mockFetchSequence();
       render(<RoadmapDetailPage />);

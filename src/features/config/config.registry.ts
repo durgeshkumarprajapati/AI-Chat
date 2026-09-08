@@ -2281,6 +2281,57 @@ export const CONFIG_REGISTRY: Record<string, RegistryConfigItem> = {
     isEditable: true, isHighImpact: true, requiresRestart: false
   },
 
+  // AI Roadmap Copilot — RAG-Grounded Context pass. Retrieval is scoped to documents linked
+  // (via the existing, previously-unwired ProjectRoadmap/ProjectDocument join tables) to a
+  // project the REQUESTING user has "ASK_AI" access to — never repository-wide, never assumed.
+  // Defaults OFF: most roadmaps have no project link today, so this is a no-op until an operator
+  // both enables it AND a roadmap is actually linked to a project.
+  ROADMAP_COPILOT_RAG_ENABLED: {
+    key: 'ROADMAP_COPILOT_RAG_ENABLED',
+    valueType: ConfigValueType.BOOLEAN,
+    category: ConfigCategory.FEATURE_FLAG,
+    defaultValue: 'false',
+    purpose: 'Enables optional, authorized retrieval of project documentation to ground AI Roadmap Copilot responses. Only applies to roadmaps linked to a project the requesting user can access; otherwise this is a complete no-op.',
+    description: 'Enable RAG-grounded context for the AI Roadmap Copilot.',
+    isEditable: true, isHighImpact: true, requiresRestart: false
+  },
+  ROADMAP_COPILOT_RAG_MAX_DOCUMENTS: {
+    key: 'ROADMAP_COPILOT_RAG_MAX_DOCUMENTS',
+    valueType: ConfigValueType.NUMBER,
+    category: ConfigCategory.FEATURE_FLAG,
+    defaultValue: '3',
+    purpose: 'Maximum number of distinct documents included in a single Copilot retrieval context.',
+    description: 'Max documents per Copilot retrieval.',
+    isEditable: true, isHighImpact: false, requiresRestart: false, minValue: 1, maxValue: 10
+  },
+  ROADMAP_COPILOT_RAG_MAX_EXCERPTS: {
+    key: 'ROADMAP_COPILOT_RAG_MAX_EXCERPTS',
+    valueType: ConfigValueType.NUMBER,
+    category: ConfigCategory.FEATURE_FLAG,
+    defaultValue: '3',
+    purpose: 'Maximum number of excerpts included per document in a single Copilot retrieval context.',
+    description: 'Max excerpts per document.',
+    isEditable: true, isHighImpact: false, requiresRestart: false, minValue: 1, maxValue: 10
+  },
+  ROADMAP_COPILOT_RAG_MAX_EXCERPT_CHARS: {
+    key: 'ROADMAP_COPILOT_RAG_MAX_EXCERPT_CHARS',
+    valueType: ConfigValueType.NUMBER,
+    category: ConfigCategory.FEATURE_FLAG,
+    defaultValue: '400',
+    purpose: 'Maximum characters per retrieved excerpt before truncation.',
+    description: 'Max characters per excerpt.',
+    isEditable: true, isHighImpact: false, requiresRestart: false, minValue: 100, maxValue: 2000
+  },
+  ROADMAP_COPILOT_RAG_MAX_CONTEXT_CHARS: {
+    key: 'ROADMAP_COPILOT_RAG_MAX_CONTEXT_CHARS',
+    valueType: ConfigValueType.NUMBER,
+    category: ConfigCategory.FEATURE_FLAG,
+    defaultValue: '3000',
+    purpose: 'Hard cap on the total character size of retrieval context assembled for a single Copilot request, across all documents/excerpts.',
+    description: 'Max total retrieval context size (characters).',
+    isEditable: true, isHighImpact: false, requiresRestart: false, minValue: 500, maxValue: 10000
+  },
+
   EMAIL_FROM_ADDRESS: {
     key: 'EMAIL_FROM_ADDRESS',
     valueType: ConfigValueType.STRING,

@@ -6,8 +6,11 @@ import { computeRoadmapInsights } from '@/features/roadmap/execution/roadmap-ins
 import { loadRoadmapReminderConfig } from '@/features/roadmap/execution/roadmap-reminder-config';
 import { loadRoadmapBottleneckConfig } from '@/features/roadmap/execution/roadmap-bottleneck-config';
 import { buildCopilotContext } from '@/features/roadmap/copilot/roadmap-copilot-context';
+import { buildRetrievalQuery } from '@/features/roadmap/copilot/roadmap-copilot-retrieval-query';
+import { roadmapCopilotRetrievalService } from '@/features/roadmap/copilot/roadmap-copilot-retrieval.service';
+import { loadRoadmapCopilotRagConfig } from '@/features/roadmap/copilot/roadmap-copilot-rag-config';
 import { roadmapCopilotService } from '@/features/roadmap/copilot/roadmap-copilot.service';
-import { COPILOT_ACTIONS, COPILOT_PROPOSAL_ACTIONS, CopilotAction } from '@/features/roadmap/copilot/roadmap-copilot.types';
+import { COPILOT_ACTIONS, COPILOT_PROPOSAL_ACTIONS, COPILOT_RETRIEVAL_ELIGIBLE_ACTIONS, CopilotAction } from '@/features/roadmap/copilot/roadmap-copilot.types';
 import { AppError, ValidationError, NotFoundError } from '@/errors';
 
 export const dynamic = 'force-dynamic';
@@ -77,7 +80,7 @@ export async function POST(req: NextRequest, { params }: RouteParams) {
     const insights = computeRoadmapInsights(result.roadmap.phases, dependencyEdges, reminderConfig, bottleneckConfig);
 
     const includeTaskDescription = typedAction === 'REFINE_TASK' || typedAction === 'SUGGEST_SUBTASKS';
-    const copilotContext = buildCopilotContext({
+    let copilotContext = buildCopilotContext({
       roadmapTitle: result.roadmap.title,
       insights,
       rawPhases: result.roadmap.phases,
@@ -85,6 +88,28 @@ export async function POST(req: NextRequest, { params }: RouteParams) {
       phaseId,
       includeTaskDescription
     });
+
+    // RAG-Grounded Context — optional, bounded, authorized retrieval. Only attempted for actions
+    // that can meaningfully benefit (never for SUMMARIZE_PROGRESS/SHARE_PROGRESS_SUMMARY, and
+    // never for RECOMMEND_ACTIONS' zero-LLM-call deterministic fast path). A retrieval failure,
+    // disablement, or lack of a safe roadmap-to-project scope degrades silently — the copilot
+    // request itself never fails because of this.
+    const wantsAiAdvice = context.wantsAiAdvice === true;
+    const isRetrievalEligible =
+      COPILOT_RETRIEVAL_ELIGIBLE_ACTIONS.includes(typedAction) && (typedAction !== 'RECOMMEND_ACTIONS' || wantsAiAdvice);
+    if (isRetrievalEligible) {
+      const retrievalQuery = buildRetrievalQuery(typedAction, copilotContext);
+      if (retrievalQuery) {
+        const ragConfig = await loadRoadmapCopilotRagConfig();
+        const retrievalContext = await roadmapCopilotRetrievalService.retrieve({
+          roadmapId: params.id,
+          userId: user.id,
+          query: retrievalQuery,
+          config: ragConfig
+        });
+        copilotContext = { ...copilotContext, retrievalContext };
+      }
+    }
 
     let response;
     switch (typedAction) {
@@ -96,7 +121,7 @@ export async function POST(req: NextRequest, { params }: RouteParams) {
         break;
 
       case 'RECOMMEND_ACTIONS':
-        response = await roadmapCopilotService.recommendActions(copilotContext, context.wantsAiAdvice === true, user.id);
+        response = await roadmapCopilotService.recommendActions(copilotContext, wantsAiAdvice, user.id);
         break;
 
       case 'REFINE_TASK':

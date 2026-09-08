@@ -68,11 +68,27 @@ export interface CopilotRoadmapContext {
   trendStatus: 'OK' | 'INSUFFICIENT_DATA';
   focusTask?: CopilotFocusTask;
   focusPhase?: CopilotPhaseSummary;
-  /** Future retrieval-context plug point (RAG Integration, deliberately out of scope this phase —
-   * see the final report's "RAG integration decision"). Always undefined today: RAG is never
-   * automatically invoked. A future pass can populate this from an authorized, project-scoped
-   * retrieval call without changing anything else in this module or the copilot service. */
-  retrievalContext?: { source: string; snippet: string }[];
+  /**
+   * RAG-Grounded Context pass — populated by the copilot route ONLY when: the copilot RAG flag
+   * is enabled, the action is retrieval-eligible, the roadmap is linked to a project (via the
+   * existing, previously-unwired ProjectRoadmap join table) the requesting user is authorized to
+   * ask AI about, and retrieval actually found relevant, already-hard-filtered content. `used:
+   * false` (the default) means exactly what it says — no document ever informed this response.
+   * Never contains full documents, raw chunk metadata, or unauthorized identifiers — only a
+   * bounded {title, sourceId, excerpts[]} list built by roadmap-copilot-retrieval.service.ts.
+   */
+  retrievalContext?: CopilotRetrievalContext;
+}
+
+export interface CopilotRetrievalDocument {
+  title: string;
+  sourceId: string;
+  excerpts: string[];
+}
+
+export interface CopilotRetrievalContext {
+  used: boolean;
+  documents: CopilotRetrievalDocument[];
 }
 
 export interface BuildCopilotContextParams {
@@ -84,10 +100,11 @@ export interface BuildCopilotContextParams {
   taskId?: string;
   phaseId?: string;
   includeTaskDescription?: boolean;
+  retrievalContext?: CopilotRetrievalContext;
 }
 
 export function buildCopilotContext(params: BuildCopilotContextParams): CopilotRoadmapContext {
-  const { roadmapTitle, insights, rawPhases, taskId, phaseId, includeTaskDescription } = params;
+  const { roadmapTitle, insights, rawPhases, taskId, phaseId, includeTaskDescription, retrievalContext } = params;
 
   const taskTitleById = new Map(insights.tasks.map((t) => [t.id, t.title]));
   const taskDescriptionById = new Map(rawPhases.flatMap((p) => p.tasks).map((t) => [t.id, t.description]));
@@ -159,7 +176,8 @@ export function buildCopilotContext(params: BuildCopilotContextParams): CopilotR
     dependencyImpact,
     trendStatus: insights.trends.taskCompletion.status,
     focusTask,
-    focusPhase
+    focusPhase,
+    retrievalContext
   };
 }
 

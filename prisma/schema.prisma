@@ -2220,6 +2220,12 @@ model ProjectRoadmap {
   id        String   @id @default(uuid())
   projectId String   @map("project_id")
   roadmapId String   @map("roadmap_id")
+  // Project Roadmap Linking & Governance pass — the ONLY primary-roadmap concept anywhere in the
+  // schema (confirmed: no legacy Project.roadmapId field, no other competing source of truth).
+  // A project may have at most one primary roadmap; enforced at the application layer via a single
+  // atomic UPDATE (see project-roadmap-link.service.ts:setPrimaryRoadmap) rather than a partial
+  // unique index, since Prisma's schema DSL here has no partial-index support enabled.
+  isPrimary Boolean  @default(false) @map("is_primary")
   createdAt DateTime @default(now()) @map("created_at")
 
   project Project @relation(fields: [projectId], references: [id], onDelete: Cascade)

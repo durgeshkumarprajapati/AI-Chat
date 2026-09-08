@@ -1,4 +1,5 @@
 import { prisma } from '@/lib/prisma';
+import { roadmapRepository } from '@/features/roadmap/repository/roadmap.repository';
 import {
   CreateProjectPayload,
   ProjectDetail,
@@ -34,6 +35,21 @@ export class ProjectService {
    * Create a new project workspace.
    */
   public async createProject(userId: string, payload: CreateProjectPayload): Promise<ProjectDetail> {
+    // Project Roadmap Linking & Governance pass — a roadmapId supplied here must be independently
+    // authorized exactly like any other link creation (project access alone must never imply
+    // roadmap access): only roadmaps the requesting user owns or has EDIT/OWNER share access to
+    // are linked; anything else is silently dropped rather than linked without a real claim to it.
+    const authorizedRoadmapIds = payload.roadmapIds?.length
+      ? (
+          await Promise.all(
+            payload.roadmapIds.map(async (rId) => {
+              const access = await roadmapRepository.findRoadmapByIdForUser(rId, userId);
+              return access && (access.permission === 'OWNER' || access.permission === 'EDIT') ? rId : null;
+            })
+          )
+        ).filter((rId): rId is string => rId !== null)
+      : [];
+
     const project = await prisma.project.create({
       data: {
         ownerId: userId,
@@ -55,9 +71,9 @@ export class ProjectService {
               create: payload.knowledgeBaseIds.map((kbId) => ({ knowledgeBaseId: kbId }))
             }
           : undefined,
-        roadmaps: payload.roadmapIds?.length
+        roadmaps: authorizedRoadmapIds.length
           ? {
-              create: payload.roadmapIds.map((rId) => ({ roadmapId: rId }))
+              create: authorizedRoadmapIds.map((rId) => ({ roadmapId: rId }))
             }
           : undefined,
         studySessions: payload.studySessionIds?.length

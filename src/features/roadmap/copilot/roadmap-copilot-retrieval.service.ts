@@ -26,12 +26,16 @@ function withTimeout<T>(promise: Promise<T>, ms: number): Promise<T> {
  * AUTHORIZATION CHAIN (the security-critical part of this whole feature):
  * 1. Roadmap access is already verified by the caller (findRoadmapByIdForUser) before this is
  *    ever invoked — never re-derived or trusted from anything the AI produced.
- * 2. `ProjectRoadmap` — an EXISTING schema relationship that is, today, completely unwired by any
- *    other part of the app (verified by repository search) — is read (never written; this
- *    service NEVER creates a roadmap/project link) to determine whether this SPECIFIC roadmap
- *    happens to be linked to a project. If not, retrieval is skipped entirely: there is no safe
- *    scope to search, and none is invented.
- * 3. If linked, the REQUESTING user (not the roadmap owner) must independently pass
+ * 2. `ProjectRoadmap` is read (never written; this service NEVER creates a roadmap/project link)
+ *    to determine whether this SPECIFIC roadmap is linked to a project. A roadmap MAY now be
+ *    linked to more than one project (Project Roadmap Linking & Governance pass — no schema
+ *    constraint prevents it, and none is added here). To keep every retrieval request scoped to
+ *    exactly ONE project relationship (never merging document sets across projects), every link
+ *    is tried in a fixed, deterministic order (oldest link first) and the FIRST project the
+ *    requesting user is actually authorized for is used — never a union of authorized projects'
+ *    documents. If no link exists, or the user is authorized for none of the linked projects,
+ *    retrieval is skipped entirely: there is no safe scope to search, and none is invented.
+ * 3. For the chosen project, the REQUESTING user (not the roadmap owner) must independently pass
  *    `projectAuthorizationService.authorizeProjectAccess(userId, projectId, 'ASK_AI')` — the
  *    SAME gate every other AI-over-project-content feature in this codebase already uses. A
  *    roadmap-authorized user with no project access gets zero retrieval, silently.
@@ -58,17 +62,28 @@ export class RoadmapCopilotRetrievalService {
     if (!config.enabled) return NO_RESULT;
 
     try {
-      const link = await prisma.projectRoadmap.findFirst({ where: { roadmapId }, select: { projectId: true } });
-      if (!link) return NO_RESULT; // no safe scope — never invented
+      const links = await prisma.projectRoadmap.findMany({
+        where: { roadmapId },
+        select: { projectId: true },
+        orderBy: { createdAt: 'asc' }
+      });
+      if (links.length === 0) return NO_RESULT; // no safe scope — never invented
 
-      try {
-        await projectAuthorizationService.authorizeProjectAccess(userId, link.projectId, 'ASK_AI');
-      } catch {
-        return NO_RESULT; // roadmap access != project access; a denial here is silent, not an error
+      // Exactly one project relationship is used per request — never merged across projects.
+      let authorizedProjectId: string | null = null;
+      for (const link of links) {
+        try {
+          await projectAuthorizationService.authorizeProjectAccess(userId, link.projectId, 'ASK_AI');
+          authorizedProjectId = link.projectId;
+          break;
+        } catch {
+          // roadmap access != project access; try the next linked project, if any.
+        }
       }
+      if (!authorizedProjectId) return NO_RESULT; // denial is silent, not an error
 
       const projectDocuments = await prisma.projectDocument.findMany({
-        where: { projectId: link.projectId },
+        where: { projectId: authorizedProjectId },
         select: { documentId: true }
       });
       const authorizedDocumentIds = projectDocuments.map((d) => d.documentId);

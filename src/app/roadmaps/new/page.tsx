@@ -1,12 +1,14 @@
 'use client';
 
 import React, { useState } from 'react';
-import { useRouter } from 'next/navigation';
+import { useRouter, useSearchParams } from 'next/navigation';
 import Link from 'next/link';
 import { QUESTIONNAIRE_STEPS } from '@/features/roadmap/questionnaire/roadmap-questionnaire';
 
 export default function NewRoadmapPage() {
   const router = useRouter();
+  const searchParams = useSearchParams();
+  const projectId = searchParams.get('projectId');
 
   const [answers, setAnswers] = useState<Record<string, any>>({
     goal: 'Learn a Technology',
@@ -52,18 +54,27 @@ export default function NewRoadmapPage() {
     setGenerating(true);
 
     try {
-      const res = await fetch('/api/roadmaps/generate', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(answers)
-      });
+      // Project Roadmap Linking & Governance — when reached from a project's "+ Create Roadmap"
+      // action, generate AND link atomically server-side via the project-scoped endpoint (reusing
+      // the SAME roadmap generation engine) instead of the standalone generate endpoint.
+      const res = projectId
+        ? await fetch(`/api/projects/${projectId}/roadmaps`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ create: answers })
+          })
+        : await fetch('/api/roadmaps/generate', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify(answers)
+          });
 
       const data = await res.json();
       if (!res.ok || !data.success) {
         throw new Error(data.error?.message || 'Roadmap generation failed.');
       }
 
-      router.push(`/roadmaps/${data.data.id}`);
+      router.push(projectId ? `/projects/${projectId}` : `/roadmaps/${data.data.id}`);
     } catch (err) {
       setErrorMsg(err instanceof Error ? err.message : 'Failed to generate roadmap.');
       setGenerating(false);

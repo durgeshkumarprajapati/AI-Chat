@@ -6,6 +6,7 @@ import { ProjectDetail } from '@/features/projects/types/project.types';
 import { ProjectAuditPanel } from '@/components/projects/ProjectAuditPanel';
 import { Card, CardHeader, CardTitle } from '@/components/ui/Card';
 import { Badge, BadgeVariant } from '@/components/ui/Badge';
+import { Button } from '@/components/ui/Button';
 
 type ProjectExecutionStatus = 'HEALTHY' | 'AT_RISK' | 'CRITICAL';
 
@@ -26,6 +27,19 @@ interface ProjectRoadmapExecutionSummary {
   dueSoonTasks: number;
   unassignedTasks: number;
   nextStep: ProjectExecutionNextStep | null;
+}
+
+interface ProjectRoadmapLinkSummary {
+  roadmapId: string;
+  title: string;
+  isPrimary: boolean;
+  linkedAt: string;
+  roadmapPermission: 'OWNER' | 'EDIT' | 'VIEW';
+}
+
+interface OwnedOrSharedRoadmapOption {
+  id: string;
+  title: string;
 }
 
 interface ProjectExecutionPriority {
@@ -63,35 +77,136 @@ const STATUS_LABEL: Record<ProjectExecutionStatus, string> = {
   CRITICAL: 'Critical'
 };
 
-function ProjectExecutionCommandCenter({ projectId }: { projectId: string }) {
-  const [summary, setSummary] = useState<ProjectExecutionSummary | null>(null);
-  const [loading, setLoading] = useState(true);
+function LinkExistingRoadmapPicker({ projectId, alreadyLinkedIds, onLinked, onClose }: {
+  projectId: string;
+  alreadyLinkedIds: string[];
+  onLinked: () => void;
+  onClose: () => void;
+}) {
+  const [options, setOptions] = useState<OwnedOrSharedRoadmapOption[] | null>(null);
+  const [linking, setLinking] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
 
   useEffect(() => {
     let cancelled = false;
-    async function fetchExecutionSummary() {
-      setLoading(true);
-      setError(null);
-      try {
-        const res = await fetch(`/api/projects/${projectId}/execution`);
-        const data = await res.json();
-        if (cancelled) return;
-        if (data.success) {
-          setSummary(data.data);
-        } else {
-          setError(data.error?.message || 'Failed to load project execution summary.');
-        }
-      } catch (err) {
-        if (!cancelled) setError('Failed to load project execution summary.');
-        console.error('Failed to fetch project execution summary', err);
-      } finally {
-        if (!cancelled) setLoading(false);
+    // Authorization-scoped at the query layer already (owned + actively-shared roadmaps for THIS
+    // user, per the existing GET /api/roadmaps endpoint) — never a client-side filter over "all
+    // roadmaps." The already-linked exclusion below is a pure UX declutter, not a security filter.
+    fetch('/api/roadmaps').then((res) => res.json()).then((data) => {
+      if (cancelled) return;
+      if (data.success) {
+        const owned = data.data.owned.map((r: { id: string; title: string }) => ({ id: r.id, title: r.title }));
+        const shared = data.data.shared.map((s: { roadmap: { id: string; title: string } }) => ({ id: s.roadmap.id, title: s.roadmap.title }));
+        setOptions([...owned, ...shared].filter((r) => !alreadyLinkedIds.includes(r.id)));
       }
-    }
-    fetchExecutionSummary();
+    }).catch(() => { if (!cancelled) setError('Failed to load your roadmaps.'); });
     return () => { cancelled = true; };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
+  async function handleLink(roadmapId: string) {
+    setLinking(roadmapId);
+    setError(null);
+    try {
+      const res = await fetch(`/api/projects/${projectId}/roadmaps`, {
+        method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ roadmapId })
+      });
+      const data = await res.json();
+      if (!res.ok || !data.success) throw new Error(data.error?.message || 'Failed to link roadmap.');
+      onLinked();
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Failed to link roadmap.');
+      setLinking(null);
+    }
+  }
+
+  return (
+    <div className="p-3 rounded-xl bg-background border border-border space-y-2">
+      <div className="flex items-center justify-between">
+        <h5 className="text-[10px] font-mono text-muted-foreground uppercase">Link Existing Roadmap</h5>
+        <button onClick={onClose} className="text-[11px] text-muted-foreground hover:text-foreground">Cancel</button>
+      </div>
+      {error && <p className="text-[11px] text-rose-500">{error}</p>}
+      {options === null ? (
+        <p className="text-xs text-muted-foreground animate-pulse">Loading your roadmaps…</p>
+      ) : options.length === 0 ? (
+        <p className="text-xs text-muted-foreground">No other roadmaps of yours are available to link.</p>
+      ) : (
+        <div className="space-y-1.5 max-h-56 overflow-y-auto">
+          {options.map((r) => (
+            <div key={r.id} className="flex items-center justify-between p-2 rounded-lg bg-muted text-xs">
+              <span className="text-foreground">{r.title}</span>
+              <Button size="sm" loading={linking === r.id} onClick={() => handleLink(r.id)}>Link</Button>
+            </div>
+          ))}
+        </div>
+      )}
+    </div>
+  );
+}
+
+function ProjectExecutionCommandCenter({ projectId }: { projectId: string }) {
+  const [summary, setSummary] = useState<ProjectExecutionSummary | null>(null);
+  const [links, setLinks] = useState<ProjectRoadmapLinkSummary[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState<string | null>(null);
+  const [showPicker, setShowPicker] = useState(false);
+  const [mutatingRoadmapId, setMutatingRoadmapId] = useState<string | null>(null);
+  const [confirmUnlinkId, setConfirmUnlinkId] = useState<string | null>(null);
+
+  async function fetchAll() {
+    setLoading(true);
+    setError(null);
+    try {
+      const [execRes, linksRes] = await Promise.all([
+        fetch(`/api/projects/${projectId}/execution`),
+        fetch(`/api/projects/${projectId}/roadmaps`)
+      ]);
+      const execData = await execRes.json();
+      const linksData = await linksRes.json();
+      if (execData.success) {
+        setSummary(execData.data);
+      } else {
+        setError(execData.error?.message || 'Failed to load project execution summary.');
+      }
+      if (linksData.success) setLinks(linksData.data.links);
+    } catch (err) {
+      setError('Failed to load project execution summary.');
+      console.error('Failed to fetch project execution summary', err);
+    } finally {
+      setLoading(false);
+    }
+  }
+
+  useEffect(() => {
+    fetchAll();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [projectId]);
+
+  async function handleSetPrimary(roadmapId: string) {
+    setMutatingRoadmapId(roadmapId);
+    try {
+      await fetch(`/api/projects/${projectId}/roadmaps/${roadmapId}`, {
+        method: 'PATCH', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ isPrimary: true })
+      });
+      await fetchAll();
+    } finally {
+      setMutatingRoadmapId(null);
+    }
+  }
+
+  async function handleUnlink(roadmapId: string) {
+    setMutatingRoadmapId(roadmapId);
+    try {
+      await fetch(`/api/projects/${projectId}/roadmaps/${roadmapId}`, { method: 'DELETE' });
+      setConfirmUnlinkId(null);
+      await fetchAll();
+    } finally {
+      setMutatingRoadmapId(null);
+    }
+  }
+
+  const linkByRoadmapId = new Map(links.map((l) => [l.roadmapId, l]));
 
   if (loading) {
     return (
@@ -113,9 +228,23 @@ function ProjectExecutionCommandCenter({ projectId }: { projectId: string }) {
 
   if (summary.roadmapCount === 0) {
     return (
-      <Card>
-        <CardHeader><CardTitle>Project Execution</CardTitle></CardHeader>
-        <p className="text-xs text-muted-foreground">No accessible linked roadmaps yet — link a roadmap to this project to see execution status here.</p>
+      <Card className="space-y-3">
+        <CardHeader><CardTitle>Project Roadmaps</CardTitle></CardHeader>
+        <p className="text-xs text-muted-foreground">No roadmaps linked to this project.</p>
+        <div className="flex items-center gap-2">
+          <Link href={`/roadmaps/new?projectId=${projectId}`} className="inline-block">
+            <Button size="sm">+ Create Roadmap</Button>
+          </Link>
+          <Button size="sm" variant="secondary" onClick={() => setShowPicker((v) => !v)}>+ Link Existing Roadmap</Button>
+        </div>
+        {showPicker && (
+          <LinkExistingRoadmapPicker
+            projectId={projectId}
+            alreadyLinkedIds={[]}
+            onLinked={() => { setShowPicker(false); fetchAll(); }}
+            onClose={() => setShowPicker(false)}
+          />
+        )}
       </Card>
     );
   }
@@ -182,25 +311,82 @@ function ProjectExecutionCommandCenter({ projectId }: { projectId: string }) {
       </Card>
 
       <div>
-        <h4 className="text-[10px] font-mono text-muted-foreground uppercase mb-2">Roadmap Overview</h4>
-        <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
-          {summary.roadmaps.map((r) => (
-            <Link key={r.roadmapId} href={`/roadmaps/${r.roadmapId}`} className="block p-3 rounded-xl bg-background border border-border hover:border-indigo-500/50 transition space-y-2">
-              <div className="flex items-center justify-between">
-                <span className="text-xs font-semibold text-foreground">{r.title}</span>
-                <Badge variant={STATUS_BADGE_VARIANT[r.status]}>{STATUS_LABEL[r.status]}</Badge>
-              </div>
-              <div className="w-full h-1.5 bg-muted rounded-full overflow-hidden border border-border">
-                <div className="h-full bg-emerald-500 transition-all duration-500" style={{ width: `${r.progress.percentage}%` }} />
-              </div>
-              <div className="flex items-center gap-3 text-[10px] text-muted-foreground font-mono">
-                <span>{r.progress.completed}/{r.progress.total} done</span>
-                {r.blockedTasks > 0 && <span className="text-rose-500">{r.blockedTasks} blocked</span>}
-                {r.overdueTasks > 0 && <span className="text-rose-500">{r.overdueTasks} overdue</span>}
-                {r.nextStep && <span className="text-foreground">Next: {r.nextStep.taskTitle}</span>}
-              </div>
+        <div className="flex items-center justify-between mb-2">
+          <h4 className="text-[10px] font-mono text-muted-foreground uppercase">Project Roadmaps</h4>
+          <div className="flex items-center gap-2">
+            <Link href={`/roadmaps/new?projectId=${projectId}`}>
+              <Button size="sm" variant="secondary">+ Create Roadmap</Button>
             </Link>
-          ))}
+            <Button size="sm" variant="secondary" onClick={() => setShowPicker((v) => !v)}>+ Link Existing Roadmap</Button>
+          </div>
+        </div>
+
+        {showPicker && (
+          <div className="mb-3">
+            <LinkExistingRoadmapPicker
+              projectId={projectId}
+              alreadyLinkedIds={summary.roadmaps.map((r) => r.roadmapId)}
+              onLinked={() => { setShowPicker(false); fetchAll(); }}
+              onClose={() => setShowPicker(false)}
+            />
+          </div>
+        )}
+
+        <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+          {summary.roadmaps.map((r) => {
+            const link = linkByRoadmapId.get(r.roadmapId);
+            const isMutating = mutatingRoadmapId === r.roadmapId;
+            return (
+              <div key={r.roadmapId} className="p-3 rounded-xl bg-background border border-border space-y-2">
+                <Link href={`/roadmaps/${r.roadmapId}`} className="block space-y-2 hover:opacity-90 transition">
+                  <div className="flex items-center justify-between">
+                    <span className="text-xs font-semibold text-foreground">{r.title}</span>
+                    <div className="flex items-center gap-1.5">
+                      {link?.isPrimary && <Badge variant="info">Primary</Badge>}
+                      <Badge variant={STATUS_BADGE_VARIANT[r.status]}>{STATUS_LABEL[r.status]}</Badge>
+                    </div>
+                  </div>
+                  <div className="w-full h-1.5 bg-muted rounded-full overflow-hidden border border-border">
+                    <div className="h-full bg-emerald-500 transition-all duration-500" style={{ width: `${r.progress.percentage}%` }} />
+                  </div>
+                  <div className="flex items-center gap-3 text-[10px] text-muted-foreground font-mono">
+                    <span>{r.progress.completed}/{r.progress.total} done</span>
+                    {r.blockedTasks > 0 && <span className="text-rose-500">{r.blockedTasks} blocked</span>}
+                    {r.overdueTasks > 0 && <span className="text-rose-500">{r.overdueTasks} overdue</span>}
+                    {r.nextStep && <span className="text-foreground">Next: {r.nextStep.taskTitle}</span>}
+                  </div>
+                </Link>
+
+                {/* Governance actions — backend remains authoritative; a VIEW-only roadmap
+                    permission still allows Unlink/Set Primary since those are project-side
+                    actions, never gated on roadmap permission here (the API enforces it). */}
+                <div className="flex items-center justify-end gap-2 pt-1 border-t border-border">
+                  {!link?.isPrimary && (
+                    <button
+                      onClick={() => handleSetPrimary(r.roadmapId)}
+                      disabled={isMutating}
+                      className="text-[11px] text-indigo-600 dark:text-indigo-400 hover:underline disabled:opacity-50"
+                    >
+                      Set as Primary
+                    </button>
+                  )}
+                  {confirmUnlinkId === r.roadmapId ? (
+                    <>
+                      <span className="text-[11px] text-muted-foreground">Unlink this roadmap?</span>
+                      <button onClick={() => setConfirmUnlinkId(null)} className="text-[11px] text-muted-foreground hover:text-foreground">No</button>
+                      <button onClick={() => handleUnlink(r.roadmapId)} disabled={isMutating} className="text-[11px] text-rose-500 hover:underline disabled:opacity-50">
+                        Yes, unlink
+                      </button>
+                    </>
+                  ) : (
+                    <button onClick={() => setConfirmUnlinkId(r.roadmapId)} disabled={isMutating} className="text-[11px] text-muted-foreground hover:text-rose-500 disabled:opacity-50">
+                      Unlink
+                    </button>
+                  )}
+                </div>
+              </div>
+            );
+          })}
         </div>
       </div>
     </div>

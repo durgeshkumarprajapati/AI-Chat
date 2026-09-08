@@ -1,8 +1,8 @@
-const mockProjectRoadmapFindFirst = jest.fn();
+const mockProjectRoadmapFindMany = jest.fn();
 const mockProjectDocumentFindMany = jest.fn();
 jest.mock('@/lib/prisma', () => ({
   prisma: {
-    projectRoadmap: { findFirst: (...args: unknown[]) => mockProjectRoadmapFindFirst(...args) },
+    projectRoadmap: { findMany: (...args: unknown[]) => mockProjectRoadmapFindMany(...args) },
     projectDocument: { findMany: (...args: unknown[]) => mockProjectDocumentFindMany(...args) }
   }
 }));
@@ -32,11 +32,11 @@ describe('RoadmapCopilotRetrievalService.retrieve', () => {
     const result = await roadmapCopilotRetrievalService.retrieve({ roadmapId: 'r1', userId: 'u1', query: 'q', config: { ...CONFIG, enabled: false } });
 
     expect(result).toEqual({ used: false, documents: [] });
-    expect(mockProjectRoadmapFindFirst).not.toHaveBeenCalled();
+    expect(mockProjectRoadmapFindMany).not.toHaveBeenCalled();
   });
 
   it('returns used:false when the roadmap has no project link (no safe scope exists)', async () => {
-    mockProjectRoadmapFindFirst.mockResolvedValue(null);
+    mockProjectRoadmapFindMany.mockResolvedValue([]);
 
     const result = await roadmapCopilotRetrievalService.retrieve({ roadmapId: 'r1', userId: 'u1', query: 'q', config: CONFIG });
 
@@ -45,7 +45,7 @@ describe('RoadmapCopilotRetrievalService.retrieve', () => {
   });
 
   it('returns used:false when the requesting user lacks project access, without throwing', async () => {
-    mockProjectRoadmapFindFirst.mockResolvedValue({ projectId: 'proj-1' });
+    mockProjectRoadmapFindMany.mockResolvedValue([{ projectId: 'proj-1' }]);
     mockAuthorizeProjectAccess.mockRejectedValue(new Error('Access denied'));
 
     const result = await roadmapCopilotRetrievalService.retrieve({ roadmapId: 'r1', userId: 'u1', query: 'q', config: CONFIG });
@@ -54,8 +54,50 @@ describe('RoadmapCopilotRetrievalService.retrieve', () => {
     expect(mockProjectDocumentFindMany).not.toHaveBeenCalled();
   });
 
+  describe('multi-project roadmap linking (Section 11/12) — never merges document sets across projects', () => {
+    it('tries each linked project in order and uses the first the requesting user is authorized for', async () => {
+      mockProjectRoadmapFindMany.mockResolvedValue([{ projectId: 'proj-unauthorized' }, { projectId: 'proj-authorized' }]);
+      mockAuthorizeProjectAccess.mockImplementation((_userId: string, projectId: string) =>
+        projectId === 'proj-authorized' ? Promise.resolve('EDITOR') : Promise.reject(new Error('denied'))
+      );
+      mockProjectDocumentFindMany.mockResolvedValue([{ documentId: 'doc-1' }]);
+      mockRetrieveContext.mockResolvedValue([chunk()]);
+
+      const result = await roadmapCopilotRetrievalService.retrieve({ roadmapId: 'r1', userId: 'u1', query: 'q', config: CONFIG });
+
+      expect(mockAuthorizeProjectAccess).toHaveBeenCalledWith('u1', 'proj-unauthorized', 'ASK_AI');
+      expect(mockAuthorizeProjectAccess).toHaveBeenCalledWith('u1', 'proj-authorized', 'ASK_AI');
+      expect(mockProjectDocumentFindMany).toHaveBeenCalledWith(expect.objectContaining({ where: { projectId: 'proj-authorized' } }));
+      expect(result.used).toBe(true);
+    });
+
+    it('returns used:false when the user is authorized for NONE of the linked projects', async () => {
+      mockProjectRoadmapFindMany.mockResolvedValue([{ projectId: 'proj-a' }, { projectId: 'proj-b' }]);
+      mockAuthorizeProjectAccess.mockRejectedValue(new Error('denied'));
+
+      const result = await roadmapCopilotRetrievalService.retrieve({ roadmapId: 'r1', userId: 'u1', query: 'q', config: CONFIG });
+
+      expect(result).toEqual({ used: false, documents: [] });
+      expect(mockProjectDocumentFindMany).not.toHaveBeenCalled();
+    });
+
+    it('never merges ProjectDocument sets from two different authorized-in-principle projects into one retrieval', async () => {
+      mockProjectRoadmapFindMany.mockResolvedValue([{ projectId: 'proj-a' }, { projectId: 'proj-b' }]);
+      // The user COULD be authorized for both, but only the first tried should ever be used.
+      mockAuthorizeProjectAccess.mockResolvedValue('EDITOR');
+      mockProjectDocumentFindMany.mockResolvedValue([{ documentId: 'doc-a' }]);
+      mockRetrieveContext.mockResolvedValue([chunk({ documentId: 'doc-a' })]);
+
+      await roadmapCopilotRetrievalService.retrieve({ roadmapId: 'r1', userId: 'u1', query: 'q', config: CONFIG });
+
+      expect(mockAuthorizeProjectAccess).toHaveBeenCalledTimes(1);
+      expect(mockProjectDocumentFindMany).toHaveBeenCalledTimes(1);
+      expect(mockProjectDocumentFindMany).toHaveBeenCalledWith(expect.objectContaining({ where: { projectId: 'proj-a' } }));
+    });
+  });
+
   it('calls authorizeProjectAccess with the ASK_AI permission', async () => {
-    mockProjectRoadmapFindFirst.mockResolvedValue({ projectId: 'proj-1' });
+    mockProjectRoadmapFindMany.mockResolvedValue([{ projectId: 'proj-1' }]);
     mockAuthorizeProjectAccess.mockResolvedValue('MEMBER');
     mockProjectDocumentFindMany.mockResolvedValue([]);
 
@@ -65,7 +107,7 @@ describe('RoadmapCopilotRetrievalService.retrieve', () => {
   });
 
   it('returns used:false when the project has zero linked documents', async () => {
-    mockProjectRoadmapFindFirst.mockResolvedValue({ projectId: 'proj-1' });
+    mockProjectRoadmapFindMany.mockResolvedValue([{ projectId: 'proj-1' }]);
     mockAuthorizeProjectAccess.mockResolvedValue('MEMBER');
     mockProjectDocumentFindMany.mockResolvedValue([]);
 
@@ -76,7 +118,7 @@ describe('RoadmapCopilotRetrievalService.retrieve', () => {
   });
 
   it('scopes retrieval to documents linked to ONLY this project, calling retrieveContext with the requesting userId', async () => {
-    mockProjectRoadmapFindFirst.mockResolvedValue({ projectId: 'proj-1' });
+    mockProjectRoadmapFindMany.mockResolvedValue([{ projectId: 'proj-1' }]);
     mockAuthorizeProjectAccess.mockResolvedValue('MEMBER');
     mockProjectDocumentFindMany.mockResolvedValue([{ documentId: 'doc-1' }, { documentId: 'doc-2' }]);
     mockRetrieveContext.mockResolvedValue([chunk()]);
@@ -87,7 +129,7 @@ describe('RoadmapCopilotRetrievalService.retrieve', () => {
   });
 
   it('returns a bounded, safe document list on success', async () => {
-    mockProjectRoadmapFindFirst.mockResolvedValue({ projectId: 'proj-1' });
+    mockProjectRoadmapFindMany.mockResolvedValue([{ projectId: 'proj-1' }]);
     mockAuthorizeProjectAccess.mockResolvedValue('MEMBER');
     mockProjectDocumentFindMany.mockResolvedValue([{ documentId: 'doc-1' }]);
     mockRetrieveContext.mockResolvedValue([chunk()]);
@@ -99,7 +141,7 @@ describe('RoadmapCopilotRetrievalService.retrieve', () => {
 
   describe('security — the hard post-filter (never trusting the soft documentIdFilter)', () => {
     it('strips a chunk from a document NOT in the authorized set, even though retrieveContext returned it', async () => {
-      mockProjectRoadmapFindFirst.mockResolvedValue({ projectId: 'proj-1' });
+      mockProjectRoadmapFindMany.mockResolvedValue([{ projectId: 'proj-1' }]);
       mockAuthorizeProjectAccess.mockResolvedValue('MEMBER');
       mockProjectDocumentFindMany.mockResolvedValue([{ documentId: 'doc-1' }]);
       // Simulates retrieval.service.ts's own documented never-zeroing soft-filter fallback:
@@ -114,7 +156,7 @@ describe('RoadmapCopilotRetrievalService.retrieve', () => {
     });
 
     it('returns used:false when EVERY returned chunk is outside the authorized set', async () => {
-      mockProjectRoadmapFindFirst.mockResolvedValue({ projectId: 'proj-1' });
+      mockProjectRoadmapFindMany.mockResolvedValue([{ projectId: 'proj-1' }]);
       mockAuthorizeProjectAccess.mockResolvedValue('MEMBER');
       mockProjectDocumentFindMany.mockResolvedValue([{ documentId: 'doc-1' }]);
       mockRetrieveContext.mockResolvedValue([chunk({ documentId: 'totally-different-doc' })]);
@@ -127,7 +169,7 @@ describe('RoadmapCopilotRetrievalService.retrieve', () => {
 
   describe('bounding', () => {
     it('caps the number of distinct documents at maxDocuments', async () => {
-      mockProjectRoadmapFindFirst.mockResolvedValue({ projectId: 'proj-1' });
+      mockProjectRoadmapFindMany.mockResolvedValue([{ projectId: 'proj-1' }]);
       mockAuthorizeProjectAccess.mockResolvedValue('MEMBER');
       mockProjectDocumentFindMany.mockResolvedValue(Array.from({ length: 5 }, (_, i) => ({ documentId: `doc-${i}` })));
       mockRetrieveContext.mockResolvedValue(Array.from({ length: 5 }, (_, i) => chunk({ documentId: `doc-${i}`, filename: `f${i}.pdf` })));
@@ -138,7 +180,7 @@ describe('RoadmapCopilotRetrievalService.retrieve', () => {
     });
 
     it('caps excerpts per document at maxExcerpts', async () => {
-      mockProjectRoadmapFindFirst.mockResolvedValue({ projectId: 'proj-1' });
+      mockProjectRoadmapFindMany.mockResolvedValue([{ projectId: 'proj-1' }]);
       mockAuthorizeProjectAccess.mockResolvedValue('MEMBER');
       mockProjectDocumentFindMany.mockResolvedValue([{ documentId: 'doc-1' }]);
       mockRetrieveContext.mockResolvedValue(Array.from({ length: 5 }, (_, i) => chunk({ content: `excerpt ${i}` })));
@@ -149,7 +191,7 @@ describe('RoadmapCopilotRetrievalService.retrieve', () => {
     });
 
     it('truncates an excerpt longer than maxExcerptChars', async () => {
-      mockProjectRoadmapFindFirst.mockResolvedValue({ projectId: 'proj-1' });
+      mockProjectRoadmapFindMany.mockResolvedValue([{ projectId: 'proj-1' }]);
       mockAuthorizeProjectAccess.mockResolvedValue('MEMBER');
       mockProjectDocumentFindMany.mockResolvedValue([{ documentId: 'doc-1' }]);
       mockRetrieveContext.mockResolvedValue([chunk({ content: 'x'.repeat(1000) })]);
@@ -160,7 +202,7 @@ describe('RoadmapCopilotRetrievalService.retrieve', () => {
     });
 
     it('never exceeds maxContextChars in total across all documents/excerpts', async () => {
-      mockProjectRoadmapFindFirst.mockResolvedValue({ projectId: 'proj-1' });
+      mockProjectRoadmapFindMany.mockResolvedValue([{ projectId: 'proj-1' }]);
       mockAuthorizeProjectAccess.mockResolvedValue('MEMBER');
       mockProjectDocumentFindMany.mockResolvedValue([{ documentId: 'doc-1' }, { documentId: 'doc-2' }]);
       mockRetrieveContext.mockResolvedValue([
@@ -177,7 +219,7 @@ describe('RoadmapCopilotRetrievalService.retrieve', () => {
 
   describe('graceful degradation', () => {
     it('returns used:false when retrieveContext throws', async () => {
-      mockProjectRoadmapFindFirst.mockResolvedValue({ projectId: 'proj-1' });
+      mockProjectRoadmapFindMany.mockResolvedValue([{ projectId: 'proj-1' }]);
       mockAuthorizeProjectAccess.mockResolvedValue('MEMBER');
       mockProjectDocumentFindMany.mockResolvedValue([{ documentId: 'doc-1' }]);
       mockRetrieveContext.mockRejectedValue(new Error('Provider unavailable'));
@@ -188,7 +230,7 @@ describe('RoadmapCopilotRetrievalService.retrieve', () => {
     });
 
     it('returns used:false rather than hanging when retrieveContext never resolves (timeout)', async () => {
-      mockProjectRoadmapFindFirst.mockResolvedValue({ projectId: 'proj-1' });
+      mockProjectRoadmapFindMany.mockResolvedValue([{ projectId: 'proj-1' }]);
       mockAuthorizeProjectAccess.mockResolvedValue('MEMBER');
       mockProjectDocumentFindMany.mockResolvedValue([{ documentId: 'doc-1' }]);
       mockRetrieveContext.mockImplementation(() => new Promise(() => {})); // never resolves
@@ -199,7 +241,7 @@ describe('RoadmapCopilotRetrievalService.retrieve', () => {
     }, 15000);
 
     it('returns used:false when the DB lookup itself throws', async () => {
-      mockProjectRoadmapFindFirst.mockRejectedValue(new Error('DB down'));
+      mockProjectRoadmapFindMany.mockRejectedValue(new Error('DB down'));
 
       const result = await roadmapCopilotRetrievalService.retrieve({ roadmapId: 'r1', userId: 'u1', query: 'q', config: CONFIG });
 

@@ -2342,6 +2342,16 @@ export const CONFIG_REGISTRY: Record<string, RegistryConfigItem> = {
     isEditable: true, isHighImpact: false, requiresRestart: false, minValue: 1, maxValue: 50
   },
 
+  PROJECT_EXECUTION_MAX_PORTFOLIO_PROJECTS: {
+    key: 'PROJECT_EXECUTION_MAX_PORTFOLIO_PROJECTS',
+    valueType: ConfigValueType.NUMBER,
+    category: ConfigCategory.FEATURE_FLAG,
+    defaultValue: '20',
+    purpose: 'Bounds how many of the requesting user\'s accessible projects the portfolio execution view will load and aggregate in one request.',
+    description: 'Max projects aggregated per portfolio execution summary.',
+    isEditable: true, isHighImpact: false, requiresRestart: false, minValue: 1, maxValue: 50
+  },
+
   EMAIL_FROM_ADDRESS: {
     key: 'EMAIL_FROM_ADDRESS',
     valueType: ConfigValueType.STRING,

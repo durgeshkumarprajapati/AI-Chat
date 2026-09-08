@@ -1,5 +1,5 @@
 import React from 'react';
-import { render, screen, waitFor } from '@testing-library/react';
+import { render, screen, waitFor, fireEvent } from '@testing-library/react';
 
 import ProjectDetailPage from '@/app/projects/[id]/page';
 
@@ -32,13 +32,16 @@ const DEFAULT_EXECUTION_SUMMARY = {
   inaccessibleRoadmapCount: 0
 };
 
-function mockFetchSequence(overrides: { project?: unknown; execution?: unknown; executionOk?: boolean; executionError?: string } = {}) {
+function mockFetchSequence(overrides: { project?: unknown; execution?: unknown; executionOk?: boolean; executionError?: string; links?: unknown } = {}) {
   global.fetch = jest.fn().mockImplementation((url: string) => {
     if (url.includes('/execution')) {
       if (overrides.executionOk === false) {
         return Promise.resolve({ ok: false, json: () => Promise.resolve({ success: false, error: { message: overrides.executionError || 'Failed.' } }) });
       }
       return Promise.resolve({ ok: true, json: () => Promise.resolve({ success: true, data: overrides.execution ?? DEFAULT_EXECUTION_SUMMARY }) });
+    }
+    if (url.includes('/roadmaps')) {
+      return Promise.resolve({ ok: true, json: () => Promise.resolve({ success: true, data: overrides.links ?? { links: [], inaccessibleRoadmapCount: 0 } }) });
     }
     if (url.includes('/api/projects/project-1')) {
       return Promise.resolve({ ok: true, json: () => Promise.resolve({ success: true, data: overrides.project ?? BASE_PROJECT }) });
@@ -99,7 +102,7 @@ describe('Project Detail Page — Execution Command Center', () => {
     mockFetchSequence();
     render(<ProjectDetailPage params={{ id: 'project-1' }} />);
 
-    await waitFor(() => expect(screen.getByText('Roadmap Overview')).toBeInTheDocument());
+    await waitFor(() => expect(screen.getByText('Project Roadmaps')).toBeInTheDocument());
     expect(screen.getByText('Next: Write hello world')).toBeInTheDocument();
   });
 
@@ -107,7 +110,7 @@ describe('Project Detail Page — Execution Command Center', () => {
     mockFetchSequence({ execution: { ...DEFAULT_EXECUTION_SUMMARY, roadmapCount: 0, roadmaps: [], topPriority: undefined } });
     render(<ProjectDetailPage params={{ id: 'project-1' }} />);
 
-    await waitFor(() => expect(screen.getByText(/No accessible linked roadmaps yet/)).toBeInTheDocument());
+    await waitFor(() => expect(screen.getByText('No roadmaps linked to this project.')).toBeInTheDocument());
     expect(screen.queryByText('Attention Required')).not.toBeInTheDocument();
   });
 
@@ -125,5 +128,66 @@ describe('Project Detail Page — Execution Command Center', () => {
     render(<ProjectDetailPage params={{ id: 'project-1' }} />);
 
     await waitFor(() => expect(screen.getByText(/2 linked roadmaps not shown/)).toBeInTheDocument());
+  });
+
+  it('shows a "Create Roadmap" and "Link Existing Roadmap" action in the empty state', async () => {
+    mockFetchSequence({ execution: { ...DEFAULT_EXECUTION_SUMMARY, roadmapCount: 0, roadmaps: [], topPriority: undefined } });
+    render(<ProjectDetailPage params={{ id: 'project-1' }} />);
+
+    await waitFor(() => expect(screen.getByText('+ Create Roadmap')).toBeInTheDocument());
+    expect(screen.getByText('+ Link Existing Roadmap')).toBeInTheDocument();
+    expect(screen.getByText('+ Create Roadmap').closest('a')).toHaveAttribute('href', '/roadmaps/new?projectId=project-1');
+  });
+
+  it('shows a "Primary" badge for the primary linked roadmap', async () => {
+    mockFetchSequence({ links: { links: [{ roadmapId: 'roadmap-1', title: 'Learn Rust', isPrimary: true, linkedAt: new Date().toISOString(), roadmapPermission: 'OWNER' }], inaccessibleRoadmapCount: 0 } });
+    render(<ProjectDetailPage params={{ id: 'project-1' }} />);
+
+    await waitFor(() => expect(screen.getByText('Primary')).toBeInTheDocument());
+  });
+
+  it('opens the Link Existing Roadmap picker and links a selected roadmap', async () => {
+    mockFetchSequence();
+    global.fetch = jest.fn().mockImplementation((url: string, init?: RequestInit) => {
+      if (url === '/api/roadmaps') {
+        return Promise.resolve({ ok: true, json: () => Promise.resolve({ success: true, data: { owned: [{ id: 'roadmap-2', title: 'Learn Go' }], shared: [] } }) });
+      }
+      if (url.includes('/roadmaps/roadmap-2') && init?.method === 'POST') {
+        return Promise.resolve({ ok: true, json: () => Promise.resolve({ success: true, data: { roadmapId: 'roadmap-2' } }) });
+      }
+      if (url.endsWith('/roadmaps') && init?.method === 'POST') {
+        return Promise.resolve({ ok: true, json: () => Promise.resolve({ success: true, data: { roadmapId: 'roadmap-2' } }) });
+      }
+      if (url.includes('/execution')) {
+        return Promise.resolve({ ok: true, json: () => Promise.resolve({ success: true, data: DEFAULT_EXECUTION_SUMMARY }) });
+      }
+      if (url.includes('/roadmaps')) {
+        return Promise.resolve({ ok: true, json: () => Promise.resolve({ success: true, data: { links: [], inaccessibleRoadmapCount: 0 } }) });
+      }
+      if (url.includes('/api/projects/project-1')) {
+        return Promise.resolve({ ok: true, json: () => Promise.resolve({ success: true, data: BASE_PROJECT }) });
+      }
+      return Promise.resolve({ ok: true, json: () => Promise.resolve({ success: true, data: [] }) });
+    }) as unknown as typeof fetch;
+
+    render(<ProjectDetailPage params={{ id: 'project-1' }} />);
+
+    await waitFor(() => expect(screen.getByText('Project Roadmaps')).toBeInTheDocument());
+    fireEvent.click(screen.getByText('+ Link Existing Roadmap'));
+
+    await waitFor(() => expect(screen.getByText('Learn Go')).toBeInTheDocument());
+    fireEvent.click(screen.getByText('Link'));
+
+    await waitFor(() => expect(screen.queryByText('Link Existing Roadmap')).not.toBeInTheDocument());
+  });
+
+  it('requires confirmation before unlinking a roadmap', async () => {
+    mockFetchSequence();
+    render(<ProjectDetailPage params={{ id: 'project-1' }} />);
+
+    await waitFor(() => expect(screen.getByText('Project Roadmaps')).toBeInTheDocument());
+    fireEvent.click(screen.getByText('Unlink'));
+
+    expect(screen.getByText('Unlink this roadmap?')).toBeInTheDocument();
   });
 });

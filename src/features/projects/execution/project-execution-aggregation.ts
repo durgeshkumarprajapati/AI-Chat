@@ -220,7 +220,7 @@ export function selectProjectPriority(
     return {
       roadmapId: critical.roadmapId,
       roadmapTitle: critical.title,
-      reason: `Roadmap "${critical.title}" has overdue or blocked work requiring attention.`
+      reason: `Roadmap "${critical.title}" requires attention (execution health is critical).`
     };
   }
 

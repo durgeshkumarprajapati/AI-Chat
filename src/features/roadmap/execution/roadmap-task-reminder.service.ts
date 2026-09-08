@@ -3,10 +3,15 @@ import { NotificationType, NotificationPriority } from '@prisma/client';
 import { notificationService } from '@/features/notifications/notification.service';
 import { buildDedupeKey, tryClaimDedupeKey } from '@/features/notifications/notification-dedup.service';
 import { notificationRateLimitService } from '@/features/notifications/notification-rate-limit.service';
+import { auditService } from '@/features/audit/audit.service';
 import { getReminderTierToSend, ReminderTier } from './roadmap-task-reminder-policy';
 import { loadRoadmapReminderConfig } from './roadmap-reminder-config';
 
 const BATCH_SIZE = 200;
+/** Distinct from ReminderTier ("due-date urgency") — a SEPARATE axis (dependency state) reusing
+ * the SAME bare-string lastReminderTier column and the SAME cooldownMinutes config value, so a
+ * blocked-notification never fires every tick, only on a real change or after the cooldown. */
+const BLOCKED_TIER_MARKER = 'BLOCKED';
 
 const TIER_TO_NOTIFICATION_TYPE: Record<ReminderTier, NotificationType> = {
   DUE_SOON: NotificationType.DEADLINE_APPROACHING,
@@ -27,12 +32,19 @@ const TIER_PRIORITY: Record<ReminderTier, NotificationPriority> = {
  * idempotency gate), and notificationRateLimitService (existing per-user hourly/daily caps).
  * Mirrors rag-health-alert-notification.service.ts's structure exactly. No parallel notification
  * or scheduling infrastructure, no chat messages sent.
+ *
+ * Team Execution & Collaboration Intelligence pass — a task currently BLOCKED by an incomplete
+ * dependency never gets its normal due-date reminder (reminding someone to hurry up on work they
+ * cannot actually start yet is actively unhelpful and is exactly the "notification storm" this
+ * must avoid). Instead, an OPTIONAL, config-gated dependency-blocked notification may fire,
+ * reusing the SAME lastReminderSentAt/lastReminderTier tracking columns and the SAME cooldown —
+ * no new tracking state, no parallel scheduling.
  */
 export class RoadmapTaskReminderService {
-  public async deliverDueReminders(): Promise<{ scanned: number; sent: number; skippedUnauthorized: number }> {
+  public async deliverDueReminders(): Promise<{ scanned: number; sent: number; skippedUnauthorized: number; blockedSkipped: number }> {
     const config = await loadRoadmapReminderConfig();
     if (!config.enabled) {
-      return { scanned: 0, sent: 0, skippedUnauthorized: 0 };
+      return { scanned: 0, sent: 0, skippedUnauthorized: 0, blockedSkipped: 0 };
     }
 
     const now = new Date();
@@ -40,7 +52,8 @@ export class RoadmapTaskReminderService {
 
     // Bounded, indexed candidate set: only tasks that have someone to notify, aren't finished, and
     // fall within the due-soon horizon (an OVERDUE task's dueDate is necessarily <= horizon too).
-    // No N+1 — assignee eligibility (owner/share) is loaded in the same query via the nested include.
+    // No N+1 — assignee eligibility (owner/share) AND dependency prerequisites are loaded in the
+    // SAME query via nested includes, each bounded to this task's own (typically tiny) edge set.
     const candidates = await prisma.roadmapTask.findMany({
       where: {
         assigneeId: { not: null },
@@ -53,6 +66,7 @@ export class RoadmapTaskReminderService {
         status: true,
         dueDate: true,
         assigneeId: true,
+        phaseId: true,
         lastReminderSentAt: true,
         lastReminderTier: true,
         phase: {
@@ -66,6 +80,9 @@ export class RoadmapTaskReminderService {
               }
             }
           }
+        },
+        dependencies: {
+          select: { dependsOnTaskId: true, dependsOnTask: { select: { status: true } } }
         }
       },
       take: BATCH_SIZE,
@@ -74,20 +91,33 @@ export class RoadmapTaskReminderService {
 
     let sent = 0;
     let skippedUnauthorized = 0;
+    let blockedSkipped = 0;
 
     for (const task of candidates) {
       try {
-        const tier = getReminderTierToSend(
-          {
-            status: task.status,
-            dueDate: task.dueDate,
-            lastReminderSentAt: task.lastReminderSentAt,
-            lastReminderTier: task.lastReminderTier as ReminderTier | null
-          },
-          config,
-          now
-        );
-        if (!tier) continue;
+        // Computed FIRST, before any tier evaluation: a blocked task must never be run through
+        // getReminderTierToSend at all — that function's cooldown state machine expects
+        // lastReminderTier to be a due-date ReminderTier, and this task's column may currently
+        // hold the unrelated 'BLOCKED' marker from a previous tick, which must not be
+        // misinterpreted as tier state (see BLOCKED_TIER_MARKER's own doc comment).
+        const blockedByTaskIds = task.dependencies.filter((d) => d.dependsOnTask.status !== 'COMPLETED').map((d) => d.dependsOnTaskId);
+        const isBlocked = blockedByTaskIds.length > 0;
+
+        // Normalizes away a stale 'BLOCKED' marker so a task that has since become unblocked
+        // resumes the due-date tier state machine as if it had never been reminded — never
+        // fed a foreign, non-ReminderTier string.
+        const priorTier: ReminderTier | null = (['DUE_SOON', 'DUE', 'OVERDUE'] as const).includes(task.lastReminderTier as ReminderTier)
+          ? (task.lastReminderTier as ReminderTier)
+          : null;
+
+        const tier = isBlocked
+          ? null
+          : getReminderTierToSend(
+              { status: task.status, dueDate: task.dueDate, lastReminderSentAt: task.lastReminderSentAt, lastReminderTier: priorTier },
+              config,
+              now
+            );
+        if (!isBlocked && !tier) continue;
 
         const assigneeId = task.assigneeId as string;
         const roadmap = task.phase.roadmap;
@@ -110,30 +140,71 @@ export class RoadmapTaskReminderService {
         ]);
         if (!hourlyOk || !dailyOk) continue;
 
-        const notificationType = TIER_TO_NOTIFICATION_TYPE[tier];
+        if (isBlocked) {
+          blockedSkipped++;
+          if (!config.blockedTaskNotificationsEnabled) continue;
+
+          // The dedupe key itself (below) encodes the exact sorted blocking set, which IS the
+          // reused deduplication mechanism here: the SAME blocking set collides on the unique
+          // constraint and is silently skipped (no re-notification while nothing has actually
+          // changed — the natural, storm-free behavior), while any CHANGE to the blocking set
+          // (a dependency resolves and a new one takes over) gets a fresh key and notifies again
+          // immediately, mirroring the tier-escalation-bypasses-cooldown behavior above.
+          const sortedBlockedBy = [...blockedByTaskIds].sort();
+          const windowKey = `BLOCKED-${sortedBlockedBy.join(',')}`;
+          const dedupeKey = buildDedupeKey(assigneeId, NotificationType.TASK_DEPENDENCY_BLOCKED, task.id, windowKey);
+
+          const claim = await tryClaimDedupeKey(dedupeKey, () =>
+            notificationService.createNotification({
+              userId: assigneeId,
+              type: NotificationType.TASK_DEPENDENCY_BLOCKED,
+              title: `Blocked: ${task.title}`,
+              body: `"${task.title}" cannot start yet — it is waiting on ${blockedByTaskIds.length} other task(s) to complete.`,
+              metadata: {
+                roadmapId: roadmap.id,
+                taskId: task.id,
+                blockedByTaskIds,
+                deepLink: `/roadmaps/${roadmap.id}?taskId=${task.id}`
+              },
+              priority: NotificationPriority.NORMAL,
+              dedupeKey
+            })
+          );
+          if (!claim.claimed) continue;
+
+          await prisma.roadmapTask.update({
+            where: { id: task.id },
+            data: { lastReminderSentAt: now, lastReminderTier: BLOCKED_TIER_MARKER }
+          });
+          await this.logReminderSent(assigneeId, task.id, roadmap.id, task.phaseId, task.title, 'BLOCKED');
+          continue;
+        }
+
+        const resolvedTier = tier as ReminderTier; // non-null: guarded by `!isBlocked && !tier` above
+        const notificationType = TIER_TO_NOTIFICATION_TYPE[resolvedTier];
         // Scoped per (assignee, task, tier, this due date) — stable across repeated evaluations
         // of the SAME tier, so a re-entrant/retried tick collides on the unique constraint
         // instead of creating a duplicate; a tier ESCALATION naturally gets a fresh key.
-        const windowKey = `${tier}-${task.dueDate!.toISOString()}`;
+        const windowKey = `${resolvedTier}-${task.dueDate!.toISOString()}`;
         const dedupeKey = buildDedupeKey(assigneeId, notificationType, task.id, windowKey);
 
         const claim = await tryClaimDedupeKey(dedupeKey, () =>
           notificationService.createNotification({
             userId: assigneeId,
             type: notificationType,
-            title: this.buildTitle(tier, task.title),
-            body: this.buildBody(tier, task.title, task.dueDate as Date),
+            title: this.buildTitle(resolvedTier, task.title),
+            body: this.buildBody(resolvedTier, task.title, task.dueDate as Date),
             metadata: {
               roadmapId: roadmap.id,
               taskId: task.id,
-              tier,
+              tier: resolvedTier,
               dueDate: task.dueDate!.toISOString(),
               // Reuses the existing generic metadata.deepLink navigation resolver — no new
               // notification type, no new navigation mechanism. Deliberately excludes task
               // description/notes — no raw roadmap content in notification metadata.
               deepLink: `/roadmaps/${roadmap.id}?taskId=${task.id}`
             },
-            priority: TIER_PRIORITY[tier],
+            priority: TIER_PRIORITY[resolvedTier],
             dedupeKey
           })
         );
@@ -141,8 +212,9 @@ export class RoadmapTaskReminderService {
 
         await prisma.roadmapTask.update({
           where: { id: task.id },
-          data: { lastReminderSentAt: now, lastReminderTier: tier }
+          data: { lastReminderSentAt: now, lastReminderTier: resolvedTier }
         });
+        await this.logReminderSent(assigneeId, task.id, roadmap.id, task.phaseId, task.title, resolvedTier);
         sent++;
       } catch (err) {
         // Isolation: one task's failure (a transient DB/notification error) must not abort the
@@ -151,7 +223,20 @@ export class RoadmapTaskReminderService {
       }
     }
 
-    return { scanned: candidates.length, sent, skippedUnauthorized };
+    return { scanned: candidates.length, sent, skippedUnauthorized, blockedSkipped };
+  }
+
+  /** Activity Timeline pass — a reminder delivery failure here must never affect the reminder
+   * itself (already sent) or roadmap/task data, so this is fire-and-forget-safe: auditService's
+   * own logEvent already swallows and logs its own errors internally. */
+  private async logReminderSent(actorId: string, taskId: string, roadmapId: string, phaseId: string, taskTitle: string, tier: string): Promise<void> {
+    await auditService.logEvent({
+      actorId,
+      action: 'roadmap.task.reminder_sent',
+      targetType: 'RoadmapTask',
+      targetId: taskId,
+      details: { roadmapId, phaseId, taskTitle, tier }
+    });
   }
 
   private buildTitle(tier: ReminderTier, taskTitle: string): string {

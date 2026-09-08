@@ -3,6 +3,7 @@ import { getAuthUser } from '@/lib/auth';
 import { roadmapRepository } from '@/features/roadmap/repository/roadmap.repository';
 import { roadmapPlannerService } from '@/features/roadmap/generation/roadmap-planner.service';
 import { QuestionnaireAnswers } from '@/features/roadmap/roadmap.types';
+import { auditService } from '@/features/audit/audit.service';
 import { AppError } from '@/errors';
 
 export const dynamic = 'force-dynamic';
@@ -40,7 +41,17 @@ export async function POST(req: NextRequest, { params }: RouteParams) {
 
     // Cheap pre-check using data already loaded above — avoids an unnecessary LLM call when
     // replacePhaseTasks would reject the regeneration anyway (see its own doc comment for why).
+    // This is the path that actually fires in practice — replacePhaseTasks's own internal check
+    // is a defensive backstop for any other future caller — so the activity-timeline audit log
+    // for a BLOCKED regeneration attempt is recorded here.
     if (phaseToRegenerate.tasks.some((t) => t.status !== 'PENDING')) {
+      await auditService.logEvent({
+        actorId: user.id,
+        action: 'roadmap.phase.regeneration_blocked',
+        targetType: 'RoadmapPhase',
+        targetId: params.phaseId,
+        details: { roadmapId: params.id, phaseTitle: phaseToRegenerate.title }
+      });
       return NextResponse.json(
         { success: false, error: { code: 'CONFLICT', message: 'This phase has in-progress or completed tasks — regenerating it would erase that progress.' } },
         { status: 409 }
@@ -59,7 +70,9 @@ export async function POST(req: NextRequest, { params }: RouteParams) {
       params.phaseId,
       regeneratedPhase.title,
       regeneratedPhase.description,
-      regeneratedPhase.tasks
+      regeneratedPhase.tasks,
+      params.id,
+      user.id
     );
 
     return NextResponse.json({

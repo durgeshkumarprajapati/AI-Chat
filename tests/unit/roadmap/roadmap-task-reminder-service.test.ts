@@ -28,9 +28,14 @@ jest.mock('@/features/roadmap/execution/roadmap-reminder-config', () => ({
   loadRoadmapReminderConfig: (...args: unknown[]) => mockLoadConfig(...args)
 }));
 
+const mockLogEvent = jest.fn();
+jest.mock('@/features/audit/audit.service', () => ({
+  auditService: { logEvent: (...args: unknown[]) => mockLogEvent(...args) }
+}));
+
 import { roadmapTaskReminderService } from '@/features/roadmap/execution/roadmap-task-reminder.service';
 
-const ENABLED_CONFIG = { enabled: true, dueSoonLeadHours: 24, dueGraceMinutes: 30, cooldownMinutes: 720 };
+const ENABLED_CONFIG = { enabled: true, dueSoonLeadHours: 24, dueGraceMinutes: 30, cooldownMinutes: 720, blockedTaskNotificationsEnabled: false };
 
 function candidateTask(overrides: Record<string, unknown> = {}) {
   return {
@@ -39,6 +44,7 @@ function candidateTask(overrides: Record<string, unknown> = {}) {
     status: 'PENDING',
     dueDate: new Date('2026-01-01T12:00:00Z'),
     assigneeId: 'assignee-1',
+    phaseId: 'phase-1',
     lastReminderSentAt: null,
     lastReminderTier: null,
     phase: {
@@ -49,6 +55,7 @@ function candidateTask(overrides: Record<string, unknown> = {}) {
         shares: []
       }
     },
+    dependencies: [],
     ...overrides
   };
 }
@@ -62,6 +69,7 @@ describe('RoadmapTaskReminderService.deliverDueReminders', () => {
     mockCheckDailyLimit.mockResolvedValue(true);
     mockCreateNotification.mockResolvedValue({ id: 'notif-1' });
     mockUpdateTask.mockResolvedValue({});
+    mockLogEvent.mockResolvedValue(undefined);
   });
 
   afterEach(() => jest.useRealTimers());
@@ -71,7 +79,7 @@ describe('RoadmapTaskReminderService.deliverDueReminders', () => {
 
     const result = await roadmapTaskReminderService.deliverDueReminders();
 
-    expect(result).toEqual({ scanned: 0, sent: 0, skippedUnauthorized: 0 });
+    expect(result).toEqual({ scanned: 0, sent: 0, skippedUnauthorized: 0, blockedSkipped: 0 });
     expect(mockFindManyTasks).not.toHaveBeenCalled();
   });
 
@@ -103,6 +111,9 @@ describe('RoadmapTaskReminderService.deliverDueReminders', () => {
       data: { lastReminderSentAt: expect.any(Date), lastReminderTier: 'DUE_SOON' }
     });
     expect(result.sent).toBe(1);
+    expect(mockLogEvent).toHaveBeenCalledWith(expect.objectContaining({
+      actorId: 'owner-1', action: 'roadmap.task.reminder_sent', targetType: 'RoadmapTask', targetId: 'task-1'
+    }));
   });
 
   it('maps OVERDUE to TASK_OVERDUE and DUE to DEADLINE_MISSED', async () => {
@@ -245,5 +256,110 @@ describe('RoadmapTaskReminderService.deliverDueReminders', () => {
 
     expect(mockCreateNotification).toHaveBeenCalledTimes(2);
     expect(result.sent).toBe(1); // task-a's failure is isolated; task-b still succeeds
+  });
+
+  describe('blocked-task-aware behavior', () => {
+    function blockedTask(overrides: Record<string, unknown> = {}) {
+      return candidateTask({
+        assigneeId: 'owner-1',
+        dependencies: [{ dependsOnTaskId: 'prereq-1', dependsOnTask: { status: 'PENDING' } }],
+        ...overrides
+      });
+    }
+
+    it('suppresses the normal due-date reminder for a blocked task, even with notifications disabled', async () => {
+      mockFindManyTasks.mockResolvedValue([blockedTask()]);
+
+      const result = await roadmapTaskReminderService.deliverDueReminders();
+
+      expect(mockCreateNotification).not.toHaveBeenCalled();
+      expect(result.sent).toBe(0);
+      expect(result.blockedSkipped).toBe(1);
+    });
+
+    it('does not send a blocked-task notification when the feature flag is disabled (silence, not a normal reminder)', async () => {
+      mockFindManyTasks.mockResolvedValue([blockedTask()]);
+      mockLoadConfig.mockResolvedValue({ ...ENABLED_CONFIG, blockedTaskNotificationsEnabled: false });
+
+      await roadmapTaskReminderService.deliverDueReminders();
+
+      expect(mockCreateNotification).not.toHaveBeenCalled();
+    });
+
+    it('sends a TASK_DEPENDENCY_BLOCKED notification when the feature flag is enabled', async () => {
+      mockFindManyTasks.mockResolvedValue([blockedTask()]);
+      mockLoadConfig.mockResolvedValue({ ...ENABLED_CONFIG, blockedTaskNotificationsEnabled: true });
+
+      const result = await roadmapTaskReminderService.deliverDueReminders();
+
+      expect(mockCreateNotification).toHaveBeenCalledWith(expect.objectContaining({
+        userId: 'owner-1', type: 'TASK_DEPENDENCY_BLOCKED',
+        metadata: expect.objectContaining({ blockedByTaskIds: ['prereq-1'] })
+      }));
+      expect(mockUpdateTask).toHaveBeenCalledWith({
+        where: { id: 'task-1' },
+        data: { lastReminderSentAt: expect.any(Date), lastReminderTier: 'BLOCKED' }
+      });
+      expect(mockLogEvent).toHaveBeenCalledWith(expect.objectContaining({ action: 'roadmap.task.reminder_sent' }));
+      expect(result.blockedSkipped).toBe(1);
+    });
+
+    it('does not re-create a notification when the SAME blocking set was already claimed (real dedupe collision, P2002)', async () => {
+      mockFindManyTasks.mockResolvedValue([
+        blockedTask({ lastReminderTier: 'BLOCKED', lastReminderSentAt: new Date('2025-12-31T23:30:00Z') })
+      ]);
+      mockLoadConfig.mockResolvedValue({ ...ENABLED_CONFIG, blockedTaskNotificationsEnabled: true });
+      // tryClaimDedupeKey (real, unmocked) treats a P2002 error from createFn as "already claimed"
+      // — simulates the DB unique constraint that would actually fire for a repeated identical key.
+      mockCreateNotification.mockRejectedValue({ code: 'P2002' });
+
+      await roadmapTaskReminderService.deliverDueReminders();
+
+      expect(mockUpdateTask).not.toHaveBeenCalled();
+    });
+
+    it('sends again immediately when the blocking task set changes (fresh dedupe key, bypasses cooldown)', async () => {
+      mockFindManyTasks.mockResolvedValue([
+        blockedTask({
+          lastReminderTier: 'BLOCKED', lastReminderSentAt: new Date('2026-01-01T00:00:00Z'),
+          dependencies: [{ dependsOnTaskId: 'prereq-2', dependsOnTask: { status: 'PENDING' } }]
+        })
+      ]);
+      mockLoadConfig.mockResolvedValue({ ...ENABLED_CONFIG, blockedTaskNotificationsEnabled: true });
+
+      const result = await roadmapTaskReminderService.deliverDueReminders();
+
+      expect(mockCreateNotification).toHaveBeenCalledWith(expect.objectContaining({
+        metadata: expect.objectContaining({ blockedByTaskIds: ['prereq-2'] })
+      }));
+      expect(result.sent).toBe(0); // blocked-notification path, not counted as a normal "sent" reminder
+    });
+
+    it('a task with all dependencies completed is not treated as blocked', async () => {
+      mockFindManyTasks.mockResolvedValue([
+        candidateTask({ assigneeId: 'owner-1', dependencies: [{ dependsOnTaskId: 'prereq-1', dependsOnTask: { status: 'COMPLETED' } }] })
+      ]);
+
+      const result = await roadmapTaskReminderService.deliverDueReminders();
+
+      expect(result.blockedSkipped).toBe(0);
+      expect(mockCreateNotification).toHaveBeenCalledWith(expect.objectContaining({ type: 'DEADLINE_APPROACHING' }));
+    });
+
+    it('a task previously marked BLOCKED that has since become unblocked resumes normal tier evaluation cleanly (regression: the stale BLOCKED marker must never be fed into the due-date cooldown state machine)', async () => {
+      mockFindManyTasks.mockResolvedValue([
+        candidateTask({
+          assigneeId: 'owner-1',
+          lastReminderTier: 'BLOCKED',
+          lastReminderSentAt: new Date('2026-01-01T00:00:00Z'), // "now" in this test's fake timer
+          dependencies: [{ dependsOnTaskId: 'prereq-1', dependsOnTask: { status: 'COMPLETED' } }] // now unblocked
+        })
+      ]);
+
+      const result = await roadmapTaskReminderService.deliverDueReminders();
+
+      expect(mockCreateNotification).toHaveBeenCalledWith(expect.objectContaining({ type: 'DEADLINE_APPROACHING' }));
+      expect(result.sent).toBe(1);
+    });
   });
 });

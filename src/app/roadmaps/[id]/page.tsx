@@ -3,7 +3,7 @@
 import React, { useEffect, useState } from 'react';
 import { useParams } from 'next/navigation';
 import Link from 'next/link';
-import { Badge, Button } from '@/components/ui';
+import { Badge, Button, Modal } from '@/components/ui';
 
 interface UserSummary {
   id: string;
@@ -12,6 +12,13 @@ interface UserSummary {
 }
 
 type DueDateDisplayStatus = 'NO_DEADLINE' | 'UPCOMING' | 'DUE_SOON' | 'DUE' | 'OVERDUE';
+
+interface TaskRef {
+  taskId: string;
+  title: string;
+}
+
+type TaskExecutionStatus = 'COMPLETED' | 'BLOCKED' | 'OVERDUE' | 'IN_PROGRESS' | 'READY';
 
 interface Task {
   id: string;
@@ -27,6 +34,13 @@ interface Task {
   assignee?: UserSummary | null;
   dueDate?: string | null;
   dueDateStatus?: DueDateDisplayStatus;
+  // Team Execution & Collaboration Intelligence pass — additive, derived server-side (never
+  // stored); dependsOn is the FULL prerequisite list (regardless of completion, for management),
+  // blockedBy is only the currently-incomplete subset (for the "Blocked by:" UI).
+  isExecutable?: boolean;
+  executionStatus?: TaskExecutionStatus;
+  blockedBy?: TaskRef[];
+  dependsOn?: TaskRef[];
 }
 
 interface PhaseProgress {
@@ -47,18 +61,31 @@ interface Phase {
   progress?: PhaseProgress;
 }
 
-interface NextStep {
-  taskId: string;
-  phaseId: string;
-  taskTitle: string;
-  phaseTitle: string;
-  reason: 'CONTINUE_IN_PROGRESS' | 'START_NEXT';
+type NextStep =
+  | { taskId: string; phaseId: string; taskTitle: string; phaseTitle: string; reason: 'CONTINUE_IN_PROGRESS' | 'START_NEXT' }
+  | { taskId: string; phaseId: string; taskTitle: string; phaseTitle: string; executable: false; reason: 'BLOCKED_BY_DEPENDENCY'; blockedBy: string[] }
+  | null;
+
+type ExecutionHealthStatus = 'HEALTHY' | 'AT_RISK' | 'BLOCKED' | 'OVERDUE';
+
+interface ExecutionHealth {
+  status: ExecutionHealthStatus;
+  reasons: { type: string; taskId?: string; blockedByTaskIds?: string[] }[];
 }
 
 interface ChannelSummary {
   id: string;
   name: string | null;
   type: 'DIRECT' | 'GROUP';
+}
+
+interface ActivityEntry {
+  id: string;
+  action: string;
+  actor: { id: string; name: string | null } | null;
+  taskTitle: string | null;
+  phaseTitle: string | null;
+  createdAt: string;
 }
 
 interface ShareSummary {
@@ -97,17 +124,73 @@ function derivePhaseProgress(tasks: Task[]): PhaseProgress {
   };
 }
 
-/** Client-side mirror of getNextStep (src/features/roadmap/execution/roadmap-next-step.ts). */
-function deriveNextStep(phases: Phase[]): NextStep | null {
+/** Client-side mirror of computeTaskExecutionStates (roadmap-task-execution-state.ts) — a task is
+ * executable when it isn't COMPLETED and every task in its (already-loaded) `dependsOn` list IS
+ * COMPLETED. Duplicated deliberately (same reasoning as derivePhaseProgress above) so a status
+ * change can update every OTHER task's blocked/ready state immediately, without a round trip. */
+function computeIsExecutable(task: Task, statusById: Map<string, string>): boolean {
+  if (task.status === 'COMPLETED') return false;
+  return (task.dependsOn ?? []).every((dep) => statusById.get(dep.taskId) === 'COMPLETED');
+}
+
+function computeIncompleteBlockers(task: Task, statusById: Map<string, string>): TaskRef[] {
+  return (task.dependsOn ?? []).filter((dep) => statusById.get(dep.taskId) !== 'COMPLETED');
+}
+
+/** Client-side mirror of computeTaskDisplayStatus. */
+function computeExecutionStatus(task: Task, isExecutable: boolean): TaskExecutionStatus {
+  if (task.status === 'COMPLETED') return 'COMPLETED';
+  if (!isExecutable) return 'BLOCKED';
+  if (task.dueDateStatus === 'OVERDUE') return 'OVERDUE';
+  if (task.status === 'IN_PROGRESS') return 'IN_PROGRESS';
+  return 'READY';
+}
+
+/** Recomputes isExecutable/executionStatus/blockedBy for every task after a LOCAL status change
+ * (dependsOn edges themselves never change from a status update, so no extra query is needed). */
+function recomputeExecutionState(phases: Phase[]): Phase[] {
+  const allTasks = phases.flatMap((p) => p.tasks);
+  const statusById = new Map(allTasks.map((t) => [t.id, t.status]));
+  return phases.map((phase) => ({
+    ...phase,
+    tasks: phase.tasks.map((task) => {
+      const isExecutable = computeIsExecutable(task, statusById);
+      return { ...task, isExecutable, blockedBy: computeIncompleteBlockers(task, statusById), executionStatus: computeExecutionStatus(task, isExecutable) };
+    })
+  }));
+}
+
+/** Client-side mirror of getNextStep (src/features/roadmap/execution/roadmap-next-step.ts),
+ * dependency-aware: skips a blocked task and reports BLOCKED_BY_DEPENDENCY when nothing is
+ * executable, exactly like the server. */
+function deriveNextStep(phases: Phase[]): NextStep {
   const sorted = [...phases].sort((a, b) => a.order - b.order);
-  for (const phase of sorted) {
-    const inProgress = [...phase.tasks].sort((a, b) => a.order - b.order).find((t) => t.status === 'IN_PROGRESS');
-    if (inProgress) return { taskId: inProgress.id, phaseId: phase.id, taskTitle: inProgress.title, phaseTitle: phase.title, reason: 'CONTINUE_IN_PROGRESS' };
+  const find = (status: string, requireExecutable: boolean) => {
+    for (const phase of sorted) {
+      const match = [...phase.tasks].sort((a, b) => a.order - b.order).find((t) => t.status === status && (!requireExecutable || t.isExecutable));
+      if (match) return { taskId: match.id, phaseId: phase.id, taskTitle: match.title, phaseTitle: phase.title, task: match };
+    }
+    return null;
+  };
+
+  const executableInProgress = find('IN_PROGRESS', true);
+  if (executableInProgress) {
+    const { task: _t, ...rest } = executableInProgress;
+    return { ...rest, reason: 'CONTINUE_IN_PROGRESS' };
   }
-  for (const phase of sorted) {
-    const pending = [...phase.tasks].sort((a, b) => a.order - b.order).find((t) => t.status === 'PENDING');
-    if (pending) return { taskId: pending.id, phaseId: phase.id, taskTitle: pending.title, phaseTitle: phase.title, reason: 'START_NEXT' };
+
+  const executablePending = find('PENDING', true);
+  if (executablePending) {
+    const { task: _t, ...rest } = executablePending;
+    return { ...rest, reason: 'START_NEXT' };
   }
+
+  const blocked = find('IN_PROGRESS', false) ?? find('PENDING', false);
+  if (blocked) {
+    const { task, ...rest } = blocked;
+    return { ...rest, executable: false, reason: 'BLOCKED_BY_DEPENDENCY', blockedBy: (task.blockedBy ?? []).map((b) => b.taskId) };
+  }
+
   return null;
 }
 
@@ -129,6 +212,40 @@ const DUE_DATE_BADGE: Record<DueDateDisplayStatus, { label: string; variant: 'ne
   DUE_SOON: { label: 'Due soon', variant: 'warning' },
   DUE: { label: 'Due now', variant: 'warning' },
   OVERDUE: { label: 'Overdue', variant: 'destructive' }
+};
+
+/** Section 7/8 — five clearly distinguished states, never implying a blocked task is executable. */
+const EXECUTION_STATUS_BADGE: Record<TaskExecutionStatus, { label: string; variant: 'neutral' | 'success' | 'warning' | 'destructive' | 'info' }> = {
+  COMPLETED: { label: 'Completed', variant: 'success' },
+  IN_PROGRESS: { label: 'In Progress', variant: 'warning' },
+  READY: { label: 'Ready to Start', variant: 'info' },
+  BLOCKED: { label: 'Blocked', variant: 'destructive' },
+  OVERDUE: { label: 'Overdue', variant: 'destructive' }
+};
+
+const HEALTH_BADGE: Record<ExecutionHealthStatus, { label: string; variant: 'success' | 'warning' | 'destructive' }> = {
+  HEALTHY: { label: 'Healthy', variant: 'success' },
+  AT_RISK: { label: 'At Risk', variant: 'warning' },
+  OVERDUE: { label: 'Overdue', variant: 'destructive' },
+  BLOCKED: { label: 'Blocked', variant: 'destructive' }
+};
+
+/** Human-readable labels for the Activity Timeline — mirrors roadmap-activity.ts's action
+ * allowlist. An unrecognized action (should never happen, given the server-side whitelist) just
+ * falls back to the raw action string rather than crashing. */
+const ACTIVITY_ACTION_LABEL: Record<string, string> = {
+  'roadmap.task.started': 'started',
+  'roadmap.task.completed': 'completed',
+  'roadmap.task.reopened': 'reopened',
+  'roadmap.task.reset': 'reset',
+  'roadmap.task.assigned': 'assigned',
+  'roadmap.task.unassigned': 'unassigned',
+  'roadmap.task.reassigned': 'reassigned',
+  'roadmap.task.due_date_changed': 'changed the due date of',
+  'roadmap.task.discussion_started': 'started a discussion on',
+  'roadmap.task.reminder_sent': 'received a reminder for',
+  'roadmap.phase.regenerated': 'regenerated a phase',
+  'roadmap.phase.regeneration_blocked': 'attempted to regenerate a phase (blocked — progress exists)'
 };
 
 export default function RoadmapDetailPage() {
@@ -162,6 +279,30 @@ export default function RoadmapDetailPage() {
   const [assignmentPending, setAssignmentPending] = useState<string | null>(null);
   const [assignmentErrors, setAssignmentErrors] = useState<Record<string, string>>({});
 
+  // Team Execution & Collaboration Intelligence — server-computed summary fields.
+  const [executionHealth, setExecutionHealth] = useState<ExecutionHealth | null>(null);
+  const [readyTaskCount, setReadyTaskCount] = useState(0);
+  const [blockedTaskCount, setBlockedTaskCount] = useState(0);
+  const [overdueTaskCount, setOverdueTaskCount] = useState(0);
+
+  // Dependency picker (per task)
+  const [dependencyPickerTaskId, setDependencyPickerTaskId] = useState<string | null>(null);
+  const [dependencyPickerSelection, setDependencyPickerSelection] = useState('');
+  const [dependencyError, setDependencyError] = useState<string | null>(null);
+  const [dependencyPending, setDependencyPending] = useState(false);
+
+  // Activity timeline modal
+  const [showActivityModal, setShowActivityModal] = useState(false);
+  const [activity, setActivity] = useState<ActivityEntry[]>([]);
+  const [activityLoading, setActivityLoading] = useState(false);
+
+  // Schedule-message modal (per task)
+  const [scheduleMessageTaskId, setScheduleMessageTaskId] = useState<string | null>(null);
+  const [scheduleChannelId, setScheduleChannelId] = useState('');
+  const [scheduleMessageText, setScheduleMessageText] = useState('');
+  const [scheduleFor, setScheduleFor] = useState('');
+  const [scheduleStatus, setScheduleStatus] = useState<string | null>(null);
+
   useEffect(() => {
     async function fetchRoadmap() {
       try {
@@ -173,6 +314,10 @@ export default function RoadmapDetailPage() {
         setRoadmap(data.data.roadmap);
         setPermission(data.data.permission);
         setNextStep(data.data.nextStep ?? null);
+        setExecutionHealth(data.data.executionHealth ?? null);
+        setReadyTaskCount(data.data.readyTaskCount ?? 0);
+        setBlockedTaskCount(data.data.blockedTaskCount ?? 0);
+        setOverdueTaskCount(data.data.overdueTaskCount ?? 0);
       } catch (err) {
         setErrorMsg(err instanceof Error ? err.message : 'Error loading roadmap.');
       } finally {
@@ -193,12 +338,18 @@ export default function RoadmapDetailPage() {
     let updatedPhases: Phase[] = [];
     setRoadmap((prev) => {
       if (!prev) return null;
-      updatedPhases = prev.phases.map((phase) => {
-        const tasks = phase.tasks.map((task) => (task.id === taskId ? { ...task, status: targetStatus } : task));
-        return { ...phase, tasks, progress: derivePhaseProgress(tasks) };
-      });
+      const withNewStatus = prev.phases.map((phase) => ({
+        ...phase,
+        tasks: phase.tasks.map((task) => (task.id === taskId ? { ...task, status: targetStatus } : task))
+      }));
+      // A status change can unblock (or re-block) OTHER tasks whose dependsOn includes this one
+      // — recomputed here from data already loaded, never an extra query.
+      updatedPhases = recomputeExecutionState(withNewStatus).map((phase) => ({ ...phase, progress: derivePhaseProgress(phase.tasks) }));
       const allTasks = updatedPhases.flatMap((p) => p.tasks);
       const currentProgress = allTasks.length > 0 ? Math.round((allTasks.filter((t) => t.status === 'COMPLETED').length / allTasks.length) * 100) : 0;
+      setReadyTaskCount(allTasks.filter((t) => t.executionStatus === 'READY').length);
+      setBlockedTaskCount(allTasks.filter((t) => t.executionStatus === 'BLOCKED').length);
+      setOverdueTaskCount(allTasks.filter((t) => t.executionStatus === 'OVERDUE').length);
       return { ...prev, currentProgress, phases: updatedPhases };
     });
     setNextStep(deriveNextStep(updatedPhases));
@@ -263,6 +414,120 @@ export default function RoadmapDetailPage() {
       setAssignmentErrors((prev) => ({ ...prev, [taskId]: err instanceof Error ? err.message : 'Update failed.' }));
     } finally {
       setAssignmentPending(null);
+    }
+  };
+
+  const openDependencyPicker = (taskId: string) => {
+    setDependencyPickerTaskId(taskId);
+    setDependencyPickerSelection('');
+    setDependencyError(null);
+  };
+
+  /** Adds a dependency then refreshes the roadmap once (a single bounded fetch, not polling) so
+   * every task's blocked/ready state and the recommended next step stay exactly consistent with
+   * the server's own cycle-checked graph — safer than trying to mirror cycle detection client-side. */
+  const handleAddDependency = async () => {
+    if (!dependencyPickerTaskId || !dependencyPickerSelection || dependencyPending) return;
+    setDependencyPending(true);
+    setDependencyError(null);
+    try {
+      const res = await fetch(`/api/roadmaps/${roadmapId}/tasks/${dependencyPickerTaskId}/dependencies`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ dependsOnTaskId: dependencyPickerSelection })
+      });
+      const data = await res.json();
+      if (!res.ok || !data.success) {
+        throw new Error(data.error?.message || 'Could not add dependency.');
+      }
+      await refreshRoadmap();
+      setDependencyPickerTaskId(null);
+    } catch (err) {
+      setDependencyError(err instanceof Error ? err.message : 'Could not add dependency.');
+    } finally {
+      setDependencyPending(false);
+    }
+  };
+
+  const handleRemoveDependency = async (taskId: string, dependsOnTaskId: string) => {
+    if (permission === 'VIEW' || dependencyPending) return;
+    setDependencyPending(true);
+    try {
+      await fetch(`/api/roadmaps/${roadmapId}/tasks/${taskId}/dependencies/${dependsOnTaskId}`, { method: 'DELETE' });
+      await refreshRoadmap();
+    } catch {
+      // Non-fatal — resolves on next full page load.
+    } finally {
+      setDependencyPending(false);
+    }
+  };
+
+  /** A single, deliberate, user-initiated refresh (dependency add/remove) — never a poll, never
+   * triggered by every task action (see handleTaskAction's own client-side recomputation instead). */
+  const refreshRoadmap = async () => {
+    const res = await fetch(`/api/roadmaps/${roadmapId}`);
+    const data = await res.json();
+    if (data.success) {
+      setRoadmap(data.data.roadmap);
+      setNextStep(data.data.nextStep ?? null);
+      setExecutionHealth(data.data.executionHealth ?? null);
+      setReadyTaskCount(data.data.readyTaskCount ?? 0);
+      setBlockedTaskCount(data.data.blockedTaskCount ?? 0);
+      setOverdueTaskCount(data.data.overdueTaskCount ?? 0);
+    }
+  };
+
+  const openActivityModal = async () => {
+    setShowActivityModal(true);
+    setActivityLoading(true);
+    try {
+      const res = await fetch(`/api/roadmaps/${roadmapId}/activity`);
+      const data = await res.json();
+      if (data.success) setActivity(data.data);
+    } catch {
+      // Non-fatal — the modal just shows an empty feed.
+    } finally {
+      setActivityLoading(false);
+    }
+  };
+
+  const openScheduleMessageModal = async (taskId: string) => {
+    setScheduleMessageTaskId(taskId);
+    setScheduleChannelId('');
+    setScheduleMessageText('');
+    setScheduleFor('');
+    setScheduleStatus(null);
+    try {
+      const res = await fetch('/api/collaboration/channels');
+      const data = await res.json();
+      if (data.success) setChannels(data.data);
+    } catch {
+      // Non-fatal — the modal just shows an empty channel list.
+    }
+  };
+
+  const handleScheduleMessageSubmit = async () => {
+    if (!scheduleMessageTaskId || !scheduleChannelId || !scheduleMessageText.trim() || !scheduleFor) return;
+    setScheduleStatus('Scheduling...');
+    try {
+      const res = await fetch(`/api/roadmaps/${roadmapId}/tasks/${scheduleMessageTaskId}/schedule-message`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          channelId: scheduleChannelId,
+          message: scheduleMessageText.trim(),
+          scheduledFor: new Date(scheduleFor).toISOString()
+        })
+      });
+      const data = await res.json();
+      if (data.success) {
+        setScheduleStatus('Scheduled! Closing...');
+        setTimeout(() => setScheduleMessageTaskId(null), 1200);
+      } else {
+        setScheduleStatus(data.error?.message || data.error || 'Failed to schedule.');
+      }
+    } catch {
+      setScheduleStatus('Failed to schedule.');
     }
   };
 
@@ -393,6 +658,12 @@ export default function RoadmapDetailPage() {
           </div>
 
           <div className="flex items-center space-x-3">
+            <button
+              onClick={openActivityModal}
+              className="px-4 py-2 bg-surface-hover hover:bg-muted text-foreground rounded-xl text-xs font-medium transition"
+            >
+              Activity 🕒
+            </button>
             {permission === 'OWNER' && (
               <button
                 onClick={() => setShowShareModal(true)}
@@ -439,16 +710,56 @@ export default function RoadmapDetailPage() {
           </div>
         </div>
 
-        {/* Phase 6 — deterministic "What should I do next?" banner */}
+        {/* Team Execution View — derived execution summary (Ready/In Progress/Blocked/Overdue/
+            Completed counts) plus overall execution health. All counts come from the server's own
+            per-task executionStatus, recomputed client-side only after a local task action. */}
+        <div className="bg-surface/80 border border-border rounded-2xl p-5 shadow-lg space-y-3">
+          <div className="flex items-center justify-between">
+            <div className="text-[10px] font-mono text-muted-foreground uppercase">Team Execution View</div>
+            {executionHealth && (
+              <Badge variant={HEALTH_BADGE[executionHealth.status].variant}>{HEALTH_BADGE[executionHealth.status].label}</Badge>
+            )}
+          </div>
+          <div className="flex flex-wrap gap-3 text-xs">
+            <Badge variant="info">Ready to Start: {readyTaskCount}</Badge>
+            <Badge variant="warning">In Progress: {roadmap.phases.flatMap((p) => p.tasks).filter((t) => t.status === 'IN_PROGRESS').length}</Badge>
+            <Badge variant="destructive">Blocked: {blockedTaskCount}</Badge>
+            <Badge variant="destructive">Overdue: {overdueTaskCount}</Badge>
+            <Badge variant="success">Completed: {roadmap.phases.flatMap((p) => p.tasks).filter((t) => t.status === 'COMPLETED').length}</Badge>
+          </div>
+        </div>
+
+        {/* Phase 6 — deterministic "What should I do next?" banner, now dependency-aware and
+            enriched with assignee/due date/why. */}
         <div className="bg-surface/80 border border-border rounded-2xl p-5 shadow-lg flex flex-col sm:flex-row sm:items-center justify-between gap-3">
-          {nextStep ? (
+          {nextStep && 'executable' in nextStep && nextStep.executable === false ? (
+            <div>
+              <div className="text-[10px] font-mono text-rose-400 uppercase">Execution is currently blocked</div>
+              <div className="text-sm font-bold text-foreground mt-0.5">{nextStep.taskTitle}</div>
+              <div className="text-[11px] text-muted-foreground">
+                Blocked by: {nextStep.blockedBy.map((id) => roadmap.phases.flatMap((p) => p.tasks).find((t) => t.id === id)?.title ?? id).join(', ')}
+              </div>
+            </div>
+          ) : nextStep ? (
             <>
               <div>
                 <div className="text-[10px] font-mono text-muted-foreground uppercase">
                   {nextStep.reason === 'CONTINUE_IN_PROGRESS' ? 'Continue where you left off' : 'What to do next'}
                 </div>
                 <div className="text-sm font-bold text-foreground mt-0.5">{nextStep.taskTitle}</div>
-                <div className="text-[11px] text-muted-foreground">in {nextStep.phaseTitle}</div>
+                <div className="text-[11px] text-muted-foreground">
+                  in {nextStep.phaseTitle}
+                  {(() => {
+                    const recommendedTask = roadmap.phases.flatMap((p) => p.tasks).find((t) => t.id === nextStep.taskId);
+                    if (!recommendedTask) return null;
+                    return (
+                      <>
+                        {recommendedTask.assignee && ` · Assigned to ${recommendedTask.assignee.name || recommendedTask.assignee.email}`}
+                        {recommendedTask.dueDate && ` · Due ${new Date(recommendedTask.dueDate).toLocaleDateString()}`}
+                      </>
+                    );
+                  })()}
+                </div>
               </div>
               {permission !== 'VIEW' && (
                 <Button
@@ -517,6 +828,11 @@ export default function RoadmapDetailPage() {
                 {phase.tasks.map((task) => {
                   const isDone = task.status === 'COMPLETED';
                   const isInProgress = task.status === 'IN_PROGRESS';
+                  // Falls back to the pre-dependency isDone/isInProgress classification if the
+                  // server hasn't sent executionStatus (e.g. an older cached response) — never
+                  // implies a task is executable when it isn't.
+                  const executionStatus: TaskExecutionStatus = task.executionStatus ?? (isDone ? 'COMPLETED' : isInProgress ? 'IN_PROGRESS' : 'READY');
+                  const isBlocked = executionStatus === 'BLOCKED';
                   return (
                     <div
                       key={task.id}
@@ -525,13 +841,15 @@ export default function RoadmapDetailPage() {
                           ? 'bg-background/40 border-border/50 opacity-75'
                           : isInProgress
                           ? 'bg-background/80 border-indigo-500/40'
+                          : isBlocked
+                          ? 'bg-background/80 border-rose-500/30'
                           : 'bg-background/80 border-border hover:border-border'
                       }`}
                     >
                       <div className="flex items-start justify-between gap-3">
                         <div className="flex items-start space-x-3">
-                          <Badge variant={isDone ? 'success' : isInProgress ? 'warning' : 'neutral'} className="mt-0.5">
-                            {isDone ? 'Completed' : isInProgress ? 'In Progress' : 'Not Started'}
+                          <Badge variant={EXECUTION_STATUS_BADGE[executionStatus].variant} className="mt-0.5">
+                            {EXECUTION_STATUS_BADGE[executionStatus].label}
                           </Badge>
                           <div>
                             <span className={`text-xs font-semibold ${isDone ? 'line-through text-muted-foreground' : 'text-foreground'}`}>
@@ -545,6 +863,36 @@ export default function RoadmapDetailPage() {
                           ~{task.estimatedHours}h
                         </span>
                       </div>
+
+                      {/* Task Dependency Support — Section 7: a blocked task must never look
+                          executable. Shows exactly what it's waiting on. */}
+                      {isBlocked && task.blockedBy && task.blockedBy.length > 0 && (
+                        <div className="text-[11px] text-rose-400 bg-rose-950/30 border border-rose-900/50 rounded-lg px-3 py-2">
+                          <div className="font-semibold">Blocked by:</div>
+                          {task.blockedBy.map((b) => (
+                            <div key={b.taskId}>• {b.title}</div>
+                          ))}
+                        </div>
+                      )}
+
+                      {/* Dependency management — add/remove prerequisites, EDIT/OWNER only. */}
+                      {permission !== 'VIEW' && (
+                        <div className="flex flex-wrap items-center gap-2 pt-1 text-[11px]">
+                          <span className="text-muted-foreground">Depends on:</span>
+                          {(task.dependsOn ?? []).length === 0 && <span className="text-muted-foreground italic">none</span>}
+                          {(task.dependsOn ?? []).map((dep) => (
+                            <span key={dep.taskId} className="inline-flex items-center gap-1 bg-surface border border-border rounded px-2 py-0.5">
+                              {dep.title}
+                              <button onClick={() => handleRemoveDependency(task.id, dep.taskId)} className="text-muted-foreground hover:text-rose-400" aria-label={`Remove dependency on ${dep.title}`}>
+                                ✕
+                              </button>
+                            </span>
+                          ))}
+                          <button onClick={() => openDependencyPicker(task.id)} className="text-indigo-400 hover:text-indigo-300 underline">
+                            + Add dependency
+                          </button>
+                        </div>
+                      )}
 
                       {/* Task Assignment & Reminders — assignment indicator + due date/reminder
                           badge, plus editable controls when the caller has EDIT/OWNER access.
@@ -589,10 +937,12 @@ export default function RoadmapDetailPage() {
                         <p className="text-[11px] text-rose-500">{assignmentErrors[task.id]}</p>
                       )}
 
-                      {/* Phase 5 — actionable roadmap items: Start / Mark Completed / Reopen */}
+                      {/* Phase 5 — actionable roadmap items: Start / Mark Completed / Reopen.
+                          Section 7: never allow the UI to imply a blocked task is executable —
+                          Start is withheld entirely while blocked, rather than shown-then-failing. */}
                       {permission !== 'VIEW' && (
                         <div className="flex flex-wrap gap-2 pt-1">
-                          {task.status === 'PENDING' && (
+                          {task.status === 'PENDING' && !isBlocked && (
                             <Button size="sm" variant="secondary" loading={taskActionPending === task.id} onClick={() => handleTaskAction(task.id, 'IN_PROGRESS')}>
                               Start
                             </Button>
@@ -637,6 +987,12 @@ export default function RoadmapDetailPage() {
                           className="text-[10px] text-indigo-400 hover:text-indigo-300 underline font-mono"
                         >
                           Discuss this task →
+                        </button>
+                        <button
+                          onClick={() => openScheduleMessageModal(task.id)}
+                          className="text-[10px] text-emerald-400 hover:text-emerald-300 underline font-mono"
+                        >
+                          Schedule message →
                         </button>
                         <Link
                           href={`/chat?q=Explain ${encodeURIComponent(task.title)} for ${encodeURIComponent(roadmap.targetSkill)}&sourceMode=web_search`}
@@ -753,6 +1109,100 @@ export default function RoadmapDetailPage() {
           </div>
         </div>
       )}
+
+      {/* Task Dependency Support — add-dependency picker. Offers only OTHER tasks in this same
+          roadmap that are not already a prerequisite (the server independently re-validates
+          self/duplicate/cross-roadmap/cycle regardless). */}
+      <Modal isOpen={dependencyPickerTaskId !== null} onClose={() => setDependencyPickerTaskId(null)} title="Add Dependency">
+        <p className="text-xs text-muted-foreground">This task will only be marked Ready once the selected task is Completed.</p>
+        {dependencyError && <div className="p-3 rounded-xl bg-rose-950/40 border border-rose-900 text-xs text-rose-300">{dependencyError}</div>}
+        <select
+          value={dependencyPickerSelection}
+          onChange={(e) => setDependencyPickerSelection(e.target.value)}
+          className="w-full bg-background border border-border rounded-xl p-2.5 text-xs text-foreground"
+        >
+          <option value="">Select a task…</option>
+          {roadmap.phases.flatMap((p) => p.tasks)
+            .filter((t) => t.id !== dependencyPickerTaskId)
+            .map((t) => (
+              <option key={t.id} value={t.id}>{t.title}</option>
+            ))}
+        </select>
+        <div className="flex items-center justify-end space-x-3 pt-2">
+          <button onClick={() => setDependencyPickerTaskId(null)} className="px-4 py-2 bg-surface-hover text-foreground text-xs rounded-xl hover:bg-muted">
+            Cancel
+          </button>
+          <Button size="sm" loading={dependencyPending} disabled={!dependencyPickerSelection} onClick={handleAddDependency}>
+            Add Dependency
+          </Button>
+        </div>
+      </Modal>
+
+      {/* Activity Timeline — derived from the existing AuditLog, never a new persisted model. */}
+      <Modal isOpen={showActivityModal} onClose={() => setShowActivityModal(false)} title="Roadmap Activity" maxWidthClassName="max-w-lg">
+        {activityLoading ? (
+          <p className="text-xs text-muted-foreground">Loading…</p>
+        ) : activity.length === 0 ? (
+          <p className="text-xs text-muted-foreground">No activity yet.</p>
+        ) : (
+          <div className="space-y-2 max-h-96 overflow-y-auto">
+            {activity.map((entry) => (
+              <div key={entry.id} className="text-xs border-b border-border/60 pb-2">
+                <span className="text-foreground font-medium">{entry.actor?.name || 'Someone'}</span>
+                <span className="text-muted-foreground"> {ACTIVITY_ACTION_LABEL[entry.action] ?? entry.action}</span>
+                {entry.taskTitle && <span className="text-foreground"> &quot;{entry.taskTitle}&quot;</span>}
+                <div className="text-[10px] text-muted-foreground font-mono">{new Date(entry.createdAt).toLocaleString()}</div>
+              </div>
+            ))}
+          </div>
+        )}
+      </Modal>
+
+      {/* Scheduled Collaboration Messages integration — reuses the existing ScheduledMessage
+          pipeline end to end; the task reference is embedded in the message content, never a new
+          column. Channel membership + roadmap access are both validated server-side. */}
+      <Modal isOpen={scheduleMessageTaskId !== null} onClose={() => setScheduleMessageTaskId(null)} title="Schedule a Message">
+        <p className="text-xs text-muted-foreground">Schedule a message about this task to one of your existing conversations.</p>
+        {scheduleStatus && <div className="p-3 rounded-xl bg-indigo-950/60 border border-indigo-800 text-xs text-indigo-300">{scheduleStatus}</div>}
+
+        {channels.length === 0 ? (
+          <p className="text-xs text-muted-foreground">No conversations yet — start one from Collab Chat first.</p>
+        ) : (
+          <select
+            value={scheduleChannelId}
+            onChange={(e) => setScheduleChannelId(e.target.value)}
+            className="w-full bg-background border border-border rounded-xl p-2.5 text-xs text-foreground"
+          >
+            <option value="">Select a conversation…</option>
+            {channels.map((c) => (
+              <option key={c.id} value={c.id}>{c.name || (c.type === 'DIRECT' ? 'Direct Message' : 'Group')}</option>
+            ))}
+          </select>
+        )}
+
+        <textarea
+          value={scheduleMessageText}
+          onChange={(e) => setScheduleMessageText(e.target.value)}
+          placeholder="Please review the authentication implementation tomorrow at 10 AM."
+          rows={3}
+          className="w-full bg-background border border-border rounded-xl p-2.5 text-xs text-foreground"
+        />
+        <input
+          type="datetime-local"
+          value={scheduleFor}
+          onChange={(e) => setScheduleFor(e.target.value)}
+          className="w-full bg-background border border-border rounded-xl p-2.5 text-xs text-foreground"
+        />
+
+        <div className="flex items-center justify-end space-x-3 pt-2">
+          <button onClick={() => setScheduleMessageTaskId(null)} className="px-4 py-2 bg-surface-hover text-foreground text-xs rounded-xl hover:bg-muted">
+            Cancel
+          </button>
+          <Button size="sm" disabled={!scheduleChannelId || !scheduleMessageText.trim() || !scheduleFor} onClick={handleScheduleMessageSubmit}>
+            Schedule
+          </Button>
+        </div>
+      </Modal>
     </div>
   );
 }

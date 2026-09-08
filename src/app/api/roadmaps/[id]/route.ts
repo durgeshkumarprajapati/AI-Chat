@@ -5,8 +5,10 @@ import { roadmapCacheService } from '@/features/roadmap/cache/roadmap-cache.serv
 import { AppError } from '@/errors';
 import { getNextStep } from '@/features/roadmap/execution/roadmap-next-step';
 import { computeDerivedProgress } from '@/features/roadmap/execution/roadmap-progress';
-import { getDueDateDisplayStatus } from '@/features/roadmap/execution/roadmap-task-reminder-policy';
+import { getDueDateDisplayStatus, isTaskOverdue } from '@/features/roadmap/execution/roadmap-task-reminder-policy';
 import { loadRoadmapReminderConfig } from '@/features/roadmap/execution/roadmap-reminder-config';
+import { computeTaskExecutionStates, computeTaskDisplayStatus } from '@/features/roadmap/execution/roadmap-task-execution-state';
+import { computeExecutionHealth } from '@/features/roadmap/execution/roadmap-execution-health';
 
 export const dynamic = 'force-dynamic';
 
@@ -26,36 +28,80 @@ export async function GET(req: NextRequest, { params }: RouteParams) {
       );
     }
 
-    // Smart Roadmap Execution pass — additive only. Both derived entirely from the phases/tasks
-    // already loaded above (zero extra queries): a per-phase progress breakdown, and a
-    // deterministic "what's next" recommendation. Existing consumers of this response that only
-    // read `roadmap`/`permission` are unaffected.
-    const nextStep = getNextStep(result.roadmap.phases);
+    // Team Execution & Collaboration Intelligence pass — one additional BOUNDED query (scoped to
+    // this roadmap's own tasks, never a full-table scan), then everything else (blocked/executable
+    // state, dependency-aware nextStep, execution health, per-task display status, counts) is
+    // computed in pure functions over data already loaded — no N+1, no polling.
+    const dependencyEdges = await roadmapRepository.listDependencyEdgesForRoadmap(params.id);
+    const allTasks = result.roadmap.phases.flatMap((p) => p.tasks);
+    const taskTitleById = new Map(allTasks.map((t) => [t.id, t.title]));
+    const executionStates = computeTaskExecutionStates(allTasks, dependencyEdges);
+    // Full prerequisite list per task (regardless of completion) — lets the UI both manage
+    // dependencies (add/remove) and keep client-side optimistic recomputation dependency-aware
+    // after a status change, without an extra round trip.
+    const dependsOnByTask = new Map<string, { taskId: string; title: string }[]>();
+    for (const edge of dependencyEdges) {
+      if (!dependsOnByTask.has(edge.taskId)) dependsOnByTask.set(edge.taskId, []);
+      dependsOnByTask.get(edge.taskId)!.push({ taskId: edge.dependsOnTaskId, title: taskTitleById.get(edge.dependsOnTaskId) ?? 'Unknown task' });
+    }
+
+    // Smart Roadmap Execution pass — additive only, now dependency-aware (see getNextStep's own
+    // doc comment: with zero dependency edges this is byte-identical to the pre-dependency
+    // behavior). Existing consumers of this response that only read `roadmap`/`permission` are
+    // unaffected.
+    const nextStep = getNextStep(result.roadmap.phases, dependencyEdges);
 
     // Task Assignment & Reminders pass — additive `dueDateStatus` per task, derived (never
     // stored) using the SAME tier computation that governs reminder delivery, so the badge shown
     // here always matches what actually drives reminders.
     const reminderConfig = await loadRoadmapReminderConfig();
     const { user: owner, ...roadmapRest } = result.roadmap;
+
+    let readyTaskCount = 0;
+    let blockedTaskCount = 0;
+    let overdueTaskCount = 0;
+
     const roadmapWithProgress = {
       ...roadmapRest,
       owner,
       phases: result.roadmap.phases.map((phase) => ({
         ...phase,
         progress: computeDerivedProgress(phase.tasks),
-        tasks: phase.tasks.map((task) => ({
-          ...task,
-          dueDateStatus: getDueDateDisplayStatus(task, reminderConfig)
-        }))
+        tasks: phase.tasks.map((task) => {
+          const executionState = executionStates.get(task.id) ?? { isExecutable: true, blockedBy: [] };
+          const overdue = isTaskOverdue(task);
+          const displayStatus = computeTaskDisplayStatus({ status: task.status, isExecutable: executionState.isExecutable, isOverdue: overdue });
+          if (displayStatus === 'READY') readyTaskCount++;
+          if (displayStatus === 'BLOCKED') blockedTaskCount++;
+          if (displayStatus === 'OVERDUE') overdueTaskCount++;
+
+          return {
+            ...task,
+            dueDateStatus: getDueDateDisplayStatus(task, reminderConfig),
+            isExecutable: executionState.isExecutable,
+            executionStatus: displayStatus,
+            blockedBy: executionState.blockedBy.map((id) => ({ taskId: id, title: taskTitleById.get(id) ?? 'Unknown task' })),
+            dependsOn: dependsOnByTask.get(task.id) ?? []
+          };
+        })
       }))
     };
+
+    // Reuses nextStep (already dependency-aware) and each task's own overdue/dueDateStatus —
+    // never a second definition of "overdue," never an arbitrary numeric score.
+    const healthTasks = allTasks.map((t) => ({ id: t.id, status: t.status, dueDate: t.dueDate, dueDateStatus: getDueDateDisplayStatus(t, reminderConfig) }));
+    const executionHealth = computeExecutionHealth(healthTasks, nextStep);
 
     return NextResponse.json({
       success: true,
       data: {
         roadmap: roadmapWithProgress,
         permission: result.permission,
-        nextStep
+        nextStep,
+        executionHealth,
+        readyTaskCount,
+        blockedTaskCount,
+        overdueTaskCount
       }
     });
   } catch (error) {

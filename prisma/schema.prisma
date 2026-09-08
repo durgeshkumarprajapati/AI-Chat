@@ -1125,6 +1125,13 @@ model RoadmapTask {
   phase    RoadmapPhase @relation(fields: [phaseId], references: [id], onDelete: Cascade)
   assignee User?        @relation("RoadmapTaskAssignee", fields: [assigneeId], references: [id], onDelete: SetNull)
 
+  // Team Execution & Collaboration Intelligence pass — a genuine normalized relationship; nothing
+  // existing (task `order` is a linear display hint, not a real dependency graph) could express
+  // this. `dependencies` = edges where THIS task is the dependent (it depends on others);
+  // `dependents` = edges where THIS task is the prerequisite (others depend on it).
+  dependencies RoadmapTaskDependency[] @relation("TaskDependents")
+  dependents   RoadmapTaskDependency[] @relation("TaskPrerequisites")
+
   @@index([phaseId])
   @@index([phaseId, order])
   @@index([status])
@@ -1133,6 +1140,26 @@ model RoadmapTask {
   @@index([dueDate])
   @@index([assigneeId])
   @@map("roadmap_tasks")
+}
+
+// Team Execution & Collaboration Intelligence pass — the smallest normalized relationship that
+// can express "taskId depends on dependsOnTaskId" (dependsOnTaskId must be COMPLETED before
+// taskId is executable). Cross-roadmap dependencies, self-dependency, and duplicates are rejected
+// at the application layer (roadmap-task-dependency-policy.ts) before this row is ever written;
+// the @@unique constraint is the DB-level backstop against a duplicate under a race.
+model RoadmapTaskDependency {
+  id              String   @id @default(uuid())
+  taskId          String   @map("task_id")
+  dependsOnTaskId String   @map("depends_on_task_id")
+  createdAt       DateTime @default(now()) @map("created_at")
+
+  task          RoadmapTask @relation("TaskDependents", fields: [taskId], references: [id], onDelete: Cascade)
+  dependsOnTask RoadmapTask @relation("TaskPrerequisites", fields: [dependsOnTaskId], references: [id], onDelete: Cascade)
+
+  @@unique([taskId, dependsOnTaskId])
+  @@index([taskId])
+  @@index([dependsOnTaskId])
+  @@map("roadmap_task_dependencies")
 }
 
 model RoadmapShare {
@@ -2914,6 +2941,11 @@ enum NotificationType {
   DEADLINE_APPROACHING
   DEADLINE_MISSED
   TASK_OVERDUE
+  // Team Execution & Collaboration Intelligence pass — distinct from BLOCKER_DETECTED (that one
+  // is AI-detected project-intelligence risk; this is a deterministic roadmap-task dependency
+  // block). Kept separate so a user's per-type NotificationPreference can mute one without the
+  // other. Reuses the SAME Notification model/table/delivery path — no parallel infrastructure.
+  TASK_DEPENDENCY_BLOCKED
   PROJECT_HEALTH_CHANGE
   // Phase 87 — AI Agent Platform Notifications
   AGENT_PLAN_READY

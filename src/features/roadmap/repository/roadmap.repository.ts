@@ -2,8 +2,9 @@ import { prisma } from '@/lib/prisma';
 import { RoadmapStatus } from '@prisma/client';
 import { QuestionnaireAnswers, GeneratedRoadmapPlan } from '../roadmap.types';
 import { computeTaskTransition, RoadmapTaskStatusValue } from '../execution/roadmap-task-transition';
+import { validateNewDependency, DependencyEdge } from '../execution/roadmap-task-dependency-policy';
 import { auditService } from '@/features/audit/audit.service';
-import { ConflictError } from '@/errors';
+import { ConflictError, ValidationError } from '@/errors';
 
 export class RoadmapRepository {
   /**
@@ -262,6 +263,8 @@ export class RoadmapRepository {
   ) {
     const existing = await prisma.roadmapTask.findUniqueOrThrow({ where: { id: taskId } });
     const assigneeChanging = input.assigneeId !== undefined && input.assigneeId !== existing.assigneeId;
+    const dueDateChanging =
+      input.dueDate !== undefined && (input.dueDate?.getTime() ?? null) !== (existing.dueDate?.getTime() ?? null);
 
     const data: { assigneeId?: string | null; dueDate?: Date | null; lastReminderSentAt?: null; lastReminderTier?: null } = {};
     if (input.assigneeId !== undefined) data.assigneeId = input.assigneeId;
@@ -283,8 +286,78 @@ export class RoadmapRepository {
         details: { roadmapId: task.phase.roadmapId, phaseId: task.phaseId, taskTitle: task.title }
       });
     }
+    // Activity Timeline pass — additive. Logged separately from assignment so a due-date-only
+    // change (no assignee change) still shows up in the roadmap's activity feed.
+    if (dueDateChanging) {
+      await auditService.logEvent({
+        actorId,
+        action: 'roadmap.task.due_date_changed',
+        targetType: 'RoadmapTask',
+        targetId: task.id,
+        details: { roadmapId: task.phase.roadmapId, phaseId: task.phaseId, taskTitle: task.title }
+      });
+    }
 
     return task;
+  }
+
+  /**
+   * Team Execution & Collaboration Intelligence pass — bounded to a single roadmap's own tasks
+   * (never a full-table scan), used both to render dependencyStatus/blockedBy/isExecutable and to
+   * run the cycle check before accepting a new dependency.
+   */
+  async listDependencyEdgesForRoadmap(roadmapId: string): Promise<DependencyEdge[]> {
+    return prisma.roadmapTaskDependency.findMany({
+      where: { task: { phase: { roadmapId } } },
+      select: { taskId: true, dependsOnTaskId: true }
+    });
+  }
+
+  /**
+   * Adds a new task dependency edge. The CALLER (route) is responsible for confirming both
+   * `taskId` and `dependsOnTaskId` belong to the SAME roadmap the caller is authorized on, using
+   * data it already loaded (mirrors the existing `belongsToRoadmap` pattern) — this method trusts
+   * `roadmapId` and only re-validates duplicate/self/cycle using edges scoped to it.
+   */
+  async addTaskDependency(roadmapId: string, taskId: string, dependsOnTaskId: string): Promise<{ id: string; taskId: string; dependsOnTaskId: string }> {
+    const existingEdges = await this.listDependencyEdgesForRoadmap(roadmapId);
+
+    const validation = validateNewDependency({
+      taskId,
+      dependsOnTaskId,
+      taskRoadmapId: roadmapId,
+      dependsOnTaskRoadmapId: roadmapId,
+      existingEdges
+    });
+    if (!validation.valid) {
+      throw new ValidationError(validation.message);
+    }
+
+    return prisma.roadmapTaskDependency.create({ data: { taskId, dependsOnTaskId } });
+  }
+
+  /** Idempotent — removing a dependency that doesn't exist is a safe no-op. */
+  async removeTaskDependency(taskId: string, dependsOnTaskId: string): Promise<void> {
+    await prisma.roadmapTaskDependency.deleteMany({ where: { taskId, dependsOnTaskId } });
+  }
+
+  /**
+   * Activity Timeline pass — AuditLog IS the activity source (no new RoadmapActivity table).
+   * Bounded (`take`), indexed (createdAt, and details->roadmapId via a JSON path filter), scoped
+   * to exactly the action set roadmap-activity.ts's `isRoadmapActivityAction` allowlists so an
+   * unrelated audit action can never leak in just because its `details` happens to contain the
+   * SAME roadmapId key by coincidence.
+   */
+  async listActivityForRoadmap(roadmapId: string, limit = 50) {
+    return prisma.auditLog.findMany({
+      where: {
+        targetType: { in: ['RoadmapTask', 'RoadmapPhase'] },
+        details: { path: ['roadmapId'], equals: roadmapId }
+      },
+      orderBy: { createdAt: 'desc' },
+      take: Math.min(Math.max(limit, 1), 200),
+      include: { actor: { select: { id: true, name: true, email: true } } }
+    });
   }
 
   /**
@@ -303,11 +376,31 @@ export class RoadmapRepository {
    * any task in this phase has already been started or completed, regeneration is rejected rather
    * than deleting that history. This does not change the generation algorithm itself — it only
    * guards the pre-existing delete-then-recreate step that already existed here.
+   *
+   * `roadmapId`/`actorId` are optional purely for backward compatibility with any other internal
+   * caller that doesn't have them; the real caller (the regenerate route) always supplies both so
+   * both the attempted and blocked outcomes appear in the roadmap's activity timeline.
    */
-  async replacePhaseTasks(phaseId: string, newTitle: string, newDescription: string, newTasks: { title: string; description: string; estimatedHours: number; resources?: any }[]) {
+  async replacePhaseTasks(
+    phaseId: string,
+    newTitle: string,
+    newDescription: string,
+    newTasks: { title: string; description: string; estimatedHours: number; resources?: any }[],
+    roadmapId?: string,
+    actorId?: string
+  ) {
     const existingTasks = await prisma.roadmapTask.findMany({ where: { phaseId }, select: { status: true } });
     const hasProgress = existingTasks.some((t) => t.status !== 'PENDING');
     if (hasProgress) {
+      if (actorId && roadmapId) {
+        await auditService.logEvent({
+          actorId,
+          action: 'roadmap.phase.regeneration_blocked',
+          targetType: 'RoadmapPhase',
+          targetId: phaseId,
+          details: { roadmapId, phaseTitle: newTitle }
+        });
+      }
       throw new ConflictError('This phase has in-progress or completed tasks — regenerating it would erase that progress. Complete or reopen those tasks to PENDING first if you really want to regenerate.');
     }
 
@@ -338,6 +431,15 @@ export class RoadmapRepository {
 
     if (updatedPhase) {
       await this.updateRoadmapProgress(updatedPhase.roadmapId);
+      if (actorId && roadmapId) {
+        await auditService.logEvent({
+          actorId,
+          action: 'roadmap.phase.regenerated',
+          targetType: 'RoadmapPhase',
+          targetId: phaseId,
+          details: { roadmapId, phaseTitle: newTitle }
+        });
+      }
     }
 
     return updatedPhase;

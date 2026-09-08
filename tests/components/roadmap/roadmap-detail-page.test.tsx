@@ -18,25 +18,42 @@ const BASE_ROADMAP = {
       id: 'phase-1', title: 'Foundations', description: 'Core basics', order: 1, durationWeeks: 2,
       progress: { totalItems: 2, completedItems: 1, inProgressItems: 0, notStartedItems: 1, completionPercentage: 50 },
       tasks: [
-        { id: 't1', title: 'Read the book', description: 'Chapters 1-3', order: 1, estimatedHours: 4, status: 'COMPLETED', assignee: null, assigneeId: null, dueDate: null, dueDateStatus: 'NO_DEADLINE' },
-        { id: 't2', title: 'Write hello world', description: 'Set up cargo', order: 2, estimatedHours: 1, status: 'PENDING', assignee: null, assigneeId: null, dueDate: null, dueDateStatus: 'NO_DEADLINE' }
+        { id: 't1', title: 'Read the book', description: 'Chapters 1-3', order: 1, estimatedHours: 4, status: 'COMPLETED', assignee: null, assigneeId: null, dueDate: null, dueDateStatus: 'NO_DEADLINE', isExecutable: false, executionStatus: 'COMPLETED', blockedBy: [], dependsOn: [] },
+        { id: 't2', title: 'Write hello world', description: 'Set up cargo', order: 2, estimatedHours: 1, status: 'PENDING', assignee: null, assigneeId: null, dueDate: null, dueDateStatus: 'NO_DEADLINE', isExecutable: true, executionStatus: 'READY', blockedBy: [], dependsOn: [] }
       ]
     }
   ]
 };
 
-function mockFetchSequence(overrides: { nextStep?: unknown; permission?: string; roadmap?: unknown } = {}) {
-  global.fetch = jest.fn().mockImplementation((url: string) => {
+function mockFetchSequence(overrides: {
+  nextStep?: unknown; permission?: string; roadmap?: unknown;
+  executionHealth?: unknown; readyTaskCount?: number; blockedTaskCount?: number; overdueTaskCount?: number;
+  activity?: unknown[];
+} = {}) {
+  global.fetch = jest.fn().mockImplementation((url: string, init?: RequestInit) => {
+    if (url.includes('/activity')) {
+      return Promise.resolve({ ok: true, json: () => Promise.resolve({ success: true, data: overrides.activity ?? [] }) });
+    }
+    if (url.includes('/dependencies')) {
+      return Promise.resolve({ ok: true, json: () => Promise.resolve({ success: true, data: { id: 'dep-1' } }) });
+    }
+    if (url.includes('/schedule-message')) {
+      return Promise.resolve({ ok: true, json: () => Promise.resolve({ success: true, data: { id: 'sched-1' } }) });
+    }
     if (url.includes('/api/roadmaps/roadmap-1') && !url.includes('/tasks/') && !url.includes('/phases/')) {
       return Promise.resolve({
         ok: true,
         json: () => Promise.resolve({
           success: true,
-          data: { roadmap: overrides.roadmap ?? BASE_ROADMAP, permission: overrides.permission ?? 'OWNER', nextStep: overrides.nextStep ?? null }
+          data: {
+            roadmap: overrides.roadmap ?? BASE_ROADMAP, permission: overrides.permission ?? 'OWNER', nextStep: overrides.nextStep ?? null,
+            executionHealth: overrides.executionHealth ?? { status: 'HEALTHY', reasons: [] },
+            readyTaskCount: overrides.readyTaskCount ?? 1, blockedTaskCount: overrides.blockedTaskCount ?? 0, overdueTaskCount: overrides.overdueTaskCount ?? 0
+          }
         })
       });
     }
-    if (url.includes('/tasks/')) {
+    if (url.includes('/tasks/') && (!init || init.method === 'PATCH')) {
       return Promise.resolve({ ok: true, json: () => Promise.resolve({ success: true, data: { id: 't2', status: 'IN_PROGRESS' } }) });
     }
     return Promise.resolve({ ok: true, json: () => Promise.resolve({ success: true, data: [] }) });
@@ -53,7 +70,7 @@ describe('Roadmap Detail Page — Smart Execution', () => {
     await waitFor(() => expect(screen.getByText('Learn Rust')).toBeInTheDocument());
 
     expect(screen.getByText('Completed')).toBeInTheDocument();
-    expect(screen.getByText('Not Started')).toBeInTheDocument();
+    expect(screen.getByText('Ready to Start')).toBeInTheDocument();
   });
 
   it('shows a "Start" action for a PENDING task and "Reopen" for a COMPLETED one', async () => {
@@ -160,7 +177,7 @@ describe('Roadmap Detail Page — Smart Execution', () => {
       mockFetchSequence({ roadmap: roadmapWithOverdue });
       render(<RoadmapDetailPage />);
 
-      await waitFor(() => expect(screen.getByText(/Overdue/)).toBeInTheDocument());
+      await waitFor(() => expect(screen.getAllByText(/Overdue/).length).toBeGreaterThan(0));
     });
 
     it('the assignee picker only offers the owner and active share recipients', async () => {
@@ -194,6 +211,126 @@ describe('Roadmap Detail Page — Smart Execution', () => {
       await waitFor(() => expect(screen.getByText('Learn Rust')).toBeInTheDocument());
       expect(screen.getAllByText('Unassigned').length).toBeGreaterThan(0);
       expect(screen.queryAllByRole('combobox').length).toBe(0);
+    });
+  });
+
+  describe('task dependencies & execution health', () => {
+    const roadmapWithBlockedTask = {
+      ...BASE_ROADMAP,
+      phases: [{
+        ...BASE_ROADMAP.phases[0]!,
+        tasks: [
+          { ...BASE_ROADMAP.phases[0]!.tasks[0]!, id: 'db', title: 'Setup Database', status: 'PENDING', executionStatus: 'READY', isExecutable: true, blockedBy: [], dependsOn: [] },
+          {
+            ...BASE_ROADMAP.phases[0]!.tasks[1]!, id: 'auth', title: 'Create Authentication', status: 'PENDING',
+            executionStatus: 'BLOCKED', isExecutable: false, blockedBy: [{ taskId: 'db', title: 'Setup Database' }], dependsOn: [{ taskId: 'db', title: 'Setup Database' }]
+          }
+        ]
+      }]
+    };
+
+    it('shows a Blocked badge and "Blocked by" list for a task with an incomplete dependency', async () => {
+      mockFetchSequence({ roadmap: roadmapWithBlockedTask, blockedTaskCount: 1 });
+      render(<RoadmapDetailPage />);
+
+      await waitFor(() => expect(screen.getByText('Create Authentication')).toBeInTheDocument());
+      expect(screen.getAllByText('Blocked').length).toBeGreaterThan(0);
+      expect(screen.getByText('Blocked by:')).toBeInTheDocument();
+      expect(screen.getAllByText(/Setup Database/).length).toBeGreaterThan(0);
+    });
+
+    it('never shows a Start button for a blocked task (never implies it is executable)', async () => {
+      mockFetchSequence({ roadmap: roadmapWithBlockedTask, blockedTaskCount: 1 });
+      render(<RoadmapDetailPage />);
+
+      await waitFor(() => expect(screen.getByText('Create Authentication')).toBeInTheDocument());
+      // Only ONE "Start" button should exist — for the ready task (db), not the blocked one (auth).
+      expect(screen.getAllByRole('button', { name: 'Start' }).length).toBe(1);
+    });
+
+    it('renders the Team Execution View with ready/blocked/overdue/completed counts', async () => {
+      mockFetchSequence({ roadmap: roadmapWithBlockedTask, readyTaskCount: 1, blockedTaskCount: 1 });
+      render(<RoadmapDetailPage />);
+
+      await waitFor(() => expect(screen.getByText('Team Execution View')).toBeInTheDocument());
+      expect(screen.getByText(/Ready to Start: 1/)).toBeInTheDocument();
+      expect(screen.getByText(/Blocked: 1/)).toBeInTheDocument();
+    });
+
+    it('shows the execution health badge', async () => {
+      mockFetchSequence({ executionHealth: { status: 'AT_RISK', reasons: [] } });
+      render(<RoadmapDetailPage />);
+
+      await waitFor(() => expect(screen.getByText('At Risk')).toBeInTheDocument());
+    });
+
+    it('shows "Execution is currently blocked" when the next-step recommendation is blocked', async () => {
+      mockFetchSequence({
+        roadmap: roadmapWithBlockedTask,
+        nextStep: { taskId: 'auth', phaseId: 'phase-1', taskTitle: 'Create Authentication', phaseTitle: 'Foundations', executable: false, reason: 'BLOCKED_BY_DEPENDENCY', blockedBy: ['db'] }
+      });
+      render(<RoadmapDetailPage />);
+
+      await waitFor(() => expect(screen.getByText('Execution is currently blocked')).toBeInTheDocument());
+      expect(screen.getByText(/Blocked by: Setup Database/)).toBeInTheDocument();
+    });
+
+    it('adds a dependency via the picker modal', async () => {
+      mockFetchSequence();
+      render(<RoadmapDetailPage />);
+      await waitFor(() => expect(screen.getByText('Learn Rust')).toBeInTheDocument());
+
+      fireEvent.click(screen.getAllByText('+ Add dependency')[0]!);
+      await waitFor(() => expect(screen.getAllByText('Add Dependency').length).toBeGreaterThan(0));
+
+      const selects = screen.getAllByRole('combobox') as HTMLSelectElement[];
+      const dependencySelect = selects.find((s) => s.querySelector('option[value=""]')?.textContent === 'Select a task…')!;
+      fireEvent.change(dependencySelect, { target: { value: 't2' } });
+      fireEvent.click(screen.getByRole('button', { name: 'Add Dependency' }));
+
+      await waitFor(() => expect(global.fetch as jest.Mock).toHaveBeenCalledWith(
+        expect.stringContaining('/dependencies'),
+        expect.objectContaining({ method: 'POST' })
+      ));
+    });
+  });
+
+  describe('activity timeline', () => {
+    it('opens the activity modal and shows entries', async () => {
+      mockFetchSequence({ activity: [{ id: 'log-1', action: 'roadmap.task.completed', actor: { id: 'u1', name: 'Alice' }, taskTitle: 'Read the book', phaseTitle: null, createdAt: '2026-01-01T00:00:00Z' }] });
+      render(<RoadmapDetailPage />);
+      await waitFor(() => expect(screen.getByText('Learn Rust')).toBeInTheDocument());
+
+      fireEvent.click(screen.getByText('Activity 🕒'));
+
+      await waitFor(() => expect(screen.getByText('Alice')).toBeInTheDocument());
+      expect(screen.getByText(/completed/)).toBeInTheDocument();
+    });
+
+    it('shows an empty state when there is no activity', async () => {
+      mockFetchSequence({ activity: [] });
+      render(<RoadmapDetailPage />);
+      await waitFor(() => expect(screen.getByText('Learn Rust')).toBeInTheDocument());
+
+      fireEvent.click(screen.getByText('Activity 🕒'));
+
+      await waitFor(() => expect(screen.getByText('No activity yet.')).toBeInTheDocument());
+    });
+  });
+
+  describe('schedule a message about a task', () => {
+    it('opens the schedule-message modal and submits', async () => {
+      mockFetchSequence();
+      render(<RoadmapDetailPage />);
+      await waitFor(() => expect(screen.getByText('Learn Rust')).toBeInTheDocument());
+
+      fireEvent.click(screen.getAllByText('Schedule message →')[0]!);
+      await waitFor(() => expect(screen.getByText('Schedule a Message')).toBeInTheDocument());
+
+      fireEvent.change(screen.getByPlaceholderText(/Please review the authentication/), { target: { value: 'Please review tomorrow.' } });
+
+      const scheduleButton = screen.getByRole('button', { name: 'Schedule' });
+      expect(scheduleButton).toBeDisabled(); // no channel/time selected yet
     });
   });
 });

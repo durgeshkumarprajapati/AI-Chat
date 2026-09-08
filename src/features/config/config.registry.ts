@@ -2235,6 +2235,21 @@ export const CONFIG_REGISTRY: Record<string, RegistryConfigItem> = {
     isEditable: true, isHighImpact: false, requiresRestart: true, minValue: 60000, maxValue: 3600000
   },
 
+  // ROADMAP TEAM EXECUTION & COLLABORATION INTELLIGENCE — reuses the existing reminder
+  // cooldown/dedup/rate-limit stack; this single flag only controls whether a BLOCKED task ALSO
+  // gets an (optional) dependency-blocked notification, separate from its normal due-date
+  // reminder (which is suppressed for blocked tasks regardless of this flag — see
+  // roadmap-task-reminder.service.ts). Defaults off to avoid a notification storm on rollout.
+  ROADMAP_BLOCKED_TASK_NOTIFICATIONS_ENABLED: {
+    key: 'ROADMAP_BLOCKED_TASK_NOTIFICATIONS_ENABLED',
+    valueType: ConfigValueType.BOOLEAN,
+    category: ConfigCategory.FEATURE_FLAG,
+    defaultValue: 'false',
+    purpose: 'When enabled, a due-soon/due/overdue task that is currently blocked by an incomplete dependency gets a dependency-blocked notification instead of its normal reminder.',
+    description: 'Enable dependency-blocked task notifications.',
+    isEditable: true, isHighImpact: true, requiresRestart: false
+  },
+
   EMAIL_FROM_ADDRESS: {
     key: 'EMAIL_FROM_ADDRESS',
     valueType: ConfigValueType.STRING,

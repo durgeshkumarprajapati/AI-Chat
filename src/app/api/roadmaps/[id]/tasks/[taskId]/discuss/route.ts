@@ -3,6 +3,7 @@ import { getAuthUser } from '@/lib/auth';
 import { AppError, ValidationError, NotFoundError } from '@/errors';
 import { roadmapRepository } from '@/features/roadmap/repository/roadmap.repository';
 import { collaborationService } from '@/features/collaboration/collaboration.service';
+import { auditService } from '@/features/audit/audit.service';
 import { prisma } from '@/lib/prisma';
 
 export const dynamic = 'force-dynamic';
@@ -67,7 +68,20 @@ export async function POST(req: NextRequest, { params }: RouteParams) {
     const message = await collaborationService.sendMessage(channelId, user.id, {
       content,
       sharedRoadmapId: params.id,
-      sharedRoadmapStepId: task.id
+      sharedRoadmapStepId: task.id,
+      // Structured task context — CollabMessage.metadata already exists and is safe to use here
+      // (no new field): only ids/titles, never task description/notes/private content.
+      metadata: { roadmapId: params.id, taskId: task.id, phaseId: task.phaseId, taskTitle: task.title }
+    });
+
+    // Activity Timeline pass — logged only for an actually-new discussion (not the dedup-reuse
+    // path above), matching the example "Task discussion started."
+    await auditService.logEvent({
+      actorId: user.id,
+      action: 'roadmap.task.discussion_started',
+      targetType: 'RoadmapTask',
+      targetId: task.id,
+      details: { roadmapId: params.id, phaseId: task.phaseId, taskTitle: task.title }
     });
 
     return NextResponse.json({ success: true, data: message });

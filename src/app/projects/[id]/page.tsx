@@ -4,6 +4,208 @@ import { useState, useEffect } from 'react';
 import Link from 'next/link';
 import { ProjectDetail } from '@/features/projects/types/project.types';
 import { ProjectAuditPanel } from '@/components/projects/ProjectAuditPanel';
+import { Card, CardHeader, CardTitle } from '@/components/ui/Card';
+import { Badge, BadgeVariant } from '@/components/ui/Badge';
+
+type ProjectExecutionStatus = 'HEALTHY' | 'AT_RISK' | 'CRITICAL';
+
+interface ProjectExecutionNextStep {
+  taskId: string;
+  taskTitle: string;
+  phaseTitle: string;
+  executable?: false;
+}
+
+interface ProjectRoadmapExecutionSummary {
+  roadmapId: string;
+  title: string;
+  status: ProjectExecutionStatus;
+  progress: { completed: number; total: number; percentage: number };
+  blockedTasks: number;
+  overdueTasks: number;
+  dueSoonTasks: number;
+  unassignedTasks: number;
+  nextStep: ProjectExecutionNextStep | null;
+}
+
+interface ProjectExecutionPriority {
+  roadmapId: string;
+  roadmapTitle: string;
+  taskId?: string;
+  taskTitle?: string;
+  reason: string;
+}
+
+interface ProjectExecutionSummary {
+  status: ProjectExecutionStatus;
+  roadmapCount: number;
+  progress: { completed: number; total: number; percentage: number };
+  attention: {
+    blocked: { totalTasks: number; roadmapIds: string[] };
+    overdue: { totalTasks: number; roadmapIds: string[] };
+    dueSoon: { totalTasks: number; roadmapIds: string[] };
+    unassigned: { totalTasks: number; roadmapIds: string[] };
+  };
+  roadmaps: ProjectRoadmapExecutionSummary[];
+  topPriority?: ProjectExecutionPriority;
+  inaccessibleRoadmapCount: number;
+}
+
+const STATUS_BADGE_VARIANT: Record<ProjectExecutionStatus, BadgeVariant> = {
+  HEALTHY: 'success',
+  AT_RISK: 'warning',
+  CRITICAL: 'destructive'
+};
+
+const STATUS_LABEL: Record<ProjectExecutionStatus, string> = {
+  HEALTHY: 'Healthy',
+  AT_RISK: 'At Risk',
+  CRITICAL: 'Critical'
+};
+
+function ProjectExecutionCommandCenter({ projectId }: { projectId: string }) {
+  const [summary, setSummary] = useState<ProjectExecutionSummary | null>(null);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState<string | null>(null);
+
+  useEffect(() => {
+    let cancelled = false;
+    async function fetchExecutionSummary() {
+      setLoading(true);
+      setError(null);
+      try {
+        const res = await fetch(`/api/projects/${projectId}/execution`);
+        const data = await res.json();
+        if (cancelled) return;
+        if (data.success) {
+          setSummary(data.data);
+        } else {
+          setError(data.error?.message || 'Failed to load project execution summary.');
+        }
+      } catch (err) {
+        if (!cancelled) setError('Failed to load project execution summary.');
+        console.error('Failed to fetch project execution summary', err);
+      } finally {
+        if (!cancelled) setLoading(false);
+      }
+    }
+    fetchExecutionSummary();
+    return () => { cancelled = true; };
+  }, [projectId]);
+
+  if (loading) {
+    return (
+      <Card>
+        <p className="text-xs text-muted-foreground animate-pulse">Loading execution summary…</p>
+      </Card>
+    );
+  }
+
+  if (error) {
+    return (
+      <Card>
+        <p className="text-xs text-rose-500 dark:text-rose-400">{error}</p>
+      </Card>
+    );
+  }
+
+  if (!summary) return null;
+
+  if (summary.roadmapCount === 0) {
+    return (
+      <Card>
+        <CardHeader><CardTitle>Project Execution</CardTitle></CardHeader>
+        <p className="text-xs text-muted-foreground">No accessible linked roadmaps yet — link a roadmap to this project to see execution status here.</p>
+      </Card>
+    );
+  }
+
+  return (
+    <div className="space-y-4">
+      <Card>
+        <CardHeader>
+          <CardTitle>Project Execution</CardTitle>
+          <Badge variant={STATUS_BADGE_VARIANT[summary.status]}>{STATUS_LABEL[summary.status]}</Badge>
+        </CardHeader>
+
+        <div className="space-y-4">
+          <div>
+            <div className="flex items-center justify-between text-xs text-muted-foreground mb-1">
+              <span>Progress</span>
+              <span className="font-mono">{summary.progress.completed}/{summary.progress.total} tasks ({summary.progress.percentage}%)</span>
+            </div>
+            <div className="w-full h-2.5 bg-muted rounded-full overflow-hidden border border-border">
+              <div className="h-full bg-gradient-to-r from-indigo-600 via-sky-400 to-emerald-400 transition-all duration-500" style={{ width: `${summary.progress.percentage}%` }} />
+            </div>
+          </div>
+
+          <div>
+            <h4 className="text-[10px] font-mono text-muted-foreground uppercase mb-2">Attention Required</h4>
+            <div className="grid grid-cols-2 sm:grid-cols-4 gap-2 text-center font-mono">
+              <div className="p-2 rounded-xl bg-muted border border-border">
+                <span className="block text-base font-bold text-foreground">{summary.attention.blocked.totalTasks}</span>
+                <span className="text-[10px] text-muted-foreground">Blocked</span>
+              </div>
+              <div className="p-2 rounded-xl bg-muted border border-border">
+                <span className="block text-base font-bold text-foreground">{summary.attention.overdue.totalTasks}</span>
+                <span className="text-[10px] text-muted-foreground">Overdue</span>
+              </div>
+              <div className="p-2 rounded-xl bg-muted border border-border">
+                <span className="block text-base font-bold text-foreground">{summary.attention.dueSoon.totalTasks}</span>
+                <span className="text-[10px] text-muted-foreground">Due Soon</span>
+              </div>
+              <div className="p-2 rounded-xl bg-muted border border-border">
+                <span className="block text-base font-bold text-foreground">{summary.attention.unassigned.totalTasks}</span>
+                <span className="text-[10px] text-muted-foreground">Unassigned</span>
+              </div>
+            </div>
+          </div>
+
+          {summary.topPriority && (
+            <div className="p-3 rounded-xl bg-indigo-950/10 dark:bg-indigo-950/40 border border-indigo-300 dark:border-indigo-800">
+              <h4 className="text-[10px] font-mono text-indigo-600 dark:text-indigo-300 uppercase mb-1">What should the team focus on next?</h4>
+              <p className="text-xs text-foreground">{summary.topPriority.reason}</p>
+              {summary.topPriority.taskId && (
+                <Link href={`/roadmaps/${summary.topPriority.roadmapId}`} className="text-[11px] text-indigo-600 dark:text-indigo-400 font-semibold hover:underline mt-1 inline-block">
+                  View in &quot;{summary.topPriority.roadmapTitle}&quot; →
+                </Link>
+              )}
+            </div>
+          )}
+
+          {summary.inaccessibleRoadmapCount > 0 && (
+            <p className="text-[11px] text-muted-foreground italic">
+              {summary.inaccessibleRoadmapCount} linked roadmap{summary.inaccessibleRoadmapCount === 1 ? '' : 's'} not shown — you don&apos;t have access.
+            </p>
+          )}
+        </div>
+      </Card>
+
+      <div>
+        <h4 className="text-[10px] font-mono text-muted-foreground uppercase mb-2">Roadmap Overview</h4>
+        <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+          {summary.roadmaps.map((r) => (
+            <Link key={r.roadmapId} href={`/roadmaps/${r.roadmapId}`} className="block p-3 rounded-xl bg-background border border-border hover:border-indigo-500/50 transition space-y-2">
+              <div className="flex items-center justify-between">
+                <span className="text-xs font-semibold text-foreground">{r.title}</span>
+                <Badge variant={STATUS_BADGE_VARIANT[r.status]}>{STATUS_LABEL[r.status]}</Badge>
+              </div>
+              <div className="w-full h-1.5 bg-muted rounded-full overflow-hidden border border-border">
+                <div className="h-full bg-emerald-500 transition-all duration-500" style={{ width: `${r.progress.percentage}%` }} />
+              </div>
+              <div className="flex items-center gap-3 text-[10px] text-muted-foreground font-mono">
+                <span>{r.progress.completed}/{r.progress.total} done</span>
+                {r.blockedTasks > 0 && <span className="text-rose-500">{r.blockedTasks} blocked</span>}
+                {r.overdueTasks > 0 && <span className="text-rose-500">{r.overdueTasks} overdue</span>}
+                {r.nextStep && <span className="text-foreground">Next: {r.nextStep.taskTitle}</span>}
+              </div>
+            </Link>
+          ))}
+        </div>
+      </div>
+    </div>
+  );
+}
 
 export default function ProjectDetailPage({ params }: { params: { id: string } }) {
   const [project, setProject] = useState<ProjectDetail | null>(null);
@@ -121,7 +323,9 @@ export default function ProjectDetailPage({ params }: { params: { id: string } }
       {activeTab === 'audit' ? (
         <ProjectAuditPanel projectId={project.id} />
       ) : (
-        /* Linked Resources Grid */
+        <div className="space-y-6">
+        <ProjectExecutionCommandCenter projectId={project.id} />
+        {/* Linked Resources Grid */}
         <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
           {/* Documents */}
           <div className="p-5 rounded-2xl bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 space-y-3 shadow-sm">
@@ -217,6 +421,7 @@ export default function ProjectDetailPage({ params }: { params: { id: string } }
               </div>
             )}
           </div>
+        </div>
         </div>
       )}
     </div>

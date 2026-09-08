@@ -2332,6 +2332,16 @@ export const CONFIG_REGISTRY: Record<string, RegistryConfigItem> = {
     isEditable: true, isHighImpact: false, requiresRestart: false, minValue: 500, maxValue: 10000
   },
 
+  PROJECT_EXECUTION_MAX_ROADMAPS: {
+    key: 'PROJECT_EXECUTION_MAX_ROADMAPS',
+    valueType: ConfigValueType.NUMBER,
+    category: ConfigCategory.FEATURE_FLAG,
+    defaultValue: '20',
+    purpose: 'Bounds how many linked roadmaps the Project Execution Command Center will load and aggregate for a single project, preventing unbounded fan-out for a project with many linked roadmaps.',
+    description: 'Max linked roadmaps aggregated per project execution summary.',
+    isEditable: true, isHighImpact: false, requiresRestart: false, minValue: 1, maxValue: 50
+  },
+
   EMAIL_FROM_ADDRESS: {
     key: 'EMAIL_FROM_ADDRESS',
     valueType: ConfigValueType.STRING,

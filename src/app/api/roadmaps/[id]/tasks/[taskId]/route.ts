@@ -40,15 +40,84 @@ export async function PATCH(req: NextRequest, { params }: RouteParams) {
     }
 
     const body = await req.json();
-    const status = body.status;
-    if (!['PENDING', 'IN_PROGRESS', 'COMPLETED'].includes(status)) {
+
+    // Task Assignment & Reminders pass — additive. `assigneeId`/`dueDate` are handled separately
+    // from `status` (Phase 3: "assignment and execution status are separate concepts") and are
+    // only processed when actually present in the request body, so existing status-only callers
+    // are unaffected.
+    const hasAssignmentUpdate = 'assigneeId' in body || 'dueDate' in body;
+    const hasStatusUpdate = 'status' in body;
+
+    if (!hasAssignmentUpdate && !hasStatusUpdate) {
       return NextResponse.json(
-        { success: false, error: { code: 'UNPROCESSABLE_ENTITY', message: 'Invalid status value.' } },
+        { success: false, error: { code: 'UNPROCESSABLE_ENTITY', message: 'No recognized fields to update.' } },
         { status: 422 }
       );
     }
 
-    const updatedTask = await roadmapRepository.updateTaskStatus(params.taskId, status, body.notes, user.id);
+    let assignmentUpdatedTask: Awaited<ReturnType<typeof roadmapRepository.updateTaskAssignment>> | undefined;
+
+    if (hasAssignmentUpdate) {
+      const assignmentInput: { assigneeId?: string | null; dueDate?: Date | null } = {};
+
+      if ('assigneeId' in body) {
+        const assigneeId = body.assigneeId;
+        if (assigneeId !== null && typeof assigneeId !== 'string') {
+          return NextResponse.json(
+            { success: false, error: { code: 'UNPROCESSABLE_ENTITY', message: 'assigneeId must be a string or null.' } },
+            { status: 422 }
+          );
+        }
+        if (assigneeId !== null) {
+          // Eligibility = roadmap owner OR an active (non-revoked, non-expired) share recipient —
+          // the ONLY existing sharing model. No arbitrary user IDs, no new membership concept.
+          const now = new Date();
+          const isOwner = result.roadmap.userId === assigneeId;
+          const isActiveShareRecipient = result.roadmap.shares.some(
+            (s) => s.sharedWithUserId === assigneeId && (!s.expiresAt || s.expiresAt > now)
+          );
+          if (!isOwner && !isActiveShareRecipient) {
+            return NextResponse.json(
+              { success: false, error: { code: 'FORBIDDEN', message: 'assigneeId is not eligible for this roadmap.' } },
+              { status: 403 }
+            );
+          }
+        }
+        assignmentInput.assigneeId = assigneeId;
+      }
+
+      if ('dueDate' in body) {
+        const rawDueDate = body.dueDate;
+        if (rawDueDate !== null) {
+          const parsed = new Date(rawDueDate);
+          if (Number.isNaN(parsed.getTime())) {
+            return NextResponse.json(
+              { success: false, error: { code: 'UNPROCESSABLE_ENTITY', message: 'Invalid dueDate value.' } },
+              { status: 422 }
+            );
+          }
+          assignmentInput.dueDate = parsed;
+        } else {
+          assignmentInput.dueDate = null;
+        }
+      }
+
+      assignmentUpdatedTask = await roadmapRepository.updateTaskAssignment(params.taskId, assignmentInput, user.id);
+    }
+
+    let updatedTask;
+    if (hasStatusUpdate) {
+      const status = body.status;
+      if (!['PENDING', 'IN_PROGRESS', 'COMPLETED'].includes(status)) {
+        return NextResponse.json(
+          { success: false, error: { code: 'UNPROCESSABLE_ENTITY', message: 'Invalid status value.' } },
+          { status: 422 }
+        );
+      }
+      updatedTask = await roadmapRepository.updateTaskStatus(params.taskId, status, body.notes, user.id);
+    } else {
+      updatedTask = assignmentUpdatedTask;
+    }
 
     return NextResponse.json({
       success: true,

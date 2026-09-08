@@ -112,6 +112,7 @@ model User {
   collabMemberships      CollabChannelMember[]
   collabMessagesSent     CollabMessage[]
   scheduledMessagesSent  ScheduledMessage[]     @relation("ScheduledMessageSender")
+  assignedRoadmapTasks   RoadmapTask[]          @relation("RoadmapTaskAssignee")
   collabReceipts         CollabMessageReceipt[]
   collabMentions         CollabMessageMention[] @relation("UserCollabMentions")
   createdMockTests       ScheduledMockTest[]    @relation("CreatedMockTests")
@@ -1107,14 +1108,30 @@ model RoadmapTask {
   completedAt    DateTime? @map("completed_at")
   notes          String?
   resources      Json?     @default("[]")
+  // Task Assignment & Reminders pass — additive. assigneeId is validated at write time (route
+  // layer) against the roadmap's OWNER + active RoadmapShare recipients — no new sharing model.
+  // dueDate is optional and reject-past-validated at write time; overdue status is NEVER stored,
+  // only derived (see roadmap-task-reminder-policy.ts). lastReminderSentAt/lastReminderTier are
+  // the minimal state genuinely required for reminder deduplication/cooldown — mirrors the exact
+  // lastNotifiedAt/lastNotifiedSeverity pattern already used by RagHealthAlert; reset to null
+  // whenever assigneeId changes so a reassignment never inherits a stale cooldown.
+  assigneeId         String?   @map("assignee_id")
+  dueDate            DateTime? @map("due_date")
+  lastReminderSentAt DateTime? @map("last_reminder_sent_at")
+  lastReminderTier   String?   @map("last_reminder_tier")
   createdAt      DateTime  @default(now()) @map("created_at")
   updatedAt      DateTime  @updatedAt @map("updated_at")
 
-  phase RoadmapPhase @relation(fields: [phaseId], references: [id], onDelete: Cascade)
+  phase    RoadmapPhase @relation(fields: [phaseId], references: [id], onDelete: Cascade)
+  assignee User?        @relation("RoadmapTaskAssignee", fields: [assigneeId], references: [id], onDelete: SetNull)
 
   @@index([phaseId])
   @@index([phaseId, order])
   @@index([status])
+  // Supports the reminder worker's bounded due-task query (WHERE dueDate IS NOT NULL AND status
+  // != COMPLETED) without a full-table scan.
+  @@index([dueDate])
+  @@index([assigneeId])
   @@map("roadmap_tasks")
 }
 

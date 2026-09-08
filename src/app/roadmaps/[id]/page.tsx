@@ -5,6 +5,14 @@ import { useParams } from 'next/navigation';
 import Link from 'next/link';
 import { Badge, Button } from '@/components/ui';
 
+interface UserSummary {
+  id: string;
+  name: string | null;
+  email: string;
+}
+
+type DueDateDisplayStatus = 'NO_DEADLINE' | 'UPCOMING' | 'DUE_SOON' | 'DUE' | 'OVERDUE';
+
 interface Task {
   id: string;
   title: string;
@@ -15,6 +23,10 @@ interface Task {
   startedAt?: string | null;
   completedAt?: string | null;
   resources?: { title: string; url: string; snippet?: string }[];
+  assigneeId?: string | null;
+  assignee?: UserSummary | null;
+  dueDate?: string | null;
+  dueDateStatus?: DueDateDisplayStatus;
 }
 
 interface PhaseProgress {
@@ -49,6 +61,11 @@ interface ChannelSummary {
   type: 'DIRECT' | 'GROUP';
 }
 
+interface ShareSummary {
+  sharedWithUserId: string;
+  sharedWithUser: UserSummary;
+}
+
 interface Roadmap {
   id: string;
   title: string;
@@ -61,6 +78,8 @@ interface Roadmap {
   learningStyle: string;
   currentProgress: number;
   phases: Phase[];
+  owner?: UserSummary;
+  shares?: ShareSummary[];
 }
 
 /** Client-side mirror of computeDerivedProgress (src/features/roadmap/execution/roadmap-progress.ts)
@@ -92,6 +111,26 @@ function deriveNextStep(phases: Phase[]): NextStep | null {
   return null;
 }
 
+/** Eligible assignees = roadmap owner + active share recipients — mirrors the SAME eligibility
+ * rule enforced server-side (roadmap.repository.ts / the PATCH task route), so the picker never
+ * offers a choice the API would reject. */
+function eligibleAssignees(roadmap: Roadmap): UserSummary[] {
+  const users: UserSummary[] = [];
+  if (roadmap.owner) users.push(roadmap.owner);
+  for (const share of roadmap.shares ?? []) {
+    if (share.sharedWithUser) users.push(share.sharedWithUser);
+  }
+  return users;
+}
+
+const DUE_DATE_BADGE: Record<DueDateDisplayStatus, { label: string; variant: 'neutral' | 'success' | 'warning' | 'destructive' }> = {
+  NO_DEADLINE: { label: 'No deadline', variant: 'neutral' },
+  UPCOMING: { label: 'Upcoming', variant: 'neutral' },
+  DUE_SOON: { label: 'Due soon', variant: 'warning' },
+  DUE: { label: 'Due now', variant: 'warning' },
+  OVERDUE: { label: 'Overdue', variant: 'destructive' }
+};
+
 export default function RoadmapDetailPage() {
   const params = useParams();
   const roadmapId = params.id as string;
@@ -118,6 +157,10 @@ export default function RoadmapDetailPage() {
   // Phase regeneration loading map
   const [regeneratingPhases, setRegeneratingPhases] = useState<Record<string, boolean>>({});
   const [regenerateErrors, setRegenerateErrors] = useState<Record<string, string>>({});
+
+  // Task Assignment & Reminders — per-task pending state for the assignee/due-date controls.
+  const [assignmentPending, setAssignmentPending] = useState<string | null>(null);
+  const [assignmentErrors, setAssignmentErrors] = useState<Record<string, string>>({});
 
   useEffect(() => {
     async function fetchRoadmap() {
@@ -170,6 +213,56 @@ export default function RoadmapDetailPage() {
       // Non-fatal — a stale optimistic state resolves itself on the next full page load.
     } finally {
       setTaskActionPending(null);
+    }
+  };
+
+  /** Task Assignment & Reminders — assignee/due-date updates go through the SAME PATCH endpoint
+   * as status changes, additively (Phase 9: extend, don't fragment). Applied optimistically like
+   * handleTaskAction, then rolled back on failure (eligibility can be rejected server-side even
+   * though the picker is already scoped to eligible users, e.g. a share revoked mid-session). */
+  const handleTaskAssignmentUpdate = async (taskId: string, update: { assigneeId?: string | null; dueDate?: string | null }) => {
+    if (permission === 'VIEW' || assignmentPending) return;
+    setAssignmentPending(taskId);
+    setAssignmentErrors((prev) => ({ ...prev, [taskId]: '' }));
+
+    const previousRoadmap = roadmap;
+
+    setRoadmap((prev) => {
+      if (!prev) return null;
+      return {
+        ...prev,
+        phases: prev.phases.map((phase) => ({
+          ...phase,
+          tasks: phase.tasks.map((task) => {
+            if (task.id !== taskId) return task;
+            const next: Task = { ...task };
+            if ('assigneeId' in update) {
+              next.assigneeId = update.assigneeId ?? null;
+              const eligible = eligibleAssignees(prev);
+              next.assignee = update.assigneeId ? eligible.find((u) => u.id === update.assigneeId) ?? null : null;
+            }
+            if ('dueDate' in update) next.dueDate = update.dueDate ?? null;
+            return next;
+          })
+        }))
+      };
+    });
+
+    try {
+      const res = await fetch(`/api/roadmaps/${roadmapId}/tasks/${taskId}`, {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(update)
+      });
+      const data = await res.json();
+      if (!res.ok || !data.success) {
+        throw new Error(data.error?.message || 'Update failed.');
+      }
+    } catch (err) {
+      setRoadmap(previousRoadmap);
+      setAssignmentErrors((prev) => ({ ...prev, [taskId]: err instanceof Error ? err.message : 'Update failed.' }));
+    } finally {
+      setAssignmentPending(null);
     }
   };
 
@@ -452,6 +545,49 @@ export default function RoadmapDetailPage() {
                           ~{task.estimatedHours}h
                         </span>
                       </div>
+
+                      {/* Task Assignment & Reminders — assignment indicator + due date/reminder
+                          badge, plus editable controls when the caller has EDIT/OWNER access.
+                          Reuses the existing Badge component; no new visual design system. */}
+                      <div className="flex flex-wrap items-center gap-2 pt-1">
+                        <Badge variant={task.assignee ? 'success' : 'neutral'}>
+                          {task.assignee ? `Assigned: ${task.assignee.name || task.assignee.email}` : 'Unassigned'}
+                        </Badge>
+                        {task.dueDateStatus && (
+                          <Badge variant={DUE_DATE_BADGE[task.dueDateStatus].variant}>
+                            {DUE_DATE_BADGE[task.dueDateStatus].label}
+                            {task.dueDate ? ` · ${new Date(task.dueDate).toLocaleDateString()}` : ''}
+                          </Badge>
+                        )}
+                      </div>
+
+                      {permission !== 'VIEW' && (
+                        <div className="flex flex-wrap items-center gap-2 pt-1">
+                          <select
+                            value={task.assigneeId || ''}
+                            disabled={assignmentPending === task.id}
+                            onChange={(e) => handleTaskAssignmentUpdate(task.id, { assigneeId: e.target.value || null })}
+                            className="bg-background border border-border rounded-lg px-2 py-1 text-[11px] text-foreground"
+                          >
+                            <option value="">Unassigned</option>
+                            {eligibleAssignees(roadmap).map((u) => (
+                              <option key={u.id} value={u.id}>{u.name || u.email}</option>
+                            ))}
+                          </select>
+                          <input
+                            type="date"
+                            value={task.dueDate ? task.dueDate.slice(0, 10) : ''}
+                            disabled={assignmentPending === task.id}
+                            onChange={(e) =>
+                              handleTaskAssignmentUpdate(task.id, { dueDate: e.target.value ? new Date(e.target.value).toISOString() : null })
+                            }
+                            className="bg-background border border-border rounded-lg px-2 py-1 text-[11px] text-foreground"
+                          />
+                        </div>
+                      )}
+                      {assignmentErrors[task.id] && (
+                        <p className="text-[11px] text-rose-500">{assignmentErrors[task.id]}</p>
+                      )}
 
                       {/* Phase 5 — actionable roadmap items: Start / Mark Completed / Reopen */}
                       {permission !== 'VIEW' && (

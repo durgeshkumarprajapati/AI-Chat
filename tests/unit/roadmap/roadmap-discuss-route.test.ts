@@ -12,6 +12,15 @@ jest.mock('@/features/collaboration/collaboration.service', () => ({
   collaborationService: { sendMessage: (...args: unknown[]) => mockSendMessage(...args) }
 }));
 
+const mockCollabChannelMemberFindUnique = jest.fn();
+const mockCollabMessageFindFirst = jest.fn();
+jest.mock('@/lib/prisma', () => ({
+  prisma: {
+    collabChannelMember: { findUnique: (...args: unknown[]) => mockCollabChannelMemberFindUnique(...args) },
+    collabMessage: { findFirst: (...args: unknown[]) => mockCollabMessageFindFirst(...args) }
+  }
+}));
+
 import { NextRequest } from 'next/server';
 import { getAuthUser } from '@/lib/auth';
 import { POST } from '@/app/api/roadmaps/[id]/tasks/[taskId]/discuss/route';
@@ -30,7 +39,13 @@ function roadmapResult() {
 }
 
 describe('POST /api/roadmaps/[id]/tasks/[taskId]/discuss', () => {
-  beforeEach(() => jest.clearAllMocks());
+  beforeEach(() => {
+    jest.clearAllMocks();
+    // Default: caller IS a channel member and no prior "task shared" message exists — most tests
+    // exercise the non-duplicate path unless they override these explicitly.
+    mockCollabChannelMemberFindUnique.mockResolvedValue({ channelId: 'channel-1', userId: 'user-1' });
+    mockCollabMessageFindFirst.mockResolvedValue(null);
+  });
 
   it('14. shares a structured reference (not the roadmap content) into a channel the user belongs to', async () => {
     (getAuthUser as jest.Mock).mockResolvedValue({ id: 'user-1' });
@@ -87,6 +102,31 @@ describe('POST /api/roadmaps/[id]/tasks/[taskId]/discuss', () => {
     const res = await POST(postRequest({ channelId: 'channel-1' }), { params: { id: 'roadmap-1', taskId: 'not-a-real-task' } });
 
     expect(res.status).toBe(404);
+    expect(mockSendMessage).not.toHaveBeenCalled();
+  });
+
+  it('reuses the existing "task shared" message instead of creating a duplicate', async () => {
+    (getAuthUser as jest.Mock).mockResolvedValue({ id: 'user-1' });
+    mockFindRoadmapByIdForUser.mockResolvedValue(roadmapResult());
+    mockCollabMessageFindFirst.mockResolvedValue({ id: 'existing-msg-1', sharedRoadmapId: 'roadmap-1', sharedRoadmapStepId: 'task-1' });
+
+    const res = await POST(postRequest({ channelId: 'channel-1' }), { params: { id: 'roadmap-1', taskId: 'task-1' } });
+    const body = await res.json();
+
+    expect(res.status).toBe(200);
+    expect(body.data.id).toBe('existing-msg-1');
+    expect(mockSendMessage).not.toHaveBeenCalled();
+  });
+
+  it('does not leak whether a task has been shared into a channel the caller is not a member of', async () => {
+    (getAuthUser as jest.Mock).mockResolvedValue({ id: 'not-a-member' });
+    mockFindRoadmapByIdForUser.mockResolvedValue(roadmapResult());
+    mockCollabChannelMemberFindUnique.mockResolvedValue(null);
+
+    const res = await POST(postRequest({ channelId: 'channel-1' }), { params: { id: 'roadmap-1', taskId: 'task-1' } });
+
+    expect(res.status).toBe(403);
+    expect(mockCollabMessageFindFirst).not.toHaveBeenCalled();
     expect(mockSendMessage).not.toHaveBeenCalled();
   });
 });

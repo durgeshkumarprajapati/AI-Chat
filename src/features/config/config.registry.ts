@@ -2183,6 +2183,58 @@ export const CONFIG_REGISTRY: Record<string, RegistryConfigItem> = {
     minValue: 1,
     maxValue: 60
   },
+
+  // ROADMAP TASK ASSIGNMENT & REMINDERS — reuses the existing Notification architecture
+  // (NotificationType.TASK_OVERDUE/DEADLINE_APPROACHING already existed, unused, before this
+  // pass), the existing dedupe/rate-limit services, and a periodic runWithSchedulerLock-guarded
+  // worker tick (see roadmap-reminder.service.ts). Disabled by default — no established
+  // reminder policy exists yet, matching this codebase's own established convention.
+  ROADMAP_TASK_REMINDERS_ENABLED: {
+    key: 'ROADMAP_TASK_REMINDERS_ENABLED',
+    valueType: ConfigValueType.BOOLEAN,
+    category: ConfigCategory.FEATURE_FLAG,
+    defaultValue: 'false',
+    purpose: 'Master switch for delivering due-soon/due/overdue reminders for assigned roadmap tasks via the existing Notification architecture.',
+    description: 'Roadmap task reminders master flag.',
+    isEditable: true, isHighImpact: true, requiresRestart: false
+  },
+  ROADMAP_TASK_DUE_SOON_LEAD_HOURS: {
+    key: 'ROADMAP_TASK_DUE_SOON_LEAD_HOURS',
+    valueType: ConfigValueType.NUMBER,
+    category: ConfigCategory.FEATURE_FLAG,
+    defaultValue: '24',
+    purpose: 'Hours before a task\'s due date that a "due soon" reminder becomes eligible to send.',
+    description: 'Roadmap task due-soon lead time (hours).',
+    isEditable: true, isHighImpact: false, requiresRestart: false, minValue: 1, maxValue: 168
+  },
+  ROADMAP_TASK_DUE_GRACE_MINUTES: {
+    key: 'ROADMAP_TASK_DUE_GRACE_MINUTES',
+    valueType: ConfigValueType.NUMBER,
+    category: ConfigCategory.FEATURE_FLAG,
+    defaultValue: '30',
+    purpose: 'Minutes around the exact due instant (before or after) treated as "due now" rather than "due soon" or already "overdue".',
+    description: 'Roadmap task due-now grace window (minutes).',
+    isEditable: true, isHighImpact: false, requiresRestart: false, minValue: 5, maxValue: 240
+  },
+  ROADMAP_TASK_REMINDER_COOLDOWN_MINUTES: {
+    key: 'ROADMAP_TASK_REMINDER_COOLDOWN_MINUTES',
+    valueType: ConfigValueType.NUMBER,
+    category: ConfigCategory.FEATURE_FLAG,
+    defaultValue: '720',
+    purpose: 'Minimum minutes between repeat reminders at the SAME tier for the same task — prevents notification storms. A tier escalation (e.g. due-soon -> overdue) bypasses this immediately.',
+    description: 'Roadmap task reminder re-notification cooldown (minutes).',
+    isEditable: true, isHighImpact: false, requiresRestart: false, minValue: 15, maxValue: 10080
+  },
+  ROADMAP_REMINDER_DELIVERY_INTERVAL_MS: {
+    key: 'ROADMAP_REMINDER_DELIVERY_INTERVAL_MS',
+    valueType: ConfigValueType.NUMBER,
+    category: ConfigCategory.WORKER,
+    defaultValue: '900000',
+    purpose: 'Interval in milliseconds between worker ticks that evaluate due/overdue roadmap tasks and deliver reminders.',
+    description: 'Roadmap reminder delivery cadence.',
+    isEditable: true, isHighImpact: false, requiresRestart: true, minValue: 60000, maxValue: 3600000
+  },
+
   EMAIL_FROM_ADDRESS: {
     key: 'EMAIL_FROM_ADDRESS',
     valueType: ConfigValueType.STRING,

@@ -18,6 +18,7 @@ import { memoryExtractionProcessor } from './processors/memory-extraction.proces
 import { ragHealthAlertProcessor } from './processors/rag-health-alert.processor.js';
 import { ragIncidentActionProcessor } from './processors/rag-incident-action.processor.js';
 import { scheduledMessageDeliveryProcessor } from './processors/scheduled-message-delivery.processor.js';
+import { roadmapReminderDeliveryProcessor } from './processors/roadmap-reminder-delivery.processor.js';
 import {
   MultimodalJobPayload,
   AIIntelligenceJobPayload,
@@ -903,6 +904,31 @@ export async function startWorker() {
       );
     }, scheduledMessageDeliveryIntervalMs);
     scheduledMessageDeliveryInterval.unref();
+
+    // Roadmap Task Assignment & Reminders — periodic tick evaluating due-soon/due/overdue tasks
+    // via the pure roadmap-task-reminder-policy and delivering through the existing Notification
+    // stack. Multi-replica safety comes from tryClaimDedupeKey's DB-unique-constraint claim inside
+    // deliverDueReminders() itself, not from this scheduler lock alone — the lock here only
+    // prevents every replica from running the bounded findMany redundantly every tick.
+    const roadmapReminderDeliveryIntervalMs = await configService.getNumber('ROADMAP_REMINDER_DELIVERY_INTERVAL_MS', 900000);
+    const roadmapReminderDeliveryInterval = setInterval(async () => {
+      if (isShuttingDown) return;
+      await runWithSchedulerLock(
+        'roadmap-reminder-delivery',
+        deriveLockTtlSeconds(roadmapReminderDeliveryIntervalMs),
+        async () => {
+          try {
+            const { sent, skippedUnauthorized } = await roadmapReminderDeliveryProcessor.run();
+            if (sent > 0 || skippedUnauthorized > 0) {
+              console.log(`[Worker] Roadmap task reminders: ${sent} sent, ${skippedUnauthorized} skipped (unauthorized).`);
+            }
+          } catch (err) {
+            console.error('[Worker] Periodic roadmap reminder delivery error:', err);
+          }
+        }
+      );
+    }, roadmapReminderDeliveryIntervalMs);
+    roadmapReminderDeliveryInterval.unref();
 
     // Phase 88 — periodic DELAY-node re-check tick. RabbitMQ has no native delay; a DELAY node's
     // handler (automation-engine.service.ts) records `nextRunAt` on its AutomationExecutionStep

@@ -3,6 +3,7 @@ import { getAuthUser } from '@/lib/auth';
 import { AppError, ValidationError, NotFoundError } from '@/errors';
 import { roadmapRepository } from '@/features/roadmap/repository/roadmap.repository';
 import { collaborationService } from '@/features/collaboration/collaboration.service';
+import { prisma } from '@/lib/prisma';
 
 export const dynamic = 'force-dynamic';
 
@@ -41,6 +42,25 @@ export async function POST(req: NextRequest, { params }: RouteParams) {
     const channelId = body.channelId;
     if (!channelId || typeof channelId !== 'string') {
       throw new ValidationError('channelId is required.');
+    }
+
+    // Avoid duplicate "task shared" messages — if this exact task has already been shared into
+    // this exact channel, reuse the existing reference instead of posting another one. Membership
+    // is checked here FIRST (mirroring sendMessage's own gate exactly) so this read-only pre-check
+    // can never be used to peek at messages in a channel the caller doesn't belong to.
+    const membership = await prisma.collabChannelMember.findUnique({
+      where: { channelId_userId: { channelId, userId: user.id } }
+    });
+    if (!membership) {
+      throw new Error('Access Denied: Not a member of this channel');
+    }
+
+    const existing = await prisma.collabMessage.findFirst({
+      where: { channelId, sharedRoadmapId: params.id, sharedRoadmapStepId: task.id, isDeleted: false },
+      orderBy: { createdAt: 'desc' }
+    });
+    if (existing) {
+      return NextResponse.json({ success: true, data: existing });
     }
 
     const content = `📍 Roadmap task: "${task.title}" (from "${result.roadmap.title}")`;

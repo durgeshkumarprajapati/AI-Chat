@@ -69,10 +69,18 @@ export class RoadmapRepository {
     const roadmap = await prisma.roadmap.findUnique({
       where: { id: roadmapId },
       include: {
+        // Minimal owner display info only — lets the UI show "who's the owner" to a share
+        // recipient (e.g. for the assignee picker) without a second request.
+        user: { select: { id: true, name: true, email: true } },
         phases: {
           orderBy: { order: 'asc' },
           include: {
-            tasks: { orderBy: { order: 'asc' } }
+            tasks: {
+              orderBy: { order: 'asc' },
+              // Minimal assignee display info only (Phase 8: "do not expose unnecessary profile
+              // information") — no N+1, loaded in the same query as everything else.
+              include: { assignee: { select: { id: true, name: true, email: true } } }
+            }
           }
         },
         shares: {
@@ -227,6 +235,46 @@ export class RoadmapRepository {
           : transition.status === 'IN_PROGRESS' && existing.status === 'COMPLETED' ? 'roadmap.task.reopened'
           : transition.status === 'IN_PROGRESS' ? 'roadmap.task.started'
           : 'roadmap.task.reset';
+      await auditService.logEvent({
+        actorId,
+        action,
+        targetType: 'RoadmapTask',
+        targetId: task.id,
+        details: { roadmapId: task.phase.roadmapId, phaseId: task.phaseId, taskTitle: task.title }
+      });
+    }
+
+    return task;
+  }
+
+  /**
+   * Updates a task's assignee and/or due date — deliberately separate from updateTaskStatus
+   * (Phase 3: "assignment and execution status are separate concepts," so this method never
+   * touches `status`). Eligibility of `assigneeId` is validated by the CALLER (the route, using
+   * roadmap data it already loaded) — this method only persists. Whenever the assignee actually
+   * changes (including to/from null), the reminder-tracking fields are reset so a reassignment
+   * never inherits a stale cooldown/tier from the previous assignee (Phase 5 requirement).
+   */
+  async updateTaskAssignment(
+    taskId: string,
+    input: { assigneeId?: string | null; dueDate?: Date | null },
+    actorId: string
+  ) {
+    const existing = await prisma.roadmapTask.findUniqueOrThrow({ where: { id: taskId } });
+    const assigneeChanging = input.assigneeId !== undefined && input.assigneeId !== existing.assigneeId;
+
+    const data: { assigneeId?: string | null; dueDate?: Date | null; lastReminderSentAt?: null; lastReminderTier?: null } = {};
+    if (input.assigneeId !== undefined) data.assigneeId = input.assigneeId;
+    if (input.dueDate !== undefined) data.dueDate = input.dueDate;
+    if (assigneeChanging) {
+      data.lastReminderSentAt = null;
+      data.lastReminderTier = null;
+    }
+
+    const task = await prisma.roadmapTask.update({ where: { id: taskId }, data, include: { phase: true } });
+
+    if (assigneeChanging) {
+      const action = !existing.assigneeId ? 'roadmap.task.assigned' : !input.assigneeId ? 'roadmap.task.unassigned' : 'roadmap.task.reassigned';
       await auditService.logEvent({
         actorId,
         action,

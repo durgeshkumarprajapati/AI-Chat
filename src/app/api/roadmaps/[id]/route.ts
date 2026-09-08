@@ -5,6 +5,8 @@ import { roadmapCacheService } from '@/features/roadmap/cache/roadmap-cache.serv
 import { AppError } from '@/errors';
 import { getNextStep } from '@/features/roadmap/execution/roadmap-next-step';
 import { computeDerivedProgress } from '@/features/roadmap/execution/roadmap-progress';
+import { getDueDateDisplayStatus } from '@/features/roadmap/execution/roadmap-task-reminder-policy';
+import { loadRoadmapReminderConfig } from '@/features/roadmap/execution/roadmap-reminder-config';
 
 export const dynamic = 'force-dynamic';
 
@@ -28,14 +30,25 @@ export async function GET(req: NextRequest, { params }: RouteParams) {
     // already loaded above (zero extra queries): a per-phase progress breakdown, and a
     // deterministic "what's next" recommendation. Existing consumers of this response that only
     // read `roadmap`/`permission` are unaffected.
+    const nextStep = getNextStep(result.roadmap.phases);
+
+    // Task Assignment & Reminders pass — additive `dueDateStatus` per task, derived (never
+    // stored) using the SAME tier computation that governs reminder delivery, so the badge shown
+    // here always matches what actually drives reminders.
+    const reminderConfig = await loadRoadmapReminderConfig();
+    const { user: owner, ...roadmapRest } = result.roadmap;
     const roadmapWithProgress = {
-      ...result.roadmap,
+      ...roadmapRest,
+      owner,
       phases: result.roadmap.phases.map((phase) => ({
         ...phase,
-        progress: computeDerivedProgress(phase.tasks)
+        progress: computeDerivedProgress(phase.tasks),
+        tasks: phase.tasks.map((task) => ({
+          ...task,
+          dueDateStatus: getDueDateDisplayStatus(task, reminderConfig)
+        }))
       }))
     };
-    const nextStep = getNextStep(result.roadmap.phases);
 
     return NextResponse.json({
       success: true,

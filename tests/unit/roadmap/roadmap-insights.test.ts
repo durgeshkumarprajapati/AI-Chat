@@ -69,6 +69,28 @@ describe('computeRoadmapInsights', () => {
     expect(result.phaseAnalytics[0]?.totalTasks).toBe(result.overview.totalTasks);
   });
 
+  it('exposes a lean per-task detail list (no description/notes) reusing the same execution-state computation', () => {
+    const roadmapPhases = phases([{
+      id: 'p1', title: 'Phase 1', order: 1,
+      tasks: [
+        { id: 'db', phaseId: 'p1', title: 'Setup Database', order: 1, status: 'PENDING', assigneeId: 'u1', dueDate: null, startedAt: null, completedAt: null },
+        { id: 'auth', phaseId: 'p1', title: 'Create Auth', order: 2, status: 'PENDING', assigneeId: null, dueDate: null, startedAt: null, completedAt: null }
+      ]
+    }]);
+    const edges = [{ taskId: 'auth', dependsOnTaskId: 'db' }];
+
+    const result = computeRoadmapInsights(roadmapPhases, edges, REMINDER_CONFIG, BOTTLENECK_CONFIG, NOW);
+
+    expect(result.tasks).toHaveLength(2);
+    const auth = result.tasks.find((t) => t.id === 'auth');
+    expect(auth).toEqual({
+      id: 'auth', phaseId: 'p1', title: 'Create Auth', status: 'PENDING', assigneeId: null,
+      isExecutable: false, blockedByTaskIds: ['db'], isOverdue: false, dueDateStatus: 'NO_DEADLINE'
+    });
+    expect(auth).not.toHaveProperty('description');
+    expect(auth).not.toHaveProperty('notes');
+  });
+
   it('workload only lists assignees who actually have tasks', () => {
     const result = computeRoadmapInsights(
       phases([{ id: 'p1', title: 'P', order: 1, tasks: [{ id: 't1', phaseId: 'p1', title: 'A', order: 1, status: 'PENDING', assigneeId: 'u1', dueDate: null, startedAt: null, completedAt: null }] }]),

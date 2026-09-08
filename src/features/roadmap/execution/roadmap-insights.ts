@@ -42,6 +42,23 @@ export interface RoadmapInsightsOverview {
   currentProgress: number;
 }
 
+/** Lean per-task summary — deliberately excludes description/notes (never loaded here in the
+ * first place, since InsightsInputTask never carries them) so this stays cheap to include by
+ * default. AI Roadmap Copilot pass — this is what lets the copilot context builder resolve a
+ * `focusTask`'s blocked/executable/overdue state and its dependents' titles WITHOUT
+ * recomputing computeTaskExecutionStates/isTaskOverdue a second time. */
+export interface InsightTaskDetail {
+  id: string;
+  phaseId: string;
+  title: string;
+  status: string;
+  assigneeId: string | null;
+  isExecutable: boolean;
+  blockedByTaskIds: string[];
+  isOverdue: boolean;
+  dueDateStatus: string;
+}
+
 export interface RoadmapInsights {
   overview: RoadmapInsightsOverview;
   executionHealth: ExecutionHealth;
@@ -51,6 +68,7 @@ export interface RoadmapInsights {
   dependencyImpact: DependencyImpactEntry[];
   phaseAnalytics: PhaseAnalyticsEntry[];
   trends: { taskCompletion: TaskCompletionTrend };
+  tasks: InsightTaskDetail[];
 }
 
 /**
@@ -119,6 +137,18 @@ export function computeRoadmapInsights(
 
   const taskCompletion = computeTaskCompletionTrend(allTasks);
 
+  const tasks: InsightTaskDetail[] = enrichedTasks.map((t) => ({
+    id: t.id,
+    phaseId: t.phaseId,
+    title: t.title,
+    status: t.status,
+    assigneeId: t.assigneeId,
+    isExecutable: t.isExecutable,
+    blockedByTaskIds: t.blockedBy,
+    isOverdue: t.isOverdue,
+    dueDateStatus: t.dueDateStatus
+  }));
+
   return {
     overview,
     executionHealth,
@@ -127,6 +157,7 @@ export function computeRoadmapInsights(
     workload,
     dependencyImpact,
     phaseAnalytics,
-    trends: { taskCompletion }
+    trends: { taskCompletion },
+    tasks
   };
 }

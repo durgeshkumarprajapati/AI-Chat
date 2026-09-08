@@ -148,6 +148,37 @@ interface RoadmapInsights {
   trends: { taskCompletion: TaskCompletionTrend };
 }
 
+// AI Roadmap Copilot — mirrors src/features/roadmap/copilot/roadmap-copilot.types.ts exactly.
+// Deterministic roadmap logic remains authoritative; this UI only ever DISPLAYS what the copilot
+// API returns and, for a proposal, only ever WRITES via the existing canonical roadmap APIs on
+// explicit Accept — never automatically.
+type CopilotAction =
+  | 'EXPLAIN_HEALTH' | 'EXPLAIN_BOTTLENECKS' | 'RECOMMEND_ACTIONS' | 'EXPLAIN_DEPENDENCY'
+  | 'SUMMARIZE_PROGRESS' | 'REFINE_TASK' | 'SUGGEST_SUBTASKS' | 'SUGGEST_DEPENDENCIES' | 'SHARE_PROGRESS_SUMMARY';
+
+type ProposalConfidence = 'LOW' | 'MEDIUM' | 'HIGH';
+
+interface CopilotProposal {
+  type: 'REFINE_TASK' | 'SUGGEST_SUBTASK' | 'SUGGEST_DEPENDENCY';
+  target: { taskId?: string; phaseId?: string };
+  suggestedChange: Record<string, unknown>;
+  explanation: string;
+  confidence: ProposalConfidence;
+  evidence: string;
+}
+
+interface CopilotResponse {
+  action: CopilotAction;
+  facts: string[];
+  analysis?: string;
+  recommendations?: string[];
+  deterministicNextStep?: NextStep;
+  proposals?: CopilotProposal[];
+  usedAi: boolean;
+  usedRag: boolean;
+  sharedMessage?: { id: string; channelId: string };
+}
+
 interface ShareSummary {
   sharedWithUserId: string;
   sharedWithUser: UserSummary;
@@ -390,6 +421,16 @@ export default function RoadmapDetailPage() {
   const [insightsLoading, setInsightsLoading] = useState(true);
   const [insightsError, setInsightsError] = useState<string | null>(null);
 
+  // AI Roadmap Copilot
+  const [showCopilotModal, setShowCopilotModal] = useState(false);
+  const [copilotTaskId, setCopilotTaskId] = useState<string | null>(null);
+  const [copilotResponse, setCopilotResponse] = useState<CopilotResponse | null>(null);
+  const [copilotLoading, setCopilotLoading] = useState(false);
+  const [copilotError, setCopilotError] = useState<string | null>(null);
+  const [copilotShareChannelId, setCopilotShareChannelId] = useState('');
+  const [dismissedProposals, setDismissedProposals] = useState<Set<number>>(new Set());
+  const [acceptingProposal, setAcceptingProposal] = useState<number | null>(null);
+
   const fetchInsights = async () => {
     setInsightsLoading(true);
     setInsightsError(null);
@@ -588,6 +629,112 @@ export default function RoadmapDetailPage() {
     fetchInsights();
   };
 
+/** Opens the Copilot modal (optionally scoped to a task) and, fire-and-forget, lazily loads the
+   * channel list — the same list Discuss/Schedule already use — so the Share Summary picker has
+   * data without blocking the modal/loading-state transition on a network round trip. */
+  const openCopilotModal = (taskId: string | null = null) => {
+    setShowCopilotModal(true);
+    setCopilotTaskId(taskId);
+    setCopilotResponse(null);
+    setCopilotError(null);
+    if (channels.length === 0) {
+      fetch('/api/collaboration/channels')
+        .then((res) => res.json())
+        .then((data) => { if (data.success) setChannels(data.data); })
+        .catch(() => {
+          // Non-fatal — the Share Summary picker just shows an empty channel list.
+        });
+    }
+  };
+
+  /** AI Roadmap Copilot — opens the modal and immediately runs the requested action. `taskId`
+   * scopes an explain/proposal action to one task (REFINE_TASK/SUGGEST_SUBTASKS/
+   * EXPLAIN_DEPENDENCY); omitted for roadmap-wide actions. */
+  const runCopilotAction = async (action: CopilotAction, options: { taskId?: string; wantsAiAdvice?: boolean } = {}) => {
+    openCopilotModal(options.taskId ?? null);
+    setDismissedProposals(new Set());
+    setCopilotLoading(true);
+    try {
+      const res = await fetch(`/api/roadmaps/${roadmapId}/copilot`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ action, context: { taskId: options.taskId, wantsAiAdvice: options.wantsAiAdvice } })
+      });
+      const data = await res.json();
+      if (!res.ok || !data.success) {
+        throw new Error(data.error?.message || 'The copilot request failed.');
+      }
+      setCopilotResponse(data.data);
+    } catch (err) {
+      setCopilotError(err instanceof Error ? err.message : 'The copilot request failed.');
+    } finally {
+      setCopilotLoading(false);
+    }
+  };
+
+  const handleShareCopilotSummary = async () => {
+    if (!copilotShareChannelId) return;
+    setCopilotLoading(true);
+    setCopilotError(null);
+    try {
+      const res = await fetch(`/api/roadmaps/${roadmapId}/copilot`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ action: 'SHARE_PROGRESS_SUMMARY', context: { channelId: copilotShareChannelId } })
+      });
+      const data = await res.json();
+      if (!res.ok || !data.success) {
+        throw new Error(data.error?.message || 'Could not share the summary.');
+      }
+      setCopilotResponse(data.data);
+    } catch (err) {
+      setCopilotError(err instanceof Error ? err.message : 'Could not share the summary.');
+    } finally {
+      setCopilotLoading(false);
+    }
+  };
+
+  /** Accept — calls the SAME existing canonical roadmap APIs a manual edit would use; the AI
+   * layer itself never writes anything. Reject is purely local (ephemeral proposal, no
+   * persistence to discard). */
+  const handleAcceptProposal = async (proposal: CopilotProposal, index: number) => {
+    setAcceptingProposal(index);
+    try {
+      if (proposal.type === 'REFINE_TASK' || proposal.type === 'SUGGEST_SUBTASK') {
+        const taskId = proposal.target.taskId;
+        if (!taskId) throw new Error('Missing target task.');
+        const body = proposal.type === 'REFINE_TASK' ? proposal.suggestedChange : { notes: proposal.suggestedChange.notes };
+        const res = await fetch(`/api/roadmaps/${roadmapId}/tasks/${taskId}`, {
+          method: 'PATCH',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify(body)
+        });
+        const data = await res.json();
+        if (!res.ok || !data.success) throw new Error(data.error?.message || 'Could not apply the change.');
+      } else if (proposal.type === 'SUGGEST_DEPENDENCY') {
+        const taskId = proposal.target.taskId;
+        if (!taskId) throw new Error('Missing target task.');
+        const res = await fetch(`/api/roadmaps/${roadmapId}/tasks/${taskId}/dependencies`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ dependsOnTaskId: proposal.suggestedChange.dependsOnTaskId })
+        });
+        const data = await res.json();
+        if (!res.ok || !data.success) throw new Error(data.error?.message || 'Could not add the dependency.');
+      }
+      setDismissedProposals((prev) => new Set(prev).add(index));
+      await refreshRoadmap();
+    } catch (err) {
+      setCopilotError(err instanceof Error ? err.message : 'Could not apply the proposed change.');
+    } finally {
+      setAcceptingProposal(null);
+    }
+  };
+
+  const handleRejectProposal = (index: number) => {
+    setDismissedProposals((prev) => new Set(prev).add(index));
+  };
+
   const openActivityModal = async () => {
     setShowActivityModal(true);
     setActivityLoading(true);
@@ -769,6 +916,12 @@ export default function RoadmapDetailPage() {
           </div>
 
           <div className="flex items-center space-x-3">
+            <button
+              onClick={() => openCopilotModal(null)}
+              className="px-4 py-2 bg-emerald-600/20 hover:bg-emerald-600/30 border border-emerald-500/30 text-emerald-300 rounded-xl text-xs font-medium transition"
+            >
+              Copilot 🤖
+            </button>
             <button
               onClick={openActivityModal}
               className="px-4 py-2 bg-surface-hover hover:bg-muted text-foreground rounded-xl text-xs font-medium transition"
@@ -1275,6 +1428,12 @@ export default function RoadmapDetailPage() {
                         >
                           Schedule message →
                         </button>
+                        <button
+                          onClick={() => runCopilotAction('EXPLAIN_DEPENDENCY', { taskId: task.id })}
+                          className="text-[10px] text-emerald-400 hover:text-emerald-300 underline font-mono"
+                        >
+                          Copilot 🤖 →
+                        </button>
                         <Link
                           href={`/chat?q=Explain ${encodeURIComponent(task.title)} for ${encodeURIComponent(roadmap.targetSkill)}&sourceMode=web_search`}
                           className="text-[10px] text-sky-400 hover:text-sky-300 underline font-mono"
@@ -1483,6 +1642,157 @@ export default function RoadmapDetailPage() {
             Schedule
           </Button>
         </div>
+      </Modal>
+
+      {/* AI Roadmap Copilot — deterministic roadmap logic remains authoritative throughout. Facts
+          come straight from the deterministic context; Analysis/Recommendations are AI-generated
+          and visually separated; Proposed Changes require an explicit Accept (which calls the
+          SAME existing canonical roadmap APIs) or Reject (purely local, no persistence). */}
+      <Modal isOpen={showCopilotModal} onClose={() => setShowCopilotModal(false)} title="Roadmap Copilot" maxWidthClassName="max-w-2xl">
+        <div className="flex flex-wrap gap-2">
+          {copilotTaskId ? (
+            <>
+              <button onClick={() => runCopilotAction('EXPLAIN_DEPENDENCY', { taskId: copilotTaskId })} className="px-3 py-1.5 bg-surface-hover hover:bg-muted text-foreground rounded-lg text-[11px]">
+                Why is this task important?
+              </button>
+              {permission !== 'VIEW' && (
+                <>
+                  <button onClick={() => runCopilotAction('REFINE_TASK', { taskId: copilotTaskId })} className="px-3 py-1.5 bg-surface-hover hover:bg-muted text-foreground rounded-lg text-[11px]">
+                    Improve This Task
+                  </button>
+                  <button onClick={() => runCopilotAction('SUGGEST_SUBTASKS', { taskId: copilotTaskId })} className="px-3 py-1.5 bg-surface-hover hover:bg-muted text-foreground rounded-lg text-[11px]">
+                    Suggest Subtasks
+                  </button>
+                </>
+              )}
+            </>
+          ) : (
+            <>
+              <button onClick={() => runCopilotAction('EXPLAIN_HEALTH')} className="px-3 py-1.5 bg-surface-hover hover:bg-muted text-foreground rounded-lg text-[11px]">
+                Explain Health
+              </button>
+              <button onClick={() => runCopilotAction('RECOMMEND_ACTIONS', { wantsAiAdvice: true })} className="px-3 py-1.5 bg-surface-hover hover:bg-muted text-foreground rounded-lg text-[11px]">
+                What Should I Do Next?
+              </button>
+              <button onClick={() => runCopilotAction('EXPLAIN_BOTTLENECKS')} className="px-3 py-1.5 bg-surface-hover hover:bg-muted text-foreground rounded-lg text-[11px]">
+                Explain Bottlenecks
+              </button>
+              <button onClick={() => runCopilotAction('SUMMARIZE_PROGRESS')} className="px-3 py-1.5 bg-surface-hover hover:bg-muted text-foreground rounded-lg text-[11px]">
+                Summarize Progress
+              </button>
+              {permission !== 'VIEW' && (
+                <button onClick={() => runCopilotAction('SUGGEST_DEPENDENCIES')} className="px-3 py-1.5 bg-surface-hover hover:bg-muted text-foreground rounded-lg text-[11px]">
+                  Suggest Dependencies
+                </button>
+              )}
+            </>
+          )}
+        </div>
+
+        {copilotLoading && <p className="text-xs text-muted-foreground animate-pulse">Thinking…</p>}
+        {copilotError && <div className="p-3 rounded-xl bg-rose-950/40 border border-rose-900 text-xs text-rose-300">{copilotError}</div>}
+
+        {copilotResponse && !copilotLoading && (
+          <div className="space-y-4">
+            {/* Facts — deterministic, never touched by the AI */}
+            {copilotResponse.facts.length > 0 && (
+              <div>
+                <h4 className="text-[10px] font-mono text-muted-foreground uppercase mb-1">Facts</h4>
+                <ul className="space-y-1 text-xs text-foreground">
+                  {copilotResponse.facts.map((f, i) => <li key={i}>• {f}</li>)}
+                </ul>
+              </div>
+            )}
+
+            {/* The deterministic pick — always authoritative, never silently overridden below */}
+            {copilotResponse.deterministicNextStep && (
+              <div className="p-3 rounded-xl bg-indigo-950/40 border border-indigo-800">
+                <h4 className="text-[10px] font-mono text-indigo-300 uppercase mb-1">Deterministic Recommendation</h4>
+                {'executable' in copilotResponse.deterministicNextStep && copilotResponse.deterministicNextStep.executable === false ? (
+                  <p className="text-xs text-foreground">Execution is currently blocked — &quot;{copilotResponse.deterministicNextStep.taskTitle}&quot; is waiting on other tasks.</p>
+                ) : (
+                  <p className="text-xs text-foreground">&quot;{copilotResponse.deterministicNextStep.taskTitle}&quot; in {copilotResponse.deterministicNextStep.phaseTitle}</p>
+                )}
+              </div>
+            )}
+
+            {/* Analysis — AI interpretation, visually separated from facts */}
+            {copilotResponse.analysis && (
+              <div>
+                <h4 className="text-[10px] font-mono text-muted-foreground uppercase mb-1">Analysis</h4>
+                <p className="text-xs text-foreground whitespace-pre-line">{copilotResponse.analysis}</p>
+              </div>
+            )}
+
+            {/* Recommendations — AI-generated supporting suggestions, never the authoritative pick */}
+            {copilotResponse.recommendations && copilotResponse.recommendations.length > 0 && (
+              <div>
+                <h4 className="text-[10px] font-mono text-muted-foreground uppercase mb-1">Recommendations</h4>
+                <ul className="space-y-1 text-xs text-foreground">
+                  {copilotResponse.recommendations.map((r, i) => <li key={i}>• {r}</li>)}
+                </ul>
+              </div>
+            )}
+
+            {!copilotResponse.usedAi && (copilotResponse.analysis === undefined && (!copilotResponse.recommendations || copilotResponse.recommendations.length === 0)) && copilotResponse.action !== 'RECOMMEND_ACTIONS' && (
+              <p className="text-[11px] text-muted-foreground italic">AI analysis unavailable right now — showing deterministic facts only.</p>
+            )}
+
+            {/* Proposed Changes — require explicit Accept; Accept calls the SAME existing
+                canonical roadmap APIs, never a second mutation path. Hidden once every proposal
+                has been accepted/rejected, not just when the original list was non-empty. */}
+            {copilotResponse.proposals && copilotResponse.proposals.some((_, i) => !dismissedProposals.has(i)) && (
+              <div>
+                <h4 className="text-[10px] font-mono text-muted-foreground uppercase mb-1">Proposed Changes</h4>
+                <div className="space-y-2">
+                  {copilotResponse.proposals.map((p, i) => (
+                    !dismissedProposals.has(i) && (
+                      <div key={i} className="p-3 rounded-xl bg-background border border-border space-y-1.5">
+                        <div className="flex items-center justify-between">
+                          <Badge variant="info">{p.type.replace(/_/g, ' ')}</Badge>
+                          <span className="text-[10px] text-muted-foreground font-mono">Model confidence: {p.confidence}</span>
+                        </div>
+                        <p className="text-xs text-foreground">{p.explanation}</p>
+                        {p.evidence && <p className="text-[11px] text-muted-foreground italic">{p.evidence}</p>}
+                        <pre className="text-[10px] bg-surface border border-border rounded-lg p-2 overflow-x-auto text-muted-foreground">{JSON.stringify(p.suggestedChange, null, 2)}</pre>
+                        <div className="flex items-center justify-end gap-2 pt-1">
+                          <button onClick={() => handleRejectProposal(i)} className="px-3 py-1 text-[11px] text-muted-foreground hover:text-foreground rounded-lg">
+                            Reject
+                          </button>
+                          <Button size="sm" loading={acceptingProposal === i} onClick={() => handleAcceptProposal(p, i)}>
+                            Accept
+                          </Button>
+                        </div>
+                      </div>
+                    )
+                  ))}
+                </div>
+              </div>
+            )}
+
+            {/* Share Summary — reuses the existing collaboration send pipeline; user must pick a channel. */}
+            {copilotResponse.action === 'SUMMARIZE_PROGRESS' && !copilotResponse.sharedMessage && (
+              <div className="flex items-center gap-2 pt-2 border-t border-border">
+                <select
+                  value={copilotShareChannelId}
+                  onChange={(e) => setCopilotShareChannelId(e.target.value)}
+                  className="flex-1 bg-background border border-border rounded-lg px-2 py-1.5 text-[11px] text-foreground"
+                >
+                  <option value="">Select a conversation to share with…</option>
+                  {channels.map((c) => (
+                    <option key={c.id} value={c.id}>{c.name || (c.type === 'DIRECT' ? 'Direct Message' : 'Group')}</option>
+                  ))}
+                </select>
+                <Button size="sm" disabled={!copilotShareChannelId} onClick={handleShareCopilotSummary}>
+                  Share Summary
+                </Button>
+              </div>
+            )}
+            {copilotResponse.sharedMessage && (
+              <p className="text-[11px] text-emerald-400">Shared to the selected conversation.</p>
+            )}
+          </div>
+        )}
       </Modal>
     </div>
   );

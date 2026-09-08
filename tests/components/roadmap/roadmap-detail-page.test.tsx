@@ -37,12 +37,17 @@ const DEFAULT_INSIGHTS = {
   trends: { taskCompletion: { status: 'INSUFFICIENT_DATA', reason: 'No tasks have been completed yet.' } }
 };
 
+const DEFAULT_COPILOT_RESPONSE = { action: 'EXPLAIN_HEALTH', facts: ['Execution health: HEALTHY.'], analysis: 'Everything looks fine.', recommendations: [], usedAi: true, usedRag: false };
+
 function mockFetchSequence(overrides: {
   nextStep?: unknown; permission?: string; roadmap?: unknown;
   executionHealth?: unknown; readyTaskCount?: number; blockedTaskCount?: number; overdueTaskCount?: number;
-  activity?: unknown[]; insights?: unknown;
+  activity?: unknown[]; insights?: unknown; copilot?: unknown;
 } = {}) {
   global.fetch = jest.fn().mockImplementation((url: string, init?: RequestInit) => {
+    if (url.includes('/copilot')) {
+      return Promise.resolve({ ok: true, json: () => Promise.resolve({ success: true, data: overrides.copilot ?? DEFAULT_COPILOT_RESPONSE }) });
+    }
     if (url.includes('/insights')) {
       return Promise.resolve({ ok: true, json: () => Promise.resolve({ success: true, data: overrides.insights ?? DEFAULT_INSIGHTS }) });
     }
@@ -466,6 +471,162 @@ describe('Roadmap Detail Page — Smart Execution', () => {
 
       await waitFor(() => expect(screen.getByText('Learn Rust')).toBeInTheDocument());
       await waitFor(() => expect(screen.getByText('Insights unavailable')).toBeInTheDocument());
+    });
+  });
+
+  describe('AI Roadmap Copilot', () => {
+    it('opens the copilot modal with roadmap-wide quick actions', async () => {
+      mockFetchSequence();
+      render(<RoadmapDetailPage />);
+      await waitFor(() => expect(screen.getByText('Learn Rust')).toBeInTheDocument());
+
+      fireEvent.click(screen.getByText('Copilot 🤖'));
+
+      await waitFor(() => expect(screen.getByText('Roadmap Copilot')).toBeInTheDocument());
+      expect(screen.getByText('Explain Health')).toBeInTheDocument();
+      expect(screen.getByText('What Should I Do Next?')).toBeInTheDocument();
+      expect(screen.getByText('Explain Bottlenecks')).toBeInTheDocument();
+      expect(screen.getByText('Summarize Progress')).toBeInTheDocument();
+    });
+
+    it('renders facts and analysis clearly separated after running a quick action', async () => {
+      mockFetchSequence();
+      render(<RoadmapDetailPage />);
+      await waitFor(() => expect(screen.getByText('Learn Rust')).toBeInTheDocument());
+
+      fireEvent.click(screen.getByText('Copilot 🤖'));
+      await waitFor(() => expect(screen.getByText('Roadmap Copilot')).toBeInTheDocument());
+      fireEvent.click(screen.getByText('Explain Health'));
+
+      await waitFor(() => expect(screen.getByText('Facts')).toBeInTheDocument());
+      expect(screen.getByText(/Execution health: HEALTHY/)).toBeInTheDocument();
+      expect(screen.getByText('Analysis')).toBeInTheDocument();
+      expect(screen.getByText('Everything looks fine.')).toBeInTheDocument();
+    });
+
+    it('shows a loading state while the copilot request is in flight', async () => {
+      mockFetchSequence();
+      render(<RoadmapDetailPage />);
+      await waitFor(() => expect(screen.getByText('Learn Rust')).toBeInTheDocument());
+
+      fireEvent.click(screen.getByText('Copilot 🤖'));
+      await waitFor(() => expect(screen.getByText('Roadmap Copilot')).toBeInTheDocument());
+      fireEvent.click(screen.getByText('Explain Health'));
+
+      expect(screen.getByText('Thinking…')).toBeInTheDocument();
+      await waitFor(() => expect(screen.queryByText('Thinking…')).not.toBeInTheDocument());
+    });
+
+    it('shows an error state without crashing when the copilot request fails', async () => {
+      global.fetch = jest.fn().mockImplementation((url: string) => {
+        if (url.includes('/copilot')) {
+          return Promise.resolve({ ok: false, json: () => Promise.resolve({ success: false, error: { message: 'Copilot is disabled.' } }) });
+        }
+        if (url.includes('/insights')) return Promise.resolve({ ok: true, json: () => Promise.resolve({ success: true, data: DEFAULT_INSIGHTS }) });
+        if (url.includes('/collaboration/channels')) return Promise.resolve({ ok: true, json: () => Promise.resolve({ success: true, data: [] }) });
+        return Promise.resolve({
+          ok: true,
+          json: () => Promise.resolve({ success: true, data: { roadmap: BASE_ROADMAP, permission: 'OWNER', nextStep: null, executionHealth: { status: 'HEALTHY', reasons: [] }, readyTaskCount: 1, blockedTaskCount: 0, overdueTaskCount: 0 } })
+        });
+      }) as unknown as typeof fetch;
+
+      render(<RoadmapDetailPage />);
+      await waitFor(() => expect(screen.getByText('Learn Rust')).toBeInTheDocument());
+      fireEvent.click(screen.getByText('Copilot 🤖'));
+      await waitFor(() => expect(screen.getByText('Roadmap Copilot')).toBeInTheDocument());
+      fireEvent.click(screen.getByText('Explain Health'));
+
+      await waitFor(() => expect(screen.getByText('Copilot is disabled.')).toBeInTheDocument());
+    });
+
+    it('never suggests a different task than the deterministic recommendation for RECOMMEND_ACTIONS', async () => {
+      mockFetchSequence({
+        copilot: { action: 'RECOMMEND_ACTIONS', facts: ['Recommended next task: "Write hello world"'], deterministicNextStep: { taskId: 't2', phaseId: 'phase-1', taskTitle: 'Write hello world', phaseTitle: 'Foundations', reason: 'START_NEXT' }, recommendations: ['Take a short break between tasks'], usedAi: true, usedRag: false }
+      });
+      render(<RoadmapDetailPage />);
+      await waitFor(() => expect(screen.getByText('Learn Rust')).toBeInTheDocument());
+
+      fireEvent.click(screen.getByText('Copilot 🤖'));
+      await waitFor(() => expect(screen.getByText('Roadmap Copilot')).toBeInTheDocument());
+      fireEvent.click(screen.getByText('What Should I Do Next?'));
+
+      await waitFor(() => expect(screen.getByText('Deterministic Recommendation')).toBeInTheDocument());
+      expect(screen.getAllByText(/Write hello world/).length).toBeGreaterThan(0);
+      expect(screen.getByText('Recommendations')).toBeInTheDocument();
+      expect(screen.getByText(/Take a short break between tasks/)).toBeInTheDocument();
+    });
+
+    it('renders a proposed change with Accept/Reject buttons and a model-confidence label (never "accuracy")', async () => {
+      mockFetchSequence({
+        copilot: {
+          action: 'REFINE_TASK', facts: ['Task "Write hello world" status: PENDING.'],
+          proposals: [{ type: 'REFINE_TASK', target: { taskId: 't2' }, suggestedChange: { title: 'Write your first Rust program' }, explanation: 'Clearer and more specific.', confidence: 'HIGH', evidence: 'Original title was generic.' }],
+          usedAi: true, usedRag: false
+        }
+      });
+      render(<RoadmapDetailPage />);
+      await waitFor(() => expect(screen.getByText('Learn Rust')).toBeInTheDocument());
+
+      fireEvent.click(screen.getAllByText('Copilot 🤖 →')[0]!);
+      await waitFor(() => expect(screen.getByText('Proposed Changes')).toBeInTheDocument());
+      expect(screen.getByText('Clearer and more specific.')).toBeInTheDocument();
+      expect(screen.getByText('Model confidence: HIGH')).toBeInTheDocument();
+      expect(screen.getByRole('button', { name: 'Accept' })).toBeInTheDocument();
+      expect(screen.getByRole('button', { name: 'Reject' })).toBeInTheDocument();
+    });
+
+    it('Reject removes the proposal locally without calling any mutation API', async () => {
+      mockFetchSequence({
+        copilot: {
+          action: 'REFINE_TASK', facts: [],
+          proposals: [{ type: 'REFINE_TASK', target: { taskId: 't2' }, suggestedChange: { title: 'New title' }, explanation: 'x', confidence: 'MEDIUM', evidence: '' }],
+          usedAi: true, usedRag: false
+        }
+      });
+      render(<RoadmapDetailPage />);
+      await waitFor(() => expect(screen.getByText('Learn Rust')).toBeInTheDocument());
+
+      fireEvent.click(screen.getAllByText('Copilot 🤖 →')[0]!);
+      await waitFor(() => expect(screen.getByText('Proposed Changes')).toBeInTheDocument());
+
+      const callsBefore = (global.fetch as jest.Mock).mock.calls.length;
+      fireEvent.click(screen.getByRole('button', { name: 'Reject' }));
+
+      expect(screen.queryByText('Proposed Changes')).not.toBeInTheDocument();
+      expect((global.fetch as jest.Mock).mock.calls.length).toBe(callsBefore); // no new network call
+    });
+
+    it('Accept calls the existing canonical PATCH task endpoint, never a new mutation path', async () => {
+      mockFetchSequence({
+        copilot: {
+          action: 'REFINE_TASK', facts: [],
+          proposals: [{ type: 'REFINE_TASK', target: { taskId: 't2' }, suggestedChange: { title: 'Write your first Rust program' }, explanation: 'x', confidence: 'HIGH', evidence: '' }],
+          usedAi: true, usedRag: false
+        }
+      });
+      render(<RoadmapDetailPage />);
+      await waitFor(() => expect(screen.getByText('Learn Rust')).toBeInTheDocument());
+
+      fireEvent.click(screen.getAllByText('Copilot 🤖 →')[0]!);
+      await waitFor(() => expect(screen.getByText('Proposed Changes')).toBeInTheDocument());
+      fireEvent.click(screen.getByRole('button', { name: 'Accept' }));
+
+      await waitFor(() => expect(global.fetch as jest.Mock).toHaveBeenCalledWith(
+        '/api/roadmaps/roadmap-1/tasks/t2',
+        expect.objectContaining({ method: 'PATCH', body: JSON.stringify({ title: 'Write your first Rust program' }) })
+      ));
+    });
+
+    it('a VIEW-only permission hides proposal-generating quick actions but still shows read actions', async () => {
+      mockFetchSequence({ permission: 'VIEW' });
+      render(<RoadmapDetailPage />);
+      await waitFor(() => expect(screen.getByText('Learn Rust')).toBeInTheDocument());
+
+      fireEvent.click(screen.getByText('Copilot 🤖'));
+      await waitFor(() => expect(screen.getByText('Roadmap Copilot')).toBeInTheDocument());
+
+      expect(screen.getByText('Explain Health')).toBeInTheDocument();
+      expect(screen.queryByText('Suggest Dependencies')).not.toBeInTheDocument();
     });
   });
 });

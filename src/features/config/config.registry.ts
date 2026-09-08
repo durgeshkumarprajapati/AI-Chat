@@ -2265,6 +2265,22 @@ export const CONFIG_REGISTRY: Record<string, RegistryConfigItem> = {
     isEditable: true, isHighImpact: false, requiresRestart: false, minValue: 1, maxValue: 180
   },
 
+  // AI ROADMAP COPILOT — mirrors AI_AGENT_ENABLED's exact gating convention (default OFF for safe
+  // rollout). The LLM is only ever asked to interpret/summarize/propose over a deterministic,
+  // already-authorized context; it never mutates roadmap data directly (see
+  // roadmap-copilot.service.ts). Rate limiting is inherited for free from the existing
+  // llmRateLimiterService already built into llmGateway.generate/generateStructured — no new
+  // rate-limit infrastructure needed.
+  ROADMAP_COPILOT_ENABLED: {
+    key: 'ROADMAP_COPILOT_ENABLED',
+    valueType: ConfigValueType.BOOLEAN,
+    category: ConfigCategory.FEATURE_FLAG,
+    defaultValue: 'false',
+    purpose: 'Enables the AI Roadmap Copilot (explain health/bottlenecks, recommend actions, explain dependency impact, summarize progress, and propose task refinements/subtasks/dependencies for explicit user confirmation).',
+    description: 'Enable the AI Roadmap Copilot.',
+    isEditable: true, isHighImpact: true, requiresRestart: false
+  },
+
   EMAIL_FROM_ADDRESS: {
     key: 'EMAIL_FROM_ADDRESS',
     valueType: ConfigValueType.STRING,

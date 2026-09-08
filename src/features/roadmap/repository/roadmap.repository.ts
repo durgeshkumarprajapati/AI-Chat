@@ -249,16 +249,22 @@ export class RoadmapRepository {
   }
 
   /**
-   * Updates a task's assignee and/or due date — deliberately separate from updateTaskStatus
-   * (Phase 3: "assignment and execution status are separate concepts," so this method never
-   * touches `status`). Eligibility of `assigneeId` is validated by the CALLER (the route, using
-   * roadmap data it already loaded) — this method only persists. Whenever the assignee actually
-   * changes (including to/from null), the reminder-tracking fields are reset so a reassignment
-   * never inherits a stale cooldown/tier from the previous assignee (Phase 5 requirement).
+   * Updates a task's assignee/due-date/content fields — deliberately separate from
+   * updateTaskStatus (Phase 3: "assignment and execution status are separate concepts," so this
+   * method never touches `status`). Eligibility of `assigneeId` is validated by the CALLER (the
+   * route, using roadmap data it already loaded) — this method only persists. Whenever the
+   * assignee actually changes (including to/from null), the reminder-tracking fields are reset so
+   * a reassignment never inherits a stale cooldown/tier from the previous assignee (Phase 5
+   * requirement).
+   *
+   * AI Roadmap Copilot pass — `title`/`description`/`notes` added additively so an ACCEPTED
+   * REFINE_TASK/SUGGEST_SUBTASKS proposal can be applied through this SAME existing endpoint
+   * (never a second mutation path) — the AI layer never writes to the database directly, it only
+   * proposes values that flow through this identical, already-authorized code path.
    */
   async updateTaskAssignment(
     taskId: string,
-    input: { assigneeId?: string | null; dueDate?: Date | null },
+    input: { assigneeId?: string | null; dueDate?: Date | null; title?: string; description?: string; notes?: string | null },
     actorId: string
   ) {
     const existing = await prisma.roadmapTask.findUniqueOrThrow({ where: { id: taskId } });
@@ -266,9 +272,15 @@ export class RoadmapRepository {
     const dueDateChanging =
       input.dueDate !== undefined && (input.dueDate?.getTime() ?? null) !== (existing.dueDate?.getTime() ?? null);
 
-    const data: { assigneeId?: string | null; dueDate?: Date | null; lastReminderSentAt?: null; lastReminderTier?: null } = {};
+    const data: {
+      assigneeId?: string | null; dueDate?: Date | null; lastReminderSentAt?: null; lastReminderTier?: null;
+      title?: string; description?: string; notes?: string | null;
+    } = {};
     if (input.assigneeId !== undefined) data.assigneeId = input.assigneeId;
     if (input.dueDate !== undefined) data.dueDate = input.dueDate;
+    if (input.title !== undefined) data.title = input.title;
+    if (input.description !== undefined) data.description = input.description;
+    if (input.notes !== undefined) data.notes = input.notes;
     if (assigneeChanging) {
       data.lastReminderSentAt = null;
       data.lastReminderTier = null;

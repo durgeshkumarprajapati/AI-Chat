@@ -237,4 +237,69 @@ describe('PATCH /api/roadmaps/[id]/tasks/[taskId]', () => {
       expect(body.data.status).toBe('IN_PROGRESS');
     });
   });
+
+  describe('task content updates (title/description/notes) — AI Roadmap Copilot proposal acceptance', () => {
+    it('updates the title', async () => {
+      (getAuthUser as jest.Mock).mockResolvedValue({ id: 'user-1' });
+      mockFindRoadmapByIdForUser.mockResolvedValue(roadmapResult());
+      mockUpdateTaskAssignment.mockResolvedValue({ id: 'task-1', title: 'Better title' });
+
+      const res = await PATCH(patchRequest({ title: 'Better title' }), { params: { id: 'roadmap-1', taskId: 'task-1' } });
+
+      expect(res.status).toBe(200);
+      expect(mockUpdateTaskAssignment).toHaveBeenCalledWith('task-1', { title: 'Better title' }, 'user-1');
+    });
+
+    it('rejects an empty title', async () => {
+      (getAuthUser as jest.Mock).mockResolvedValue({ id: 'user-1' });
+      mockFindRoadmapByIdForUser.mockResolvedValue(roadmapResult());
+
+      const res = await PATCH(patchRequest({ title: '   ' }), { params: { id: 'roadmap-1', taskId: 'task-1' } });
+
+      expect(res.status).toBe(422);
+      expect(mockUpdateTaskAssignment).not.toHaveBeenCalled();
+    });
+
+    it('rejects an overlong title', async () => {
+      (getAuthUser as jest.Mock).mockResolvedValue({ id: 'user-1' });
+      mockFindRoadmapByIdForUser.mockResolvedValue(roadmapResult());
+
+      const res = await PATCH(patchRequest({ title: 'x'.repeat(201) }), { params: { id: 'roadmap-1', taskId: 'task-1' } });
+
+      expect(res.status).toBe(422);
+      expect(mockUpdateTaskAssignment).not.toHaveBeenCalled();
+    });
+
+    it('updates the description', async () => {
+      (getAuthUser as jest.Mock).mockResolvedValue({ id: 'user-1' });
+      mockFindRoadmapByIdForUser.mockResolvedValue(roadmapResult());
+      mockUpdateTaskAssignment.mockResolvedValue({ id: 'task-1', description: 'Better description' });
+
+      const res = await PATCH(patchRequest({ description: 'Better description' }), { params: { id: 'roadmap-1', taskId: 'task-1' } });
+
+      expect(res.status).toBe(200);
+      expect(mockUpdateTaskAssignment).toHaveBeenCalledWith('task-1', { description: 'Better description' }, 'user-1');
+    });
+
+    it('updates notes and allows clearing them to null', async () => {
+      (getAuthUser as jest.Mock).mockResolvedValue({ id: 'user-1' });
+      mockFindRoadmapByIdForUser.mockResolvedValue(roadmapResult());
+      mockUpdateTaskAssignment.mockResolvedValue({ id: 'task-1', notes: null });
+
+      const res = await PATCH(patchRequest({ notes: null }), { params: { id: 'roadmap-1', taskId: 'task-1' } });
+
+      expect(res.status).toBe(200);
+      expect(mockUpdateTaskAssignment).toHaveBeenCalledWith('task-1', { notes: null }, 'user-1');
+    });
+
+    it('a VIEW-only share cannot update task content', async () => {
+      (getAuthUser as jest.Mock).mockResolvedValue({ id: 'viewer' });
+      mockFindRoadmapByIdForUser.mockResolvedValue(roadmapResult({ permission: 'VIEW' }));
+
+      const res = await PATCH(patchRequest({ title: 'New title' }), { params: { id: 'roadmap-1', taskId: 'task-1' } });
+
+      expect(res.status).toBe(403);
+      expect(mockUpdateTaskAssignment).not.toHaveBeenCalled();
+    });
+  });
 });

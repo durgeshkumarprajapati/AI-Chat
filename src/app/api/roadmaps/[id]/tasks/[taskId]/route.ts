@@ -44,8 +44,9 @@ export async function PATCH(req: NextRequest, { params }: RouteParams) {
     // Task Assignment & Reminders pass — additive. `assigneeId`/`dueDate` are handled separately
     // from `status` (Phase 3: "assignment and execution status are separate concepts") and are
     // only processed when actually present in the request body, so existing status-only callers
-    // are unaffected.
-    const hasAssignmentUpdate = 'assigneeId' in body || 'dueDate' in body;
+    // are unaffected. AI Roadmap Copilot pass — `title`/`description`/`notes` join the same
+    // bucket: this is the ONE canonical path an accepted AI proposal's values flow through.
+    const hasAssignmentUpdate = 'assigneeId' in body || 'dueDate' in body || 'title' in body || 'description' in body || 'notes' in body;
     const hasStatusUpdate = 'status' in body;
 
     if (!hasAssignmentUpdate && !hasStatusUpdate) {
@@ -58,7 +59,7 @@ export async function PATCH(req: NextRequest, { params }: RouteParams) {
     let assignmentUpdatedTask: Awaited<ReturnType<typeof roadmapRepository.updateTaskAssignment>> | undefined;
 
     if (hasAssignmentUpdate) {
-      const assignmentInput: { assigneeId?: string | null; dueDate?: Date | null } = {};
+      const assignmentInput: { assigneeId?: string | null; dueDate?: Date | null; title?: string; description?: string; notes?: string | null } = {};
 
       if ('assigneeId' in body) {
         const assigneeId = body.assigneeId;
@@ -100,6 +101,39 @@ export async function PATCH(req: NextRequest, { params }: RouteParams) {
         } else {
           assignmentInput.dueDate = null;
         }
+      }
+
+      if ('title' in body) {
+        const title = typeof body.title === 'string' ? body.title.trim() : '';
+        if (!title || title.length > 200) {
+          return NextResponse.json(
+            { success: false, error: { code: 'UNPROCESSABLE_ENTITY', message: 'title must be a non-empty string of 200 characters or fewer.' } },
+            { status: 422 }
+          );
+        }
+        assignmentInput.title = title;
+      }
+
+      if ('description' in body) {
+        const description = typeof body.description === 'string' ? body.description.trim() : '';
+        if (!description || description.length > 5000) {
+          return NextResponse.json(
+            { success: false, error: { code: 'UNPROCESSABLE_ENTITY', message: 'description must be a non-empty string of 5000 characters or fewer.' } },
+            { status: 422 }
+          );
+        }
+        assignmentInput.description = description;
+      }
+
+      if ('notes' in body) {
+        const rawNotes = body.notes;
+        if (rawNotes !== null && (typeof rawNotes !== 'string' || rawNotes.length > 5000)) {
+          return NextResponse.json(
+            { success: false, error: { code: 'UNPROCESSABLE_ENTITY', message: 'notes must be a string of 5000 characters or fewer, or null.' } },
+            { status: 422 }
+          );
+        }
+        assignmentInput.notes = rawNotes === null ? null : rawNotes.trim();
       }
 
       assignmentUpdatedTask = await roadmapRepository.updateTaskAssignment(params.taskId, assignmentInput, user.id);

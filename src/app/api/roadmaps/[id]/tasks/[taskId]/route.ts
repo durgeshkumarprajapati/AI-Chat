@@ -28,6 +28,17 @@ export async function PATCH(req: NextRequest, { params }: RouteParams) {
       );
     }
 
+    // Verify taskId actually belongs to THIS authorized roadmap, using data already loaded above
+    // (no extra query) — otherwise an EDIT-permission user could pass an arbitrary taskId
+    // belonging to a different roadmap they don't own or have access to.
+    const belongsToRoadmap = result.roadmap.phases.some((p) => p.tasks.some((t) => t.id === params.taskId));
+    if (!belongsToRoadmap) {
+      return NextResponse.json(
+        { success: false, error: { code: 'NOT_FOUND', message: 'Task not found in this roadmap.' } },
+        { status: 404 }
+      );
+    }
+
     const body = await req.json();
     const status = body.status;
     if (!['PENDING', 'IN_PROGRESS', 'COMPLETED'].includes(status)) {
@@ -37,7 +48,7 @@ export async function PATCH(req: NextRequest, { params }: RouteParams) {
       );
     }
 
-    const updatedTask = await roadmapRepository.updateTaskStatus(params.taskId, status, body.notes);
+    const updatedTask = await roadmapRepository.updateTaskStatus(params.taskId, status, body.notes, user.id);
 
     return NextResponse.json({
       success: true,

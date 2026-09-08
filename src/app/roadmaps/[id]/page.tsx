@@ -3,6 +3,7 @@
 import React, { useEffect, useState } from 'react';
 import { useParams } from 'next/navigation';
 import Link from 'next/link';
+import { Badge, Button } from '@/components/ui';
 
 interface Task {
   id: string;
@@ -11,7 +12,17 @@ interface Task {
   order: number;
   estimatedHours: number;
   status: 'PENDING' | 'IN_PROGRESS' | 'COMPLETED';
+  startedAt?: string | null;
+  completedAt?: string | null;
   resources?: { title: string; url: string; snippet?: string }[];
+}
+
+interface PhaseProgress {
+  totalItems: number;
+  completedItems: number;
+  inProgressItems: number;
+  notStartedItems: number;
+  completionPercentage: number;
 }
 
 interface Phase {
@@ -21,6 +32,21 @@ interface Phase {
   order: number;
   durationWeeks: number;
   tasks: Task[];
+  progress?: PhaseProgress;
+}
+
+interface NextStep {
+  taskId: string;
+  phaseId: string;
+  taskTitle: string;
+  phaseTitle: string;
+  reason: 'CONTINUE_IN_PROGRESS' | 'START_NEXT';
+}
+
+interface ChannelSummary {
+  id: string;
+  name: string | null;
+  type: 'DIRECT' | 'GROUP';
 }
 
 interface Roadmap {
@@ -37,6 +63,35 @@ interface Roadmap {
   phases: Phase[];
 }
 
+/** Client-side mirror of computeDerivedProgress (src/features/roadmap/execution/roadmap-progress.ts)
+ * — duplicated deliberately, not imported, since that module lives server-side. Keeping this here
+ * (rather than an extra round-trip) is what lets a task action update the UI immediately without
+ * a full-roadmap reload. */
+function derivePhaseProgress(tasks: Task[]): PhaseProgress {
+  const totalItems = tasks.length;
+  const completedItems = tasks.filter((t) => t.status === 'COMPLETED').length;
+  const inProgressItems = tasks.filter((t) => t.status === 'IN_PROGRESS').length;
+  return {
+    totalItems, completedItems, inProgressItems,
+    notStartedItems: totalItems - completedItems - inProgressItems,
+    completionPercentage: totalItems > 0 ? Math.round((completedItems / totalItems) * 100) : 0
+  };
+}
+
+/** Client-side mirror of getNextStep (src/features/roadmap/execution/roadmap-next-step.ts). */
+function deriveNextStep(phases: Phase[]): NextStep | null {
+  const sorted = [...phases].sort((a, b) => a.order - b.order);
+  for (const phase of sorted) {
+    const inProgress = [...phase.tasks].sort((a, b) => a.order - b.order).find((t) => t.status === 'IN_PROGRESS');
+    if (inProgress) return { taskId: inProgress.id, phaseId: phase.id, taskTitle: inProgress.title, phaseTitle: phase.title, reason: 'CONTINUE_IN_PROGRESS' };
+  }
+  for (const phase of sorted) {
+    const pending = [...phase.tasks].sort((a, b) => a.order - b.order).find((t) => t.status === 'PENDING');
+    if (pending) return { taskId: pending.id, phaseId: phase.id, taskTitle: pending.title, phaseTitle: phase.title, reason: 'START_NEXT' };
+  }
+  return null;
+}
+
 export default function RoadmapDetailPage() {
   const params = useParams();
   const roadmapId = params.id as string;
@@ -45,6 +100,14 @@ export default function RoadmapDetailPage() {
   const [permission, setPermission] = useState<'OWNER' | 'EDIT' | 'VIEW'>('VIEW');
   const [loading, setLoading] = useState(true);
   const [errorMsg, setErrorMsg] = useState<string | null>(null);
+  const [nextStep, setNextStep] = useState<NextStep | null>(null);
+  const [taskActionPending, setTaskActionPending] = useState<string | null>(null);
+
+  // Discuss-in-collaboration modal state
+  const [discussTaskId, setDiscussTaskId] = useState<string | null>(null);
+  const [channels, setChannels] = useState<ChannelSummary[]>([]);
+  const [selectedChannelId, setSelectedChannelId] = useState('');
+  const [discussStatus, setDiscussStatus] = useState<string | null>(null);
 
   // Share modal state
   const [showShareModal, setShowShareModal] = useState(false);
@@ -54,6 +117,7 @@ export default function RoadmapDetailPage() {
 
   // Phase regeneration loading map
   const [regeneratingPhases, setRegeneratingPhases] = useState<Record<string, boolean>>({});
+  const [regenerateErrors, setRegenerateErrors] = useState<Record<string, string>>({});
 
   useEffect(() => {
     async function fetchRoadmap() {
@@ -65,6 +129,7 @@ export default function RoadmapDetailPage() {
         }
         setRoadmap(data.data.roadmap);
         setPermission(data.data.permission);
+        setNextStep(data.data.nextStep ?? null);
       } catch (err) {
         setErrorMsg(err instanceof Error ? err.message : 'Error loading roadmap.');
       } finally {
@@ -74,44 +139,78 @@ export default function RoadmapDetailPage() {
     fetchRoadmap();
   }, [roadmapId]);
 
-  const handleToggleTask = async (taskId: string, currentStatus: string) => {
-    if (permission === 'VIEW') return;
+  /** Phase 5 — Start/Mark Completed/Reopen all funnel through the SAME existing PATCH endpoint
+   * with a target status; only the button label differs by the task's current status. Updates
+   * the UI immediately (optimistic, recomputing phase progress + nextStep client-side) — never a
+   * full-roadmap reload, matching Phase 11's performance requirement. */
+  const handleTaskAction = async (taskId: string, targetStatus: 'PENDING' | 'IN_PROGRESS' | 'COMPLETED') => {
+    if (permission === 'VIEW' || taskActionPending) return;
+    setTaskActionPending(taskId);
 
-    const newStatus = currentStatus === 'COMPLETED' ? 'PENDING' : 'COMPLETED';
-
-    // Optimistic UI update
+    let updatedPhases: Phase[] = [];
     setRoadmap((prev) => {
       if (!prev) return null;
-      let totalTasks = 0;
-      let completedCount = 0;
-
-      const updatedPhases = prev.phases.map((phase) => ({
-        ...phase,
-        tasks: phase.tasks.map((task) => {
-          const isTarget = task.id === taskId;
-          const status = isTarget ? newStatus : task.status;
-          totalTasks++;
-          if (status === 'COMPLETED') completedCount++;
-          return isTarget ? { ...task, status: newStatus as any } : task;
-        })
-      }));
-
-      const progress = totalTasks > 0 ? Math.round((completedCount / totalTasks) * 100) : 0;
-      return { ...prev, currentProgress: progress, phases: updatedPhases };
+      updatedPhases = prev.phases.map((phase) => {
+        const tasks = phase.tasks.map((task) => (task.id === taskId ? { ...task, status: targetStatus } : task));
+        return { ...phase, tasks, progress: derivePhaseProgress(tasks) };
+      });
+      const allTasks = updatedPhases.flatMap((p) => p.tasks);
+      const currentProgress = allTasks.length > 0 ? Math.round((allTasks.filter((t) => t.status === 'COMPLETED').length / allTasks.length) * 100) : 0;
+      return { ...prev, currentProgress, phases: updatedPhases };
     });
+    setNextStep(deriveNextStep(updatedPhases));
 
     try {
       await fetch(`/api/roadmaps/${roadmapId}/tasks/${taskId}`, {
         method: 'PATCH',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ status: newStatus })
+        body: JSON.stringify({ status: targetStatus })
       });
-    } catch {}
+    } catch {
+      // Non-fatal — a stale optimistic state resolves itself on the next full page load.
+    } finally {
+      setTaskActionPending(null);
+    }
+  };
+
+  const openDiscussModal = async (taskId: string) => {
+    setDiscussTaskId(taskId);
+    setDiscussStatus(null);
+    setSelectedChannelId('');
+    try {
+      const res = await fetch('/api/collaboration/channels');
+      const data = await res.json();
+      if (data.success) setChannels(data.data);
+    } catch {
+      // Non-fatal — the modal just shows an empty channel list.
+    }
+  };
+
+  const handleDiscussSubmit = async () => {
+    if (!discussTaskId || !selectedChannelId) return;
+    setDiscussStatus('Sending...');
+    try {
+      const res = await fetch(`/api/roadmaps/${roadmapId}/tasks/${discussTaskId}/discuss`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ channelId: selectedChannelId })
+      });
+      const data = await res.json();
+      if (data.success) {
+        setDiscussStatus('Shared! Closing...');
+        setTimeout(() => setDiscussTaskId(null), 1200);
+      } else {
+        setDiscussStatus(data.error?.message || data.error || 'Failed to share.');
+      }
+    } catch {
+      setDiscussStatus('Failed to share.');
+    }
   };
 
   const handleRegeneratePhase = async (phaseId: string) => {
     if (permission === 'VIEW') return;
     setRegeneratingPhases((prev) => ({ ...prev, [phaseId]: true }));
+    setRegenerateErrors((prev) => ({ ...prev, [phaseId]: '' }));
 
     try {
       const res = await fetch(`/api/roadmaps/${roadmapId}/phases/${phaseId}/regenerate`, {
@@ -127,8 +226,12 @@ export default function RoadmapDetailPage() {
             phases: prev.phases.map((p) => (p.id === phaseId ? data.data : p))
           };
         });
+      } else {
+        // Phase 9 — the only expected rejection here is the progress-preservation guard.
+        setRegenerateErrors((prev) => ({ ...prev, [phaseId]: data.error?.message || 'Could not regenerate this phase.' }));
       }
     } catch {
+      setRegenerateErrors((prev) => ({ ...prev, [phaseId]: 'Could not regenerate this phase.' }));
     } finally {
       setRegeneratingPhases((prev) => ({ ...prev, [phaseId]: false }));
     }
@@ -243,6 +346,34 @@ export default function RoadmapDetailPage() {
           </div>
         </div>
 
+        {/* Phase 6 — deterministic "What should I do next?" banner */}
+        <div className="bg-surface/80 border border-border rounded-2xl p-5 shadow-lg flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+          {nextStep ? (
+            <>
+              <div>
+                <div className="text-[10px] font-mono text-muted-foreground uppercase">
+                  {nextStep.reason === 'CONTINUE_IN_PROGRESS' ? 'Continue where you left off' : 'What to do next'}
+                </div>
+                <div className="text-sm font-bold text-foreground mt-0.5">{nextStep.taskTitle}</div>
+                <div className="text-[11px] text-muted-foreground">in {nextStep.phaseTitle}</div>
+              </div>
+              {permission !== 'VIEW' && (
+                <Button
+                  size="sm"
+                  loading={taskActionPending === nextStep.taskId}
+                  onClick={() => handleTaskAction(nextStep.taskId, 'IN_PROGRESS')}
+                >
+                  {nextStep.reason === 'CONTINUE_IN_PROGRESS' ? 'Continue' : 'Start'} →
+                </Button>
+              )}
+            </>
+          ) : (
+            <div className="flex items-center gap-2 text-sm font-semibold text-foreground">
+              🎉 <span>Every task in this roadmap is complete!</span>
+            </div>
+          )}
+        </div>
+
         {/* Phases & Tasks Breakdown */}
         <div className="space-y-6">
           {roadmap.phases.map((phase) => (
@@ -272,28 +403,43 @@ export default function RoadmapDetailPage() {
                 )}
               </div>
 
+              {regenerateErrors[phase.id] && (
+                <p className="text-[11px] text-rose-500">{regenerateErrors[phase.id]}</p>
+              )}
+
+              {/* Phase 3/4 — derived per-phase progress, visually distinguishing completed vs. in-progress vs. upcoming */}
+              {phase.progress && phase.progress.totalItems > 0 && (
+                <div className="flex items-center gap-3">
+                  <div className="flex-1 h-1.5 bg-background rounded-full overflow-hidden border border-border/50">
+                    <div className="h-full bg-emerald-500 transition-all duration-500" style={{ width: `${phase.progress.completionPercentage}%` }} />
+                  </div>
+                  <span className="text-[10px] font-mono text-muted-foreground whitespace-nowrap">
+                    {phase.progress.completedItems}/{phase.progress.totalItems} done
+                  </span>
+                </div>
+              )}
+
               {/* Tasks List */}
               <div className="space-y-3">
                 {phase.tasks.map((task) => {
                   const isDone = task.status === 'COMPLETED';
+                  const isInProgress = task.status === 'IN_PROGRESS';
                   return (
                     <div
                       key={task.id}
                       className={`p-4 rounded-xl border transition space-y-2 ${
                         isDone
                           ? 'bg-background/40 border-border/50 opacity-75'
+                          : isInProgress
+                          ? 'bg-background/80 border-indigo-500/40'
                           : 'bg-background/80 border-border hover:border-border'
                       }`}
                     >
                       <div className="flex items-start justify-between gap-3">
                         <div className="flex items-start space-x-3">
-                          <input
-                            type="checkbox"
-                            checked={isDone}
-                            disabled={permission === 'VIEW'}
-                            onChange={() => handleToggleTask(task.id, task.status)}
-                            className="mt-1 h-4 w-4 rounded border-border bg-surface text-indigo-600 focus:ring-indigo-500 cursor-pointer"
-                          />
+                          <Badge variant={isDone ? 'success' : isInProgress ? 'warning' : 'neutral'} className="mt-0.5">
+                            {isDone ? 'Completed' : isInProgress ? 'In Progress' : 'Not Started'}
+                          </Badge>
                           <div>
                             <span className={`text-xs font-semibold ${isDone ? 'line-through text-muted-foreground' : 'text-foreground'}`}>
                               {task.title}
@@ -306,6 +452,27 @@ export default function RoadmapDetailPage() {
                           ~{task.estimatedHours}h
                         </span>
                       </div>
+
+                      {/* Phase 5 — actionable roadmap items: Start / Mark Completed / Reopen */}
+                      {permission !== 'VIEW' && (
+                        <div className="flex flex-wrap gap-2 pt-1">
+                          {task.status === 'PENDING' && (
+                            <Button size="sm" variant="secondary" loading={taskActionPending === task.id} onClick={() => handleTaskAction(task.id, 'IN_PROGRESS')}>
+                              Start
+                            </Button>
+                          )}
+                          {task.status === 'IN_PROGRESS' && (
+                            <Button size="sm" variant="success" loading={taskActionPending === task.id} onClick={() => handleTaskAction(task.id, 'COMPLETED')}>
+                              Mark Completed
+                            </Button>
+                          )}
+                          {isDone && (
+                            <Button size="sm" variant="outline" loading={taskActionPending === task.id} onClick={() => handleTaskAction(task.id, 'IN_PROGRESS')}>
+                              Reopen
+                            </Button>
+                          )}
+                        </div>
+                      )}
 
                       {/* Resource Recommendations */}
                       {task.resources && task.resources.length > 0 && (
@@ -325,8 +492,16 @@ export default function RoadmapDetailPage() {
                         </div>
                       )}
 
-                      {/* Ask AI Contextual Action */}
-                      <div className="pt-1 flex items-center justify-end">
+                      {/* Phase 8 — reuses the existing /chat?q= deep-link (already the product's
+                          established "send context to AI" convention). Phase 7 — Discuss opens a
+                          channel picker; never auto-creates a channel. */}
+                      <div className="pt-1 flex items-center justify-end gap-3">
+                        <button
+                          onClick={() => openDiscussModal(task.id)}
+                          className="text-[10px] text-indigo-400 hover:text-indigo-300 underline font-mono"
+                        >
+                          Discuss this task →
+                        </button>
                         <Link
                           href={`/chat?q=Explain ${encodeURIComponent(task.title)} for ${encodeURIComponent(roadmap.targetSkill)}&sourceMode=web_search`}
                           className="text-[10px] text-sky-400 hover:text-sky-300 underline font-mono"
@@ -342,6 +517,46 @@ export default function RoadmapDetailPage() {
           ))}
         </div>
       </div>
+
+      {/* Discuss-in-collaboration Modal (Phase 7) — user must pick an EXISTING channel; never
+          auto-creates one, and shares only a structured reference, never the roadmap content. */}
+      {discussTaskId && (
+        <div className="fixed inset-0 z-50 bg-background/80 backdrop-blur-sm flex items-center justify-center p-4">
+          <div className="bg-surface border border-border rounded-2xl p-6 max-w-md w-full space-y-4 shadow-2xl">
+            <div className="flex justify-between items-center">
+              <h3 className="text-base font-bold text-foreground">Discuss in Chat</h3>
+              <button onClick={() => setDiscussTaskId(null)} className="text-muted-foreground hover:text-foreground">✕</button>
+            </div>
+            <p className="text-xs text-muted-foreground">Share this task as a reference in one of your existing conversations.</p>
+
+            {discussStatus && <div className="p-3 rounded-xl bg-indigo-950/60 border border-indigo-800 text-xs text-indigo-300">{discussStatus}</div>}
+
+            {channels.length === 0 ? (
+              <p className="text-xs text-muted-foreground">No conversations yet — start one from Collab Chat first.</p>
+            ) : (
+              <select
+                value={selectedChannelId}
+                onChange={(e) => setSelectedChannelId(e.target.value)}
+                className="w-full bg-background border border-border rounded-xl p-2.5 text-xs text-foreground"
+              >
+                <option value="">Select a conversation…</option>
+                {channels.map((c) => (
+                  <option key={c.id} value={c.id}>{c.name || (c.type === 'DIRECT' ? 'Direct Message' : 'Group')}</option>
+                ))}
+              </select>
+            )}
+
+            <div className="flex items-center justify-end space-x-3 pt-2">
+              <button onClick={() => setDiscussTaskId(null)} className="px-4 py-2 bg-surface-hover text-foreground text-xs rounded-xl hover:bg-muted">
+                Cancel
+              </button>
+              <Button size="sm" disabled={!selectedChannelId} onClick={handleDiscussSubmit}>
+                Share
+              </Button>
+            </div>
+          </div>
+        </div>
+      )}
 
       {/* Share Modal */}
       {showShareModal && (

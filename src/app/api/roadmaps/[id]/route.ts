@@ -3,6 +3,8 @@ import { getAuthUser } from '@/lib/auth';
 import { roadmapRepository } from '@/features/roadmap/repository/roadmap.repository';
 import { roadmapCacheService } from '@/features/roadmap/cache/roadmap-cache.service';
 import { AppError } from '@/errors';
+import { getNextStep } from '@/features/roadmap/execution/roadmap-next-step';
+import { computeDerivedProgress } from '@/features/roadmap/execution/roadmap-progress';
 
 export const dynamic = 'force-dynamic';
 
@@ -22,11 +24,25 @@ export async function GET(req: NextRequest, { params }: RouteParams) {
       );
     }
 
+    // Smart Roadmap Execution pass — additive only. Both derived entirely from the phases/tasks
+    // already loaded above (zero extra queries): a per-phase progress breakdown, and a
+    // deterministic "what's next" recommendation. Existing consumers of this response that only
+    // read `roadmap`/`permission` are unaffected.
+    const roadmapWithProgress = {
+      ...result.roadmap,
+      phases: result.roadmap.phases.map((phase) => ({
+        ...phase,
+        progress: computeDerivedProgress(phase.tasks)
+      }))
+    };
+    const nextStep = getNextStep(result.roadmap.phases);
+
     return NextResponse.json({
       success: true,
       data: {
-        roadmap: result.roadmap,
-        permission: result.permission
+        roadmap: roadmapWithProgress,
+        permission: result.permission,
+        nextStep
       }
     });
   } catch (error) {

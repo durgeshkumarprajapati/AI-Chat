@@ -1100,6 +1100,10 @@ model RoadmapTask {
   order          Int
   estimatedHours Float     @default(1) @map("estimated_hours")
   status         String    @default("PENDING")
+  // Smart Roadmap Execution pass — the one genuinely missing timestamp (completedAt already
+  // existed). Set the first time a task enters IN_PROGRESS; preserved across subsequent
+  // resumes/reopens so it always reflects when work truly began.
+  startedAt      DateTime? @map("started_at")
   completedAt    DateTime? @map("completed_at")
   notes          String?
   resources      Json?     @default("[]")

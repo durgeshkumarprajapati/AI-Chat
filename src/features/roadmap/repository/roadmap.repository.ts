@@ -1,6 +1,9 @@
 import { prisma } from '@/lib/prisma';
 import { RoadmapStatus } from '@prisma/client';
 import { QuestionnaireAnswers, GeneratedRoadmapPlan } from '../roadmap.types';
+import { computeTaskTransition, RoadmapTaskStatusValue } from '../execution/roadmap-task-transition';
+import { auditService } from '@/features/audit/audit.service';
+import { ConflictError } from '@/errors';
 
 export class RoadmapRepository {
   /**
@@ -190,20 +193,49 @@ export class RoadmapRepository {
   }
 
   /**
-   * Updates task status and optional notes.
+   * Updates task status and optional notes. Timestamp handling (startedAt/completedAt) is
+   * delegated to computeTaskTransition — pure, idempotent, unit-tested separately. `actorId` is
+   * optional purely for backward compatibility with any other internal caller that doesn't have
+   * one; every real caller (the PATCH route) always supplies it so the audit trail is complete.
    */
-  async updateTaskStatus(taskId: string, status: 'PENDING' | 'IN_PROGRESS' | 'COMPLETED', notes?: string) {
+  async updateTaskStatus(taskId: string, status: RoadmapTaskStatusValue, notes?: string, actorId?: string) {
+    const existing = await prisma.roadmapTask.findUniqueOrThrow({ where: { id: taskId } });
+    const transition = computeTaskTransition(
+      { status: existing.status as RoadmapTaskStatusValue, startedAt: existing.startedAt, completedAt: existing.completedAt },
+      status
+    );
+
     const task = await prisma.roadmapTask.update({
       where: { id: taskId },
       data: {
-        status,
-        completedAt: status === 'COMPLETED' ? new Date() : null,
+        status: transition.status,
+        startedAt: transition.startedAt,
+        completedAt: transition.completedAt,
         ...(notes !== undefined ? { notes } : {})
       },
       include: { phase: true }
     });
 
     await this.updateRoadmapProgress(task.phase.roadmapId);
+
+    // Audit trail (Phase 10) — only on an ACTUAL status change, never on an idempotent no-op
+    // repeat, mirroring the existing 'roadmap.created' naming convention (dot-namespaced action,
+    // PascalCase targetType, small non-sensitive details object — never raw prompts/content).
+    if (actorId && existing.status !== transition.status) {
+      const action =
+        transition.status === 'COMPLETED' ? 'roadmap.task.completed'
+          : transition.status === 'IN_PROGRESS' && existing.status === 'COMPLETED' ? 'roadmap.task.reopened'
+          : transition.status === 'IN_PROGRESS' ? 'roadmap.task.started'
+          : 'roadmap.task.reset';
+      await auditService.logEvent({
+        actorId,
+        action,
+        targetType: 'RoadmapTask',
+        targetId: task.id,
+        details: { roadmapId: task.phase.roadmapId, phaseId: task.phaseId, taskTitle: task.title }
+      });
+    }
+
     return task;
   }
 
@@ -218,9 +250,19 @@ export class RoadmapRepository {
   }
 
   /**
-   * Replaces tasks in a phase during regeneration.
+   * Replaces tasks in a phase during regeneration. Phase 9 — deliberately does NOT regenerate the
+   * whole roadmap, and now (additively) refuses to silently erase existing execution progress: if
+   * any task in this phase has already been started or completed, regeneration is rejected rather
+   * than deleting that history. This does not change the generation algorithm itself — it only
+   * guards the pre-existing delete-then-recreate step that already existed here.
    */
   async replacePhaseTasks(phaseId: string, newTitle: string, newDescription: string, newTasks: { title: string; description: string; estimatedHours: number; resources?: any }[]) {
+    const existingTasks = await prisma.roadmapTask.findMany({ where: { phaseId }, select: { status: true } });
+    const hasProgress = existingTasks.some((t) => t.status !== 'PENDING');
+    if (hasProgress) {
+      throw new ConflictError('This phase has in-progress or completed tasks — regenerating it would erase that progress. Complete or reopen those tasks to PENDING first if you really want to regenerate.');
+    }
+
     await prisma.roadmapTask.deleteMany({ where: { phaseId } });
 
     await prisma.roadmapPhase.update({

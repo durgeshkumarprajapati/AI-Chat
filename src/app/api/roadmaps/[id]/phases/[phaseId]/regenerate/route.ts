@@ -38,6 +38,15 @@ export async function POST(req: NextRequest, { params }: RouteParams) {
       );
     }
 
+    // Cheap pre-check using data already loaded above — avoids an unnecessary LLM call when
+    // replacePhaseTasks would reject the regeneration anyway (see its own doc comment for why).
+    if (phaseToRegenerate.tasks.some((t) => t.status !== 'PENDING')) {
+      return NextResponse.json(
+        { success: false, error: { code: 'CONFLICT', message: 'This phase has in-progress or completed tasks — regenerating it would erase that progress.' } },
+        { status: 409 }
+      );
+    }
+
     const snapshot = result.roadmap.questionnaireSnapshot as unknown as QuestionnaireAnswers;
 
     const regeneratedPhase = await roadmapPlannerService.regeneratePhase(snapshot, {
